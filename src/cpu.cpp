@@ -94,7 +94,16 @@ bool Cpu::require_coprocessor(unsigned coprocessor) {
     return false;
 }
 
-void Cpu::raise_exception(Exception exception, unsigned coprocessor, bool refill) {
+void Cpu::raise_exception(Exception exception, unsigned coprocessor, bool refill, bool instruction_fetch) {
+    // Redirect latency depends on whether the fault is detected in RF, EX, or DC.
+    if (instruction_fetch || exception == Exception::BusInstruction) {
+        add_cycles(2);
+    } else if (exception == Exception::Syscall || exception == Exception::Breakpoint ||
+               exception == Exception::ReservedInstruction || exception == Exception::CoprocessorUnusable) {
+        add_cycles(3);
+    } else {
+        add_cycles(4);
+    }
     const bool already_exl = (status() & 2U) != 0;
     const u64 vector = (status() & 0x00400000U) != 0 ? 0xffffffffbfc00200ULL : 0xffffffff80000000ULL;
     const u64 offset = refill && !already_exl ? (wide_addressing() ? 0x80U : 0U) : 0x180U;

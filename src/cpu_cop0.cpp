@@ -215,6 +215,7 @@ void Cpu::execute_cop0(u32 instruction) {
     case 0x18:
         if (!require_coprocessor(0))
             return;
+        add_cycles(1);
         if ((status() & 4U) != 0) {
             set_pc(cp0[30]);
             cp0[12] &= ~4ULL;

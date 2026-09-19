@@ -10,7 +10,8 @@ void Cpu::address_exception(u64 address, Access access) {
     cp0[4] = (cp0[4] & ~0x7fffffULL) | ((address >> 9) & 0x7ffff0U);
     cp0[20] =
         (cp0[20] & ~0x1ffffffffULL) | ((address >> 9) & 0x7ffffff0U) | ((address >> 31) & 0x180000000ULL);
-    raise_exception(access == Access::Write ? Exception::AddressStore : Exception::AddressLoad);
+    raise_exception(access == Access::Write ? Exception::AddressStore : Exception::AddressLoad, 0, false,
+                    access == Access::Execute);
 }
 
 void Cpu::tlb_exception(u64 address, Access access, bool refill, bool modification) {
@@ -22,7 +23,7 @@ void Cpu::tlb_exception(u64 address, Access access, bool refill, bool modificati
     raise_exception(modification              ? Exception::TlbModification
                     : access == Access::Write ? Exception::TlbStore
                                               : Exception::TlbLoad,
-                    0, refill);
+                    0, refill, access == Access::Execute);
 }
 
 bool Cpu::translate(u64 address, Access access, u32& physical, bool& cached) {

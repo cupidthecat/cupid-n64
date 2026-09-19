@@ -59,7 +59,8 @@ class Cpu {
     [[nodiscard]] bool wide_addressing() const;
     [[nodiscard]] bool wide_instructions() const;
     bool require_coprocessor(unsigned coprocessor);
-    void raise_exception(Exception exception, unsigned coprocessor = 0, bool refill = false);
+    void raise_exception(Exception exception, unsigned coprocessor = 0, bool refill = false,
+                         bool instruction_fetch = false);
     void branch(bool condition, u64 target, bool likely = false);
     void add_cycles(u64 amount) {
         instruction_cycles_ += amount;
