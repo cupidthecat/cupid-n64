@@ -87,6 +87,7 @@ class Bus {
     bool ri_current_loaded_{};
 
     u64 vi_counter_{};
+    u64 vi_clock_fraction_{};
     u64 ai_counter_{};
     u64 ai_clock_rate_{44100};
     u64 ai_clock_period_{62500000};
@@ -97,6 +98,7 @@ class Bus {
     u64 si_io_counter_{};
     u64 eeprom_busy_counter_{};
     u32 vi_current_{};
+    unsigned vi_leap_counter_{};
     u32 ai_fifo_count_{};
     std::array<u32, 2> ai_addresses_{};
     std::array<u32, 2> ai_lengths_{};
@@ -142,6 +144,7 @@ class Bus {
     void write_mi(u32 offset, u32 value);
     [[nodiscard]] u32 read_vi(u32 offset) const;
     void write_vi(u32 offset, u32 value);
+    void tick_vi(u64 rcp_cycles);
     [[nodiscard]] u32 read_ai(u32 offset) const;
     void write_ai(u32 offset, u32 value);
     void tick_ai(u64 rcp_cycles);

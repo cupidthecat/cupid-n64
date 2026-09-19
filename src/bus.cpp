@@ -41,11 +41,13 @@ void Bus::reset() {
     ri_.fill(0);
     ri_current_loaded_ = false;
     vi_.fill(0);
+    vi_[3] = 256;
     ai_.fill(0);
     pi_.fill(0);
     si_.fill(0);
 
     vi_counter_ = 0;
+    vi_clock_fraction_ = 0;
     ai_counter_ = 0;
     ai_clock_rate_ = 44100;
     ai_clock_period_ = 62500000;
@@ -56,6 +58,7 @@ void Bus::reset() {
     si_io_counter_ = 0;
     eeprom_busy_counter_ = 0;
     vi_current_ = 0;
+    vi_leap_counter_ = 0;
     ai_fifo_count_ = 0;
     ai_addresses_.fill(0);
     ai_lengths_.fill(0);
@@ -288,30 +291,6 @@ void Bus::write_mi(u32 offset, u32 value) {
     }
 }
 
-u32 Bus::read_vi(u32 offset) const {
-    const unsigned index = static_cast<unsigned>((offset & 0x3fU) >> 2U);
-    if (index == 4)
-        return vi_current_ & 0x3ffU;
-    if (index >= vi_.size())
-        return 0;
-    return vi_[index];
-}
-
-void Bus::write_vi(u32 offset, u32 value) {
-    const unsigned index = static_cast<unsigned>((offset & 0x3fU) >> 2U);
-    if (index >= vi_.size())
-        return;
-    if (index == 4) {
-        set_interrupt(3, false);
-        return;
-    }
-    static constexpr std::array<u32, 14> masks = {
-        0x0000ffffU, 0x00ffffffU, 0x00000fffU, 0x000003ffU, 0,           0x3fffffffU, 0x000003ffU,
-        0x001f0fffU, 0x0fff0fffU, 0x03ff03ffU, 0x03ff03ffU, 0x03ff03ffU, 0x0fff0fffU, 0x0fff0fffU,
-    };
-    vi_[index] = value & masks[index];
-}
-
 u32 Bus::read_pi(u32 offset) const {
     const unsigned index = static_cast<unsigned>((offset & 0x3fU) >> 2U);
     if (index == 4) {
@@ -412,15 +391,7 @@ void Bus::tick(u64 rcp_cycles) {
     }
     tick_ai(rcp_cycles);
 
-    vi_counter_ += rcp_cycles;
-    const u64 line_cycles = std::max<u64>(1, (vi_[7] & 0xfffU) != 0 ? vi_[7] & 0xfffU : 1500U);
-    while (vi_counter_ >= line_cycles) {
-        vi_counter_ -= line_cycles;
-        const u32 total = (vi_[6] & 0x3ffU) != 0 ? (vi_[6] & 0x3ffU) : 0x20dU;
-        vi_current_ = (vi_current_ + 2U) % (total + 1U);
-        if ((vi_current_ & 0x3feU) == (vi_[3] & 0x3feU))
-            set_interrupt(3, true);
-    }
+    tick_vi(rcp_cycles);
 
     rdp.tick(rcp_cycles);
 }
