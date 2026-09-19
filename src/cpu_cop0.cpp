@@ -7,6 +7,12 @@ u64 Cpu::read_cop0(unsigned index) {
     if (index == 1)
         return random_;
     switch (index) {
+    case 9: {
+        // Count is sampled after the instruction's fetch and issue cycles.
+        const u64 pending = executing_step_ ? instruction_cycles_ - synchronized_instruction_cycles_ : 0;
+        const u64 elapsed = pending > count_write_hold_ ? pending - count_write_hold_ : 0;
+        return static_cast<u32>(cp0[9] + elapsed / 2 + (elapsed % 2 + static_cast<u64>(count_half_)) / 2);
+    }
     case 7:
     case 21:
     case 22:
@@ -107,7 +113,7 @@ void Cpu::write_cop0_instruction(unsigned index, u64 value) {
     }
     write_cop0(index, value);
     if (index == 9)
-        count_write_hold_ = instruction_cycles_ - synchronized_instruction_cycles_ + 1;
+        count_write_hold_ = instruction_cycles_ - synchronized_instruction_cycles_ + 2;
     if (index == 13)
         software_interrupt_delay_ = 1;
 }
