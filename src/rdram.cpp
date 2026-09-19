@@ -21,7 +21,7 @@ void Rdram::reset(bool warm) {
     acknowledgement_error_ = false;
     if (warm)
         return;
-    std::fill(bytes_.begin(), bytes_.end(), 0);
+    std::fill(bytes_.begin(), bytes_.end(), u8{0});
     hidden_.assign((bytes_.size() + 1) / 2, 0);
     noise_ = 0x2360ed051fc65da4ULL;
     chips_.fill({});

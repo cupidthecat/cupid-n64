@@ -29,7 +29,7 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 void Bus::reset() {
     memory.reset();
 
-    std::fill(pif.begin() + PifRamOffset, pif.end(), 0);
+    std::fill(pif.begin() + PifRamOffset, pif.end(), u8{0});
     pif[0x7e5] = 0x04;
     pif[0x7e6] = cic.seed();
     pif[0x7e7] = cic.seed();
@@ -703,13 +703,13 @@ void Bus::flash_command(u32 value) {
         if (flashram.empty())
             return;
         if (flash_erase_ == FlashErase::Chip)
-            std::fill(flashram.begin(), flashram.end(), 0xff);
+            std::fill(flashram.begin(), flashram.end(), u8{0xff});
         else if (flash_erase_ == FlashErase::Sector) {
             const std::size_t base = static_cast<std::size_t>(flash_sector_) << 14U;
             const std::size_t end = std::min(base + 0x4000U, flashram.size());
             if (base < end)
                 std::fill(flashram.begin() + static_cast<std::ptrdiff_t>(base),
-                          flashram.begin() + static_cast<std::ptrdiff_t>(end), 0xff);
+                          flashram.begin() + static_cast<std::ptrdiff_t>(end), u8{0xff});
         }
         flash_erase_ = FlashErase::None;
         flash_mode_ = FlashMode::Status;
@@ -1015,7 +1015,7 @@ void Bus::process_pif_control() {
         pif_rom_locked_ = true;
     if ((command & 0x20U) != 0) {
         std::copy_n(pif.begin() + 0x7f2, pif_cpu_checksum_.size(), pif_cpu_checksum_.begin());
-        std::fill(pif.begin() + 0x7f2, pif.begin() + 0x7f8, 0);
+        std::fill(pif.begin() + 0x7f2, pif.begin() + 0x7f8, u8{0});
         pif[0x7e5] = 0;
         pif[0x7e6] = 0;
         pif[0x7e7] = 0;

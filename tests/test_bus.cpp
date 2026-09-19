@@ -119,7 +119,7 @@ TEST(bus_controller_pak_rejects_bad_address_crc_without_writing) {
     bus.controller_paks[0][0] = 0xa5;
 
     auto prepare_write = [&](u8 address_crc) {
-        std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), 0);
+        std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
         bus.pif[0x7c0] = 35;
         bus.pif[0x7c1] = 1;
         bus.pif[0x7c2] = 0x03;
@@ -214,7 +214,7 @@ TEST(bus_eeprom_joybus_write_busy_and_readback) {
     bus.set_save_type(SaveType::Eeprom4K);
 
     const std::array<u8, 8> payload{0x03, 0x14, 0x25, 0x36, 0x47, 0x58, 0x69, 0x7a};
-    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), 0);
+    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
     bus.pif[0x7c4] = 10;
     bus.pif[0x7c5] = 1;
     bus.pif[0x7c6] = 0x05;
@@ -223,7 +223,7 @@ TEST(bus_eeprom_joybus_write_busy_and_readback) {
     run_si_read(bus, 0x5000);
     CHECK_EQ(bus.read_ram_byte(0x5010), 0U);
 
-    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), 0);
+    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
     bus.pif[0x7c4] = 2;
     bus.pif[0x7c5] = 8;
     bus.pif[0x7c6] = 0x04;
@@ -233,7 +233,7 @@ TEST(bus_eeprom_joybus_write_busy_and_readback) {
         CHECK_EQ(bus.read_ram_byte(0x5108 + index), 0xffU);
 
     bus.tick(375000);
-    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), 0);
+    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
     bus.pif[0x7c4] = 2;
     bus.pif[0x7c5] = 8;
     bus.pif[0x7c6] = 0x04;

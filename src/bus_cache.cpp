@@ -13,7 +13,7 @@ bool Bus::read_cache(u32 physical, std::span<u8> bytes) {
         return false;
     }
     if (physical >= 0x03f00000U) {
-        std::fill(bytes.begin(), bytes.end(), 0);
+        std::fill(bytes.begin(), bytes.end(), u8{0});
         write_be32(bytes.data(), memory.read_register(physical));
         return true;
     }
