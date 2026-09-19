@@ -43,6 +43,5 @@ and destination preservation.
 ## Current limits
 
 The extended cartridge suite still detects inaccurate RDRAM read and cache-miss
-timing. It also detects instruction-fetch pipeline effects in self-modifying code.
-Passing the default cartridge suite does not establish cycle accuracy for these
-paths.
+timing. Passing the default cartridge suite does not establish cycle accuracy for
+these paths.

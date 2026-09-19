@@ -54,7 +54,8 @@ void Cpu::reset() {
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
     executing_step_ = false;
-    sampling_exception_decode_ = false;
+    speculative_fetch_ = false;
+    fetch_wait_cycles_ = 0;
     write_buffer_.fill({});
     write_buffer_head_ = write_buffer_count_ = 0;
     cp0[12] = 0x3450ff04U;
@@ -65,6 +66,7 @@ void Cpu::reset() {
 }
 
 void Cpu::set_pc(u64 address) {
+    fetched_instruction_ = {};
     pc = address;
     next_pc = address + 4;
     following_pc_ = address + 8;
@@ -100,7 +102,7 @@ bool Cpu::require_coprocessor(unsigned coprocessor) {
 }
 
 void Cpu::raise_exception(Exception exception, unsigned coprocessor, bool refill, bool instruction_fetch) {
-    if (sampling_exception_decode_)
+    if (speculative_fetch_)
         return;
     if (exception == Exception::FloatingPoint && executing_step_)
         coprocessor = sample_exception_coprocessor();
@@ -163,6 +165,7 @@ void Cpu::step() {
         }
     } guard{executing_step_};
     executing_step_ = true;
+    fetch_wait_cycles_ = 0;
     exception_pending = redirected_ = false;
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
@@ -182,10 +185,11 @@ void Cpu::step() {
         return;
     }
     u64 instruction = 0;
-    if (read_memory(pc, 4, instruction, true)) {
+    if (fetch_instruction(instruction)) {
         following_pc_ = next_pc + 4;
         following_delay_slot_ = annul_next_ = false;
         begin_instruction_timing(static_cast<u32>(instruction));
+        prefetch_instruction(next_pc, true);
         execute(static_cast<u32>(instruction));
         finish_instruction_timing(static_cast<u32>(instruction));
         ++instruction_count;
@@ -212,6 +216,7 @@ void Cpu::step() {
         }
     }
     gpr[0] = 0;
+    add_cycles(fetch_wait_cycles_);
     synchronize();
 }
 

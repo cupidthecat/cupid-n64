@@ -54,7 +54,8 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 
 ## Core layout
 
-Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md) and
+Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
+[instruction fetch ordering](docs/hardware/instruction-fetch.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
 

@@ -102,7 +102,14 @@ class Cpu {
     u64 instruction_cycles_{1};
     u64 synchronized_instruction_cycles_{};
     bool executing_step_{};
-    bool sampling_exception_decode_{};
+    bool speculative_fetch_{};
+    u64 fetch_wait_cycles_{};
+    struct FetchedInstruction {
+        u64 address{};
+        u32 instruction{};
+        bool valid{};
+    };
+    FetchedInstruction fetched_instruction_{};
     struct MemoryWrite {
         u64 address{};
         unsigned width{};
@@ -137,6 +144,8 @@ class Cpu {
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);
     unsigned sample_exception_coprocessor();
+    bool fetch_instruction(u64& instruction);
+    void prefetch_instruction(u64 address, bool latch);
 
     void execute_special(u32 instruction);
     void execute_regimm(u32 instruction);

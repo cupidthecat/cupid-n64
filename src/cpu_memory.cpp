@@ -5,7 +5,7 @@
 namespace cupid {
 
 void Cpu::address_exception(u64 address, Access access) {
-    if (sampling_exception_decode_)
+    if (speculative_fetch_)
         return;
     cp0[8] = address;
     cp0[10] = (cp0[10] & 255U) | (address & 0xc00000ffffffe000ULL);
@@ -17,7 +17,7 @@ void Cpu::address_exception(u64 address, Access access) {
 }
 
 void Cpu::tlb_exception(u64 address, Access access, bool refill, bool modification) {
-    if (sampling_exception_decode_)
+    if (speculative_fetch_)
         return;
     cp0[8] = address;
     cp0[10] = (cp0[10] & 255U) | (address & 0xc00000ffffffe000ULL);
@@ -146,14 +146,19 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         const unsigned index = static_cast<unsigned>((address >> 5) & 511U);
         auto& line = instruction_cache[index];
         if (!line.valid || line.tag != (physical & 0xfffff000U)) {
+            line.valid = false;
             line.tag = physical & 0xfffff000U;
             const u32 base = line.tag | ((index << 5) & 0xfe0U);
             drain_write_buffer();
-            add_cycles(48);
-            synchronize();
+            if (!speculative_fetch_) {
+                add_cycles(48);
+                synchronize();
+            }
             if (!system_.bus.read_cache(base, line.data))
                 return false;
             line.valid = true;
+            if (speculative_fetch_)
+                fetch_wait_cycles_ += 48;
         }
         value = read_be32(line.data.data() + (physical & 28U));
         return true;

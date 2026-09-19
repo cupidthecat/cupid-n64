@@ -40,6 +40,9 @@ void Cpu::buffer_write(u32 physical, unsigned width, u64 value) {
 }
 
 void Cpu::buffer_writes(std::span<const MemoryWrite> transfers) {
+    // An uncached store reaches the bus after the next instruction has reached RF.
+    // The following IC request therefore precedes this store's address request.
+    prefetch_instruction(following_pc_, false);
     synchronize();
     if (write_buffer_count_ == write_buffer_.size()) {
         add_cycles(system_.cpu_cycles_for_rcp(next_buffered_write()));

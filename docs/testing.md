@@ -78,6 +78,10 @@ On Windows, the Clang configuration copies the compiler's address-sanitizer runt
 
 The cartridge runner prints the ROM's output unchanged. It checks the aggregate counts, requires a result for each enabled category, and waits for the final summary line. Truncated output, malformed counts, duplicate categories, an empty test run, and a reported panic all fail validation.
 
+The ROM formats integer test parameters in hexadecimal. For example, the `24`
+in `(true, 24, 36.3)` means decimal 36; the floating-point value stays decimal.
+Account for that formatting when comparing a failure with its source parameters.
+
 The instruction limit bounds a run that stalls inside guest software. A limit failure includes the PC, pending next PC, exception state, registers, and the last 32 instruction addresses. Use those addresses with the matching test ELF when examining a failing sequence.
 
 A passing regression should demonstrate the affected behavior, including observable results and side effects. For a DMA change, this can include transferred bytes, untouched memory, address postincrements, busy state, and interrupt delivery. For an instruction change, this can include the destination register, flags, exception state, delay-slot behavior, and register aliases.
