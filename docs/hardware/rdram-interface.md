@@ -32,9 +32,13 @@ recovery state as single-cycle advances.
 
 Blocking CPU memory requests issued during recovery wait for its remaining
 cycles before their nominal transfer delay. This includes uncached reads, cache
-fills, and dirty data-cache writebacks. Cache hits and device-register reads do
-not wait. Speculative instruction-fetch waits remain deferred until after the
-older instruction samples its operands and device registers.
+fills, dirty data-cache writebacks, and explicit instruction-cache fill and hit
+writeback operations. The wait uses the physical transfer address after older
+buffered stores have drained. Cache operations that only change tags or valid
+bits, a hit writeback that misses, and chip-register transfers do not wait for
+RDRAM recovery. Cache hits and device-register reads do not wait either.
+Speculative instruction-fetch waits remain deferred until after the older
+instruction samples its operands and device registers.
 
 Disabling refresh prevents later requests but does not cancel a recovery already
 in progress. Reset cancels recovery. The [RI hardware notes](https://n64brew.dev/wiki/RDRAM_Interface)
@@ -63,7 +67,10 @@ absent memory, error clearing, and reset. The older memory-bus regression now
 expects `0xff00` after a bank-status write; its previous `0x00ff` expectation
 reversed the valid and dirty fields. `tests/rcp/test_ri_refresh.cpp` checks refresh
 boundaries in both regions, clean and dirty delays, video-off behavior, tick-size
-independence, reset, and blocking CPU transactions, including speculative fetches.
+independence, reset, and blocking CPU transactions, including speculative fetches
+and explicit instruction-cache transfers. The cache-operation cases check all
+32 transferred bytes, Count advancement, both video regions, and operations that
+do not access RDRAM storage.
 
 Row-change delays and shared-memory arbitration remain incomplete. Buffered
 stores and DMA transfers do not yet wait for refresh; CPU transfer delays still

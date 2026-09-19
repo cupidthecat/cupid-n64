@@ -185,3 +185,88 @@ TEST(ri_refresh_delays_a_dirty_cache_writeback) {
     CHECK_EQ(system.cpu.cycles, 121U);
     CHECK_EQ(system.bus.read(0x2000, 4), 0x12345678U);
 }
+
+TEST(ri_refresh_delays_explicit_instruction_cache_transfers) {
+    for (auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        for (u32 operation : {0x14U, 0x18U}) {
+            for (u32 delay : {23U, 54U}) {
+                System system(standard);
+                prepare(system, true);
+                system.bus.write(Refresh, 4, 0x20000U | (delay << 8) | delay);
+                system.cpu.write_cop0(12, 0x34000000);
+                system.cpu.set_pc(0xffffffff80001000ULL);
+                system.cpu.gpr[1] = 0xffffffff80002000ULL;
+                system.bus.write(0x1000, 4, (0x2fU << 26) | (1U << 21) | (operation << 16));
+                for (u32 offset = 0; offset < 32; offset += 4)
+                    system.bus.write(0x2000 + offset, 4, 0x12345678U + offset);
+                u64 ignored = 0;
+                CHECK(system.cpu.read_memory(system.cpu.pc, 4, ignored, true));
+                if (operation == 0x18) {
+                    CHECK(system.cpu.read_memory(system.cpu.gpr[1], 4, ignored, true));
+                    for (u32 offset = 0; offset < 32; offset += 4)
+                        system.bus.write(0x2000 + offset, 4, 0);
+                }
+                system.bus.tick(first_line(system));
+                CHECK_EQ(system.bus.rdram_refresh_wait(), delay);
+                system.cpu.step();
+                const u64 expected = 49 + (delay * 3 - 1) / 2;
+                CHECK_EQ(system.cpu.cycles, expected);
+                CHECK_EQ(system.cpu.cp0[9], expected / 2);
+                CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
+                for (u32 offset = 0; offset < 32; offset += 4) {
+                    if (operation == 0x14) {
+                        CHECK(system.cpu.read_memory(system.cpu.gpr[1] + offset, 4, ignored, true));
+                        CHECK_EQ(ignored, 0x12345678U + offset);
+                    } else {
+                        CHECK_EQ(system.bus.read(0x2000 + offset, 4), 0x12345678U + offset);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST(ri_refresh_does_not_delay_instruction_cache_operations_without_a_transfer) {
+    for (u32 operation : {0x00U, 0x04U, 0x08U, 0x10U, 0x18U}) {
+        System system;
+        prepare(system, true);
+        system.cpu.write_cop0(12, 0x34000000);
+        system.cpu.set_pc(0xffffffff80001000ULL);
+        system.cpu.gpr[1] = 0xffffffff80002000ULL;
+        system.bus.write(0x1000, 4, (0x2fU << 26) | (1U << 21) | (operation << 16));
+        u64 ignored = 0;
+        CHECK(system.cpu.read_memory(system.cpu.pc, 4, ignored, true));
+        system.bus.tick(first_line(system));
+        system.cpu.step();
+        CHECK_EQ(system.cpu.cycles, 1U);
+        CHECK_EQ(system.bus.rdram_refresh_wait(), 54U);
+        CHECK_EQ(system.bus.read(BankStatus, 4) & 0xffU, 0U);
+    }
+}
+
+TEST(ri_refresh_does_not_delay_instruction_cache_transfers_to_chip_registers) {
+    for (u32 operation : {0x14U, 0x18U}) {
+        System system;
+        prepare(system, true);
+        system.cpu.write_cop0(12, 0x34000000);
+        system.cpu.set_pc(0xffffffff80001000ULL);
+        system.cpu.gpr[1] = 0xffffffff83f00020ULL;
+        system.bus.write(0x1000, 4, (0x2fU << 26) | (1U << 21) | (operation << 16));
+        const u64 register_value = system.bus.read(0x03f00020, 4);
+        u64 ignored = 0;
+        CHECK(system.cpu.read_memory(system.cpu.pc, 4, ignored, true));
+        if (operation == 0x18) {
+            CHECK(system.cpu.read_memory(system.cpu.gpr[1], 4, ignored, true));
+        }
+        system.bus.tick(first_line(system));
+        system.cpu.step();
+        CHECK_EQ(system.cpu.cycles, 49U);
+        CHECK_EQ(system.bus.rdram_refresh_wait(), 22U);
+        if (operation == 0x14) {
+            CHECK(system.cpu.read_memory(system.cpu.gpr[1], 4, ignored, true));
+            CHECK_EQ(ignored, register_value);
+        } else {
+            CHECK_EQ(system.bus.read(0x03f00020, 4), register_value);
+        }
+    }
+}

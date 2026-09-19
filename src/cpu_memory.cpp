@@ -294,7 +294,7 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
         instruction.tag = tag;
         const u32 base = tag | (static_cast<u32>(address) & 0xfe0U);
         drain_write_buffer();
-        add_cycles(48);
+        add_cycles(48 + rdram_refresh_delay(base));
         synchronize();
         if (!system_.bus.read_cache(base, instruction.data))
             return;
@@ -312,7 +312,7 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
         if (instruction_hit) {
             const u32 base = instruction.tag | (static_cast<u32>(address) & 0xfe0U);
             drain_write_buffer();
-            add_cycles(48);
+            add_cycles(48 + rdram_refresh_delay(base));
             synchronize();
             if (!system_.bus.write_cache(base, instruction.data))
                 return;
