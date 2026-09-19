@@ -104,6 +104,13 @@ class Cpu {
     bool count_half_{};
     u64 count_write_hold_{};
     u32 random_{31};
+    u32 random_wired_{};
+    struct WiredWrite {
+        u32 value{};
+        u64 instruction{};
+    };
+    std::array<WiredWrite, 2> wired_writes_{};
+    unsigned software_interrupt_delay_{};
     unsigned pending_load_register_{};
     unsigned pending_fpu_register_{32};
 
@@ -113,6 +120,7 @@ class Cpu {
     void execute_special(u32 instruction);
     void execute_regimm(u32 instruction);
     void execute_cop0(u32 instruction);
+    void write_cop0_instruction(unsigned index, u64 value);
     void execute_cop2(u32 instruction);
     void update_clocks(u64 elapsed);
     [[nodiscard]] bool little_endian() const;

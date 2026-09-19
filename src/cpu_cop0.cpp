@@ -45,10 +45,13 @@ void Cpu::write_cop0(unsigned index, u64 value) {
     case 6:
         cp0[6] = value & 63U;
         random_ = 31;
+        random_wired_ = static_cast<u32>(cp0[6]);
+        wired_writes_.fill({});
         return;
     case 9:
         cp0[9] = static_cast<u32>(value);
         count_half_ = false;
+        count_write_hold_ = 0;
         return;
     case 10:
         cp0[10] = value & 0xc00000ffffffe0ffULL;
@@ -92,6 +95,21 @@ void Cpu::write_cop0(unsigned index, u64 value) {
     default:
         return;
     }
+}
+
+void Cpu::write_cop0_instruction(unsigned index, u64 value) {
+    add_cycles(1);
+    if (index == 6) {
+        cop0_latch_ = value;
+        cp0[6] = value & 63U;
+        wired_writes_[instruction_count & 1U] = {static_cast<u32>(cp0[6]), instruction_count + 2};
+        return;
+    }
+    write_cop0(index, value);
+    if (index == 9)
+        count_write_hold_ = instruction_cycles_ + 1;
+    if (index == 13)
+        software_interrupt_delay_ = 1;
 }
 
 void Cpu::tlb_write(unsigned index) {
@@ -156,10 +174,7 @@ void Cpu::execute_cop0(u32 instruction) {
             return;
         case 4:
             if (require_coprocessor(0)) {
-                add_cycles(1);
-                write_cop0(rd, gpr[rt]);
-                if (rd == 9)
-                    count_write_hold_ = instruction_cycles_ + 1;
+                write_cop0_instruction(rd, gpr[rt]);
             }
             return;
         case 5:
@@ -168,10 +183,7 @@ void Cpu::execute_cop0(u32 instruction) {
             if (!wide_instructions())
                 raise_exception(Exception::ReservedInstruction);
             else {
-                add_cycles(1);
-                write_cop0(rd, gpr[rt]);
-                if (rd == 9)
-                    count_write_hold_ = instruction_cycles_ + 1;
+                write_cop0_instruction(rd, gpr[rt]);
             }
             return;
         default:

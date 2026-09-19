@@ -98,3 +98,75 @@ TEST(cpu_count_write_restarts_divider_after_the_write_hazard) {
     CHECK_EQ(system.cpu.gpr[6], 101U);
     CHECK_EQ(system.cpu.cycles, 6U);
 }
+
+TEST(cpu_wired_reset_reaches_random_after_one_following_instruction) {
+    System system;
+    prepare(system, {0x40823000, 0x40030800, 0x40040800, 0x40050800});
+    system.cpu.write_cop0(6, 20);
+    system.cpu.gpr[2] = 5;
+    system.cpu.step();
+    system.cpu.step();
+    system.cpu.step();
+    system.cpu.step();
+    CHECK_EQ(system.cpu.gpr[3], 30U);
+    CHECK_EQ(system.cpu.gpr[4], 31U);
+    CHECK_EQ(system.cpu.gpr[5], 30U);
+}
+
+TEST(cpu_random_wraps_at_each_of_the_64_wired_values) {
+    for (u32 wired = 0; wired < 64; ++wired) {
+        System system;
+        prepare(system, {0x40823000, 0, 0});
+        system.cpu.gpr[2] = wired;
+        system.cpu.step();
+        system.cpu.step();
+        CHECK_EQ(system.cpu.read_cop0(1), 31U);
+        u32 expected = 31;
+        for (unsigned index = 0; index < 100; ++index) {
+            system.cpu.step();
+            expected = expected == wired ? 31U : (expected - 1U) & 63U;
+            CHECK_EQ(system.cpu.read_cop0(1), expected);
+        }
+    }
+}
+
+TEST(cpu_software_interrupt_waits_for_the_following_instruction) {
+    System system;
+    prepare(system, {0x40826800, 0x24030007, 0});
+    system.cpu.write_cop0(12, 0x34000101);
+    system.cpu.gpr[2] = 0x100;
+    system.cpu.step();
+    system.cpu.step();
+    CHECK(!system.cpu.exception_pending);
+    CHECK_EQ(system.cpu.gpr[3], 7U);
+    system.cpu.step();
+    CHECK(system.cpu.exception_pending);
+    CHECK_EQ(system.cpu.cp0[14], 0xffffffff80001008ULL);
+    CHECK_EQ(system.cpu.cp0[13] & 0x7cU, 0U);
+}
+
+TEST(cpu_back_to_back_cause_writes_can_cancel_a_software_interrupt) {
+    System system;
+    prepare(system, {0x40826800, 0x40806800, 0, 0});
+    system.cpu.write_cop0(12, 0x34000101);
+    system.cpu.gpr[2] = 0x100;
+    for (unsigned index = 0; index < 4; ++index) {
+        system.cpu.step();
+        CHECK(!system.cpu.exception_pending);
+    }
+    CHECK_EQ(system.cpu.cp0[13] & 0x300U, 0U);
+}
+
+TEST(cpu_consecutive_wired_writes_preserve_both_delayed_resets) {
+    System system;
+    prepare(system, {0x40823000, 0x40833000, 0, 0});
+    system.cpu.gpr[2] = 5;
+    system.cpu.gpr[3] = 10;
+    system.cpu.step();
+    system.cpu.step();
+    CHECK_EQ(system.cpu.read_cop0(1), 31U);
+    system.cpu.step();
+    CHECK_EQ(system.cpu.read_cop0(1), 31U);
+    system.cpu.step();
+    CHECK_EQ(system.cpu.read_cop0(1), 30U);
+}

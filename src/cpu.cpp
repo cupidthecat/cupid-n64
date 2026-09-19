@@ -47,6 +47,8 @@ void Cpu::reset() {
     hi = lo = cycles = instruction_count = cop2_latch = cop0_latch_ = 0;
     linked = exception_pending = frozen = count_half_ = redirected_ = false;
     random_ = 31;
+    random_wired_ = software_interrupt_delay_ = 0;
+    wired_writes_.fill({});
     pending_load_register_ = 0;
     count_write_hold_ = 0;
     instruction_cycles_ = 1;
@@ -143,7 +145,12 @@ void Cpu::step() {
         return;
     }
     cp0[13] = (cp0[13] & ~0x400ULL) | (system_.bus.interrupt_pending() ? 0x400U : 0U);
-    if ((status() & 7U) == 1U && (cp0[13] & status() & 0xff00U) != 0) {
+    u32 pending_interrupts = static_cast<u32>(cp0[13]) & status() & 0xff00U;
+    if (software_interrupt_delay_ != 0) {
+        --software_interrupt_delay_;
+        pending_interrupts &= ~0x300U;
+    }
+    if ((status() & 7U) == 1U && pending_interrupts != 0) {
         raise_exception(Exception::Interrupt);
         update_clocks(instruction_cycles_);
         return;
@@ -156,11 +163,13 @@ void Cpu::step() {
         execute(static_cast<u32>(instruction));
         finish_instruction_timing(static_cast<u32>(instruction));
         ++instruction_count;
-        const u32 wired = static_cast<u32>(cp0[6]) & 63U;
-        if (wired <= 31)
-            random_ = random_ <= wired || random_ > 31 ? 31 : random_ - 1;
-        else
-            random_ = (random_ - 1) & 63U;
+        random_ = random_ == random_wired_ ? 31U : (random_ - 1U) & 63U;
+        auto& wired_write = wired_writes_[instruction_count & 1U];
+        if (wired_write.instruction == instruction_count) {
+            random_ = 31;
+            random_wired_ = wired_write.value;
+            wired_write = {};
+        }
         if (!exception_pending && !redirected_ && !frozen) {
             if (annul_next_) {
                 add_cycles(1);
