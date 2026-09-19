@@ -531,10 +531,13 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         const u32 input_bits = source_word(fs);
         if (is_subnormal_bits<float>(input_bits) || is_infinite_bits<float>(input_bits) ||
             is_nan_bits<float>(input_bits)) {
+            cpu_.add_cycles(1);
             signal_unimplemented();
             return;
         }
         const float value = value_of<float>(input_bits);
+        const float early_limit = long_result ? 0x1p53f : 0x1p32f;
+        cpu_.add_cycles(value >= early_limit || value <= -early_limit ? 1 : 4);
         if (long_result) {
             if (value >= 0x1p+53f || value <= -0x1p+53f) {
                 signal_unimplemented();
@@ -560,17 +563,19 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         } else {
             write_result_word(fd, std::bit_cast<u32>(static_cast<s32>(rounded)));
         }
-        cpu_.add_cycles(4);
     };
 
     auto convert_double_to_integer = [this, fs, fd](bool long_result, u32 rounding_mode) {
         const u64 input_bits = source_doubleword(fs);
         if (is_subnormal_bits<double>(input_bits) || is_infinite_bits<double>(input_bits) ||
             is_nan_bits<double>(input_bits)) {
+            cpu_.add_cycles(1);
             signal_unimplemented();
             return;
         }
         const double value = value_of<double>(input_bits);
+        const double early_limit = long_result ? 0x1p53 : 0x1p32;
+        cpu_.add_cycles(value >= early_limit || value <= -early_limit ? 1 : 4);
         if (long_result) {
             if (value >= 0x1p+53 || value <= -0x1p+53) {
                 signal_unimplemented();
@@ -596,12 +601,13 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         } else {
             write_result_word(fd, std::bit_cast<u32>(static_cast<s32>(rounded)));
         }
-        cpu_.add_cycles(4);
     };
 
     if (format == 0x14U || format == 0x15U) {
         const bool zero_integer = format == 0x14U ? source_word(fs) == 0 : source_doubleword(fs) == 0;
         if (function != 0x20U && function != 0x21U) {
+            if (function < 0x10U || function == 0x24U || function == 0x25U || function >= 0x30U)
+                cpu_.add_cycles(1);
             raise_unimplemented();
             return;
         }
@@ -609,6 +615,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         if (format == 0x14U) {
+            cpu_.add_cycles(zero_integer ? 1 : 4);
             const volatile s32 input = std::bit_cast<s32>(source_word(fs));
             if (function == 0x20U) {
                 const volatile float converted = static_cast<float>(input);
@@ -633,9 +640,11 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             const s64 integer = std::bit_cast<s64>(source_doubleword(fs));
             if (integer >= static_cast<s64>(0x0080000000000000ULL) ||
                 integer < -static_cast<s64>(0x0080000000000000ULL)) {
+                cpu_.add_cycles(1);
                 signal_unimplemented();
                 return;
             }
+            cpu_.add_cycles(zero_integer ? 1 : 4);
             const volatile s64 input = integer;
             if (function == 0x20U) {
                 const volatile float converted = static_cast<float>(input);
@@ -657,7 +666,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
                 write_result_doubleword(fd, result);
             }
         }
-        cpu_.add_cycles(zero_integer ? 1 : 4);
         return;
     }
 
@@ -844,6 +852,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             raise_unimplemented();
             return;
         }
+        cpu_.add_cycles(1);
         const u64 input_bits = source_doubleword(fs);
         if (!check_input_doubleword(input_bits))
             return;
@@ -858,7 +867,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
             return;
         write_result_word(fd, result);
-        cpu_.add_cycles(1);
         return;
     }
 

@@ -170,3 +170,88 @@ TEST(fpu_arithmetic_special_result_exceptions_finish_early) {
         }
     }
 }
+
+TEST(fpu_integer_conversion_source_exceptions_finish_early) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        for (unsigned function : {8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U, 0x24U, 0x25U}) {
+            const auto result = run(format, function, 1, 0, 0, true);
+            CHECK_EQ(result.cycles, 6U);
+            CHECK_EQ(result.result, unchanged_result);
+            CHECK_EQ(result.control & 0x20000U, 0x20000U);
+        }
+    }
+}
+
+TEST(fpu_integer_conversion_inexact_traps_wait_for_rounding) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        for (unsigned function : {8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U, 0x24U, 0x25U}) {
+            const u64 half = format == 0x10U ? 0x3f000000ULL : 0x3fe0000000000000ULL;
+            const auto result = run(format, function, half, 0, 0x80, true);
+            CHECK_EQ(result.cycles, 9U);
+            CHECK_EQ(result.result, unchanged_result);
+            CHECK_EQ(result.control & 0x1000U, 0x1000U);
+        }
+    }
+}
+
+TEST(fpu_integer_conversion_range_faults_distinguish_exponent_and_result_checks) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        for (unsigned function : {8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U, 0x24U, 0x25U}) {
+            const bool long_result = function < 12 || function == 0x25;
+            const double boundary = long_result ? 0x1p53 : 0x1p32;
+            for (const double value : {boundary, -boundary}) {
+                const u64 bits = format == 0x10U ? std::bit_cast<u32>(static_cast<float>(value))
+                                                 : std::bit_cast<u64>(value);
+                const auto result = run(format, function, bits, 0, 0, true);
+                CHECK_EQ(result.cycles, 6U);
+                CHECK_EQ(result.result, unchanged_result);
+            }
+            if (!long_result) {
+                const u64 bits = format == 0x10U ? std::bit_cast<u32>(0x1p31f) : std::bit_cast<u64>(0x1p31);
+                const auto result = run(format, function, bits, 0, 0, true);
+                CHECK_EQ(result.cycles, 9U);
+                CHECK_EQ(result.result, unchanged_result);
+            }
+        }
+    }
+}
+
+TEST(fpu_integer_to_float_traps_include_normalization_latency) {
+    for (unsigned format : {0x14U, 0x15U}) {
+        const auto inexact = run(format, 0x20, 1234567891, 0, 0x80, true);
+        CHECK_EQ(inexact.cycles, 9U);
+        CHECK_EQ(inexact.result, unchanged_result);
+        for (unsigned function : {0U, 0x0cU, 0x24U}) {
+            const auto unimplemented = run(format, function, 0, 0, 0, true);
+            CHECK_EQ(unimplemented.cycles, 6U);
+            CHECK_EQ(unimplemented.result, unchanged_result);
+        }
+    }
+    for (unsigned function : {0x20U, 0x21U}) {
+        const auto range = run(0x15, function, 1ULL << 55, 0, 0, true);
+        CHECK_EQ(range.cycles, 6U);
+        CHECK_EQ(range.result, unchanged_result);
+    }
+    const auto inexact = run(0x15, 0x21, (1ULL << 55) - 3, 0, 0x80, true);
+    CHECK_EQ(inexact.cycles, 9U);
+    CHECK_EQ(inexact.result, unchanged_result);
+}
+
+TEST(fpu_double_to_single_traps_keep_the_conversion_latency) {
+    for (const u64 bits : {1ULL, 0x7fefffffffffffffULL, 0x7ff8000000000000ULL}) {
+        const auto result = run(0x11, 0x20, bits, 0, 0xf80, true);
+        CHECK_EQ(result.cycles, 6U);
+        CHECK_EQ(result.result, unchanged_result);
+    }
+}
+
+TEST(fpu_reserved_opcodes_fault_before_integer_format_checks) {
+    for (unsigned format : {0x10U, 0x11U, 0x14U, 0x15U}) {
+        for (unsigned function : {0x10U, 0x1fU, 0x22U, 0x23U, 0x26U, 0x2fU}) {
+            const auto result = run(format, function, 0, 0, 0, true);
+            CHECK_EQ(result.cycles, 5U);
+            CHECK_EQ(result.result, unchanged_result);
+            CHECK_EQ(result.control & 0x20000U, 0x20000U);
+        }
+    }
+}
