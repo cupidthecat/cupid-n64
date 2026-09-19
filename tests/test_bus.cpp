@@ -32,7 +32,8 @@ void run_si_read(Bus& bus, u32 dram = 0x2000) {
     bus.write(0x04800000U, 4, dram);
     bus.write(0x04800004U, 4, 0x1fc007c0U);
     CHECK((bus.read(0x04800018U, 4) & 1U) != 0);
-    bus.tick(14000);
+    for (unsigned step = 0; step < 1500 && (bus.read(0x04800018U, 4) & 1U) != 0; ++step)
+        bus.tick(100);
     CHECK((bus.read(0x04800018U, 4) & 1U) == 0);
     CHECK((bus.read(0x04800018U, 4) & (1U << 12U)) != 0);
     bus.write(0x04800018U, 4, 0);

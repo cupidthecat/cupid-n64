@@ -3,6 +3,35 @@
 #include <algorithm>
 
 namespace cupid {
+namespace {
+
+u64 read_dma_cycles(std::span<const u8, 64> packet, const std::array<ControllerState, 4>& controllers) {
+    u64 cycles = 13600;
+    std::size_t offset = 0;
+    unsigned channel = 0;
+    while (offset < packet.size() && channel < 5) {
+        const u8 send = packet[offset++];
+        if (send == 0xfe) {
+            cycles += 1420;
+            break;
+        }
+        if (send == 0 || send == 0xfd || send == 0xff) {
+            cycles += 1420;
+            if (send != 0xff)
+                ++channel;
+            continue;
+        }
+        if (offset == packet.size())
+            break;
+        const u8 receive = packet[offset++];
+        offset += (send & 0x3fU) + (receive & 0x3fU);
+        cycles += channel == 4 ? 20000U : controllers[channel].connected ? 22000U : 18000U;
+        ++channel;
+    }
+    return cycles;
+}
+
+} // namespace
 
 u64 Bus::read_pif(u32 physical, unsigned width) {
     if (width == 8)
@@ -53,7 +82,7 @@ void Bus::write_si(u32 offset, u32 value) {
         si_dma_pending_ = true;
         si_dma_busy_ = true;
         si_phase_ = 0x140;
-        si_dma_counter_ = 14000;
+        si_dma_counter_ = read_dma_cycles(std::span<const u8, 64>(pif.data() + 0x7c0, 64), controllers);
         return;
     case 4:
         si_[4] = value & ~1U;

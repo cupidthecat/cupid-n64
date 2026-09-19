@@ -14,11 +14,17 @@ and each word transfer ignores the low two address bits. Transfers wrap within
 the PIF image. Reads of locked boot ROM return zero, and writes leave boot ROM
 intact. PIF RAM remains accessible after ROM lockout.
 
-The model completes writes after 4,065 RCP cycles and reads after 14,000 RCP
-cycles. Read timing is currently fixed: it does not yet account for the number
-of Joybus commands or connected devices. The DMA status reports PCH/DMA states
-4/1 for reads and 1/4 for writes. Completion clears those states and the busy
-bit, then raises the SI interrupt in MI.
+The model completes writes after 4,065 RCP cycles. Read timing starts at 13,600
+RCP cycles and adds time for each Joybus packet: 22,000 cycles for a connected
+controller, 18,000 for an absent controller, or 20,000 for the cartridge channel.
+Padding, skipped channels, channel resets, and the end marker each add 1,420
+cycles. Parsing stops at the end marker, the end of the 64-byte packet, or after
+the fifth channel. The length fields exclude their status flags.
+
+These delays estimate serial transactions; they do not simulate each Joybus bit
+or accessory-specific response time. The DMA status reports PCH/DMA states 4/1
+for reads and 1/4 for writes. Completion clears those states and the busy bit,
+then raises the SI interrupt in MI.
 
 ## CPU stores and the I/O latch
 

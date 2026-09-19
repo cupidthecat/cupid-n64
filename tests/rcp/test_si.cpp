@@ -2,6 +2,10 @@
 #include "test.hpp"
 #include "test_system.hpp"
 
+#include <algorithm>
+#include <array>
+#include <utility>
+
 namespace {
 using namespace cupid;
 
@@ -19,9 +23,10 @@ TEST(si_dma_read_uses_the_programmed_pif_address_and_wraps_at_two_kibibytes) {
         for (unsigned index = 0; index < system.bus.pif.size(); ++index)
             system.bus.pif[index] = static_cast<u8>((index >> 8) ^ index);
         system.bus.pif[0x7ff] = 0;
+        system.bus.pif[0x7c0] = 0xfe;
         const auto image = system.bus.pif;
         start_dma(system, address, true);
-        system.bus.tick(13999);
+        system.bus.tick(15019);
         CHECK_EQ(system.bus.read(0x2000, 4), 0U);
         CHECK_EQ(system.bus.read(0x04800018, 4) & 0x1001U, 1U);
         system.bus.tick(1);
@@ -39,13 +44,14 @@ TEST(si_dma_read_respects_rom_lockout_without_hiding_pif_ram) {
     test::initialize_memory(system);
     system.bus.pif.fill(0xab);
     system.bus.pif[0x7ff] = 0;
+    system.bus.pif[0x7c0] = 0xfe;
     system.bus.write(0x1fc007fc, 4, 0x10);
     system.bus.tick(2150);
     system.bus.write(0x04800018, 4, 0);
     start_dma(system, 0x1fc007a0, true);
-    system.bus.tick(14000);
+    system.bus.tick(15020);
     for (u32 index = 0; index < 64; ++index)
-        CHECK_EQ(system.bus.read_ram_byte(0x2000 + index), index < 32 ? 0U : 0xabU);
+        CHECK_EQ(system.bus.read_ram_byte(0x2000 + index), index < 32 ? 0U : index == 32 ? 0xfeU : 0xabU);
 }
 
 TEST(si_dma_write_uses_the_programmed_address_and_keeps_boot_code_intact) {
@@ -129,7 +135,7 @@ TEST(si_dma_status_reports_the_transfer_direction_and_clears_on_completion) {
         test::initialize_memory(system);
         start_dma(system, 0x1fc007c0, read);
         CHECK_EQ(system.bus.read(0x04800018, 4), read ? 0x141U : 0x411U);
-        system.bus.tick(read ? 14000 : 4065);
+        system.bus.tick(read ? 20700 : 4065);
         CHECK_EQ(system.bus.read(0x04800018, 4), 0x1000U);
     }
 }
@@ -141,4 +147,74 @@ TEST(si_reset_cancels_pending_io_completion) {
     system.bus.tick(2150);
     CHECK_EQ(system.bus.read(0x04800018, 4), 0U);
     CHECK_EQ(system.bus.read(0x04300008, 4) & 2U, 0U);
+}
+
+TEST(si_read_dma_timing_counts_channel_skips_padding_and_packet_termination) {
+    for (const auto& [packet, delay] : {std::pair{std::array<u8, 6>{0xfe, 0, 0, 0, 0, 0}, 15020U},
+                                        std::pair{std::array<u8, 6>{0xff, 0, 0xfd, 0xfe, 0, 0}, 19280U},
+                                        std::pair{std::array<u8, 6>{0, 0, 0, 0, 0, 0xfe}, 20700U}}) {
+        System system;
+        test::initialize_memory(system);
+        std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+        start_dma(system, 0x1fc007c0, true);
+        system.bus.tick(delay - 1);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
+        system.bus.tick(1);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x1000U);
+    }
+}
+
+TEST(si_read_dma_timing_accounts_for_connected_and_absent_controllers) {
+    for (bool connected : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        ControllerState controller;
+        controller.connected = connected;
+        controller.buttons = 0x8123;
+        system.bus.set_controller_state(0, controller);
+        constexpr std::array<u8, 8> packet{1, 4, 1, 0, 0, 0, 0, 0xfe};
+        std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+        start_dma(system, 0x1fc007c0, true);
+        system.bus.tick(connected ? 37019 : 33019);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
+        CHECK_EQ(system.bus.read_ram_byte(0x2003), 0U);
+        system.bus.tick(1);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x1000U);
+        if (connected) {
+            CHECK_EQ(system.bus.read_ram_byte(0x2003), 0x81U);
+            CHECK_EQ(system.bus.read_ram_byte(0x2004), 0x23U);
+        } else {
+            CHECK_EQ(system.bus.read_ram_byte(0x2001) & 0x80U, 0x80U);
+        }
+    }
+}
+
+TEST(si_read_dma_timing_handles_the_cartridge_channel_and_length_flags) {
+    System system;
+    test::initialize_memory(system);
+    system.bus.set_save_type(SaveType::Eeprom4K);
+    constexpr std::array<u8, 10> packet{0, 0, 0, 0, 0x41, 0xc3, 0, 0, 0, 0};
+    std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+    start_dma(system, 0x1fc007c0, true);
+    system.bus.tick(39279);
+    CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
+    system.bus.tick(1);
+    CHECK_EQ(system.bus.read(0x04800018, 4), 0x1000U);
+    CHECK_EQ(system.bus.read_ram_byte(0x2008), 0x80U);
+}
+
+TEST(si_read_dma_timing_bounds_padding_and_truncated_packets) {
+    for (bool truncated : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        std::fill(system.bus.pif.begin() + 0x7c0, system.bus.pif.end(), u8{0xff});
+        if (truncated)
+            system.bus.pif.back() = 1;
+        start_dma(system, 0x1fc007c0, true);
+        const u64 delay = 13600 + (truncated ? 63U : 64U) * 1420;
+        system.bus.tick(delay - 1);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
+        system.bus.tick(1);
+        CHECK_EQ(system.bus.read(0x04800018, 4), 0x1000U);
+    }
 }
