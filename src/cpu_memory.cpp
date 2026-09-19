@@ -5,6 +5,8 @@
 namespace cupid {
 
 void Cpu::address_exception(u64 address, Access access) {
+    if (sampling_exception_decode_)
+        return;
     cp0[8] = address;
     cp0[10] = (cp0[10] & 255U) | (address & 0xc00000ffffffe000ULL);
     cp0[4] = (cp0[4] & ~0x7fffffULL) | ((address >> 9) & 0x7ffff0U);
@@ -15,6 +17,8 @@ void Cpu::address_exception(u64 address, Access access) {
 }
 
 void Cpu::tlb_exception(u64 address, Access access, bool refill, bool modification) {
+    if (sampling_exception_decode_)
+        return;
     cp0[8] = address;
     cp0[10] = (cp0[10] & 255U) | (address & 0xc00000ffffffe000ULL);
     cp0[4] = (cp0[4] & ~0x7fffffULL) | ((address >> 9) & 0x7ffff0U);

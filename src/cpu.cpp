@@ -54,6 +54,7 @@ void Cpu::reset() {
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
     executing_step_ = false;
+    sampling_exception_decode_ = false;
     write_buffer_.fill({});
     write_buffer_head_ = write_buffer_count_ = 0;
     cp0[12] = 0x3450ff04U;
@@ -99,6 +100,10 @@ bool Cpu::require_coprocessor(unsigned coprocessor) {
 }
 
 void Cpu::raise_exception(Exception exception, unsigned coprocessor, bool refill, bool instruction_fetch) {
+    if (sampling_exception_decode_)
+        return;
+    if (exception == Exception::FloatingPoint && executing_step_)
+        coprocessor = sample_exception_coprocessor();
     // Redirect latency depends on whether the fault is detected in RF, EX, or DC.
     if (instruction_fetch || exception == Exception::BusInstruction) {
         add_cycles(2);

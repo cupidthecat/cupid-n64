@@ -49,6 +49,15 @@ nust64 --elf target-extended/mips-nintendo64-none/release/n64-systemtest
 
 Record the ROM revision and enabled features with results. A successful default run does not establish that the optional groups passed.
 
+Rebuild both images after updating the test checkout. A ROM left in an older
+output directory can contain different assertions even when the checkout is
+clean. Use a fresh `--target-dir` when checking a ROM's source revision.
+
+On Windows, keep the rustup proxies ahead of other Rust installations in the
+build shell's `PATH`. Cargo and rustc must use the same pinned toolchain. A
+standalone Cargo installation can ignore the toolchain file or invoke a rustc
+that cannot compile the selected standard library sources.
+
 ## Sanitizers
 
 Clang builds support address and undefined-behavior sanitizers:
