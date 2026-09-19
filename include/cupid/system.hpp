@@ -31,7 +31,9 @@ class System {
     Bus bus;
 
   private:
+    friend class Cpu;
     u64 rcp_fraction_{};
+    [[nodiscard]] u64 cpu_cycles_for_rcp(u64 rcp_cycles) const;
     bool pif_loaded_{};
 };
 

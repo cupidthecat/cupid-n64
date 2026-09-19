@@ -4,6 +4,7 @@
 #include "cupid/types.hpp"
 
 #include <array>
+#include <span>
 
 namespace cupid {
 
@@ -49,6 +50,7 @@ class Cpu {
     explicit Cpu(System& system);
     void reset();
     void step();
+    // Standalone instruction and memory helpers are untimed; step advances the hardware clocks.
     void execute(u32 instruction);
     void set_pc(u64 address);
 
@@ -94,9 +96,25 @@ class Cpu {
     u64 cop2_latch{};
 
   private:
+    friend class System;
     System& system_;
     u64 cop0_latch_{};
     u64 instruction_cycles_{1};
+    u64 synchronized_instruction_cycles_{};
+    bool executing_step_{};
+    struct MemoryWrite {
+        u64 address{};
+        unsigned width{};
+        u64 value{};
+    };
+    struct BufferedWrite {
+        std::array<MemoryWrite, 3> transfers{};
+        unsigned count{};
+        u64 remaining{};
+    };
+    std::array<BufferedWrite, 4> write_buffer_{};
+    unsigned write_buffer_head_{};
+    unsigned write_buffer_count_{};
     u64 following_pc_{};
     bool in_delay_slot_{};
     bool following_delay_slot_{};
@@ -124,6 +142,12 @@ class Cpu {
     void write_cop0_instruction(unsigned index, u64 value);
     void execute_cop2(u32 instruction);
     void update_clocks(u64 elapsed);
+    void synchronize();
+    void buffer_write(u32 physical, unsigned width, u64 value);
+    void buffer_writes(std::span<const MemoryWrite> transfers);
+    void drain_write_buffer();
+    void tick_write_buffer(u64 rcp_cycles);
+    [[nodiscard]] u64 next_buffered_write() const;
     [[nodiscard]] bool little_endian() const;
     void address_exception(u64 address, Access access);
     void tlb_exception(u64 address, Access access, bool refill, bool modification);
@@ -131,6 +155,8 @@ class Cpu {
     bool fill_data_cache(CacheLine<16>& line, u32 physical, unsigned index);
     bool load_partial(u64 address, unsigned width, bool left, unsigned target);
     bool store_partial(u64 address, unsigned width, bool left, u64 value);
+    bool prepare_write(u64 address, unsigned width, bool check_alignment, u32& physical, bool& cached);
+    bool write_partial(std::span<const MemoryWrite> transfers);
 };
 
 } // namespace cupid

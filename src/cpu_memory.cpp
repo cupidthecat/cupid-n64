@@ -93,8 +93,10 @@ bool Cpu::translate(u64 address, Access access, u32& physical, bool& cached) {
 }
 
 bool Cpu::writeback(CacheLine<16>& line, unsigned index) {
+    drain_write_buffer();
     const u32 base = line.tag | ((index << 4) & 0xff0U);
     add_cycles(40);
+    synchronize();
     return system_.bus.write_cache(base, line.data);
 }
 
@@ -103,11 +105,13 @@ bool Cpu::fill_data_cache(CacheLine<16>& line, u32 physical, unsigned index) {
         return false;
     line.tag = physical & 0xfffff000U;
     const u32 base = line.tag | ((index << 4) & 0xff0U);
+    drain_write_buffer();
+    add_cycles(40);
+    synchronize();
     if (!system_.bus.read_cache(base, line.data))
         return false;
     line.valid = true;
     line.dirty = false;
-    add_cycles(40);
     return true;
 }
 
@@ -128,8 +132,10 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
     if (little_endian())
         physical ^= 8U - width;
     if (!cached) {
-        value = system_.bus.read(physical, width);
+        drain_write_buffer();
         add_cycles(4);
+        synchronize();
+        value = system_.bus.read(physical, width);
         return !frozen;
     }
     if (instruction) {
@@ -138,10 +144,12 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         if (!line.valid || line.tag != (physical & 0xfffff000U)) {
             line.tag = physical & 0xfffff000U;
             const u32 base = line.tag | ((index << 5) & 0xfe0U);
+            drain_write_buffer();
+            add_cycles(48);
+            synchronize();
             if (!system_.bus.read_cache(base, line.data))
                 return false;
             line.valid = true;
-            add_cycles(48);
         }
         value = read_be32(line.data.data() + (physical & 28U));
         return true;
@@ -158,14 +166,12 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
     return true;
 }
 
-bool Cpu::write_memory(u64 address, unsigned width, u64 value, bool check_alignment) {
+bool Cpu::prepare_write(u64 address, unsigned width, bool check_alignment, u32& physical, bool& cached) {
     if ((width != 1 && width != 2 && width != 4 && width != 8) ||
         (check_alignment && (address & (width - 1)) != 0)) {
         address_exception(address, Access::Write);
         return false;
     }
-    u32 physical = 0;
-    bool cached = false;
     if (!translate(address, Access::Write, physical, cached))
         return false;
     if (physical >= 0x80000000U) {
@@ -175,7 +181,19 @@ bool Cpu::write_memory(u64 address, unsigned width, u64 value, bool check_alignm
     physical &= ~(width - 1);
     if (little_endian())
         physical ^= 8U - width;
+    return true;
+}
+
+bool Cpu::write_memory(u64 address, unsigned width, u64 value, bool check_alignment) {
+    u32 physical = 0;
+    bool cached = false;
+    if (!prepare_write(address, width, check_alignment, physical, cached))
+        return false;
     if (!cached) {
+        if (executing_step_) {
+            buffer_write(physical, width, value);
+            return !frozen;
+        }
         system_.bus.write(physical, width, value);
         add_cycles(4);
         return !frozen;
@@ -225,6 +243,7 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
         cp0[28] = (instruction.tag >> 4) | (instruction.valid ? 0x80U : 0U);
         return;
     case 0x05:
+        add_cycles(5);
         cp0[28] = (data.tag >> 4) | (data.valid ? 0xc0U : 0U);
         return;
     case 0x08:
@@ -255,10 +274,12 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
     case 0x14: {
         instruction.tag = tag;
         const u32 base = tag | (static_cast<u32>(address) & 0xfe0U);
+        drain_write_buffer();
+        add_cycles(48);
+        synchronize();
         if (!system_.bus.read_cache(base, instruction.data))
             return;
         instruction.valid = true;
-        add_cycles(48);
         return;
     }
     case 0x15:
@@ -271,9 +292,11 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
     case 0x18:
         if (instruction_hit) {
             const u32 base = instruction.tag | (static_cast<u32>(address) & 0xfe0U);
+            drain_write_buffer();
+            add_cycles(48);
+            synchronize();
             if (!system_.bus.write_cache(base, instruction.data))
                 return;
-            add_cycles(48);
         }
         return;
     case 0x19:
@@ -312,25 +335,26 @@ bool Cpu::store_partial(u64 address, unsigned width, bool left, u64 value) {
     const unsigned offset = static_cast<unsigned>(address & (width - 1));
     if (width == 4 && !left && !little) {
         // SWR presents its original effective address on the word and halfword transactions.
+        std::array<MemoryWrite, 2> transfers{};
+        unsigned count = 1;
         if (offset == 0)
-            return write_memory(address, 1, value, false);
-        if (offset == 1)
-            return write_memory(address, 2, value, false);
-        if (offset == 2)
-            return write_memory(address, 1, value, false) && write_memory(address - 2, 2, value >> 8, false);
-        return write_memory(address, 4, value, false);
+            transfers[0] = {address, 1, value};
+        else if (offset == 1)
+            transfers[0] = {address, 2, value};
+        else if (offset == 2) {
+            transfers[0] = {address, 1, value};
+            transfers[1] = {address - 2, 2, value >> 8};
+            count = 2;
+        } else
+            transfers[0] = {address, 4, value};
+        return write_partial(std::span{transfers.data(), count});
     }
     const u64 base = address & ~static_cast<u64>(width - 1);
     const bool ascending = left != little;
     unsigned position = ascending ? offset : 0;
     const unsigned end = ascending ? width : offset + 1;
     unsigned remaining = end - position;
-    struct Transfer {
-        u64 address;
-        unsigned width;
-        u64 value;
-    };
-    std::array<Transfer, 3> transfers{};
+    std::array<MemoryWrite, 3> transfers{};
     unsigned transfer_count = 0;
     // Split the enabled byte lanes into aligned bus transactions without reading the device.
     while (remaining != 0) {
@@ -346,9 +370,27 @@ bool Cpu::store_partial(u64 address, unsigned width, bool left, u64 value) {
         position += chunk;
         remaining -= chunk;
     }
-    for (unsigned index = 0; index < transfer_count; ++index) {
-        const auto& transfer = transfers[little ? transfer_count - index - 1 : index];
-        if (!write_memory(transfer.address, transfer.width, transfer.value))
+    if (little)
+        std::reverse(transfers.begin(), transfers.begin() + transfer_count);
+    return write_partial(std::span{transfers.data(), transfer_count});
+}
+
+bool Cpu::write_partial(std::span<const MemoryWrite> transfers) {
+    std::array<MemoryWrite, 3> physical_transfers{};
+    bool cached = false;
+    for (unsigned index = 0; index < transfers.size(); ++index) {
+        const auto& transfer = transfers[index];
+        u32 physical = 0;
+        if (!prepare_write(transfer.address, transfer.width, false, physical, cached))
+            return false;
+        physical_transfers[index] = {physical, transfer.width, transfer.value};
+    }
+    if (executing_step_ && !cached) {
+        buffer_writes(std::span{physical_transfers.data(), transfers.size()});
+        return !frozen;
+    }
+    for (const auto& transfer : transfers) {
+        if (!write_memory(transfer.address, transfer.width, transfer.value, false))
             return false;
     }
     return true;

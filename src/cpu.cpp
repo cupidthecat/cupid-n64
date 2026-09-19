@@ -52,6 +52,10 @@ void Cpu::reset() {
     pending_load_register_ = 0;
     count_write_hold_ = 0;
     instruction_cycles_ = 1;
+    synchronized_instruction_cycles_ = 0;
+    executing_step_ = false;
+    write_buffer_.fill({});
+    write_buffer_head_ = write_buffer_count_ = 0;
     cp0[12] = 0x3450ff04U;
     cp0[15] = 0x00000b22U;
     cp0[16] = 0x7006e460U;
@@ -147,10 +151,18 @@ void Cpu::update_clocks(u64 elapsed) {
 }
 
 void Cpu::step() {
+    struct StepGuard {
+        bool& active;
+        ~StepGuard() {
+            active = false;
+        }
+    } guard{executing_step_};
+    executing_step_ = true;
     exception_pending = redirected_ = false;
     instruction_cycles_ = 1;
+    synchronized_instruction_cycles_ = 0;
     if (frozen) {
-        update_clocks(1);
+        synchronize();
         return;
     }
     cp0[13] = (cp0[13] & ~0x400ULL) | (system_.bus.interrupt_pending() ? 0x400U : 0U);
@@ -161,7 +173,7 @@ void Cpu::step() {
     }
     if ((status() & 7U) == 1U && pending_interrupts != 0) {
         raise_exception(Exception::Interrupt);
-        update_clocks(instruction_cycles_);
+        synchronize();
         return;
     }
     u64 instruction = 0;
@@ -195,7 +207,7 @@ void Cpu::step() {
         }
     }
     gpr[0] = 0;
-    update_clocks(instruction_cycles_);
+    synchronize();
 }
 
 void Cpu::begin_instruction_timing(u32 instruction) {

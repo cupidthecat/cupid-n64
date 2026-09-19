@@ -49,11 +49,18 @@ void System::advance(u64 cpu_cycles) {
     u64 rcp_cycles = whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
     while (rcp_cycles != 0) {
-        const u64 elapsed = rsp.running() ? 1 : rcp_cycles;
+        u64 elapsed = rsp.running() ? 1 : rcp_cycles;
+        if (const u64 write_event = cpu.next_buffered_write(); write_event != 0)
+            elapsed = std::min(elapsed, write_event);
         bus.tick(elapsed);
         rsp.tick(elapsed);
+        cpu.tick_write_buffer(elapsed);
         rcp_cycles -= elapsed;
     }
+}
+
+u64 System::cpu_cycles_for_rcp(u64 rcp_cycles) const {
+    return (rcp_cycles * 3 - rcp_fraction_ + 1) / 2;
 }
 
 bool System::load_rom(const std::filesystem::path& path, std::string& error) {

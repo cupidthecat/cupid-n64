@@ -107,7 +107,7 @@ void Cpu::write_cop0_instruction(unsigned index, u64 value) {
     }
     write_cop0(index, value);
     if (index == 9)
-        count_write_hold_ = instruction_cycles_ + 1;
+        count_write_hold_ = instruction_cycles_ - synchronized_instruction_cycles_ + 1;
     if (index == 13)
         software_interrupt_delay_ = 1;
 }
