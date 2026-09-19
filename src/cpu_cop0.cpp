@@ -155,16 +155,24 @@ void Cpu::execute_cop0(u32 instruction) {
                 gpr[rt] = read_cop0(rd);
             return;
         case 4:
-            if (require_coprocessor(0))
+            if (require_coprocessor(0)) {
+                add_cycles(1);
                 write_cop0(rd, gpr[rt]);
+                if (rd == 9)
+                    count_write_hold_ = instruction_cycles_ + 1;
+            }
             return;
         case 5:
             if (!require_coprocessor(0))
                 return;
             if (!wide_instructions())
                 raise_exception(Exception::ReservedInstruction);
-            else
+            else {
+                add_cycles(1);
                 write_cop0(rd, gpr[rt]);
+                if (rd == 9)
+                    count_write_hold_ = instruction_cycles_ + 1;
+            }
             return;
         default:
             raise_exception(Exception::ReservedInstruction);

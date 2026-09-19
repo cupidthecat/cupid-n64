@@ -102,7 +102,12 @@ class Cpu {
     bool annul_next_{};
     bool redirected_{};
     bool count_half_{};
+    u64 count_write_hold_{};
     u32 random_{31};
+    unsigned pending_load_register_{};
+
+    void begin_instruction_timing(u32 instruction);
+    void finish_instruction_timing(u32 instruction);
 
     void execute_special(u32 instruction);
     void execute_regimm(u32 instruction);

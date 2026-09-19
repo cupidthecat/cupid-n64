@@ -22,7 +22,7 @@ target_link_libraries(cupid-n64 PRIVATE cupid_core)
 
 enable_testing()
 file(GLOB CUPID_TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.cpp")
-file(GLOB CUPID_RCP_TEST_SOURCES CONFIGURE_DEPENDS "tests/rcp/test_*.cpp")
+file(GLOB CUPID_RCP_TEST_SOURCES CONFIGURE_DEPENDS "tests/rcp/test_*.cpp" "tests/cpu/test_*.cpp")
 list(APPEND CUPID_TEST_SOURCES ${CUPID_RCP_TEST_SOURCES})
 add_executable(cupid-tests tests/main.cpp ${CUPID_TEST_SOURCES})
 target_include_directories(cupid-tests PRIVATE tests)

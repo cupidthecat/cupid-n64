@@ -150,8 +150,7 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
     if (!line.valid || line.tag != (physical & 0xfffff000U)) {
         if (!fill_data_cache(line, physical, index))
             return false;
-    } else
-        add_cycles(1);
+    }
     value = 0;
     for (unsigned byte = 0; byte < width; ++byte)
         value = (value << 8) | line.data[(physical & 15U) + byte];
@@ -185,8 +184,7 @@ bool Cpu::write_memory(u64 address, unsigned width, u64 value, bool check_alignm
     if (!line.valid || line.tag != (physical & 0xfffff000U)) {
         if (!fill_data_cache(line, physical, index))
             return false;
-    } else
-        add_cycles(1);
+    }
     for (unsigned byte = 0; byte < width; ++byte) {
         line.data[(physical & 15U) + byte] = static_cast<u8>(value >> ((width - byte - 1) * 8));
     }

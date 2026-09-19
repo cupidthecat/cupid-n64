@@ -47,6 +47,8 @@ void Cpu::reset() {
     hi = lo = cycles = instruction_count = cop2_latch = cop0_latch_ = 0;
     linked = exception_pending = frozen = count_half_ = redirected_ = false;
     random_ = 31;
+    pending_load_register_ = 0;
+    count_write_hold_ = 0;
     instruction_cycles_ = 1;
     cp0[12] = 0x3450ff04U;
     cp0[15] = 0x00000b22U;
@@ -60,6 +62,7 @@ void Cpu::set_pc(u64 address) {
     next_pc = address + 4;
     following_pc_ = address + 8;
     in_delay_slot_ = following_delay_slot_ = annul_next_ = false;
+    pending_load_register_ = 0;
 }
 
 bool Cpu::kernel_mode() const {
@@ -116,8 +119,11 @@ void Cpu::branch(bool condition, u64 target, bool likely) {
 }
 
 void Cpu::update_clocks(u64 elapsed) {
-    const u64 ticks = elapsed / 2 + ((elapsed % 2 + static_cast<u64>(count_half_)) / 2);
-    count_half_ = ((elapsed & 1U) != 0) != count_half_;
+    const u64 held = std::min(elapsed, count_write_hold_);
+    count_write_hold_ -= held;
+    const u64 count_cycles = elapsed - held;
+    const u64 ticks = count_cycles / 2 + ((count_cycles % 2 + static_cast<u64>(count_half_)) / 2);
+    count_half_ = ((count_cycles & 1U) != 0) != count_half_;
     const u32 old_count = static_cast<u32>(cp0[9]);
     const u32 distance = static_cast<u32>(cp0[11]) - old_count;
     if ((distance != 0 && ticks >= distance) || ticks >= (1ULL << 32))
@@ -145,7 +151,9 @@ void Cpu::step() {
     if (read_memory(pc, 4, instruction, true)) {
         following_pc_ = next_pc + 4;
         following_delay_slot_ = annul_next_ = false;
+        begin_instruction_timing(static_cast<u32>(instruction));
         execute(static_cast<u32>(instruction));
+        finish_instruction_timing(static_cast<u32>(instruction));
         ++instruction_count;
         const u32 wired = static_cast<u32>(cp0[6]) & 63U;
         if (wired <= 31)
@@ -154,6 +162,8 @@ void Cpu::step() {
             random_ = (random_ - 1) & 63U;
         if (!exception_pending && !redirected_ && !frozen) {
             if (annul_next_) {
+                add_cycles(1);
+                pending_load_register_ = 0;
                 pc = next_pc + 4;
                 next_pc = pc + 4;
                 in_delay_slot_ = false;
@@ -166,6 +176,37 @@ void Cpu::step() {
     }
     gpr[0] = 0;
     update_clocks(instruction_cycles_);
+}
+
+void Cpu::begin_instruction_timing(u32 instruction) {
+    const unsigned op = instruction >> 26;
+    const unsigned rs = (instruction >> 21) & 31U;
+    const unsigned rt = (instruction >> 16) & 31U;
+    bool check_rs = op != 2 && op != 3;
+    bool check_rt = check_rs;
+    if (op == 0x11 || op == 0x12) {
+        check_rs = false;
+        check_rt = rs < 8;
+    } else if (op == 0x31 || op == 0x35 || op == 0x39 || op == 0x3d) {
+        check_rt = false;
+    }
+    // The integer issue interlock compares encoded fields, including immediate destinations.
+    if (pending_load_register_ != 0 && instruction_cycles_ == 1 &&
+        ((check_rs && rs == pending_load_register_) || (check_rt && rt == pending_load_register_))) {
+        add_cycles(1);
+    }
+    pending_load_register_ = 0;
+}
+
+void Cpu::finish_instruction_timing(u32 instruction) {
+    if (exception_pending || frozen || redirected_)
+        return;
+    const unsigned op = instruction >> 26;
+    const unsigned rs = (instruction >> 21) & 31U;
+    if ((op >= 0x20 && op <= 0x27) || op == 0x1a || op == 0x1b || op == 0x30 || op == 0x34 || op == 0x37 ||
+        (op == 0x10 && rs <= 1)) {
+        pending_load_register_ = (instruction >> 16) & 31U;
+    }
 }
 
 void Cpu::execute(u32 instruction) {
