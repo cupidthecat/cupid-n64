@@ -18,7 +18,8 @@ Rdram::Rdram(std::vector<u8>& bytes) : bytes_(bytes) {
 void Rdram::reset(bool warm) {
     active_ = false;
     identity_mapping_ = false;
-    acknowledgement_error_ = false;
+    errors_ = 0;
+    banks_.fill({});
     if (warm)
         return;
     std::fill(bytes_.begin(), bytes_.end(), u8{0});
@@ -174,6 +175,7 @@ std::optional<u32> Rdram::translate(u32 address) const {
     if (identity_mapping_) {
         if (address < bytes_.size())
             return address;
+        errors_ |= 1U;
         return std::nullopt;
     }
     if (active_) {
@@ -185,7 +187,7 @@ std::optional<u32> Rdram::translate(u32 address) const {
             }
         }
     }
-    acknowledgement_error_ = true;
+    errors_ |= 1U;
     return std::nullopt;
 }
 
@@ -218,6 +220,7 @@ u64 Rdram::read(u32 address, unsigned width, bool ebus) const {
     if (width != 1 && width != 2 && width != 4 && width != 8)
         return 0;
     address &= ~(width - 1);
+    track_access(address, false);
     const auto mapped = translate(address);
     if (!mapped || static_cast<u64>(*mapped) + width > bytes_.size())
         return 0;
@@ -247,6 +250,7 @@ void Rdram::write(u32 address, unsigned width, u64 value, bool ebus) {
     if (width != 1 && width != 2 && width != 4 && width != 8)
         return;
     address &= ~(width - 1);
+    track_access(address, true);
     const auto mapped = translate(address);
     if (!mapped || static_cast<u64>(*mapped) + width > bytes_.size())
         return;

@@ -65,30 +65,4 @@ void Bus::write_rdram(u32 physical, unsigned width, u64 value) {
     }
 }
 
-u32 Bus::read_ri(u32 offset) const {
-    const unsigned index = (offset & 0x1fU) >> 2;
-    const u32 error = ri_[6] | static_cast<u32>(memory.acknowledgement_error());
-    if (index == 2)
-        return (error & 1U) | 6U | (ri_[0] & 8U) | (ri_[3] & 0x10U);
-    if (index == 6)
-        return error;
-    return ri_[index];
-}
-
-void Bus::write_ri(u32 offset, u32 value) {
-    const unsigned index = (offset & 0x1fU) >> 2;
-    if (index == 6) {
-        ri_[6] = 0;
-        memory.clear_error();
-    } else if (index == 7) {
-        ri_[7] = 0xff;
-    } else {
-        ri_[index] = value;
-        if (index == 2)
-            ri_current_loaded_ = true;
-        if (index == 2 || index == 3)
-            memory.set_bus_active(ri_current_loaded_ && ri_[3] == 0x14);
-    }
-}
-
 } // namespace cupid

@@ -17,11 +17,16 @@ class Rdram {
         return active_;
     }
     [[nodiscard]] bool acknowledgement_error() const {
-        return acknowledgement_error_;
+        return (errors_ & 1U) != 0;
+    }
+    [[nodiscard]] u32 errors() const {
+        return errors_;
     }
     void clear_error() {
-        acknowledgement_error_ = false;
+        errors_ = 0;
     }
+    [[nodiscard]] u32 bank_status() const;
+    void invalidate_banks();
 
     [[nodiscard]] u32 read_register(u32 address) const;
     void write_register(u32 address, u32 value, unsigned repeat_length = 0);
@@ -31,6 +36,12 @@ class Rdram {
     void set_hidden_pair(u32 address, u8 value);
 
   private:
+    struct Bank {
+        u16 row{};
+        bool valid{};
+        bool dirty{};
+    };
+
     struct Chip {
         std::array<u32, 10> registers{};
         u32 row{};
@@ -48,12 +59,14 @@ class Rdram {
     std::vector<u8>& bytes_;
     std::vector<u8> hidden_;
     std::array<Chip, 4> chips_{};
+    mutable std::array<Bank, 8> banks_{};
     mutable u64 noise_{0x2360ed051fc65da4ULL};
-    mutable bool acknowledgement_error_{};
+    mutable u32 errors_{};
     bool active_{};
     bool identity_mapping_{};
 
     void refresh_mapping();
+    void track_access(u32 address, bool write) const;
     [[nodiscard]] std::optional<unsigned> select_chip(u32 address) const;
     [[nodiscard]] std::optional<u32> translate(u32 address) const;
     [[nodiscard]] u64 read_reliability(u64 value, unsigned chip) const;

@@ -236,5 +236,5 @@ TEST(memory_bus_acknowledgement_error_is_visible_and_clearable) {
     CHECK_EQ(bus.read(0x04700018, 4), 0ULL);
     CHECK_EQ(bus.read(0x04700008, 4) & 7U, 6ULL);
     bus.write(0x0470001c, 4, 0);
-    CHECK_EQ(bus.read(0x0470001c, 4), 0xffULL);
+    CHECK_EQ(bus.read(0x0470001c, 4), 0xff00ULL);
 }

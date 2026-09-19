@@ -62,6 +62,8 @@ reads, cache behavior, and fault priority.
 ## Current limits
 
 The memory model does not yet account for refresh, row changes, or competition
-between memory users. The extended cartridge suite still detects inaccurate
+between memory users in its timing. [RI bank tracking](rdram-interface.md)
+records open rows and dirty state without adding those delays. The extended
+cartridge suite still detects inaccurate
 cache-miss timing and an uncached read sharing VI's bank. Passing the default
 cartridge suite does not establish cycle accuracy for these paths.
