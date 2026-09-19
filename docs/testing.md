@@ -2,6 +2,11 @@
 
 The local regressions and cartridge tests serve different purposes. Local tests isolate a hardware rule and check the result directly. The cartridge suite also exercises instruction sequencing, exception handlers, memory initialization, cache maintenance, DMA, and communication between components.
 
+The [recorded accuracy baseline](testing/accuracy-baseline.md) pins an emulator
+revision, input hashes, toolchains, category results, and the remaining timing
+failures. Use it when comparing accuracy changes; a passing default suite does
+not cover the optional groups.
+
 ## Local validation before publishing
 
 Run the same validation entry point used by CI before committing or pushing:
