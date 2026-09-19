@@ -51,6 +51,26 @@ template <class T> bool nan_raises_invalid(typename FloatBits<T>::UInt bits) {
     return (bits & FloatBits<T>::nan_invalid_bit) != 0;
 }
 
+template <class T> bool arithmetic_shortcut(typename FloatBits<T>::UInt bits) {
+    return (bits & ~FloatBits<T>::sign_mask) == 0 ||
+           (bits & FloatBits<T>::exponent_mask) == FloatBits<T>::exponent_mask;
+}
+
+template <class T>
+u64 arithmetic_latency(unsigned function, typename FloatBits<T>::UInt left, typename FloatBits<T>::UInt right,
+                       int exceptions) {
+    if (arithmetic_shortcut<T>(left) || arithmetic_shortcut<T>(right))
+        return 1;
+    if (function == 2 && ((left & FloatBits<T>::fraction_mask) == 0 ||
+                          (right & FloatBits<T>::fraction_mask) == 0 || (exceptions & FE_UNDERFLOW) != 0))
+        return 1;
+    if (function < 2)
+        return 2;
+    if (function == 2)
+        return sizeof(T) == 4 ? 4 : 7;
+    return sizeof(T) == 4 ? 28 : 57;
+}
+
 int host_rounding(u32 mode) {
     switch (mode & 3U) {
     case 0:
@@ -580,6 +600,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
     };
 
     if (format == 0x14U || format == 0x15U) {
+        const bool zero_integer = format == 0x14U ? source_word(fs) == 0 : source_doubleword(fs) == 0;
         if (function != 0x20U && function != 0x21U) {
             raise_unimplemented();
             return;
@@ -636,7 +657,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
                 write_result_doubleword(fd, result);
             }
         }
-        cpu_.add_cycles(4);
+        cpu_.add_cycles(zero_integer ? 1 : 4);
         return;
     }
 
@@ -679,8 +700,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_word(fd, result);
-            static constexpr u64 extra_cycles[] = {2, 2, 4, 28};
-            cpu_.add_cycles(extra_cycles[function]);
+            cpu_.add_cycles(arithmetic_latency<float>(function, left_bits, right_bits, exceptions));
         } else {
             const u64 left_bits = source_doubleword(fs);
             const u64 right_bits = second_source_doubleword(ft);
@@ -710,8 +730,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_doubleword(fd, result);
-            static constexpr u64 extra_cycles[] = {2, 2, 7, 57};
-            cpu_.add_cycles(extra_cycles[function]);
+            cpu_.add_cycles(arithmetic_latency<double>(function, left_bits, right_bits, exceptions));
         }
         return;
     }
@@ -732,7 +751,10 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_word(fd, result);
-            cpu_.add_cycles(28);
+            cpu_.add_cycles(arithmetic_shortcut<float>(input_bits) ||
+                                    (input_bits & FloatBits<float>::sign_mask) != 0
+                                ? 1
+                                : 28);
         } else {
             const u64 input_bits = source_doubleword(fs);
             if (!check_input_doubleword(input_bits))
@@ -746,7 +768,10 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_doubleword(fd, result);
-            cpu_.add_cycles(57);
+            cpu_.add_cycles(arithmetic_shortcut<double>(input_bits) ||
+                                    (input_bits & FloatBits<double>::sign_mask) != 0
+                                ? 1
+                                : 57);
         }
         return;
     }

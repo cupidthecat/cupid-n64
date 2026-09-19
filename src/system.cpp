@@ -46,10 +46,14 @@ void System::reset() {
 void System::advance(u64 cpu_cycles) {
     const u64 whole = cpu_cycles / 3;
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
-    const u64 rcp_cycles = whole * 2 + fraction / 3;
+    u64 rcp_cycles = whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
-    bus.tick(rcp_cycles);
-    rsp.tick(rcp_cycles);
+    while (rcp_cycles != 0) {
+        const u64 elapsed = rsp.running() ? 1 : rcp_cycles;
+        bus.tick(elapsed);
+        rsp.tick(elapsed);
+        rcp_cycles -= elapsed;
+    }
 }
 
 bool System::load_rom(const std::filesystem::path& path, std::string& error) {

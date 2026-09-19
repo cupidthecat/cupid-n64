@@ -105,6 +105,7 @@ class Cpu {
     u64 count_write_hold_{};
     u32 random_{31};
     unsigned pending_load_register_{};
+    unsigned pending_fpu_register_{32};
 
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);

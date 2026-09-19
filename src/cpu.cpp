@@ -63,6 +63,7 @@ void Cpu::set_pc(u64 address) {
     following_pc_ = address + 8;
     in_delay_slot_ = following_delay_slot_ = annul_next_ = false;
     pending_load_register_ = 0;
+    pending_fpu_register_ = 32;
 }
 
 bool Cpu::kernel_mode() const {
@@ -164,6 +165,7 @@ void Cpu::step() {
             if (annul_next_) {
                 add_cycles(1);
                 pending_load_register_ = 0;
+                pending_fpu_register_ = 32;
                 pc = next_pc + 4;
                 next_pc = pc + 4;
                 in_delay_slot_ = false;
@@ -182,6 +184,12 @@ void Cpu::begin_instruction_timing(u32 instruction) {
     const unsigned op = instruction >> 26;
     const unsigned rs = (instruction >> 21) & 31U;
     const unsigned rt = (instruction >> 16) & 31U;
+    const unsigned fs = (instruction >> 11) & 31U;
+    if (op == 0x11 && rs >= 16 && pending_fpu_register_ < 32 && instruction_cycles_ == 1 &&
+        (fs == pending_fpu_register_ || rt == pending_fpu_register_)) {
+        add_cycles(1);
+    }
+    pending_fpu_register_ = 32;
     bool check_rs = op != 2 && op != 3;
     bool check_rt = check_rs;
     if (op == 0x11 || op == 0x12) {
@@ -203,6 +211,9 @@ void Cpu::finish_instruction_timing(u32 instruction) {
         return;
     const unsigned op = instruction >> 26;
     const unsigned rs = (instruction >> 21) & 31U;
+    if (op == 0x11 && rs >= 16 && (instruction & 63U) < 0x30) {
+        pending_fpu_register_ = (instruction >> 6) & 31U;
+    }
     if ((op >= 0x20 && op <= 0x27) || op == 0x1a || op == 0x1b || op == 0x30 || op == 0x34 || op == 0x37 ||
         (op == 0x10 && rs <= 1)) {
         pending_load_register_ = (instruction >> 16) & 31U;

@@ -15,6 +15,9 @@ class Rsp {
     void reset();
     void tick(u64 rcp_cycles);
     void step();
+    [[nodiscard]] bool running() const {
+        return !halted_;
+    }
 
     [[nodiscard]] u32 read_register(u32 byte_offset);
     void write_register(u32 byte_offset, u32 value);
