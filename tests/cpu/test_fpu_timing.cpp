@@ -11,24 +11,29 @@ using namespace cupid;
 struct Measurement {
     u64 cycles;
     u64 result;
+    u32 control;
 };
 
-Measurement run(unsigned format, unsigned function, u64 left, u64 right) {
+constexpr u64 unchanged_result = 0x123456789abcdef0ULL;
+
+Measurement run(unsigned format, unsigned function, u64 left, u64 right, u32 control = 1U << 24,
+                bool trap = false) {
     System system;
     test::initialize_memory(system);
     auto& cpu = system.cpu;
     cpu.write_cop0(12, 0x34000000);
     cpu.set_pc(0xffffffff80001000ULL);
-    cpu.fpu.control = 1U << 24;
+    cpu.fpu.control = control;
     cpu.fpu.registers[2] = left;
     cpu.fpu.registers[4] = right;
+    cpu.fpu.registers[6] = unchanged_result;
     const u32 instruction = 0x44000000U | (format << 21U) | (4U << 16U) | (2U << 11U) | (6U << 6U) | function;
     system.bus.write(0x1000, 4, instruction);
     u64 ignored = 0;
     CHECK(cpu.read_memory(cpu.pc, 4, ignored, true));
     cpu.step();
-    CHECK(!cpu.exception_pending);
-    return {cpu.cycles, cpu.fpu.registers[6]};
+    CHECK_EQ(cpu.exception_pending, trap);
+    return {cpu.cycles, cpu.fpu.registers[6], cpu.fpu.control};
 }
 
 template <class T> void arithmetic(unsigned function, T left, T right, T expected, u64 cycles) {
@@ -100,6 +105,68 @@ TEST(fpu_arithmetic_interlock_checks_both_sources_including_register_zero) {
             CHECK_EQ(cpu.cycles, source == 2 ? 6U : 7U);
             const float expected = source == 0 ? 9.5f : source == 1 ? 8.5f : 6.0f;
             CHECK_EQ(cpu.fpu.registers[destination], std::bit_cast<u32>(expected));
+        }
+    }
+}
+
+TEST(fpu_arithmetic_source_exceptions_use_the_early_completion_path) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        for (unsigned function = 0; function <= 4; ++function) {
+            const u64 one = format == 0x10U ? 0x3f800000ULL : 0x3ff0000000000000ULL;
+            const auto result = run(format, function, 1, one, 0, true);
+            CHECK_EQ(result.cycles, 6U);
+            CHECK_EQ(result.result, unchanged_result);
+            CHECK_EQ(result.control & 0x20000U, 0x20000U);
+        }
+    }
+}
+
+TEST(fpu_arithmetic_result_exceptions_include_the_operation_latency) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        const bool single = format == 0x10U;
+        const u64 largest = single ? 0x7f7fffffULL : 0x7fefffffffffffffULL;
+        const u64 sign = single ? 0x80000000ULL : 0x8000000000000000ULL;
+        const u64 one_and_half = single ? 0x3fc00000ULL : 0x3ff8000000000000ULL;
+        const u64 one_eighth = single ? 0x3e000000ULL : 0x3fc0000000000000ULL;
+        for (unsigned function = 0; function <= 4; ++function) {
+            const u64 right = function == 0   ? largest
+                              : function == 1 ? largest | sign
+                              : function == 2 ? one_and_half
+                                              : one_eighth;
+            const auto result = run(format, function, largest, right, 0xf80, true);
+            const u64 latency = function < 2 ? 3U : function == 2 ? (single ? 5U : 8U) : (single ? 29U : 58U);
+            CHECK_EQ(result.cycles, latency + 4);
+            CHECK_EQ(result.result, unchanged_result);
+            CHECK((result.control & 0x1f000U) != 0);
+        }
+    }
+}
+
+TEST(fpu_multiply_underflow_only_shortcuts_when_it_can_flush) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        const bool single = format == 0x10U;
+        const u64 left = single ? 0x00800001ULL : 0x0010000000000001ULL;
+        const u64 right = single ? std::bit_cast<u32>(0.13f) : std::bit_cast<u64>(0.13);
+        for (const u32 control : {0U, 0x01000080U, 0x01000100U, 0x01000180U}) {
+            const auto trapped = run(format, 2, left, right, control, true);
+            CHECK_EQ(trapped.cycles, single ? 9U : 12U);
+            CHECK_EQ(trapped.result, unchanged_result);
+            CHECK_EQ(trapped.control & 0x20000U, 0x20000U);
+        }
+        const auto flushed = run(format, 2, left, right);
+        CHECK_EQ(flushed.cycles, 2U);
+        CHECK_EQ(flushed.result, 0U);
+    }
+}
+
+TEST(fpu_arithmetic_special_result_exceptions_finish_early) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        const u64 one = format == 0x10U ? 0x3f800000ULL : 0x3ff0000000000000ULL;
+        const u64 negative_one = one | (format == 0x10U ? 0x80000000ULL : 0x8000000000000000ULL);
+        for (unsigned function : {3U, 4U}) {
+            const auto result = run(format, function, function == 3 ? one : negative_one, 0, 0xf80, true);
+            CHECK_EQ(result.cycles, 6U);
+            CHECK_EQ(result.result, unchanged_result);
         }
     }
 }

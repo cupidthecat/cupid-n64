@@ -58,11 +58,11 @@ template <class T> bool arithmetic_shortcut(typename FloatBits<T>::UInt bits) {
 
 template <class T>
 u64 arithmetic_latency(unsigned function, typename FloatBits<T>::UInt left, typename FloatBits<T>::UInt right,
-                       int exceptions) {
+                       bool flush_underflow) {
     if (arithmetic_shortcut<T>(left) || arithmetic_shortcut<T>(right))
         return 1;
     if (function == 2 && ((left & FloatBits<T>::fraction_mask) == 0 ||
-                          (right & FloatBits<T>::fraction_mask) == 0 || (exceptions & FE_UNDERFLOW) != 0))
+                          (right & FloatBits<T>::fraction_mask) == 0 || flush_underflow))
         return 1;
     if (function < 2)
         return 2;
@@ -674,8 +674,10 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         if (single) {
             const u32 left_bits = source_word(fs);
             const u32 right_bits = second_source_word(ft);
-            if (!check_inputs_word(left_bits, right_bits))
+            if (!check_inputs_word(left_bits, right_bits)) {
+                cpu_.add_cycles(1);
                 return;
+            }
             const volatile float left = value_of<float>(left_bits);
             const volatile float right = value_of<float>(right_bits);
             volatile float output = 0.0f;
@@ -694,18 +696,22 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
                 break;
             }
             const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
+            const bool flush_underflow =
+                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
+            cpu_.add_cycles(arithmetic_latency<float>(function, left_bits, right_bits, flush_underflow));
             if (!handle_host_exceptions(exceptions, false))
                 return;
             u32 result = bits_of<float>(output);
             if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_word(fd, result);
-            cpu_.add_cycles(arithmetic_latency<float>(function, left_bits, right_bits, exceptions));
         } else {
             const u64 left_bits = source_doubleword(fs);
             const u64 right_bits = second_source_doubleword(ft);
-            if (!check_inputs_doubleword(left_bits, right_bits))
+            if (!check_inputs_doubleword(left_bits, right_bits)) {
+                cpu_.add_cycles(1);
                 return;
+            }
             const volatile double left = value_of<double>(left_bits);
             const volatile double right = value_of<double>(right_bits);
             volatile double output = 0.0;
@@ -724,13 +730,15 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
                 break;
             }
             const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
+            const bool flush_underflow =
+                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
+            cpu_.add_cycles(arithmetic_latency<double>(function, left_bits, right_bits, flush_underflow));
             if (!handle_host_exceptions(exceptions, false))
                 return;
             u64 result = bits_of<double>(output);
             if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_doubleword(fd, result);
-            cpu_.add_cycles(arithmetic_latency<double>(function, left_bits, right_bits, exceptions));
         }
         return;
     }
@@ -740,8 +748,14 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         std::feclearexcept(FE_ALL_EXCEPT);
         if (single) {
             const u32 input_bits = source_word(fs);
-            if (!check_input_word(input_bits))
+            if (!check_input_word(input_bits)) {
+                cpu_.add_cycles(1);
                 return;
+            }
+            cpu_.add_cycles(arithmetic_shortcut<float>(input_bits) ||
+                                    (input_bits & FloatBits<float>::sign_mask) != 0
+                                ? 1
+                                : 28);
             const volatile float input = value_of<float>(input_bits);
             const volatile float output = std::sqrt(input);
             const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
@@ -751,14 +765,16 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_word(fd, result);
-            cpu_.add_cycles(arithmetic_shortcut<float>(input_bits) ||
-                                    (input_bits & FloatBits<float>::sign_mask) != 0
-                                ? 1
-                                : 28);
         } else {
             const u64 input_bits = source_doubleword(fs);
-            if (!check_input_doubleword(input_bits))
+            if (!check_input_doubleword(input_bits)) {
+                cpu_.add_cycles(1);
                 return;
+            }
+            cpu_.add_cycles(arithmetic_shortcut<double>(input_bits) ||
+                                    (input_bits & FloatBits<double>::sign_mask) != 0
+                                ? 1
+                                : 57);
             const volatile double input = value_of<double>(input_bits);
             const volatile double output = std::sqrt(input);
             const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
@@ -768,10 +784,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
                 return;
             write_result_doubleword(fd, result);
-            cpu_.add_cycles(arithmetic_shortcut<double>(input_bits) ||
-                                    (input_bits & FloatBits<double>::sign_mask) != 0
-                                ? 1
-                                : 57);
         }
         return;
     }
