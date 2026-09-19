@@ -27,6 +27,7 @@ class Rdram {
     }
     [[nodiscard]] u32 bank_status() const;
     void invalidate_banks();
+    [[nodiscard]] bool refresh_banks();
 
     [[nodiscard]] u32 read_register(u32 address) const;
     void write_register(u32 address, u32 value, unsigned repeat_length = 0);

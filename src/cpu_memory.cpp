@@ -4,6 +4,13 @@
 
 namespace cupid {
 
+u64 Cpu::rdram_refresh_delay(u32 physical) const {
+    if (!executing_step_ || physical >= 0x03f00000U)
+        return 0;
+    const u64 remaining = system_.bus.rdram_refresh_wait();
+    return remaining == 0 ? 0 : system_.cpu_cycles_for_rcp(remaining);
+}
+
 void Cpu::address_exception(u64 address, Access access) {
     if (speculative_fetch_)
         return;
@@ -99,7 +106,7 @@ bool Cpu::translate(u64 address, Access access, u32& physical, bool& cached) {
 bool Cpu::writeback(CacheLine<16>& line, unsigned index) {
     drain_write_buffer();
     const u32 base = line.tag | ((index << 4) & 0xff0U);
-    add_cycles(40);
+    add_cycles(40 + rdram_refresh_delay(base));
     synchronize();
     return system_.bus.write_cache(base, line.data);
 }
@@ -110,7 +117,7 @@ bool Cpu::fill_data_cache(CacheLine<16>& line, u32 physical, unsigned index) {
     line.tag = physical & 0xfffff000U;
     const u32 base = line.tag | ((index << 4) & 0xff0U);
     drain_write_buffer();
-    add_cycles(40);
+    add_cycles(40 + rdram_refresh_delay(base));
     synchronize();
     if (!system_.bus.read_cache(base, line.data))
         return false;
@@ -139,7 +146,7 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         drain_write_buffer();
         // RDRAM must return a memory response before the load can retire. Device
         // registers use a separate path and do not incur this nominal RAM delay.
-        add_cycles(physical < 0x03f00000U ? 31 : 4);
+        add_cycles((physical < 0x03f00000U ? 31 : 4) + rdram_refresh_delay(physical));
         synchronize();
         value = system_.bus.read(physical, width);
         return !frozen;
@@ -152,15 +159,16 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
             line.tag = physical & 0xfffff000U;
             const u32 base = line.tag | ((index << 5) & 0xfe0U);
             drain_write_buffer();
+            const u64 delay = 48 + rdram_refresh_delay(base);
             if (!speculative_fetch_) {
-                add_cycles(48);
+                add_cycles(delay);
                 synchronize();
             }
             if (!system_.bus.read_cache(base, line.data))
                 return false;
             line.valid = true;
             if (speculative_fetch_)
-                fetch_wait_cycles_ += 48;
+                fetch_wait_cycles_ += delay;
         }
         value = read_be32(line.data.data() + (physical & 28U));
         return true;

@@ -37,8 +37,10 @@ void Bus::reset() {
     mi_mask_ = 0;
     ri_.fill(0);
     ri_current_loaded_ = false;
+    ri_refresh_counter_ = 0;
     vi_.fill(0);
     vi_[3] = 256;
+    vi_[7] = 2047;
     ai_.fill(0);
     pi_.fill(0);
     si_.fill(0);
@@ -374,6 +376,7 @@ bool Bus::interrupt_pending() const {
 
 void Bus::tick_devices(u64 rcp_cycles) {
     rdp.tick(rcp_cycles);
+    ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
     tick_vi(rcp_cycles);
     if (rcp_cycles == 0)
         return;

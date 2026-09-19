@@ -154,6 +154,7 @@ class Cpu {
     void execute_cop2(u32 instruction);
     void update_clocks(u64 elapsed);
     void synchronize();
+    [[nodiscard]] u64 rdram_refresh_delay(u32 physical) const;
     void buffer_write(u32 physical, unsigned width, u64 value);
     void buffer_writes(std::span<const MemoryWrite> transfers);
     void drain_write_buffer();

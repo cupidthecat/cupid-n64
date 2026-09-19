@@ -61,9 +61,12 @@ reads, cache behavior, and fault priority.
 
 ## Current limits
 
-The memory model does not yet account for refresh, row changes, or competition
-between memory users in its timing. [RI bank tracking](rdram-interface.md)
-records open rows and dirty state without adding those delays. The extended
-cartridge suite still detects inaccurate
-cache-miss timing and an uncached read sharing VI's bank. Passing the default
-cartridge suite does not establish cycle accuracy for these paths.
+[RI refresh](rdram-interface.md) adds a wait when a blocking CPU memory request
+arrives during refresh recovery. It does not yet model row-change delays,
+shared-memory arbitration, or the overlap of a request with a later refresh.
+Buffered stores and DMA do not yet observe this wait.
+
+The extended cartridge suite still detects inaccurate cache-miss timing and an
+uncached read sharing VI's bank. Refresh produces variable access times, but
+the measured averages remain too low. Passing the default cartridge suite does
+not establish cycle accuracy for these paths.

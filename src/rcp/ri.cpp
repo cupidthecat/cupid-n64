@@ -19,6 +19,22 @@ void Rdram::invalidate_banks() {
     }
 }
 
+bool Rdram::refresh_banks() {
+    bool dirty = false;
+    for (auto& bank : banks_) {
+        dirty |= bank.valid && bank.dirty;
+        bank.valid = false;
+    }
+    return dirty;
+}
+
+void Bus::start_rdram_refresh() {
+    if ((ri_[4] & 0x20000U) == 0 || !memory.bus_active() || ri_refresh_counter_ != 0)
+        return;
+    const bool dirty = memory.refresh_banks();
+    ri_refresh_counter_ = (ri_[4] >> (dirty ? 8 : 0)) & 0xffU;
+}
+
 void Rdram::track_access(u32 address, bool write) const {
     if (address >= 0x00800000U) {
         if (address < 0x03f00000U)

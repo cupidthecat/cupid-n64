@@ -16,6 +16,31 @@ tracking through the RDRAM access path. A CPU cache hit does not reach RI.
 Modifying a cached line therefore does not dirty the corresponding RDRAM row
 until the line is written back.
 
+## Automatic refresh
+
+RI refresh-enable bit 17 allows a refresh request at each VI horizontal boundary.
+The request closes the tracked rows without changing their stored data. Recovery
+uses the dirty delay in bits 15-8 if an open row was dirty, or the clean delay in
+bits 7-0 otherwise. Both delays count 62.5 MHz RCP cycles. A request arriving
+during recovery is coalesced into the current refresh rather than restarting it.
+
+Horizontal timing continues when video output is off, even though the vertical
+counter stays at zero. H_SYNC resets to 2047, producing a 2048-video-clock
+period until software programs it. The shared scheduler stops at horizontal
+boundaries and refresh completion, so a large clock advance gives the same
+recovery state as single-cycle advances.
+
+Blocking CPU memory requests issued during recovery wait for its remaining
+cycles before their nominal transfer delay. This includes uncached reads, cache
+fills, and dirty data-cache writebacks. Cache hits and device-register reads do
+not wait. Speculative instruction-fetch waits remain deferred until after the
+older instruction samples its operands and device registers.
+
+Disabling refresh prevents later requests but does not cancel a recovery already
+in progress. Reset cancels recovery. The [RI hardware notes](https://n64brew.dev/wiki/RDRAM_Interface)
+describe refresh control and delay fields; the [VI register notes](https://n64brew.dev/wiki/Video_Interface)
+describe the horizontal period and its power-on value.
+
 ## Errors
 
 An access without a responding chip latches the missing-acknowledgement bit in
@@ -36,9 +61,15 @@ describe the address limits and error behavior.
 transitions, cache hits and writebacks, DMA memory paths, relocated chips,
 absent memory, error clearing, and reset. The older memory-bus regression now
 expects `0xff00` after a bank-status write; its previous `0x00ff` expectation
-reversed the valid and dirty fields.
+reversed the valid and dirty fields. `tests/rcp/test_ri_refresh.cpp` checks refresh
+boundaries in both regions, clean and dirty delays, video-off behavior, tick-size
+independence, reset, and blocking CPU transactions, including speculative fetches.
 
-This bookkeeping does not yet model refresh, row-change delays, or memory
-arbitration. Unexpected negative acknowledgements caused by deliberately
-desynchronizing RI and the chips are also not modeled. The extended cartridge
-suite's memory-timing failures remain open; see [CPU timing](cpu-timing.md).
+Row-change delays and shared-memory arbitration remain incomplete. Buffered
+stores and DMA transfers do not yet wait for refresh; CPU transfer delays still
+use nominal values, without modeling their overlap with a newly arriving
+refresh. Per-chip refresh-row registers, multibank timing, and the optimize bit
+are not modeled. Coalescing requests under unusually short horizontal periods
+is not hardware-validated. Unexpected negative acknowledgements caused by
+deliberately desynchronizing RI and the chips are also not modeled. The extended
+cartridge suite's memory-timing failures remain open; see [CPU timing](cpu-timing.md).

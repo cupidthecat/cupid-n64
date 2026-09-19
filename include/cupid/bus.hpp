@@ -43,6 +43,9 @@ class Bus {
     bool read_cache(u32 physical, std::span<u8> bytes);
     bool write_cache(u32 physical, std::span<const u8> bytes);
     void tick(u64 rcp_cycles);
+    [[nodiscard]] u64 rdram_refresh_wait() const {
+        return ri_refresh_counter_;
+    }
 
     [[nodiscard]] u8 read_ram_byte(u32 address) const;
     void write_ram_byte(u32 address, u8 value);
@@ -90,6 +93,10 @@ class Bus {
     std::array<u32, 7> si_{};
     std::array<u8, 64 * 1024> isviewer_{};
     bool ri_current_loaded_{};
+    u64 ri_refresh_counter_{};
+    void start_rdram_refresh();
+    [[nodiscard]] u64 vi_line_cycles() const;
+    [[nodiscard]] u64 next_vi_line() const;
 
     u64 vi_counter_{};
     u64 vi_clock_fraction_{};
