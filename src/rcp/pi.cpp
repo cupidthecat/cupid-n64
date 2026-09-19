@@ -2,9 +2,17 @@
 
 namespace cupid {
 
+unsigned Bus::pi_domain(u32 address) {
+    const u32 region = address >> 24U;
+    return region == 5 || (region >= 8 && region <= 15) ? 9U : 5U;
+}
+
+u32 Bus::pi_page_mask(u32 address) const {
+    return (1U << (pi_[pi_domain(address) + 2] + 2)) - 1;
+}
+
 u64 Bus::pi_dma_cycles(u32 length) const {
-    const u32 region = pi_[1] >> 24U;
-    const unsigned domain = region == 5 || (region >= 8 && region <= 15) ? 9U : 5U;
+    const unsigned domain = pi_domain(pi_[1]);
     const u64 bytes = static_cast<u64>(length | 1U) + 1;
     const u64 page_size = 1ULL << (pi_[domain + 2] + 2);
     const u64 offset = pi_[1] & (page_size - 1);

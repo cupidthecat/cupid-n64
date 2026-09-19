@@ -120,6 +120,10 @@ class Bus {
     u32 si_bus_latch_{};
     u32 si_phase_{};
     u32 pi_bus_latch_{};
+    enum class CartDevice { Open, Rom, Sram, Flash, IsViewer };
+    CartDevice cart_device_{CartDevice::Open};
+    u32 cart_offset_{};
+    u32 cart_limit_{};
     bool pif_rom_locked_{};
     bool pif_boot_terminated_{};
     std::array<u8, 6> pif_cpu_checksum_{};
@@ -169,8 +173,11 @@ class Bus {
     void write_pif_word(u32 address, u32 value);
     [[nodiscard]] u64 read_cart(u32 physical, unsigned width);
     void write_cart(u32 physical, unsigned width, u64 value);
-    [[nodiscard]] u16 cart_read_half(u32 physical);
-    void cart_write_half(u32 physical, u16 value);
+    void select_cart(u32 physical);
+    [[nodiscard]] u16 cart_read_half();
+    void cart_write_half(u16 value);
+    [[nodiscard]] static unsigned pi_domain(u32 address);
+    [[nodiscard]] u32 pi_page_mask(u32 address) const;
     [[nodiscard]] u64 pi_dma_cycles(u32 length) const;
     void perform_pi_dma();
     void finish_pi_dma();

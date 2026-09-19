@@ -12,9 +12,6 @@ namespace {
 
 constexpr u32 PifBase = 0x1fc00000U;
 constexpr u32 PifRamOffset = 0x7c0U;
-constexpr u32 CartridgeRomBase = 0x10000000U;
-constexpr u32 CartridgeSaveBase = 0x08000000U;
-constexpr u32 IsViewerBase = 0x13ff0000U;
 
 u8 byte_from_value(u64 value, unsigned width, unsigned index) {
     return static_cast<u8>(value >> ((width - index - 1U) * 8U));
@@ -76,6 +73,9 @@ void Bus::reset() {
     si_bus_latch_ = 0;
     si_phase_ = 0;
     pi_bus_latch_ = 0;
+    cart_device_ = CartDevice::Open;
+    cart_offset_ = 0;
+    cart_limit_ = 0;
     pif_rom_locked_ = false;
     pif_boot_terminated_ = false;
     pif_cpu_checksum_.fill(0);
@@ -437,112 +437,6 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
         controllers[port] = state;
 }
 
-u64 Bus::read_cart(u32 physical, unsigned width) {
-    if (pi_io_busy_) {
-        pi_io_busy_ = false;
-        pi_io_counter_ = 0;
-        return extract_word_lane(pi_bus_latch_, physical, width);
-    }
-
-    const u32 bus_address = physical & ~1U;
-    const u16 high = cart_read_half(bus_address);
-    const u16 low = cart_read_half(bus_address + 2U);
-    pi_bus_latch_ = (static_cast<u32>(high) << 16U) | low;
-    pi_[1] = (physical + 4U) & ~1U;
-    open_bus_ = pi_bus_latch_;
-    return extract_word_lane(pi_bus_latch_, physical, width);
-}
-
-void Bus::write_cart(u32 physical, unsigned width, u64 value) {
-    if (pi_io_busy_)
-        return;
-    const u32 word = expand_rcp_write(physical, width, value);
-    const u32 aligned = physical & ~1U;
-    pi_io_busy_ = true;
-    pi_io_counter_ = 140;
-    pi_[1] = (physical + 4U) & ~1U;
-    pi_bus_latch_ = word;
-
-    if (save_type == SaveType::FlashRam && (aligned & 0xffff0000U) == 0x08010000U) {
-        flash_command(word);
-        return;
-    }
-    cart_write_half(aligned, static_cast<u16>(word >> 16U));
-    cart_write_half(aligned + 2U, static_cast<u16>(word));
-}
-
-u16 Bus::cart_read_half(u32 physical) {
-    const u16 open = static_cast<u16>(physical);
-    pi_bus_latch_ = (static_cast<u32>(open) << 16U) | open;
-
-    if (physical >= IsViewerBase && physical <= IsViewerBase + 0xffffU) {
-        const u32 offset = physical - IsViewerBase;
-        const u16 value = static_cast<u16>(read_bytes(isviewer_.data(), isviewer_.size(), offset, 2));
-        pi_bus_latch_ = (static_cast<u32>(value) << 16U) | value;
-        return value;
-    }
-    if (physical >= CartridgeRomBase) {
-        const u32 offset = physical - CartridgeRomBase;
-        if (static_cast<std::size_t>(offset) + 1 < rom.size()) {
-            const u16 value = static_cast<u16>(read_bytes(rom.data(), rom.size(), offset, 2));
-            pi_bus_latch_ = (static_cast<u32>(value) << 16U) | value;
-            return value;
-        }
-        return open;
-    }
-    if (physical >= CartridgeSaveBase && physical < CartridgeRomBase) {
-        const u32 offset = physical - CartridgeSaveBase;
-        if (save_type == SaveType::Sram && !sram.empty()) {
-            const u16 value = static_cast<u16>(
-                read_bytes(sram.data(), sram.size(), offset % static_cast<u32>(sram.size()), 2));
-            pi_bus_latch_ = (static_cast<u32>(value) << 16U) | value;
-            return value;
-        }
-        if (save_type == SaveType::FlashRam && !flashram.empty()) {
-            if (flash_mode_ == FlashMode::Status) {
-                const unsigned shift = (offset & 6U) == 0   ? 48U
-                                       : (offset & 6U) == 2 ? 32U
-                                       : (offset & 6U) == 4 ? 16U
-                                                            : 0U;
-                return static_cast<u16>(flash_status_ >> shift);
-            }
-            if (flash_mode_ == FlashMode::SiliconId) {
-                static constexpr std::array<u8, 8> id = {0x00, 0xc2, 0x00, 0x1e, 0, 0, 0, 0};
-                return static_cast<u16>(read_bytes(id.data(), id.size(), offset & 7U, 2));
-            }
-            const u32 array_offset = offset % static_cast<u32>(flashram.size());
-            return static_cast<u16>(read_bytes(flashram.data(), flashram.size(), array_offset, 2));
-        }
-    }
-    return open;
-}
-
-void Bus::cart_write_half(u32 physical, u16 value) {
-    if (physical >= IsViewerBase && physical <= IsViewerBase + 0xffffU) {
-        pi_io_busy_ = false;
-        pi_io_counter_ = 0;
-        const u32 offset = physical - IsViewerBase;
-        write_bytes(isviewer_.data(), isviewer_.size(), offset, 2, value);
-        if ((offset & 0xffffU) == 0x16U)
-            emit_isviewer();
-        return;
-    }
-    if (physical >= CartridgeSaveBase && physical < CartridgeRomBase) {
-        const u32 offset = physical - CartridgeSaveBase;
-        if (save_type == SaveType::Sram && !sram.empty()) {
-            write_bytes(sram.data(), sram.size(), offset % static_cast<u32>(sram.size()), 2, value);
-            return;
-        }
-        if (save_type == SaveType::FlashRam && flash_mode_ == FlashMode::LoadPage) {
-            const u32 index = offset & 0x7fU;
-            if (index + 1U < flash_page_.size()) {
-                flash_page_[index] = static_cast<u8>(value >> 8U);
-                flash_page_[index + 1U] = static_cast<u8>(value);
-            }
-        }
-    }
-}
-
 void Bus::flash_command(u32 value) {
     const u8 command = static_cast<u8>(value >> 24U);
     switch (command) {
@@ -616,18 +510,24 @@ void Bus::emit_isviewer() {
 void Bus::perform_pi_dma() {
     if (!pi_dma_pending_)
         return;
+    const u32 page_mask = pi_page_mask(pi_[1]);
     if (pi_dma_cart_to_dram_) {
         std::array<u8, 128> buffer{};
         s32 length = static_cast<s32>(pi_[3] + 1U);
         s32 max_block_size = 128;
         bool first_block = true;
+        bool selected = false;
         while (length > 0) {
             const s32 misalign = static_cast<s32>(pi_[0] & 7U);
             const s32 distance_to_row = 0x800 - static_cast<s32>(pi_[0] & 0x7ffU);
             const s32 block_length = std::min(max_block_size - misalign, distance_to_row);
             const s32 current_length = std::min(length, block_length);
             for (s32 index = 0; index < current_length; index += 2) {
-                const u16 data = cart_read_half(pi_[1]);
+                if (!selected || (pi_[1] & page_mask) == 0) {
+                    select_cart(pi_[1]);
+                    selected = true;
+                }
+                const u16 data = cart_read_half();
                 buffer[static_cast<std::size_t>(index)] = static_cast<u8>(data >> 8U);
                 if (index + 1 < static_cast<s32>(buffer.size()))
                     buffer[static_cast<std::size_t>(index + 1)] = static_cast<u8>(data);
@@ -653,10 +553,13 @@ void Bus::perform_pi_dma() {
     } else {
         const u32 length = (pi_[2] | 1U) + 1U;
         pi_[2] = length;
+        select_cart(pi_[1]);
         for (u32 index = 0; index < length; index += 2U) {
+            if (index != 0 && ((pi_[1] + index) & page_mask) == 0)
+                select_cart(pi_[1] + index);
             const u16 data = static_cast<u16>((static_cast<u16>(read_ram_byte(pi_[0] + index)) << 8U) |
                                               read_ram_byte(pi_[0] + index + 1U));
-            cart_write_half(pi_[1] + index, data);
+            cart_write_half(data);
         }
     }
 }

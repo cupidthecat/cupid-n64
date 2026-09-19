@@ -24,8 +24,12 @@ busy and raises the PI and MI interrupt flags. Reset cancels the pending
 completion.
 
 Data copies occur when DMA starts; only busy status and the completion interrupt
-are delayed. The model does not expose individual cartridge bus beats or account
+are delayed. The model does not schedule individual cartridge bus beats or account
 for shared RDRAM contention. CPU cartridge I/O uses a separate timing path.
+
+[Cartridge bus transactions](cartridge-bus.md) describes address selection,
+sequential halfwords, the bus latch, and SRAM windows. Payload transfers reselect
+the cartridge device at the same domain page boundaries used by the timer.
 
 `tests/rcp/test_pi.cpp` checks field sensitivity, domain selection in both DMA
 directions, page and buffer boundaries, halfword rounding, clock conversion,
