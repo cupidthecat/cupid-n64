@@ -1,0 +1,95 @@
+name: Hardware validation
+
+on:
+  push:
+    branches: [main, feature/n64-hardware-accuracy]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hardware-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.compiler }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCUPID_STRICT=ON
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Run regressions
+        run: ctest --test-dir build --output-on-failure
+
+  windows:
+    name: Windows MSVC
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure
+        run: cmake -S . -B build -A x64 -DCUPID_STRICT=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+      - name: Run regressions
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  accuracy:
+    name: Full ROM suite and sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: thelemmy/nemu64-test
+          ref: 9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c
+          path: .work/nemu64-test
+          persist-credentials: false
+      - name: Prepare boot firmware
+        env:
+          N64_PIF_NTSC: ${{ secrets.N64_PIF_NTSC }}
+        run: python3 tools/prepare_ci_firmware.py .work/pif.ntsc.rom
+      - name: Build the complete test ROM
+        working-directory: .work/nemu64-test
+        run: |
+          cargo build --release --locked
+          cargo +stable install nust64 --version 0.4.1 --locked --root ../tools
+          ../tools/bin/nust64 --elf target/mips-nintendo64-none/release/n64-systemtest
+      - name: Configure strict build
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=Release -DCUPID_STRICT=ON
+          -DCUPID_TEST_ROM=${{ github.workspace }}/.work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          -DCUPID_PIF_ROM=${{ github.workspace }}/.work/pif.ntsc.rom
+      - name: Build strict configuration
+        run: cmake --build build --parallel 2
+      - name: Run regressions and the complete ROM suite
+        run: ctest --test-dir build --output-on-failure
+      - name: Configure sanitizers
+        run: >-
+          cmake -S . -B build-sanitize -G Ninja -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCUPID_STRICT=ON -DCUPID_SANITIZERS=ON
+          -DCUPID_TEST_ROM=${{ github.workspace }}/.work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          -DCUPID_PIF_ROM=${{ github.workspace }}/.work/pif.ntsc.rom
+      - name: Build sanitizer configuration
+        run: cmake --build build-sanitize --parallel 2
+      - name: Run regressions and the complete ROM suite with sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build-sanitize --output-on-failure
