@@ -94,6 +94,7 @@ class Bus {
     u64 pi_dma_counter_{};
     u64 pi_io_counter_{};
     u64 si_dma_counter_{};
+    u64 si_io_counter_{};
     u64 eeprom_busy_counter_{};
     u32 vi_current_{};
     u32 ai_fifo_count_{};
@@ -109,6 +110,9 @@ class Bus {
     bool pi_interrupt_{};
     bool si_interrupt_{};
     bool si_dma_busy_{};
+    bool si_io_busy_{};
+    u32 si_bus_latch_{};
+    u32 si_phase_{};
     u32 pi_bus_latch_{};
     bool pif_rom_locked_{};
     bool pif_boot_terminated_{};
@@ -148,11 +152,14 @@ class Bus {
     void write_ri(u32 offset, u32 value);
     [[nodiscard]] u32 read_si(u32 offset) const;
     void write_si(u32 offset, u32 value);
+    void tick_si(u64 rcp_cycles);
 
     [[nodiscard]] u64 read_sp_memory(u32 physical, unsigned width);
     void write_sp_memory(u32 physical, unsigned width, u64 value);
     [[nodiscard]] u64 read_pif(u32 physical, unsigned width);
     void write_pif(u32 physical, unsigned width, u64 value);
+    [[nodiscard]] u32 read_pif_word(u32 address) const;
+    void write_pif_word(u32 address, u32 value);
     [[nodiscard]] u64 read_cart(u32 physical, unsigned width);
     void write_cart(u32 physical, unsigned width, u64 value);
     [[nodiscard]] u16 cart_read_half(u32 physical);

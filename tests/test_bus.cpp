@@ -105,10 +105,13 @@ TEST(bus_pif_rom_is_immutable_but_ram_keeps_rcp_store_lane_behavior) {
     bus.pif[2] = 0x56;
     bus.pif[3] = 0x78;
     bus.write(0x1fc00000U, 4, 0xdeadbeefU);
+    bus.tick(2150);
     CHECK_EQ(bus.read(0x1fc00000U, 4), 0x12345678ULL);
 
     bus.write(0x1fc007c0U, 4, 0xdeadbeefU);
+    bus.tick(2150);
     bus.write(0x1fc007c1U, 1, 0x12345678U);
+    bus.tick(2150);
     CHECK_EQ(bus.read(0x1fc007c0U, 4), 0x56780000ULL);
 }
 
@@ -160,6 +163,7 @@ TEST(bus_pif_control_uses_cic_seed_and_hides_boot_secrets) {
     for (unsigned index = 0; index < checksum.size(); ++index)
         CHECK_EQ(bus.pif[0x7f2 + index], 0U);
 
+    bus.tick(2150);
     bus.write(0x1fc007fcU, 4, 0x00000008U);
     CHECK_EQ(bus.pif[0x7ff], 0U);
 }

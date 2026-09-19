@@ -53,6 +53,7 @@ void Bus::reset() {
     pi_dma_counter_ = 0;
     pi_io_counter_ = 0;
     si_dma_counter_ = 0;
+    si_io_counter_ = 0;
     eeprom_busy_counter_ = 0;
     vi_current_ = 0;
     ai_fifo_count_ = 0;
@@ -68,6 +69,9 @@ void Bus::reset() {
     pi_interrupt_ = false;
     si_interrupt_ = false;
     si_dma_busy_ = false;
+    si_io_busy_ = false;
+    si_bus_latch_ = 0;
+    si_phase_ = 0;
     pi_bus_latch_ = 0;
     pif_rom_locked_ = false;
     pif_boot_terminated_ = false;
@@ -129,74 +133,6 @@ u32 Bus::expand_rcp_write(u32 address, unsigned width, u64 value) {
     return static_cast<u32>(value >> 32);
 }
 
-u64 Bus::read(u32 physical, unsigned width_bytes) {
-    if (width_bytes != 1 && width_bytes != 2 && width_bytes != 4 && width_bytes != 8)
-        return 0;
-
-    if (physical < 0x04000000U) {
-        const u64 value = read_rdram(physical, width_bytes);
-        open_bus_ = static_cast<u32>(value);
-        return value;
-    }
-
-    if (width_bytes == 8) {
-        system_.cpu.frozen = true;
-        return 0;
-    }
-
-    if (physical >= 0x04000000U && physical <= 0x0403ffffU)
-        return read_sp_memory(physical, width_bytes);
-
-    if (physical >= 0x1fc00000U && physical <= 0x1fc007ffU)
-        return read_pif(physical, width_bytes);
-
-    if ((physical >= 0x08000000U && physical <= 0x1fbfffffU) ||
-        (physical >= 0x05000000U && physical <= 0x07ffffffU)) {
-        return read_cart(physical, width_bytes);
-    }
-
-    if (physical >= 0x04040000U && physical <= 0x048fffffU) {
-        if (width_bytes == 8)
-            return 0;
-        const u32 word = read_rcp_word(physical & ~3U);
-        open_bus_ = word;
-        return extract_word_lane(word, physical, width_bytes);
-    }
-
-    return open_bus_;
-}
-
-void Bus::write(u32 physical, unsigned width_bytes, u64 value) {
-    if (width_bytes != 1 && width_bytes != 2 && width_bytes != 4 && width_bytes != 8)
-        return;
-
-    if (physical < 0x04000000U) {
-        write_rdram(physical, width_bytes, value);
-        return;
-    }
-
-    if (physical >= 0x04000000U && physical <= 0x0403ffffU) {
-        write_sp_memory(physical, width_bytes, value);
-        return;
-    }
-
-    if (physical >= 0x1fc00000U && physical <= 0x1fc007ffU) {
-        write_pif(physical, width_bytes, value);
-        return;
-    }
-
-    if ((physical >= 0x08000000U && physical <= 0x1fbfffffU) ||
-        (physical >= 0x05000000U && physical <= 0x07ffffffU)) {
-        write_cart(physical, width_bytes, value);
-        return;
-    }
-
-    if (physical >= 0x04040000U && physical <= 0x048fffffU) {
-        const u32 word = expand_rcp_write(physical, width_bytes, value);
-        write_rcp_word(physical & ~3U, word);
-    }
-}
-
 u64 Bus::read_sp_memory(u32 physical, unsigned width) {
     if (width == 8)
         return 0;
@@ -216,25 +152,17 @@ void Bus::write_sp_memory(u32 physical, unsigned width, u64 value) {
     }
 }
 
-u64 Bus::read_pif(u32 physical, unsigned width) {
-    if (width == 8)
-        return 0;
-    const u32 offset = (physical - PifBase) & 0x7ffU;
-    const u32 aligned = offset & ~3U;
-    const u32 word = read_word_be(pif.data(), pif.size(), aligned);
-    open_bus_ = word;
-    return extract_word_lane(word, physical, width);
+u32 Bus::read_pif_word(u32 address) const {
+    const u32 offset = address & 0x7fcU;
+    return offset < PifRamOffset && pif_rom_locked_ ? 0 : read_word_be(pif.data(), pif.size(), offset);
 }
 
-void Bus::write_pif(u32 physical, unsigned width, u64 value) {
+void Bus::write_pif_word(u32 physical, u32 value) {
     const u32 offset = (physical - PifBase) & 0x7ffU;
     if (offset < PifRamOffset)
         return;
     const u32 aligned = offset & ~3U;
-    const u32 word = expand_rcp_write(physical, width, value);
-    write_word_be(pif.data(), pif.size(), aligned, word);
-    if (aligned >= PifRamOffset)
-        process_pif_control();
+    write_word_be(pif.data(), pif.size(), aligned, value);
 }
 
 u32 Bus::read_rcp_word(u32 physical) {
@@ -443,43 +371,6 @@ void Bus::write_pi(u32 offset, u32 value) {
     }
 }
 
-u32 Bus::read_si(u32 offset) const {
-    const unsigned index = static_cast<unsigned>((offset & 0x1fU) >> 2U);
-    if (index == 6) {
-        return (si_dma_busy_ ? 1U : 0U) | (si_interrupt_ ? (1U << 12U) : 0U);
-    }
-    return index < si_.size() ? si_[index] : 0;
-}
-
-void Bus::write_si(u32 offset, u32 value) {
-    const unsigned index = static_cast<unsigned>((offset & 0x1fU) >> 2U);
-    switch (index) {
-    case 0:
-        si_[0] = value & 0x00fffff8U;
-        return;
-    case 1:
-        si_[1] = value & ~1U;
-        si_dma_pif_to_dram_ = true;
-        si_dma_pending_ = true;
-        si_dma_busy_ = true;
-        si_dma_counter_ = 14000;
-        return;
-    case 4:
-        si_[4] = value & ~1U;
-        si_dma_pif_to_dram_ = false;
-        si_dma_pending_ = true;
-        si_dma_busy_ = true;
-        si_dma_counter_ = 4065;
-        return;
-    case 6:
-        si_interrupt_ = false;
-        set_interrupt(1, false);
-        return;
-    default:
-        return;
-    }
-}
-
 void Bus::set_interrupt(unsigned source, bool level) {
     if (source >= 6)
         return;
@@ -512,13 +403,7 @@ void Bus::tick(u64 rcp_cycles) {
         } else
             pi_dma_counter_ -= rcp_cycles;
     }
-    if (si_dma_pending_) {
-        if (rcp_cycles >= si_dma_counter_) {
-            si_dma_counter_ = 0;
-            finish_si_dma();
-        } else
-            si_dma_counter_ -= rcp_cycles;
-    }
+    tick_si(rcp_cycles);
     if (eeprom_busy_counter_ != 0) {
         if (rcp_cycles >= eeprom_busy_counter_)
             eeprom_busy_counter_ = 0;
@@ -814,25 +699,6 @@ void Bus::finish_pi_dma() {
     pi_dma_busy_ = false;
     pi_interrupt_ = true;
     set_interrupt(4, true);
-}
-
-void Bus::finish_si_dma() {
-    if (!si_dma_pending_)
-        return;
-    const u32 dram = si_[0] & 0x00fffff8U;
-    if (si_dma_pif_to_dram_) {
-        process_pif();
-        for (u32 index = 0; index < 64; ++index)
-            write_ram_byte(dram + index, pif[PifRamOffset + index]);
-    } else {
-        for (u32 index = 0; index < 64; ++index)
-            pif[PifRamOffset + index] = read_ram_byte(dram + index);
-        process_pif_control();
-    }
-    si_dma_pending_ = false;
-    si_dma_busy_ = false;
-    si_interrupt_ = true;
-    set_interrupt(1, true);
 }
 
 u8 Bus::address_crc(u16 address) {

@@ -25,12 +25,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DCUPID_STRICT=ON
-      - name: Build
-        run: cmake --build build --parallel 2
-      - name: Run regressions
-        run: ctest --test-dir build --output-on-failure
+      - name: Install formatter
+        run: |
+          python3 -m venv .work/format
+          .work/format/bin/python -m pip install clang-format==22.1.0
+      - name: Run local validation entry point
+        run: >-
+          python3 tools/ci/validate.py --build-dir build --compiler ${{ matrix.compiler }} --jobs 2
+          --clang-format .work/format/bin/clang-format
 
   windows:
     name: Windows MSVC
@@ -39,12 +41,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Configure
-        run: cmake -S . -B build -A x64 -DCUPID_STRICT=ON
-      - name: Build
-        run: cmake --build build --config Release --parallel 2
-      - name: Run regressions
-        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Install formatter
+        run: |
+          python -m venv .work/format
+          .work/format/Scripts/python.exe -m pip install clang-format==22.1.0
+      - name: Run local validation entry point
+        run: >-
+          python tools/ci/validate.py --build-dir build --generator "Visual Studio 17 2022" --jobs 2
+          --clang-format .work/format/Scripts/clang-format.exe
 
   accuracy:
     name: Full ROM suite and sanitizers
@@ -70,26 +74,23 @@ jobs:
           cargo build --release --locked
           cargo +stable install nust64 --version 0.4.1 --locked --root ../tools
           ../tools/bin/nust64 --elf target/mips-nintendo64-none/release/n64-systemtest
-      - name: Configure strict build
+      - name: Install formatter
+        run: |
+          python3 -m venv .work/format
+          .work/format/bin/python -m pip install clang-format==22.1.0
+      - name: Run strict validation
         run: >-
-          cmake -S . -B build -G Ninja -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=Release -DCUPID_STRICT=ON
-          -DCUPID_TEST_ROM=${{ github.workspace }}/.work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
-          -DCUPID_PIF_ROM=${{ github.workspace }}/.work/pif.ntsc.rom
-      - name: Build strict configuration
-        run: cmake --build build --parallel 2
-      - name: Run regressions and the complete ROM suite
-        run: ctest --test-dir build --output-on-failure
-      - name: Configure sanitizers
-        run: >-
-          cmake -S . -B build-sanitize -G Ninja -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCUPID_STRICT=ON -DCUPID_SANITIZERS=ON
-          -DCUPID_TEST_ROM=${{ github.workspace }}/.work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
-          -DCUPID_PIF_ROM=${{ github.workspace }}/.work/pif.ntsc.rom
-      - name: Build sanitizer configuration
-        run: cmake --build build-sanitize --parallel 2
-      - name: Run regressions and the complete ROM suite with sanitizers
+          python3 tools/ci/validate.py --build-dir build --compiler clang++ --jobs 2
+          --clang-format .work/format/bin/clang-format
+          --rom .work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          --pif .work/pif.ntsc.rom
+      - name: Run sanitizer validation
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
-        run: ctest --test-dir build-sanitize --output-on-failure
+        run: >-
+          python3 tools/ci/validate.py --build-dir build-sanitize --compiler clang++ --jobs 2
+          --clang-format .work/format/bin/clang-format
+          --config RelWithDebInfo --sanitizers
+          --rom .work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          --pif .work/pif.ntsc.rom
