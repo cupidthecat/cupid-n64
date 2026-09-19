@@ -267,10 +267,15 @@ TEST(bus_flashram_load_and_program_page_uses_pi_data_path) {
     bus.write(0x04600010U, 4, 2U);
 
     bus.write(0x08010000U, 4, 0xa5000001U);
-    bus.tick(200);
+    bus.tick(218750);
     bus.write(0x08010000U, 4, 0xf0000000U);
     bus.tick(200);
 
-    CHECK_EQ(bus.read(0x08000080U, 4), 0xa5a4a7a6ULL);
-    CHECK_EQ(bus.read(0x08000084U, 4), 0xa1a0a3a2ULL);
+    bus.write(0x0460002cU, 4, 6);
+    bus.write(0x04600000U, 4, 0x7000);
+    bus.write(0x04600004U, 4, 0x08000040);
+    bus.write(0x0460000cU, 4, 127);
+    bus.tick(1000);
+    for (u32 index = 0; index < 128; ++index)
+        CHECK_EQ(bus.read_ram_byte(0x7000 + index), static_cast<u8>(index ^ 0xa5U));
 }

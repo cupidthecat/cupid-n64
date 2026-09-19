@@ -7,6 +7,7 @@
 
 #include <array>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -101,6 +102,7 @@ class Bus {
     u64 si_dma_counter_{};
     u64 si_io_counter_{};
     u64 eeprom_busy_counter_{};
+    u64 flash_busy_counter_{};
     u32 vi_current_{};
     unsigned vi_leap_counter_{};
     u32 ai_fifo_count_{};
@@ -135,7 +137,14 @@ class Bus {
     FlashErase flash_erase_{FlashErase::None};
     u32 flash_sector_{};
     std::array<u8, 128> flash_page_{};
-    u64 flash_status_{0x1111'8001'00c2'001eULL};
+    u8 flash_status_{0x8c};
+    u8 flash_status_commands_{};
+    u16 flash_command_high_{};
+    u16 flash_previous_read_{};
+    u32 flash_burst_index_{};
+    bool flash_command_high_valid_{};
+    bool flash_status_stale_{};
+    bool flash_open_bus_{};
 
     [[nodiscard]] static u64 extract_word_lane(u32 word, u32 address, unsigned width);
     [[nodiscard]] static u32 expand_rcp_write(u32 address, unsigned width, u64 value);
@@ -189,6 +198,9 @@ class Bus {
     [[nodiscard]] static u8 pak_crc(const u8* data);
     [[nodiscard]] static u8 address_crc(u16 address);
     void flash_command(u32 value);
+    [[nodiscard]] std::optional<u16> read_flash_half();
+    void write_flash_half(u16 value);
+    void tick_flash(u64 cycles);
     void emit_isviewer();
     [[nodiscard]] u8 rdp_source_byte(u32 address, bool dmem) const;
 };

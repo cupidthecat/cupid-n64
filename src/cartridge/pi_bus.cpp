@@ -43,6 +43,8 @@ void Bus::select_cart(u32 physical) {
         } else if (save_type == SaveType::FlashRam && !flashram.empty()) {
             cart_device_ = CartDevice::Flash;
             cart_offset_ = offset;
+            flash_burst_index_ = 0;
+            flash_command_high_valid_ = false;
         }
     }
 }
@@ -71,10 +73,6 @@ void Bus::write_cart(u32 physical, unsigned width, u64 value) {
     pi_io_counter_ = 140;
     pi_[1] = (physical + 4U) & ~1U;
     pi_bus_latch_ = word;
-    if (save_type == SaveType::FlashRam && (physical & 0xffff0000U) == 0x08010000U) {
-        flash_command(word);
-        return;
-    }
     cart_write_half(static_cast<u16>(word >> 16));
     cart_write_half(static_cast<u16>(word));
 }
@@ -98,16 +96,9 @@ u16 Bus::cart_read_half() {
         value = static_cast<u16>(read_bytes(isviewer_.data(), isviewer_.size(), cart_offset_ & 0xffffU, 2));
         break;
     case CartDevice::Flash:
-        if (flash_mode_ == FlashMode::Status) {
-            value = static_cast<u16>(flash_status_ >> ((6 - (cart_offset_ & 6U)) * 8));
-        } else if (flash_mode_ == FlashMode::SiliconId) {
-            static constexpr std::array<u8, 8> id = {0x00, 0xc2, 0x00, 0x1e, 0, 0, 0, 0};
-            value = static_cast<u16>(read_bytes(id.data(), id.size(), cart_offset_ & 7U, 2));
-        } else {
-            const u32 offset = cart_offset_ % static_cast<u32>(flashram.size());
-            value = static_cast<u16>(read_bytes(flashram.data(), flashram.size(), offset, 2));
-        }
-        break;
+        if (const auto data = read_flash_half())
+            pi_bus_latch_ = repeat_half(*data);
+        return static_cast<u16>(pi_bus_latch_);
     }
     cart_offset_ += 2;
     pi_bus_latch_ = repeat_half(value);
@@ -135,12 +126,8 @@ void Bus::cart_write_half(u16 value) {
             emit_isviewer();
         break;
     case CartDevice::Flash:
-        if (flash_mode_ == FlashMode::LoadPage) {
-            const u32 index = cart_offset_ & 0x7fU;
-            flash_page_[index] = static_cast<u8>(value >> 8);
-            flash_page_[index + 1] = static_cast<u8>(value);
-        }
-        break;
+        write_flash_half(value);
+        return;
     }
     cart_offset_ += 2;
 }

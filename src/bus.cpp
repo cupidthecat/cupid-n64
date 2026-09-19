@@ -54,6 +54,7 @@ void Bus::reset() {
     si_dma_counter_ = 0;
     si_io_counter_ = 0;
     eeprom_busy_counter_ = 0;
+    flash_busy_counter_ = 0;
     vi_current_ = 0;
     vi_leap_counter_ = 0;
     ai_fifo_count_ = 0;
@@ -85,7 +86,14 @@ void Bus::reset() {
     flash_erase_ = FlashErase::None;
     flash_sector_ = 0;
     flash_page_.fill(0xff);
-    flash_status_ = 0x1111800100c2001eULL;
+    flash_status_ = 0x8c;
+    flash_status_commands_ = 0;
+    flash_command_high_ = 0;
+    flash_previous_read_ = 0;
+    flash_burst_index_ = 0;
+    flash_command_high_valid_ = false;
+    flash_status_stale_ = false;
+    flash_open_bus_ = false;
 
     rdp.reset();
 }
@@ -385,6 +393,7 @@ void Bus::tick_devices(u64 rcp_cycles) {
             pi_dma_counter_ -= rcp_cycles;
     }
     tick_si(rcp_cycles);
+    tick_flash(rcp_cycles);
     if (eeprom_busy_counter_ != 0) {
         if (rcp_cycles >= eeprom_busy_counter_)
             eeprom_busy_counter_ = 0;
@@ -435,59 +444,6 @@ void Bus::set_save_type(SaveType type) {
 void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (port < controllers.size())
         controllers[port] = state;
-}
-
-void Bus::flash_command(u32 value) {
-    const u8 command = static_cast<u8>(value >> 24U);
-    switch (command) {
-    case 0x3c:
-        flash_erase_ = FlashErase::Chip;
-        return;
-    case 0x4b:
-        flash_erase_ = FlashErase::Sector;
-        flash_sector_ = (value & 0x3ffU) >> 7U;
-        return;
-    case 0x78:
-        if (flashram.empty())
-            return;
-        if (flash_erase_ == FlashErase::Chip)
-            std::fill(flashram.begin(), flashram.end(), u8{0xff});
-        else if (flash_erase_ == FlashErase::Sector) {
-            const std::size_t base = static_cast<std::size_t>(flash_sector_) << 14U;
-            const std::size_t end = std::min(base + 0x4000U, flashram.size());
-            if (base < end)
-                std::fill(flashram.begin() + static_cast<std::ptrdiff_t>(base),
-                          flashram.begin() + static_cast<std::ptrdiff_t>(end), u8{0xff});
-        }
-        flash_erase_ = FlashErase::None;
-        flash_mode_ = FlashMode::Status;
-        return;
-    case 0xa5: {
-        if (flashram.empty())
-            return;
-        const std::size_t base = static_cast<std::size_t>(value & 0x3ffU) << 7U;
-        for (std::size_t index = 0; index < flash_page_.size() && base + index < flashram.size(); ++index) {
-            flashram[base + index] &= flash_page_[index];
-        }
-        flash_page_.fill(0xff);
-        flash_mode_ = FlashMode::Status;
-        return;
-    }
-    case 0xb4:
-        flash_mode_ = FlashMode::LoadPage;
-        return;
-    case 0xd2:
-        flash_mode_ = FlashMode::Status;
-        return;
-    case 0xe1:
-        flash_mode_ = FlashMode::SiliconId;
-        return;
-    case 0xf0:
-        flash_mode_ = FlashMode::ReadArray;
-        return;
-    default:
-        return;
-    }
 }
 
 void Bus::emit_isviewer() {

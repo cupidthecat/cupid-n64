@@ -13,6 +13,7 @@ u64 Bus::next_event() const {
     };
     include(pi_io_busy_, pi_io_counter_);
     include(pi_dma_pending_, pi_dma_counter_);
+    include(flash_busy_counter_ != 0, flash_busy_counter_);
     include(si_io_busy_, si_io_counter_);
     include(si_dma_pending_, si_dma_counter_);
     include(eeprom_busy_counter_ != 0, eeprom_busy_counter_);
