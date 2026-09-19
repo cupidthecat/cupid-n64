@@ -171,6 +171,7 @@ class Bus {
     void write_cart(u32 physical, unsigned width, u64 value);
     [[nodiscard]] u16 cart_read_half(u32 physical);
     void cart_write_half(u32 physical, u16 value);
+    [[nodiscard]] u64 pi_dma_cycles(u32 length) const;
     void perform_pi_dma();
     void finish_pi_dma();
     void finish_si_dma();

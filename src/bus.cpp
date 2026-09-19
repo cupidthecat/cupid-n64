@@ -320,7 +320,7 @@ void Bus::write_pi(u32 offset, u32 value) {
         pi_dma_cart_to_dram_ = false;
         pi_dma_pending_ = true;
         pi_dma_busy_ = true;
-        pi_dma_counter_ = std::max<u64>(16, (static_cast<u64>(pi_[2]) + 1U) * 2U);
+        pi_dma_counter_ = pi_dma_cycles(pi_[2]);
         perform_pi_dma();
         return;
     case 3:
@@ -328,7 +328,7 @@ void Bus::write_pi(u32 offset, u32 value) {
         pi_dma_cart_to_dram_ = true;
         pi_dma_pending_ = true;
         pi_dma_busy_ = true;
-        pi_dma_counter_ = std::max<u64>(16, (static_cast<u64>(pi_[3]) + 1U) * 2U);
+        pi_dma_counter_ = pi_dma_cycles(pi_[3]);
         perform_pi_dma();
         return;
     case 4:
@@ -345,7 +345,7 @@ void Bus::write_pi(u32 offset, u32 value) {
         return;
     default:
         if (index < pi_.size())
-            pi_[index] = value & (index == 7 ? 0xfU : index == 8 ? 3U : 0xffU);
+            pi_[index] = value & (index == 7 || index == 11 ? 0xfU : index == 8 || index == 12 ? 3U : 0xffU);
         return;
     }
 }
