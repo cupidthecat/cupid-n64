@@ -489,6 +489,35 @@ TEST(cpu_cop2_uses_one_latch_for_every_register) {
     CHECK_EQ(cpu.gpr[3], 0x1234567889abcdefULL);
 }
 
+TEST(cpu_cop2_memory_transfers_use_the_shared_doubleword_latch) {
+    auto system = machine();
+    auto& cpu = system->cpu;
+    cpu.write_cop0(12, 0x74000000);
+    cpu.gpr[1] = 0xffffffffa0004000ULL;
+    system->bus.write(0x4000, 8, 0xfedcba9876543210ULL);
+
+    cpu.execute(immediate(0x32, 1, 9, 4));
+    cpu.execute((0x12U << 26) | (1U << 21) | (2U << 16) | (9U << 11));
+    CHECK_EQ(cpu.gpr[2], 0xfedcba9876543210ULL);
+
+    cpu.gpr[3] = 0xffffffffa0005000ULL;
+    cpu.execute(immediate(0x3e, 3, 9, 0));
+    cpu.execute(immediate(0x3a, 3, 9, 12));
+    CHECK_EQ(system->bus.read(0x5000, 8), 0xfedcba9876543210ULL);
+    CHECK_EQ(system->bus.read(0x500c, 4), 0x76543210ULL);
+}
+
+TEST(cpu_cop2_memory_transfers_check_usability_before_alignment) {
+    auto system = machine();
+    auto& cpu = system->cpu;
+    cpu.write_cop0(12, 0x34000000);
+    cpu.gpr[1] = 0xffffffffa0004001ULL;
+    cpu.execute(immediate(0x36, 1, 2, 0));
+    CHECK_EQ(exception_code(cpu), 11U);
+    CHECK_EQ((cpu.cp0[13] >> 28) & 3U, 2ULL);
+    CHECK_EQ(cpu.cp0[8], 0ULL);
+}
+
 TEST(cpu_cop0_masks_registers_and_keeps_full_write_latch) {
     auto system = machine();
     auto& cpu = system->cpu;

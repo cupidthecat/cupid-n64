@@ -328,10 +328,6 @@ void Cpu::execute(u32 instruction) {
         fpu.execute(instruction);
         return;
     case 0x12:
-    case 0x32:
-    case 0x36:
-    case 0x3a:
-    case 0x3e:
         execute_cop2(instruction);
         return;
     case 0x13:
@@ -450,6 +446,13 @@ void Cpu::execute(u32 instruction) {
                 fpu.write_doubleword(rt, value);
         }
         return;
+    case 0x32:
+    case 0x36:
+        if (!require_coprocessor(2))
+            return;
+        if (read_memory(address & ~7ULL, 8, value))
+            cop2_latch = value;
+        return;
     case 0x37:
         if (!wide_instructions())
             raise_exception(Exception::ReservedInstruction);
@@ -472,6 +475,12 @@ void Cpu::execute(u32 instruction) {
         if (!require_coprocessor(1))
             return;
         write_memory(address, op == 0x39 ? 4U : 8U, op == 0x39 ? fpu.read_word(rt) : fpu.read_doubleword(rt));
+        return;
+    case 0x3a:
+    case 0x3e:
+        if (!require_coprocessor(2))
+            return;
+        write_memory(address, op == 0x3a ? 4U : 8U, op == 0x3a ? static_cast<u32>(cop2_latch) : cop2_latch);
         return;
     case 0x3f:
         if (!wide_instructions())
