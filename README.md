@@ -56,7 +56,8 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 
 Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [instruction fetch ordering](docs/hardware/instruction-fetch.md),
-[video timing](docs/hardware/video-timing.md), and
+[video timing](docs/hardware/video-timing.md),
+[RCP event scheduling](docs/hardware/rcp-scheduling.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
 

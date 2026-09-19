@@ -1,7 +1,9 @@
 #include "cupid/system.hpp"
 #include "test.hpp"
+#include "test_system.hpp"
 
 #include <array>
+#include <vector>
 
 namespace {
 using namespace cupid;
@@ -37,4 +39,123 @@ TEST(rcp_clock_reads_are_independent_of_cpu_batch_size) {
     CHECK_EQ(single.bus.read(0x04000000, 4), split.bus.read(0x04000000, 4));
     CHECK_EQ(single.bus.read(0x04000004, 4), split.bus.read(0x04000004, 4));
     CHECK_EQ(single.bus.read(0x04100010, 4), split.bus.read(0x04100010, 4));
+}
+
+TEST(rcp_audio_reads_memory_after_an_earlier_sp_dma_completion) {
+    for (bool split : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        std::vector<u32> samples;
+        system.bus.audio_output = [&](s16 left, s16 right) {
+            samples.push_back((static_cast<u32>(static_cast<u16>(left)) << 16) | static_cast<u16>(right));
+        };
+        system.bus.write(0x04000000, 4, 0x12345678);
+        system.bus.write(0x04000004, 4, 0x23456789);
+        system.rsp.write_register(0, 0);
+        system.rsp.write_register(4, 0x2000);
+        system.rsp.write_register(0x0c, 7);
+        system.bus.write(0x04500010, 4, 7);
+        system.bus.write(0x04500008, 4, 1);
+        system.bus.write(0x04500000, 4, 0x2000);
+        system.bus.write(0x04500004, 4, 8);
+        if (split) {
+            for (unsigned cycle = 0; cycle < 36; ++cycle)
+                system.advance(1);
+        } else {
+            system.advance(36);
+        }
+        CHECK_EQ(samples.size(), 2U);
+        CHECK_EQ(samples[0], 0x12345678U);
+        CHECK_EQ(samples[1], 0x23456789U);
+    }
+}
+
+TEST(rcp_audio_reads_memory_before_a_later_si_dma_completion) {
+    for (bool direct_bus : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        std::vector<u32> samples;
+        system.bus.audio_output = [&](s16 left, s16 right) {
+            samples.push_back((static_cast<u32>(static_cast<u16>(left)) << 16) | static_cast<u16>(right));
+        };
+        system.bus.write(0x2000, 4, 0x12345678);
+        system.bus.write(0x2004, 4, 0x23456789);
+        system.bus.pif[0x7c0] = 0xfe;
+        system.bus.write(0x04800000, 4, 0x2000);
+        system.bus.write(0x04800004, 4, 0x1fc007c0);
+        system.bus.write(0x04500010, 4, 1103);
+        system.bus.write(0x04500008, 4, 1);
+        system.bus.write(0x04500000, 4, 0x2000);
+        system.bus.write(0x04500004, 4, 8);
+        if (direct_bus)
+            system.bus.tick(20000);
+        else
+            system.advance(30000);
+        CHECK_EQ(samples.size(), 2U);
+        CHECK_EQ(samples[0], 0x12345678U);
+        CHECK_EQ(samples[1], 0x23456789U);
+        CHECK_EQ(system.bus.read(0x2000, 4), 0xfe000000U);
+    }
+}
+
+TEST(rcp_audio_callbacks_observe_their_sample_clock) {
+    System system;
+    test::initialize_memory(system);
+    std::vector<u64> clocks;
+    system.bus.audio_output = [&](s16, s16) { clocks.push_back(system.bus.read(0x04100010, 4)); };
+    system.bus.write(0x04500010, 4, 7);
+    system.bus.write(0x04500008, 4, 1);
+    system.bus.write(0x04500000, 4, 0x2000);
+    system.bus.write(0x04500004, 4, 8);
+    system.advance(36);
+    CHECK_EQ(clocks.size(), 2U);
+    CHECK_EQ(clocks[0], 11U);
+    CHECK_EQ(clocks[1], 21U);
+    CHECK_EQ(system.bus.read(0x04100010, 4), 24U);
+}
+
+TEST(rcp_sp_dma_finishes_before_a_later_si_read_of_ram) {
+    for (bool split : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        system.bus.write(0x04000000, 4, 0xfe123456);
+        system.bus.write(0x04000004, 4, 0x23456789);
+        system.rsp.write_register(0, 0);
+        system.rsp.write_register(4, 0x2000);
+        system.rsp.write_register(0x0c, 7);
+        system.bus.write(0x04800000, 4, 0x2000);
+        system.bus.write(0x04800010, 4, 0x1fc007c0);
+        if (split) {
+            for (unsigned cycle = 0; cycle < 7500; ++cycle)
+                system.advance(1);
+        } else {
+            system.advance(7500);
+        }
+        CHECK_EQ(read_be32(system.bus.pif.data() + 0x7c0), 0xfe123456U);
+        CHECK_EQ(read_be32(system.bus.pif.data() + 0x7c4), 0x23456789U);
+    }
+}
+
+TEST(rcp_rsp_dma_does_not_overtake_earlier_rsp_instructions) {
+    for (bool split : {false, true}) {
+        System system;
+        test::initialize_memory(system);
+        system.bus.write(0x04000000, 4, 0x11112222);
+        system.bus.write(0x2000, 4, 0x33334444);
+        system.bus.write(0x04001000, 4, 0x8c010000); // LW at, 0(zero)
+        system.bus.write(0x04001004, 4, 0xac010008); // SW at, 8(zero)
+        system.bus.write(0x04001008, 4, 0x0000000d);
+        system.rsp.write_register(0, 0);
+        system.rsp.write_register(4, 0x2000);
+        system.rsp.write_register(8, 7);
+        system.rsp.write_register(0x10, 1);
+        if (split) {
+            for (unsigned cycle = 0; cycle < 3; ++cycle)
+                system.rsp.tick(1);
+        } else {
+            system.rsp.tick(3);
+        }
+        CHECK_EQ(system.bus.read(0x04000000, 4), 0x33334444U);
+        CHECK_EQ(system.bus.read(0x04000008, 4), 0x11112222U);
+    }
 }

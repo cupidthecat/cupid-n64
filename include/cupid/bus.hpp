@@ -71,8 +71,12 @@ class Bus {
 
   private:
     friend class Rdp;
+    friend class System;
 
     System& system_;
+
+    [[nodiscard]] u64 next_event() const;
+    void tick_devices(u64 rcp_cycles);
 
     u32 open_bus_{};
     u32 mi_mode_{};

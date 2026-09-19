@@ -26,6 +26,9 @@ class Rsp {
     u32 pc{};
 
   private:
+    friend class System;
+    [[nodiscard]] u64 next_dma_event() const;
+
     struct Vector {
         std::array<u8, 16> byte{};
     };

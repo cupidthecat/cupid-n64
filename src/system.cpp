@@ -50,6 +50,7 @@ void System::advance(u64 cpu_cycles) {
     rcp_fraction_ = fraction % 3;
     while (rcp_cycles != 0) {
         u64 elapsed = rsp.running() ? 1 : rcp_cycles;
+        elapsed = std::min({elapsed, rsp.next_dma_event(), bus.next_event()});
         if (const u64 write_event = cpu.next_buffered_write(); write_event != 0)
             elapsed = std::min(elapsed, write_event);
         bus.tick(elapsed);

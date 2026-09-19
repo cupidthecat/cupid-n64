@@ -364,7 +364,9 @@ bool Bus::interrupt_pending() const {
     return (mi_interrupt_ & mi_mask_) != 0;
 }
 
-void Bus::tick(u64 rcp_cycles) {
+void Bus::tick_devices(u64 rcp_cycles) {
+    rdp.tick(rcp_cycles);
+    tick_vi(rcp_cycles);
     if (rcp_cycles == 0)
         return;
 
@@ -390,10 +392,6 @@ void Bus::tick(u64 rcp_cycles) {
             eeprom_busy_counter_ -= rcp_cycles;
     }
     tick_ai(rcp_cycles);
-
-    tick_vi(rcp_cycles);
-
-    rdp.tick(rcp_cycles);
 }
 
 bool Bus::load_rom(std::vector<u8> data, std::string& error) {

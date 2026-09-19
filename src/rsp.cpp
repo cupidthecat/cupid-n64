@@ -67,10 +67,16 @@ void Rsp::reset() {
 }
 
 void Rsp::tick(u64 rcp_cycles) {
-    tick_dma(rcp_cycles);
-    for (u64 cycle = 0; cycle < rcp_cycles && !halted_; ++cycle) {
+    while (rcp_cycles != 0 && !halted_) {
+        tick_dma(1);
         step();
+        --rcp_cycles;
     }
+    tick_dma(rcp_cycles);
+}
+
+u64 Rsp::next_dma_event() const {
+    return dma_busy_ ? dma_cycles_until_row_ : std::numeric_limits<u64>::max();
 }
 
 u8 Rsp::dmem_read8(u32 address) const {
