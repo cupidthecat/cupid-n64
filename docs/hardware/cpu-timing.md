@@ -40,8 +40,28 @@ Standalone instruction helpers have no younger decode stage and use zero for CE.
 branch delay slots, stale instruction-cache contents, suppressed younger faults,
 and destination preservation.
 
+## Uncached RDRAM reads
+
+The uncached read path distinguishes RDRAM from device registers after address
+translation. Reads below physical `0x03f00000` use a nominal 31-cycle memory wait.
+With one instruction-issue cycle, an uncached word load takes 32 CPU cycles when
+instruction fetch hits and no older write is pending. This baseline follows the
+cartridge suite's VI-disabled word-load measurement. It is not a complete model
+of the RDRAM bus protocol.
+
+The CPU drains older buffered stores before issuing the read. The wait advances
+Count and the connected hardware clocks before the CPU samples the returned
+value. Address and translation faults occur before the memory request. Cached
+accesses retain their separate hit and refill paths; device registers do not
+incur the nominal RAM wait.
+
+`tests/cpu/test_memory_timing.cpp` checks all eight 1 MiB banks, translated
+uncached addresses, clock advancement, Compare events during the wait, device
+reads, cache behavior, and fault priority.
+
 ## Current limits
 
-The extended cartridge suite still detects inaccurate RDRAM read and cache-miss
-timing. Passing the default cartridge suite does not establish cycle accuracy for
-these paths.
+The memory model does not yet account for refresh, row changes, or competition
+between memory users. The extended cartridge suite still detects inaccurate
+cache-miss timing and an uncached read sharing VI's bank. Passing the default
+cartridge suite does not establish cycle accuracy for these paths.

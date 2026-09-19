@@ -137,7 +137,9 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         physical ^= 8U - width;
     if (!cached) {
         drain_write_buffer();
-        add_cycles(4);
+        // RDRAM must return a memory response before the load can retire. Device
+        // registers use a separate path and do not incur this nominal RAM delay.
+        add_cycles(physical < 0x03f00000U ? 31 : 4);
         synchronize();
         value = system_.bus.read(physical, width);
         return !frozen;
