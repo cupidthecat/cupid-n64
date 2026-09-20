@@ -53,9 +53,10 @@ void System::advance(u64 cpu_cycles) {
         elapsed = std::min({elapsed, rsp.next_dma_event(), bus.next_event()});
         if (const u64 write_event = cpu.next_buffered_write(); write_event != 0)
             elapsed = std::min(elapsed, write_event);
-        bus.tick(elapsed);
+        bus.tick_devices(elapsed);
         rsp.tick(elapsed);
         cpu.tick_write_buffer(elapsed);
+        bus.dispatch_outputs();
         rcp_cycles -= elapsed;
     }
 }

@@ -94,7 +94,13 @@ void Bus::tick_vi(u64 rcp_cycles) {
         vi_line_period_ = vi_line_cycles();
         if (video_output_ && (vi_current_ >> 1) == (vi_[10] >> 17)) {
             const auto output = video_output_;
-            (*output)(scan_video());
+            pending_outputs_.emplace_back([this, output, field = scan_video()]() mutable {
+                (*output)(std::move(field));
+                // Continue a zero-duration leap unless the callback reset video timing.
+                if (vi_line_period_)
+                    tick_vi(0);
+            });
+            break;
         }
     }
 }

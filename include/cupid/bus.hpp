@@ -7,6 +7,7 @@
 #include "cupid/vi.hpp"
 
 #include <array>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -85,6 +86,9 @@ class Bus {
 
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);
+    void dispatch_outputs();
+    std::deque<std::function<void()>> pending_outputs_;
+    bool output_delivery_active_{};
 
     u32 open_bus_{};
     u32 mi_mode_{};
@@ -109,6 +113,7 @@ class Bus {
     u64 ai_clock_rate_{};
     u64 ai_clock_period_{};
     bool ai_clock_started_{};
+    bool ai_boundary_pending_{};
     bool ai_dac_rate_written_{};
     bool ai_address_carry_{};
     u64 pi_dma_counter_{};

@@ -11,9 +11,21 @@ scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
 store, or peripheral event.
 
 Peripheral deadlines include PI and SI completion, EEPROM busy expiry, and audio
-samples. `Bus::tick` also honors these deadlines when called directly. Device
-clocks advance before event callbacks, so an audio callback observes its sample's
-DP clock rather than the beginning or end of a larger CPU batch.
+samples. `Bus::tick` also honors these deadlines when called directly. Audio and
+video output are queued while devices advance, then delivered after the boundary
+finishes. In `System::advance`, that includes SP execution/DMA and buffered CPU
+stores. Direct `Bus::tick` calls deliver after the bus devices finish.
+
+Callbacks observe the boundary's DP clock and completed device state. A transfer
+started by a callback retains its full delay; it cannot consume cycles from
+before the write. Video callbacks can observe PI and SP completion at the same
+clock. Video snapshots and audio samples retain the data captured during their
+device stage, even if a later device stage changes memory before delivery.
+
+A zero-duration VI leap resumes after the preceding field callback, without
+advancing any other device clock again. This preserves the callback's CURRENT
+value and lets its register writes affect the following line. Reset discards
+queued output. Callbacks must not recursively advance the system.
 
 Audio deadlines use the period latched for the active DAC interval. If video
 callbacks are registered, idle DAC boundaries also bound the advance so a callback
@@ -28,6 +40,12 @@ batch before executing those instructions.
 
 `tests/rcp/test_synchronization.cpp` compares large and one-cycle advances,
 checks SP/SI/audio ordering, and samples the DP clock at audio and RSP events.
+`test_output_scheduling.cpp` checks callback-started PI DMA, PI/SI I/O, SI
+payload visibility, and SP DMA from both video and audio output. It also checks
+coincident DAC starts, buffered CPU divider-write ordering, completion visibility
+at the callback boundary, and reset with output pending. Traces cover direct bus
+and CPU-driven advances, bulk and single-cycle calls, and PI deadlines in both
+video regions.
 
 The scheduler orders events using each device's existing transfer model. It does
 not yet arbitrate shared RDRAM bandwidth or model every DMA bus beat. SP transfers

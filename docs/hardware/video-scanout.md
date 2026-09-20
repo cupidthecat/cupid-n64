@@ -17,8 +17,13 @@ the end of the field.
 The scheduler stops at VI line boundaries while a callback is registered and
 video is active, including when RI refresh is disabled. Callbacks observe the
 updated CURRENT register, interrupt state, and DP clock at that boundary.
-The next horizontal period is already latched. A callback may write registers
-or replace/remove itself, but must not recursively advance or reset the system.
+Delivery waits for the enclosing device boundary to finish, including SP work
+and buffered CPU stores during CPU-driven advances. PI and SP completions at
+that clock are visible to the callback. The field retains the pixels captured
+at the VI stage. Transfers started during delivery begin at the callback's clock.
+The next horizontal period is already latched. A callback may write registers,
+replace/remove itself, or reset the system; reset discards undelivered output.
+Callbacks must not recursively advance the system.
 Reset preserves the registered callback and restarts video timing. Registration
 does not deliver an immediate field or replay a missed boundary.
 

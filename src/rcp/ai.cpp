@@ -11,6 +11,7 @@ void Bus::reset_ai_clock() {
     ai_clock_rate_ = static_cast<u64>(system_.video_frequency()) * 44100;
     ai_clock_period_ = 62500000ULL * system_.video_frequency();
     ai_clock_started_ = false;
+    ai_boundary_pending_ = false;
     ai_dac_rate_written_ = false;
 }
 
@@ -56,7 +57,7 @@ void Bus::write_ai(u32 offset, u32 value) {
     case 4:
         ai_[4] = value & 0x3fffU;
         ai_dac_rate_written_ = true;
-        if (!ai_clock_started_)
+        if (!ai_clock_started_ || (output_delivery_active_ && ai_boundary_pending_))
             latch_ai_period();
         return;
     case 5:
@@ -91,7 +92,10 @@ void Bus::sample_ai() {
         }
     }
     if (consumed && audio_output)
-        audio_output(static_cast<s16>(sample >> 16U), static_cast<s16>(sample));
+        pending_outputs_.emplace_back([this, sample] {
+            if (audio_output)
+                audio_output(static_cast<s16>(sample >> 16U), static_cast<s16>(sample));
+        });
 }
 
 void Bus::tick_ai(u64 rcp_cycles) {
@@ -103,6 +107,7 @@ void Bus::tick_ai(u64 rcp_cycles) {
         rcp_cycles -= chunk;
         while (ai_counter_ >= ai_clock_period_) {
             ai_counter_ -= ai_clock_period_;
+            ai_boundary_pending_ = true;
             sample_ai();
             latch_ai_period();
             if (ai_fifo_count_ == 0 || ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)) {

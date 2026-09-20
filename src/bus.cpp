@@ -24,6 +24,7 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 }
 
 void Bus::reset() {
+    pending_outputs_.clear();
     memory.reset();
 
     std::fill(pif.begin() + PifRamOffset, pif.end(), u8{0});
@@ -375,6 +376,8 @@ bool Bus::interrupt_pending() const {
 }
 
 void Bus::tick_devices(u64 rcp_cycles) {
+    if (rcp_cycles != 0)
+        ai_clock_started_ = true;
     rdp.tick(rcp_cycles);
     ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
     tick_vi(rcp_cycles);

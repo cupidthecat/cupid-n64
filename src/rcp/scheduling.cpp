@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 namespace cupid {
 
@@ -28,13 +29,28 @@ u64 Bus::next_event() const {
 }
 
 void Bus::tick(u64 rcp_cycles) {
-    if (rcp_cycles != 0)
-        ai_clock_started_ = true;
     while (rcp_cycles != 0) {
         const u64 elapsed = std::min(rcp_cycles, next_event());
         tick_devices(elapsed);
+        dispatch_outputs();
         rcp_cycles -= elapsed;
     }
+}
+
+void Bus::dispatch_outputs() {
+    struct DeliveryScope {
+        bool& active;
+        ~DeliveryScope() {
+            active = false;
+        }
+    } scope{output_delivery_active_};
+    output_delivery_active_ = true;
+    while (!pending_outputs_.empty()) {
+        auto output = std::move(pending_outputs_.front());
+        pending_outputs_.pop_front();
+        output();
+    }
+    ai_boundary_pending_ = false;
 }
 
 } // namespace cupid

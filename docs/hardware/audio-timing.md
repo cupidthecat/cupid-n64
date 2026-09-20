@@ -43,8 +43,17 @@ DMA disabled. Reads outside STATUS mirror the active remaining length.
 length updates, FIFO retirement or handoff, and handoff interrupt. A callback
 therefore sees the remaining length and available FIFO slot for that boundary.
 It can acknowledge the handoff interrupt or enqueue a new buffer immediately;
-those actions are not overwritten by unfinished sample processing. Retiring a
-zero-length buffer alone does not deliver a sample.
+those actions are not overwritten by unfinished sample processing. Delivery
+waits until the enclosing device boundary, including SP work in CPU-driven
+advances, has finished. A transfer started by the callback begins at that clock.
+Retiring a zero-length buffer alone does not deliver a sample.
+
+If a video callback queues audio exactly at a DAC boundary, the new buffer joins
+the following interval. It cannot supply the sample already consumed at that
+clock. Divider writes during output delivery at a DAC boundary select the next
+period; writes at other output boundaries preserve the current interval.
+Buffered CPU writes retain their device-stage order after the DAC latch and do
+not use the output callback's rate-selection rule.
 
 The scheduler stops at sample deadlines so callbacks observe the corresponding
 DP clock. While video callbacks are registered, idle DAC boundaries also
