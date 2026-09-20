@@ -49,6 +49,7 @@ class Bus {
     [[nodiscard]] u64 rdram_refresh_wait() const {
         return ri_refresh_counter_;
     }
+    [[nodiscard]] u64 rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const;
 
     [[nodiscard]] u8 read_ram_byte(u32 address) const;
     void write_ram_byte(u32 address, u8 value);

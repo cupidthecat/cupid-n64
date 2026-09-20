@@ -59,18 +59,26 @@ value. Address and translation faults occur before the memory request. Cached
 accesses retain their separate hit and refill paths; device registers do not
 incur the nominal RAM wait.
 
+Blocking CPU transfers also account for refresh that begins after the request was
+issued but before its nominal response time. The transfer reaches the horizontal
+boundary, RI closes the open rows, and the CPU waits through the selected clean or
+dirty recovery interval before the result becomes visible. The same clock advance
+continues to drive Count, Compare, and connected devices.
+
 `tests/cpu/test_memory_timing.cpp` checks all eight 1 MiB banks, translated
 uncached addresses, clock advancement, Compare events during the wait, device
-reads, cache behavior, and fault priority.
+reads, cache behavior, and fault priority. `test_rdram_refresh_overlap.cpp`
+checks refresh beginning inside a transfer, Compare advancement, and
+bulk-versus-single-cycle scheduler advances.
 
 ## Current limits
 
-[RI refresh](rdram-interface.md) adds a wait when a blocking CPU memory request
-arrives during refresh recovery. It does not yet model row-change delays,
-shared-memory arbitration, or the overlap of a request with a later refresh.
-Buffered stores and DMA do not yet observe this wait.
+[RI refresh](rdram-interface.md) is modeled when recovery is already active or
+begins before a blocking CPU request's nominal response. Row-change delays and
+shared-memory arbitration remain incomplete. Buffered stores and DMA engines do
+not yet share this transaction timing, and per-chip RAS/minimum-interval effects
+and the RI optimize bit are not modeled.
 
-The extended cartridge suite still detects inaccurate cache-miss timing and an
-uncached read sharing VI's bank. Refresh produces variable access times, but
-the measured averages remain too low. Passing the default cartridge suite does
-not establish cycle accuracy for these paths.
+The extended cartridge suite still detects cache-miss timing and the uncached
+read that shares VI's bank. The refresh-overlap model changes those averages but
+does not by itself establish the missing arbitration behavior.

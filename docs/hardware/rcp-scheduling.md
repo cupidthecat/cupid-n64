@@ -55,6 +55,12 @@ cannot change an earlier audio sample. The RSP's direct tick path likewise
 interleaves DMA progress with instructions instead of completing a whole DMA
 batch before executing those instructions.
 
+Blocking CPU RDRAM transfers consult the existing VI-line deadline before their
+response completes. A transfer that crosses an enabled refresh boundary includes
+that recovery interval, while the scheduler still processes the boundary and
+device clocks in normal event order. The overlap check does not add a separate
+scheduler event.
+
 `tests/rcp/test_synchronization.cpp` compares large and one-cycle advances,
 checks SP/SI/audio ordering, and samples the DP clock at audio and RSP events.
 `test_output_scheduling.cpp` checks callback-started PI DMA, PI/SI I/O, SI
@@ -69,4 +75,5 @@ not yet arbitrate shared RDRAM bandwidth or model every DMA halfword edge. SP
 transfers remain row-based. PI transfers stop at cartridge page and internal
 buffer progress deadlines so memory, cartridge side effects, address registers,
 and completion state cannot move ahead of the sampled clock. These limits are
-distinct from the batching errors covered by the scheduling regressions.
+distinct from the blocking CPU refresh timing and batching rules covered by the
+scheduling regressions.

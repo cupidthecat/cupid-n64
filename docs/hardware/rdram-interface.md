@@ -40,6 +40,12 @@ RDRAM recovery. Cache hits and device-register reads do not wait either.
 Speculative instruction-fetch waits remain deferred until after the older
 instruction samples its operands and device registers.
 
+A blocking CPU transaction also checks the next horizontal boundary before it
+starts its nominal response interval. If enabled refresh begins inside that
+interval, the request includes the clean or dirty recovery time selected from
+`RI_REFRESH`. This makes a large CPU clock advance produce the same completed
+request and refresh state as one-cycle bus advances.
+
 Disabling refresh prevents later requests but does not cancel a recovery already
 in progress. Reset cancels recovery. The [RI hardware notes](https://n64brew.dev/wiki/RDRAM_Interface)
 describe refresh control and delay fields; the [VI register notes](https://n64brew.dev/wiki/Video_Interface)
@@ -70,13 +76,15 @@ boundaries in both regions, clean and dirty delays, video-off behavior, tick-siz
 independence, reset, and blocking CPU transactions, including speculative fetches
 and explicit instruction-cache transfers. The cache-operation cases check all
 32 transferred bytes, Count advancement, both video regions, and operations that
-do not access RDRAM storage.
+do not access RDRAM storage. `tests/cpu/test_rdram_refresh_overlap.cpp` adds
+in-flight refresh, Compare, and tick-partition coverage for blocking CPU
+transfers.
 
 Row-change delays and shared-memory arbitration remain incomplete. Buffered
-stores and DMA transfers do not yet wait for refresh; CPU transfer delays still
-use nominal values, without modeling their overlap with a newly arriving
-refresh. Per-chip refresh-row registers, multibank timing, and the optimize bit
-are not modeled. Coalescing requests under unusually short horizontal periods
-is not hardware-validated. Unexpected negative acknowledgements caused by
-deliberately desynchronizing RI and the chips are also not modeled. The extended
-cartridge suite's memory-timing failures remain open; see [CPU timing](cpu-timing.md).
+stores and DMA transfers do not yet wait for refresh. Per-chip refresh-row
+registers, detailed RAS/minimum-interval timing, multibank overlap, and the
+optimize bit are not modeled. Coalescing requests under unusually short
+horizontal periods is not hardware-validated. Unexpected negative
+acknowledgements caused by deliberately desynchronizing RI and the chips are also
+not modeled. See [CPU timing](cpu-timing.md) for the remaining optional timing
+failures.
