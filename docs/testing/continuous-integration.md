@@ -83,8 +83,20 @@ files are not copied into the report directory.
 ## Hosted checks
 
 The workflow retains these report directories as artifacts for 14 days, even
-after a validation failure. It does not upload the working directory or input
-images. Missing report files also fail the artifact step.
+after a validation failure. Missing report files also fail the artifact step.
+
+After building the cartridges, `accuracy-test-inputs` retains the default and
+extended ROMs and their ELF executables for 14 days. It includes the test
+license, Cargo manifests and lockfile, target/linker configuration, pinned
+toolchain selection, and compiler/converter versions. The explicit artifact
+paths exclude PIF firmware. Uploading before validation preserves these inputs
+even when a later test fails.
+
+Download the cartridge artifact from the same run as the validation report.
+Check each ROM's SHA-256 against `inputs` in `report.json` before replaying it.
+Use the matching ELF when disassembling a failed test. Rebuilding the same
+source revision does not by itself establish identical machine code or data
+layout; see [cartridge build layout](cartridge-build-layout.md).
 
 Cartridge checks require the private `N64_PIF_NTSC` repository secret. An
 untrusted fork run cannot receive that secret and will report the missing

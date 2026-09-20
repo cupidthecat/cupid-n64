@@ -81,7 +81,9 @@ shared-memory arbitration remain incomplete. Buffered stores and DMA engines do
 not yet share this transaction timing, and per-chip RAS/minimum-interval effects
 and the RI optimize bit are not modeled.
 
-The extended cartridge suite now passes the VI-disabled cache-miss timing cases.
+The recorded Windows-built extended image passes the VI-disabled cache-miss
+timing cases. Linux-built images still expose failures in that group, as
+described in the [cartridge build comparison](../testing/cartridge-build-layout.md).
 Two VI-enabled cache-miss averages and the uncached read that shares VI's bank
-remain, so refresh timing by itself does not establish the missing arbitration
+also fail. Refresh timing by itself does not establish the missing arbitration
 behavior.

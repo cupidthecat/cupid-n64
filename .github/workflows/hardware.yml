@@ -89,11 +89,34 @@ jobs:
         working-directory: .work/nemu64-test
         run: |
           cargo +stable install nust64 --version 0.4.1 --locked --root ../tools
+          rustc --version --verbose > ../test-build-toolchain.txt
+          cargo --version >> ../test-build-toolchain.txt
+          ../tools/bin/nust64 --version >> ../test-build-toolchain.txt
           cargo build --release --locked --target-dir target-default
           ../tools/bin/nust64 --elf target-default/mips-nintendo64-none/release/n64-systemtest
           cargo build --release --locked --target-dir target-extended \
             --features timing,cycle,cop0hazard,poorly_understood_quirk,experimental_rdp
           ../tools/bin/nust64 --elf target-extended/mips-nintendo64-none/release/n64-systemtest
+      - name: Retain cartridge build inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: accuracy-test-inputs
+          include-hidden-files: true
+          path: |
+            .work/test-build-toolchain.txt
+            .work/nemu64-test/LICENSE
+            .work/nemu64-test/Cargo.lock
+            .work/nemu64-test/Cargo.toml
+            .work/nemu64-test/.cargo/config.toml
+            .work/nemu64-test/rust-toolchain.toml
+            .work/nemu64-test/mips-nintendo64-none.json
+            .work/nemu64-test/linker.ld
+            .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest
+            .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest.z64
+            .work/nemu64-test/target-extended/mips-nintendo64-none/release/n64-systemtest
+            .work/nemu64-test/target-extended/mips-nintendo64-none/release/n64-systemtest.z64
+          if-no-files-found: error
+          retention-days: 14
       - name: Install formatter
         id: formatter
         run: |
