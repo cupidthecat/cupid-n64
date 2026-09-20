@@ -57,6 +57,7 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [instruction fetch ordering](docs/hardware/instruction-fetch.md),
 [video timing](docs/hardware/video-timing.md),
+[video field snapshots](docs/hardware/video-scanout.md),
 [RCP event scheduling](docs/hardware/rcp-scheduling.md),
 [RDRAM interface state](docs/hardware/rdram-interface.md),
 [RDP fill rectangles and triangles](docs/hardware/rdp-fill.md),

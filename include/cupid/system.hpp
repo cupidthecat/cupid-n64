@@ -17,6 +17,9 @@ class System {
 
   public:
     explicit System(VideoStandard video_standard = VideoStandard::Ntsc);
+    [[nodiscard]] VideoStandard video_standard() const {
+        return video_standard_;
+    }
     [[nodiscard]] u32 video_frequency() const {
         return video_standard_ == VideoStandard::Pal ? 49656530U : 48681818U;
     }

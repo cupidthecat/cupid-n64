@@ -4,6 +4,7 @@
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
 #include "cupid/types.hpp"
+#include "cupid/vi.hpp"
 
 #include <array>
 #include <functional>
@@ -43,6 +44,7 @@ class Bus {
     bool read_cache(u32 physical, std::span<u8> bytes);
     bool write_cache(u32 physical, std::span<const u8> bytes);
     void tick(u64 rcp_cycles);
+    [[nodiscard]] VideoField scan_video() const;
     [[nodiscard]] u64 rdram_refresh_wait() const {
         return ri_refresh_counter_;
     }
