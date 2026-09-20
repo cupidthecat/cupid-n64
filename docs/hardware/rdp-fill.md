@@ -1,6 +1,6 @@
 # RDP fill rectangles
 
-`src/rdp/fill.cpp` handles FillRectangle commands in fill cycle. The command
+`src/rdp/fill.cpp` handles FillRectangle and textured rectangle commands in fill cycle. The command
 processor retains color-image state, the fill word, and the scissor rectangle.
 SetColorImage has a ten-bit width-minus-one field and a 24-bit address field;
 reserved bits do not contribute to either value.
@@ -51,8 +51,8 @@ both fields, reset, width and address masks, all format encodings, odd strides,
 byte selection, hidden bits, and untouched neighboring pixels. The triangle test
 checks that field selection also suppresses its framebuffer writes.
 
-Four-bit destinations and FillRectangle in one-cycle, two-cycle, or copy mode
-remain unsupported. Textured rectangles, texture sampling, and the complete
-color/depth pipeline are separate unfinished work. These fill tests do not
-establish their correctness. Drawing is synchronous and does not model RDRAM
-contention or per-pixel DP timing.
+Four-bit fill destinations halt command processing. Other invalid fill states
+and [copy-cycle rectangles](rdp-copy.md) have separate tests. One-cycle and
+two-cycle rectangles and the complete color/depth pipeline remain unfinished.
+These fill tests do not establish their correctness. Drawing is synchronous
+and does not model RDRAM contention or per-pixel DP timing.

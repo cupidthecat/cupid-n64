@@ -336,6 +336,15 @@ void Rdp::run_commands() {
 
 void Rdp::execute(u8 opcode) {
     const u64 command = buffered_word(0);
+    const bool draw =
+        (opcode >= 0x08 && opcode <= 0x0f) || opcode == 0x24 || opcode == 0x25 || opcode == 0x36;
+    const unsigned cycle = static_cast<unsigned>((other_modes_ >> 52U) & 3U);
+    if (draw && ((cycle == 3U && (color_image_size_ == 0U || (other_modes_ & 0x50U) != 0 ||
+                                  ((other_modes_ & 0x20U) != 0 && (other_modes_ & 4U) == 0))) ||
+                 (cycle == 2U && color_image_size_ == 3U))) {
+        halt_commands();
+        return;
+    }
     switch (opcode & 0x3fU) {
     case 0x00:
     case 0x01:
@@ -374,6 +383,14 @@ void Rdp::execute(u8 opcode) {
     case 0x08:
         fill_triangle();
         return;
+    case 0x24:
+    case 0x25:
+    case 0x36:
+        if (((other_modes_ >> 52U) & 3U) == 3U)
+            fill_rectangle(command);
+        else
+            copy_rectangle(command, opcode == 0x25);
+        return;
     case 0x29:
         bus_.set_interrupt(5, true);
         buffer_busy_ = 0;
@@ -390,9 +407,6 @@ void Rdp::execute(u8 opcode) {
         return;
     case 0x2f:
         other_modes_ = command & 0x00ffffffffffffffULL;
-        return;
-    case 0x36:
-        fill_rectangle(command);
         return;
     case 0x30:
     case 0x33:

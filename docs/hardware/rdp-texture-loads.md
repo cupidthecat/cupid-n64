@@ -88,9 +88,9 @@ freeze, reset, and FullSync ordering.
 
 ## Remaining work
 
-Texture sampling and textured drawing are not implemented by the load path, so
-these tests do not establish rendered-pixel correctness or synchronization with
-an asynchronous rasterizer. Some size combinations remain unsupported: 16-bit
+[Copy-cycle rectangles](rdp-copy.md) read the loaded TMEM through tile descriptors.
+The load tests alone do not establish rendered-pixel correctness or synchronization
+with an asynchronous rasterizer. Some size combinations remain unsupported: 16-bit
 sources into 4-bit tiles, 32-bit sources into 4- or 8-bit tiles outside LoadTLUT,
 32-bit palette destinations, and non-RGBA 32-bit tiles. Those combinations leave
 TMEM unchanged; this is an implementation limit, not a claim that hardware ignores
