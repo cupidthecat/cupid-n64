@@ -65,6 +65,9 @@ class Bus {
         return flash_chip_;
     }
     void set_controller_state(unsigned port, ControllerState state);
+    [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
+        return controllers_;
+    }
 
     std::vector<u8> rdram;
     Rdram memory{rdram};
@@ -79,7 +82,6 @@ class Bus {
     std::vector<u8> flashram;
     std::vector<u8> eeprom;
     std::array<std::array<u8, 32 * 1024>, 4> controller_paks{};
-    std::array<ControllerState, 4> controllers{};
 
     Rdp rdp;
 
@@ -88,6 +90,8 @@ class Bus {
     friend class System;
 
     System& system_;
+    std::array<ControllerState, 4> controllers_{};
+    std::array<bool, 4> controller_pak_changed_{true, true, true, true};
 
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);
@@ -225,6 +229,8 @@ class Bus {
     void process_pif_control();
     void execute_joybus(unsigned channel, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
                         bool& overflow);
+    void execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
+                            bool& overflow);
     void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
     void tick_eeprom(u64 cycles);
     [[nodiscard]] static u8 pak_crc(const u8* data);

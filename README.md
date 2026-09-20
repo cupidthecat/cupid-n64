@@ -73,7 +73,8 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [cartridge bus transactions](docs/hardware/cartridge-bus.md),
 [FlashRAM](docs/hardware/flash-memory.md),
 [EEPROM](docs/hardware/eeprom.md),
-[Joybus packets](docs/hardware/joybus.md), and
+[Joybus packets](docs/hardware/joybus.md),
+[Controller Pak detection](docs/hardware/controller-pak.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
 

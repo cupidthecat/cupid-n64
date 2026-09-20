@@ -430,11 +430,6 @@ void Bus::set_save_type(SaveType type) {
         eeprom.assign(2048, 0xff);
 }
 
-void Bus::set_controller_state(unsigned port, ControllerState state) {
-    if (port < controllers.size())
-        controllers[port] = state;
-}
-
 void Bus::emit_isviewer() {
     if (!debug_output)
         return;

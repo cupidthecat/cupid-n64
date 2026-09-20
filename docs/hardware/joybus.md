@@ -19,9 +19,9 @@ reaches the control byte or extends beyond it does not execute.
 
 Flagged packets still consume their complete send and receive areas. Their
 response bytes and receive-status flags remain unchanged. Bit 7 takes priority
-when both send flags are set. Reset requests currently preserve the supported
-controller state and Controller Pak contents; the model has no additional
-device reset state. A flagged cartridge packet cannot start an EEPROM write.
+when both send flags are set. Reset requests preserve the supported controller
+state, Controller Pak contents, and pending detection latch. A flagged cartridge
+packet cannot start an EEPROM write.
 
 ## Replies and error flags
 
@@ -32,8 +32,10 @@ devices and unsupported commands leave the response area unchanged and set
 receive bit 7. Valid commands replace stale receive flags; a controller poll
 requesting more than four bytes sets receive bit 6 for overflow.
 
-Controller status commands `0x00` and `0xff` supply `05 00` followed by `01` for
-a present Controller Pak or `02` for no Pak. Poll command `0x01` supplies the
+Controller status commands `0x00` and `0xff` supply `05 00` followed by `03` for
+an unacknowledged Pak attachment, `01` for an acknowledged present Pak, or `02`
+for no Pak. Status acknowledges [Pak detection](controller-pak.md), including
+when the requested reply is too short to contain that byte. Poll command `0x01` supplies the
 button word followed by the signed X and Y stick bytes. Short requests return
 the corresponding prefix, including a zero-length reply. Controller Pak
 commands retain their address/data CRC and data-access rules; extra reply bytes
@@ -52,7 +54,7 @@ deadlines for normal, reset, and skipped cartridge requests.
 
 Packet parsing still runs as part of the core's command execution path. It does
 not reproduce the PIF's internal instruction timing or retained channel
-descriptors. Serial delays remain estimates, and accessory insertion latches,
-additional accessory types, and hardware transaction captures need more work.
+descriptors. Serial delays remain estimates; additional accessory types,
+broader Pak behavior, and hardware transaction captures need more work.
 Issues #28 and #29 remain open for those requirements. See
 [serial-interface timing](serial-interface.md).

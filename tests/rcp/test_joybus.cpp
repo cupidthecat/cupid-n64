@@ -17,6 +17,10 @@ struct JoybusFixture {
     JoybusFixture() {
         test::initialize_memory(system);
         clear();
+        for (unsigned port = 0; port < 4; ++port)
+            packet({0}, 3);
+        execute();
+        clear();
     }
 
     void clear() {

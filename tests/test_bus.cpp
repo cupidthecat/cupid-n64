@@ -121,6 +121,12 @@ TEST(bus_controller_pak_rejects_bad_address_crc_without_writing) {
     test::initialize_memory(system);
     auto& bus = system.bus;
     bus.controller_paks[0][0] = 0xa5;
+    std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
+    bus.pif[0x7c0] = 1;
+    bus.pif[0x7c1] = 3;
+    bus.pif[0x7c6] = 0xfe;
+    run_si_read(bus);
+    CHECK_EQ(bus.read_ram_byte(0x2005), 3U);
 
     auto prepare_write = [&](u8 address_crc) {
         std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
