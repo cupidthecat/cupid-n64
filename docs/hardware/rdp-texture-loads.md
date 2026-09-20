@@ -88,7 +88,8 @@ freeze, reset, and FullSync ordering.
 
 ## Remaining work
 
-[Copy-cycle rectangles](rdp-copy.md) read the loaded TMEM through tile descriptors.
+[Copy-cycle primitives](rdp-copy.md) and
+[one-cycle/two-cycle rectangles](rdp-texture-sampling.md) read loaded TMEM through tile descriptors.
 The load tests alone do not establish rendered-pixel correctness or synchronization
 with an asynchronous rasterizer. Some size combinations remain unsupported: 16-bit
 sources into 4-bit tiles, 32-bit sources into 4- or 8-bit tiles outside LoadTLUT,

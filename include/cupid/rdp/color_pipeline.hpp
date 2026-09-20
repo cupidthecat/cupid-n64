@@ -37,6 +37,7 @@ struct RdpCombinedPixel {
 };
 
 [[nodiscard]] RdpColor rdp_unpack_color(u32 value);
+[[nodiscard]] unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles);
 [[nodiscard]] RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs,
                                            unsigned coverage, unsigned alpha_dither);
 [[nodiscard]] u8 rdp_blend_divide(unsigned numerator, unsigned denominator);

@@ -2,6 +2,7 @@
 
 #include "cupid/rdp/color_pipeline.hpp"
 #include "cupid/rdp/texture_coordinates.hpp"
+#include "cupid/rdp/texture_sampling.hpp"
 #include "cupid/rdp/tile.hpp"
 #include "cupid/types.hpp"
 
@@ -103,8 +104,10 @@ class Rdp {
     [[nodiscard]] unsigned command_length(u8 opcode) const;
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
-    void color_rectangle(u64 command);
-    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask);
+    void color_rectangle(u64 command, bool flipped);
+    [[nodiscard]] RdpColorInputs sample_color_textures(const RdpTextureCoordinates& coordinates,
+                                                       unsigned tile, unsigned inputs) const;
+    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs);
     void fill_span(unsigned y, unsigned left, unsigned right);
     void fill_copy_triangle(bool copy);
     void copy_rectangle(u64 command, bool flipped);

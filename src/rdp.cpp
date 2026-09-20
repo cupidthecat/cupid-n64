@@ -400,8 +400,8 @@ void Rdp::execute(u8 opcode) {
     case 0x36:
         if (((other_modes_ >> 52U) & 3U) == 3U)
             fill_rectangle(command);
-        else if (cycle < 2U && opcode == 0x36)
-            color_rectangle(command);
+        else if (cycle < 2U)
+            color_rectangle(command, opcode == 0x25);
         else
             copy_rectangle(command, opcode == 0x25);
         return;

@@ -1,6 +1,6 @@
 # RDP color pipeline
 
-In one-cycle and two-cycle modes, `FillRectangle` now passes through the color
+In one-cycle and two-cycle modes, rectangle commands pass through the color
 combiner and blender for RGBA16 and RGBA32 framebuffers. Primitive, environment,
 fog, and blend colors use RGBA byte order. `SetCombine`, `SetKeyR`, `SetKeyGB`,
 `SetConvert`, and the primitive LOD fraction update the color state used by
@@ -60,16 +60,15 @@ blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, alpha rejection, blending, and dither thresholds.
 
-This path currently supplies zero texel, shade, texture-LOD, and noise inputs
-for solid rectangles. Texture sampling and attribute interpolation still need
-to feed the color pipeline. Textured rectangles and all one-cycle/two-cycle
-triangles retain their earlier implementation limits. The existing unshaded
+Rectangles now supply [sampled texels and texture LOD](rdp-texture-sampling.md)
+to the combiner. Shade and noise inputs remain zero. One-cycle/two-cycle
+triangles retain their earlier implementation limits; the existing unshaded
 triangle shortcut is separate from this pipeline.
 
 Depth comparison and depth writes, color-key alpha generation, random noise
 and random dither/alpha thresholds, other framebuffer formats, and asynchronous
 rasterizer timing remain unfinished. Key center and scale can be selected by
 the combiner, but key widths do not yet affect alpha. K4 and K5 are available
-to the combiner; texture conversion still needs the sampler. These tests do
+to the combiner, while K0 through K3 feed texture conversion. These tests do
 not establish complete rendering or gameplay correctness. Issues #18 through
 #21 track the remaining sampling and rendering work.

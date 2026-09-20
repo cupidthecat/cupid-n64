@@ -133,8 +133,9 @@ wrap, perspective, alpha rejection, field selection, and partial commands.
 `tests/rdp/test_texture_coordinates.cpp` checks divider saturation, nonpositive
 W, power-of-two divisors, fractional reciprocal precision, and zero numerators.
 
-One-cycle and two-cycle textured rectangles and triangles, filtering, LOD,
-and the complete color/depth pipeline remain unfinished. Drawing is synchronous;
+[One-cycle and two-cycle textured rectangles](rdp-texture-sampling.md) now use
+the sampling and color pipelines. Triangle integration and the complete
+color/depth pipeline remain unfinished. Drawing is synchronous;
 these tests do not establish DP timing,
 RDRAM contention, or synchronization with an asynchronous rasterizer. Issues
 #16, #18, #19, and #20 track the remaining work.

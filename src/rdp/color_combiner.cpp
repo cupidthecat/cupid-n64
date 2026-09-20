@@ -93,6 +93,28 @@ RdpColor rdp_unpack_color(u32 value) {
             static_cast<s32>((value >> 8U) & 255U), static_cast<s32>(value & 255U)};
 }
 
+unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles) {
+    constexpr unsigned shifts[2][8] = {{52, 28, 47, 15, 44, 12, 41, 9}, {37, 24, 32, 6, 21, 3, 18, 0}};
+    constexpr unsigned masks[8] = {15, 15, 31, 7, 7, 7, 7, 7};
+    unsigned result = 0;
+    for (unsigned cycle = two_cycles ? 0U : 1U; cycle < 2; ++cycle) {
+        for (unsigned term = 0; term < 8; ++term) {
+            const unsigned selector = static_cast<unsigned>(combine >> shifts[cycle][term]) & masks[term];
+            unsigned texel = selector;
+            if (term == 2U && (selector == 8U || selector == 9U))
+                texel -= 7U;
+            if (texel == 1U || texel == 2U) {
+                if (two_cycles && cycle == 1U)
+                    texel = 3U - texel;
+                result |= 1U << (texel - 1U);
+            }
+            if (two_cycles && ((term == 2U && selector == 13U) || (term == 6U && selector == 0U)))
+                result |= 4U;
+        }
+    }
+    return result;
+}
+
 RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs, unsigned coverage,
                              unsigned alpha_dither) {
     RdpColor combined{};
