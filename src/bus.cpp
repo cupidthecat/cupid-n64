@@ -180,8 +180,10 @@ u32 Bus::read_rcp_word(u32 physical) {
     }
     if (physical >= 0x04100000U && physical <= 0x041fffffU)
         return rdp.read_register(physical - 0x04100000U);
-    if (physical >= 0x04200000U && physical <= 0x042fffffU)
-        return rdp.read_test_register(physical - 0x04200000U);
+    if (physical >= 0x04200000U && physical <= 0x042fffffU) {
+        const u32 offset = physical - 0x04200000U;
+        return offset < 0x10U ? rdp.read_test_register(offset) : 0;
+    }
     if (physical >= 0x04300000U && physical <= 0x043fffffU)
         return read_mi(physical - 0x04300000U);
     if (physical >= 0x04400000U && physical <= 0x044fffffU)
@@ -213,7 +215,9 @@ void Bus::write_rcp_word(u32 physical, u32 value) {
         return;
     }
     if (physical >= 0x04200000U && physical <= 0x042fffffU) {
-        rdp.write_test_register(physical - 0x04200000U, value);
+        const u32 offset = physical - 0x04200000U;
+        if (offset < 0x10U)
+            rdp.write_test_register(offset, value);
         return;
     }
     if (physical >= 0x04300000U && physical <= 0x043fffffU) {
