@@ -1,4 +1,5 @@
 #include "controller_pak_fixture.hpp"
+#include "joybus_transport.hpp"
 #include "pak_crc_oracle.hpp"
 #include "test_system.hpp"
 
@@ -163,8 +164,8 @@ TEST(mouse_motion_survives_ordinary_state_updates_in_a_mixed_device_packet) {
                                     0xcc, 0xcc, 0xcc, 0xcc, 1,    3,    6,    0xcc, 0xcc, 0xcc, 0xfe};
     std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
     std::copy(packet.begin(), packet.end(), fixture.bus.pif.begin() + 0x7c0);
-    fixture.bus.write(0x1fc007fc, 4, 1);
-    static_cast<void>(fixture.bus.read(0x1fc007fc, 4));
+    fixture.bus.joybus.configure();
+    fixture.bus.joybus.execute();
     const std::array<u8, 33> expected{1,    3,  0,  5,    0, 3,    1,    4,    1,    0x80, 0,
                                       23,   34, 1,  0x83, 0, 0xcc, 0xcc, 0xcc, 1,    4,    1,
                                       0x80, 0,  17, 0,    1, 3,    6,    0,    0x10, 0,    0xfe};
@@ -221,15 +222,10 @@ TEST(mouse_si_identification_and_motion_sampling_obey_dma_completion_boundaries)
                         const std::array<u8, 1> input{command};
                         const u8 receive = command == 0 ? 3 : 4;
                         fixture.packet(port, input, receive);
-                        fixture.bus.pif[0x7ff] = read_dma ? 0 : 1;
-                        if (!read_dma) {
-                            for (u32 index = 0; index < 64; ++index)
-                                fixture.bus.write_ram_byte(0x2000 + index, fixture.bus.pif[0x7c0 + index]);
-                            std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                        }
+                        test::configure_joybus(fixture.bus, read_dma);
                         fixture.bus.write(0x04800000, 4, 0x2000);
-                        fixture.bus.write(read_dma ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-                        const u64 rcp = read_dma ? 37020 + port * 1420 : 4065;
+                        fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+                        const u64 rcp = 37020 + port * 1420;
                         const u64 cycles = cpu_clock ? (rcp * 3 - fraction + 1) / 2 : rcp;
                         if (cpu_clock)
                             fraction = (fraction + cycles * 2) % 3;
@@ -243,7 +239,7 @@ TEST(mouse_si_identification_and_motion_sampling_obey_dma_completion_boundaries)
                             advance(cycles - 1);
                         }
                         CHECK_EQ(fixture.bus.read(0x04800018, 4) & 1U, 1U);
-                        CHECK_EQ(fixture.bus.pif[fixture.response], read_dma ? 0xccU : 0U);
+                        CHECK_EQ(fixture.bus.pif[fixture.response], 0xccU);
                         if (add_input)
                             fixture.bus.add_mouse_input(port, {false, true, 4, -2});
                         advance(1);

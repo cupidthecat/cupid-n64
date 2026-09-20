@@ -1,4 +1,5 @@
 #include "controller_pak_fixture.hpp"
+#include "joybus_transport.hpp"
 #include "pak_crc_oracle.hpp"
 #include "test_system.hpp"
 
@@ -254,15 +255,10 @@ TEST(rumble_pak_si_dma_initialization_and_motor_readback_obey_completion_boundar
                     u64 fraction = 0;
                     const auto dma = [&](std::span<const u8> input, u8 receive, bool before, bool after) {
                         fixture.packet(port, input, receive);
-                        fixture.bus.pif[0x7ff] = read_dma ? 0 : 1;
-                        if (!read_dma) {
-                            for (u32 index = 0; index < 64; ++index)
-                                fixture.bus.write_ram_byte(0x2000 + index, fixture.bus.pif[0x7c0 + index]);
-                            std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                        }
+                        test::configure_joybus(fixture.bus, read_dma);
                         fixture.bus.write(0x04800000, 4, 0x2000);
-                        fixture.bus.write(read_dma ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-                        const u64 rcp = read_dma ? 37020 + port * 1420 : 4065;
+                        fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+                        const u64 rcp = 37020 + port * 1420;
                         const u64 cycles = cpu_clock ? (rcp * 3 - fraction + 1) / 2 : rcp;
                         if (cpu_clock)
                             fraction = (fraction + cycles * 2) % 3;

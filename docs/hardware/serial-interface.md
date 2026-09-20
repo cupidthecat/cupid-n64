@@ -14,6 +14,14 @@ and each word transfer ignores the low two address bits. Transfers wrap within
 the PIF image. Reads of locked boot ROM return zero, and writes leave boot ROM
 intact. PIF RAM remains accessible after ROM lockout.
 
+Write completion handles the PIF control byte. Control bit zero configures
+retained Joybus channel descriptors and clears itself; it does not execute the
+device commands. Read completion executes the retained requests, or a pending
+CIC challenge, before copying the reply image to RDRAM. This prevents packet
+upload from consuming input or changing accessory state before the read phase.
+CPU PIF stores can also configure descriptors; ordinary CPU reads do not execute
+the channel list. See [Joybus configuration and execution](joybus.md).
+
 The model completes writes after 4,065 RCP cycles. Read timing starts at 13,600
 RCP cycles and adds time for each Joybus packet: 22,000 cycles for a connected
 controller, 18,000 for an absent controller, or 20,000 for the cartridge channel.
@@ -49,3 +57,5 @@ transfer. Reset clears both transfer timers and the I/O latch.
 status phases, completion boundaries, interrupt acknowledgement, and latch
 behavior. `tests/rcp/test_address_map.cpp` covers the physical address windows
 and bus stalls on unmapped accesses.
+`tests/rcp/test_pif_channels.cpp` checks the separate write/read boundaries and
+retained configuration through actual SI transfers.

@@ -29,6 +29,7 @@ void fill_cart_pattern(Bus& bus, std::size_t size = 512) {
 }
 
 void run_si_read(Bus& bus, u32 dram = 0x2000) {
+    bus.joybus.configure();
     bus.write(0x04800000U, 4, dram);
     bus.write(0x04800004U, 4, 0x1fc007c0U);
     CHECK((bus.read(0x04800018U, 4) & 1U) != 0);

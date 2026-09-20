@@ -156,6 +156,7 @@ TEST(si_read_dma_timing_counts_channel_skips_padding_and_packet_termination) {
         System system;
         test::initialize_memory(system);
         std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+        system.bus.joybus.configure();
         start_dma(system, 0x1fc007c0, true);
         system.bus.tick(delay - 1);
         CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
@@ -174,6 +175,7 @@ TEST(si_read_dma_timing_accounts_for_connected_and_absent_controllers) {
         system.bus.set_controller_state(0, controller);
         constexpr std::array<u8, 8> packet{1, 4, 1, 0, 0, 0, 0, 0xfe};
         std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+        system.bus.joybus.configure();
         start_dma(system, 0x1fc007c0, true);
         system.bus.tick(connected ? 37019 : 33019);
         CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);
@@ -196,6 +198,7 @@ TEST(si_read_dma_timing_handles_the_cartridge_channel_and_length_flags) {
         system.bus.set_save_type(SaveType::Eeprom4K);
         const std::array<u8, 10> packet{0, 0, 0, 0, send, 0xc3, 0, 0, 0, 0};
         std::copy(packet.begin(), packet.end(), system.bus.pif.begin() + 0x7c0);
+        system.bus.joybus.configure();
         start_dma(system, 0x1fc007c0, true);
         system.bus.tick(39279);
         CHECK_EQ(system.bus.read(0x04800018, 4), 0x141U);

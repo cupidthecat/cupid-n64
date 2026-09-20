@@ -33,7 +33,8 @@ RCP cycles, or 6 ms at 62.5 MHz. Reads return `0xff` during that interval.
 Rejected writes preserve both the original data and its deadline. Completion
 does not raise an interrupt.
 
-The busy interval starts when the PIF executes the command. If SI completion
+The busy interval starts when the PIF executes the command during the read
+phase. Uploading a packet only configures its channel. If SI read completion
 starts a write, that write cannot consume time from the transfer that delivered
 it. Conversely, a busy interval ending at the same clock as an SI command
 expires before the command checks status. Bulk and single-cycle advances use
@@ -48,8 +49,9 @@ remain outside this implementation.
 
 `tests/rcp/test_eeprom.cpp` covers both capacities, all 256 block addresses,
 boundary-crossing transfers, response lengths, busy rejection, exact deadlines,
-SI completion ordering, reset, and absent or malformed requests. CPU PIF stores
-and both SI DMA directions exercise command delivery. The existing EEPROM
+SI completion ordering, reset, and absent or malformed requests. Protocol tests
+execute the Joybus module directly; SI tests configure through a PIF write and
+execute through a read, preserving the full busy interval after that read. The existing EEPROM
 regression in `tests/test_bus.cpp` also checks busy reads and later readback.
 
 Issue #31 remains open for game-level persistence checks and broader save-memory

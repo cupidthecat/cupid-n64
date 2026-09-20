@@ -51,7 +51,7 @@ the accessory. Saved Controller Pak bytes remain per-port storage across changes
 Ordinary state updates while a mouse remains connected, status/reset commands,
 PIF channel skips, and console reset preserve its pending input. A poll is the
 operation that consumes movement. Input is sampled when the Joybus command
-executes, including at SI DMA completion; updates received while a DMA is pending
+executes at SI read completion; updates received while a DMA is pending
 are included in that sample. The existing SI timing estimates apply to connected
 mouse ports.
 
@@ -62,7 +62,8 @@ selection, all signed 16-bit axis values, clamp boundaries, button combinations,
 motion consumption, input accumulation, signed-limit safety, short/padded replies,
 unsupported commands, reset, disconnect/reconnect, device changes, port isolation,
 and a mixed gamepad/mouse/RTC packet. SI sequences identify the mouse and poll
-motion through both DMA directions, with bulk/single-cycle CPU and RCP advances.
+motion after configuration by CPU store or write DMA, with bulk/single-cycle CPU
+and RCP advances through read completion.
 They check the state just before and at completion and verify a second poll
 returns zero movement.
 

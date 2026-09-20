@@ -80,8 +80,8 @@ attachment through the controller setter.
 `tests/rcp/test_controller_pak.cpp` covers all four ports, initial attachment,
 removal and reinsertion, controller reconnection, status prefixes, access gating,
 CRC rejection, repeated input updates, port isolation, and reset. SI tests check
-acknowledgement at DMA completion in both directions under bulk and single-cycle
-CPU/RCP advances. The existing parser and address-CRC tests acknowledge initial
+acknowledgement at read completion after configuration by CPU store or write
+DMA, under bulk and single-cycle CPU/RCP advances. The existing parser and address-CRC tests acknowledge initial
 attachment before exercising ordinary Pak access.
 
 `tests/rcp/test_controller_pak_transfers.cpp` verifies all 8,192 port/address
@@ -89,12 +89,12 @@ pairs and 40,960 single-bit address-CRC corruptions with a polynomial-division
 oracle. Data checks include fixed vectors, every one-hot bit in a block, and
 256 deterministic mixed blocks. Boundary and malformed-length tests compare
 all four storage arrays, including after reset. Last-block reads and writes
-also run through both SI DMA directions with bulk/single-cycle CPU and RCP
-advances, checking storage immediately before and at completion.
+also run through SI write/read sequences with bulk/single-cycle CPU and RCP
+advances, checking storage immediately before and at read completion.
 
 Additional accessory types, larger Pak banking, and game-level persistence
-remain separate release work. Hardware transaction timing and retained PIF
-descriptors remain open under issue #28. These tests establish the supported
+remain separate release work. Hardware transaction timing remains open under
+issue #28. [Retained PIF descriptors](joybus.md) are implemented. These tests establish the supported
 core's packet and storage behavior; they do not substitute for hardware traces
 or a game-save persistence test.
 [Joybus packets](joybus.md) describes packet boundaries and replies;

@@ -1,4 +1,5 @@
 #include "cupid/system.hpp"
+#include "rcp/joybus_transport.hpp"
 #include "test.hpp"
 #include "test_system.hpp"
 
@@ -48,8 +49,8 @@ struct RtcFixture {
     }
 
     std::vector<u8> execute(u8 receive) {
-        bus.write(0x1fc007fc, 4, 1);
-        static_cast<void>(bus.read(0x1fc007fc, 4));
+        bus.joybus.configure();
+        bus.joybus.execute();
         CHECK_EQ(bus.pif[output_offset + receive], 0xfeU);
         return {bus.pif.begin() + output_offset, bus.pif.begin() + output_offset + receive};
     }
@@ -79,14 +80,9 @@ struct RtcFixture {
     }
 
     void start_dma(bool to_ram) {
-        if (!to_ram) {
-            bus.pif[0x7ff] = 1;
-            for (u32 index = 0; index < 64; ++index)
-                bus.write_ram_byte(0x2000 + index, bus.pif[0x7c0 + index]);
-            std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
-        }
+        test::configure_joybus(bus, to_ram);
         bus.write(0x04800000, 4, 0x2000);
-        bus.write(to_ram ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
+        bus.write(0x04800004, 4, 0x1fc007c0);
     }
 };
 } // namespace
@@ -317,8 +313,8 @@ TEST(rtc_si_completion_sees_the_tick_at_the_same_boundary) {
         for (bool cpu : {false, true})
             for (bool single : {false, true}) {
                 RtcFixture fixture;
-                const u64 deadline = to_ram ? 39280 : 4065;
-                fixture.bus.tick(second - deadline);
+                const u64 deadline = 39280;
+                fixture.bus.tick(second - deadline - (to_ram ? 0 : 4065));
                 const std::array<u8, 2> input{7, 2};
                 fixture.packet(input, 9);
                 fixture.start_dma(to_ram);
@@ -349,7 +345,7 @@ TEST(rtc_si_run_command_starts_a_full_second_at_completion) {
         const std::array<u8, 10> input{8, 0, 3, 0};
         fixture.packet(input, 1);
         fixture.start_dma(to_ram);
-        const u64 deadline = to_ram ? 39280 : 4065;
+        const u64 deadline = 39280;
         fixture.bus.tick(deadline - 1);
         CHECK(!fixture.bus.rtc->running());
         fixture.bus.tick(1);

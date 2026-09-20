@@ -28,8 +28,8 @@ struct PakFixture {
     }
 
     std::vector<u8> execute(u8 receive) {
-        bus.write(0x1fc007fc, 4, 1);
-        static_cast<void>(bus.read(0x1fc007fc, 4));
+        bus.joybus.configure();
+        bus.joybus.execute();
         return {bus.pif.begin() + response, bus.pif.begin() + response + receive};
     }
 

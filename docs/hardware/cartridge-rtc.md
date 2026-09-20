@@ -75,7 +75,8 @@ as measured hardware deadlines.
 channel isolation, stop/set/run, calibration retention, independent write locks,
 all 256 block addresses, bank isolation, malformed and padded packets, calendar
 carries, fragmented advances, CPU/RCP conversion, console reset, and EEPROM
-busy-state independence. SI tests cover both DMA directions and reads at a
+busy-state independence. SI tests configure requests by CPU store or write DMA,
+then execute through read DMA. They cover reads at a
 shared tick boundary under bulk and single-cycle CPU/RCP advances. Separate
 tests check the first complete second after an SI run command.
 

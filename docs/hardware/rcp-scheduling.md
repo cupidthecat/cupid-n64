@@ -19,7 +19,8 @@ stores. Direct `Bus::tick` calls deliver after the bus devices finish.
 EEPROM busy time advances before SI completes at a shared boundary. A newly
 delivered write therefore retains its full interval, while a previous write
 finishing at that clock is already ready for the next command. The EEPROM
-regressions cover both cases through CPU PIF stores and SI DMA; see
+regressions cover both cases through SI read completion; configuration by CPU
+store or write DMA does not execute the command. See
 [EEPROM behavior](eeprom.md).
 
 Callbacks observe the boundary's DP clock and completed device state. A transfer

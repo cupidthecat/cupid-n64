@@ -1,4 +1,5 @@
 #include "cupid/system.hpp"
+#include "joybus_transport.hpp"
 #include "test.hpp"
 #include "test_system.hpp"
 
@@ -40,12 +41,13 @@ struct EepromFixture {
     }
 
     std::vector<u8> execute(u8 receive) {
-        bus.write(0x1fc007fc, 4, 1);
-        static_cast<void>(bus.read(0x1fc007fc, 4));
+        bus.joybus.configure();
+        bus.joybus.execute();
         return {bus.pif.begin() + output_offset, bus.pif.begin() + output_offset + receive};
     }
 
     void start_dma() {
+        test::configure_joybus(bus);
         bus.write(0x04800000, 4, 0x2000);
         bus.write(0x04800004, 4, 0x1fc007c0);
     }
@@ -271,7 +273,7 @@ TEST(eeprom_command_lengths_reject_missing_fields_and_allow_empty_data) {
     }
 }
 
-TEST(eeprom_si_write_dma_executes_the_packet_and_preserves_the_complete_busy_interval) {
+TEST(eeprom_si_write_then_read_starts_the_busy_interval_only_when_the_command_executes) {
     for (SaveType type : types) {
         EepromFixture fixture(type);
         const std::array<u8, 10> input{0x05, 0xff, 1, 2, 3, 4, 5, 6, 7, 8};
@@ -283,6 +285,13 @@ TEST(eeprom_si_write_dma_executes_the_packet_and_preserves_the_complete_busy_int
         fixture.bus.write(0x04800000, 4, 0x2000);
         fixture.bus.write(0x04800010, 4, 0x1fc007c0);
         fixture.bus.tick(4064);
+        CHECK_EQ(fixture.bus.eeprom.back(), 0xffU);
+        fixture.bus.tick(1);
+        CHECK_EQ(fixture.bus.eeprom.back(), 0xffU);
+        CHECK_EQ(fixture.bus.pif[0x7d0], 0xccU);
+        fixture.bus.write(0x04800018, 4, 0);
+        fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+        fixture.bus.tick(read_dma_cycles - 1);
         CHECK_EQ(fixture.bus.eeprom.back(), 0xffU);
         fixture.bus.tick(1);
         CHECK_EQ(fixture.bus.eeprom.back(), 8U);

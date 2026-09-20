@@ -1,3 +1,4 @@
+#include "joybus_transport.hpp"
 #include "test_system.hpp"
 #include "transfer_pak_fixture.hpp"
 
@@ -17,20 +18,16 @@ struct TransferDma : test::TransferFixture {
     }
 
     u64 deadline() const {
-        return read_dma ? 37020 + port * 1420 : 4065;
+        return 37020 + port * 1420 + (read_dma ? 0 : 4065);
     }
 
     std::vector<u8> dma(std::span<const u8> input, u8 receive, const std::function<void()>& before = {}) {
         packet(port, input, receive);
-        bus.pif[0x7ff] = read_dma ? 0 : 1;
-        if (!read_dma) {
-            for (u32 index = 0; index < 64; ++index)
-                bus.write_ram_byte(0x2000 + index, bus.pif[0x7c0 + index]);
-            std::fill(bus.pif.begin() + 0x7c0, bus.pif.end(), u8{0});
-        }
+        test::configure_joybus(bus, read_dma);
         bus.write(0x04800000, 4, 0x2000);
-        bus.write(read_dma ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-        const u64 cycles = cpu_clock ? (deadline() * 3 - fraction + 1) / 2 : deadline();
+        bus.write(0x04800004, 4, 0x1fc007c0);
+        const u64 rcp = 37020 + port * 1420;
+        const u64 cycles = cpu_clock ? (rcp * 3 - fraction + 1) / 2 : rcp;
         if (cpu_clock)
             fraction = (fraction + cycles * 2) % 3;
         const auto advance = [&](u64 amount) {
@@ -46,7 +43,7 @@ struct TransferDma : test::TransferFixture {
             advance(cycles - 1);
         }
         CHECK_EQ(bus.read(0x04800018, 4) & 1U, 1U);
-        CHECK_EQ(bus.pif[response], read_dma ? 0xccU : 0U);
+        CHECK_EQ(bus.pif[response], 0xccU);
         if (before)
             before();
         advance(1);

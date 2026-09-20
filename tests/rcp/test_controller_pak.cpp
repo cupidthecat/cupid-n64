@@ -1,4 +1,5 @@
 #include "controller_pak_fixture.hpp"
+#include "joybus_transport.hpp"
 #include "test_system.hpp"
 
 using namespace cupid;
@@ -113,8 +114,8 @@ TEST(controller_pak_skips_resets_and_unrelated_commands_do_not_acknowledge_detec
                 std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
                 fixture.bus.pif[0x7c0 + port] = action == 5 ? 0xfd : 0;
                 fixture.bus.pif[0x7c1 + port] = 0xfe;
-                fixture.bus.write(0x1fc007fc, 4, 1);
-                static_cast<void>(fixture.bus.read(0x1fc007fc, 4));
+                fixture.bus.joybus.configure();
+                fixture.bus.joybus.execute();
             }
             fixture.blocked(port);
             CHECK_EQ(fixture.status(port), 3U);
@@ -181,15 +182,10 @@ TEST(controller_pak_si_dma_acknowledges_detection_at_completion_under_all_clock_
                     fixture.insert(port);
                     const std::array<u8, 1> input{0};
                     fixture.packet(port, input, 3);
-                    if (!read) {
-                        fixture.bus.pif[0x7ff] = 1;
-                        for (u32 index = 0; index < 64; ++index)
-                            fixture.bus.write_ram_byte(0x2000 + index, fixture.bus.pif[0x7c0 + index]);
-                        std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                    }
+                    test::configure_joybus(fixture.bus, read);
                     fixture.bus.write(0x04800000, 4, 0x2000);
-                    fixture.bus.write(read ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-                    const u64 cycles = read ? 37020 + port * 1420 : 4065;
+                    fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+                    const u64 cycles = 37020 + port * 1420;
                     const u64 elapsed = cpu_clock ? (cycles * 3 + 1) / 2 : cycles;
                     const auto advance = [&](u64 amount) {
                         if (cpu_clock)

@@ -59,8 +59,8 @@ preservation, device changes, port isolation, and reset. The CRC checks use the
 shared polynomial-division oracle.
 
 An integration sequence acknowledges attachment, reads identification, and
-samples inactive/active/active/inactive pulse levels through both SI DMA
-directions. Bulk and single-cycle CPU/RCP advancement check pending responses,
+samples inactive/active/active/inactive pulse levels. CPU stores or write DMA
+configure each request; read DMA executes it. Bulk and single-cycle CPU/RCP advancement check pending responses,
 input changes immediately before completion, final replies, and interrupts.
 
 Identification aliases, ignored-write behavior, pulse transitions within a

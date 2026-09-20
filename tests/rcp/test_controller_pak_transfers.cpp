@@ -1,4 +1,5 @@
 #include "controller_pak_fixture.hpp"
+#include "joybus_transport.hpp"
 #include "pak_crc_oracle.hpp"
 #include "test_system.hpp"
 
@@ -194,15 +195,10 @@ TEST(controller_pak_dma_transfers_last_block_at_completion_on_all_ports) {
                         fixture.packet(port,
                                        read_command ? std::span<const u8>(read) : std::span<const u8>(write),
                                        receive);
-                        fixture.bus.pif[0x7ff] = read_dma ? 0 : 1;
-                        if (!read_dma) {
-                            for (u32 index = 0; index < 64; ++index)
-                                fixture.bus.write_ram_byte(0x2000 + index, fixture.bus.pif[0x7c0 + index]);
-                            std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                        }
+                        test::configure_joybus(fixture.bus, read_dma);
                         fixture.bus.write(0x04800000, 4, 0x2000);
-                        fixture.bus.write(read_dma ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-                        const u64 cycles = read_dma ? 37020 + port * 1420 : 4065;
+                        fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+                        const u64 cycles = 37020 + port * 1420;
                         const u64 elapsed = cpu_clock ? (cycles * 3 - cpu_fraction + 1) / 2 : cycles;
                         if (cpu_clock)
                             cpu_fraction = (cpu_fraction + elapsed * 2) % 3;

@@ -79,8 +79,9 @@ mirrors, CRC rejection, short/padded/malformed packets, removal, reset, and save
 preservation. Real mapper reads and writes pass through encoded Joybus packets
 for every implemented mapper. CRCs use the shared polynomial-division oracle.
 
-Both SI DMA directions run initialization, bank switching, and save readback
-with bulk/single-cycle CPU and RCP advances. A separate shared-deadline case
+SI tests configure by CPU store or write DMA, then execute initialization,
+bank switching, and save readback on read completion with bulk/single-cycle CPU
+and RCP advances. A separate shared-deadline case
 checks an RTC tick against an SI latch command. These tests establish the
 implemented ordering; they do not establish physical bus timing or compatibility
 with a released Transfer Pak title. The release corpus remains open under #38.

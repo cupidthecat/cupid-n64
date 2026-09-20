@@ -1,4 +1,5 @@
 #include "controller_pak_fixture.hpp"
+#include "joybus_transport.hpp"
 #include "pak_crc_oracle.hpp"
 #include "test_system.hpp"
 
@@ -225,16 +226,11 @@ TEST(bio_sensor_si_dma_samples_pulse_at_completion_in_both_clock_domains) {
                     u64 fraction = 0;
                     const auto dma = [&](std::span<const u8> input, u8 receive, bool pulse) {
                         fixture.packet(port, input, receive);
-                        fixture.bus.pif[0x7ff] = read_dma ? 0 : 1;
-                        if (!read_dma) {
-                            for (u32 index = 0; index < 64; ++index)
-                                fixture.bus.write_ram_byte(0x2000 + index, fixture.bus.pif[0x7c0 + index]);
-                            std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                        }
+                        test::configure_joybus(fixture.bus, read_dma);
                         fixture.bus.write(0x04800000, 4, 0x2000);
-                        fixture.bus.write(read_dma ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
+                        fixture.bus.write(0x04800004, 4, 0x1fc007c0);
                         fixture.bus.set_bio_sensor_pulse(port, !pulse);
-                        const u64 rcp = read_dma ? 37020 + port * 1420 : 4065;
+                        const u64 rcp = 37020 + port * 1420;
                         const u64 cycles = cpu_clock ? (rcp * 3 - fraction + 1) / 2 : rcp;
                         if (cpu_clock)
                             fraction = (fraction + cycles * 2) % 3;
@@ -251,7 +247,7 @@ TEST(bio_sensor_si_dma_samples_pulse_at_completion_in_both_clock_domains) {
                             advance(cycles - 1);
                         }
                         CHECK_EQ(fixture.bus.read(0x04800018, 4) & 1U, 1U);
-                        CHECK_EQ(fixture.bus.pif[fixture.response], read_dma ? 0xccU : 0U);
+                        CHECK_EQ(fixture.bus.pif[fixture.response], 0xccU);
                         fixture.bus.set_bio_sensor_pulse(port, pulse);
                         advance(1);
                         CHECK_EQ(fixture.bus.read(0x04800018, 4) & 0x1001U, 0x1000U);

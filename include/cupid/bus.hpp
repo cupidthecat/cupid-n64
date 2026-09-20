@@ -4,6 +4,7 @@
 #include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rcp/controller.hpp"
+#include "cupid/rcp/joybus.hpp"
 #include "cupid/rcp/transfer_pak.hpp"
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
@@ -84,11 +85,13 @@ class Bus {
     std::optional<CartridgeRtc> rtc;
     std::array<std::array<u8, 32 * 1024>, 4> controller_paks{};
     std::array<TransferPak, 4> transfer_paks;
+    Joybus joybus{*this};
 
     Rdp rdp;
 
   private:
     friend class Rdp;
+    friend class Joybus;
     friend class System;
 
     System& system_;

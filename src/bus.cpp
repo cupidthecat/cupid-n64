@@ -24,6 +24,7 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 }
 
 void Bus::reset() {
+    joybus.reset();
     pending_outputs_.clear();
     memory.reset();
 
@@ -540,8 +541,10 @@ void Bus::process_pif_control() {
         command = 0;
         return;
     }
-    if ((command & 0x01U) != 0)
-        process_pif();
+    if ((command & 0x01U) != 0) {
+        command &= static_cast<u8>(~1U);
+        joybus.configure();
+    }
 }
 
 u8 Bus::rdp_source_byte(u32 address, bool dmem) const {

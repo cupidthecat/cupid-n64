@@ -86,7 +86,7 @@ reset. The CRC checks use the shared polynomial-division test oracle.
 
 An integration sequence acknowledges attachment, writes the identification
 range, reads the Rumble Pak ID, starts the motor, reads its state, and stops it.
-It runs through both SI DMA directions with bulk/single-cycle CPU and RCP
+CPU stores or write DMA configure requests; read DMA executes them with bulk/single-cycle CPU and RCP
 advances, checking state immediately before and at each completion boundary.
 These deadlines come from the current SI model; accessory-specific hardware
 transaction traces remain unfinished under #28.

@@ -1,4 +1,5 @@
 #include "cupid/system.hpp"
+#include "joybus_transport.hpp"
 #include "test.hpp"
 #include "test_system.hpp"
 
@@ -45,8 +46,8 @@ struct JoybusFixture {
     }
 
     void execute() {
-        bus.write(0x1fc007fc, 4, 1);
-        static_cast<void>(bus.read(0x1fc007fc, 4));
+        bus.joybus.configure();
+        bus.joybus.execute();
     }
 
     u8 at(unsigned offset) const {
@@ -161,7 +162,7 @@ TEST(joybus_packet_payloads_cannot_include_the_pif_control_byte) {
         fixture.bus.pif[0x7f8] = static_cast<u8>(end - 58);
         fixture.bus.pif[0x7f9] = 0;
         std::fill(fixture.bus.pif.begin() + 0x7fa, fixture.bus.pif.begin() + 0x7ff, u8{0xcc});
-        fixture.bus.pif[0x7ff] = 0;
+        test::configure_joybus(fixture.bus);
         fixture.bus.write(0x04800000, 4, 0x2000);
         fixture.bus.write(0x04800004, 4, 0x1fc007c0);
         fixture.bus.tick(200000);
@@ -265,7 +266,7 @@ TEST(joybus_zero_payload_flagged_packets_advance_to_the_next_channel) {
     }
 }
 
-TEST(joybus_cpu_and_both_si_dma_directions_preserve_packets_across_clock_step_sizes) {
+TEST(joybus_protocol_and_si_write_read_sequences_preserve_packets_across_clock_step_sizes) {
     std::array<u8, 64> expected{};
     bool first = true;
     for (unsigned transport = 0; transport < 3; ++transport)
@@ -287,14 +288,10 @@ TEST(joybus_cpu_and_both_si_dma_directions_preserve_packets_across_clock_step_si
                 if (transport == 0) {
                     fixture.execute();
                 } else {
-                    if (transport == 2) {
-                        for (u32 index = 0; index < 64; ++index)
-                            fixture.bus.write_ram_byte(0x2000 + index, fixture.at(index));
-                        std::fill(fixture.bus.pif.begin() + 0x7c0, fixture.bus.pif.end(), u8{0});
-                    }
+                    test::configure_joybus(fixture.bus, transport == 1);
                     fixture.bus.write(0x04800000, 4, 0x2000);
-                    fixture.bus.write(transport == 1 ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
-                    cycles = transport == 1 ? 80440 : 4065;
+                    fixture.bus.write(0x04800004, 4, 0x1fc007c0);
+                    cycles = 80440;
                 }
                 const u64 elapsed = cpu_clock ? (cycles * 3 + 1) / 2 : cycles;
                 const auto advance = [&](u64 count) {
