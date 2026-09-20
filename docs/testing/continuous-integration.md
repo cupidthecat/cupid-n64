@@ -38,13 +38,41 @@ values in the workflow when reproducing its runtime checks. A run without
 cartridge arguments tests the local regressions only; its report records that
 scope explicitly.
 
+On native Windows, use `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1` because
+the runtime does not support leak detection. Address and undefined-behavior
+checks remain enabled. Keep leak detection enabled for the Linux run.
+
 Each configured validation run creates a separate directory under `BUILD/validation/`.
 `--report-dir DIRECTORY` selects another parent directory. The JSON report
 records the source revision and working-tree status, optional test-source
 revision, host, compiler version, configuration, sanitizer settings, input
-sizes and SHA-256 hashes, command lines, and exit codes. Input digests are
-checked again before reporting success. A report marked `running` has no
-completed result and cannot establish a pass.
+sizes and SHA-256 hashes, command lines, and exit codes. A report marked
+`running` has no completed result and cannot establish a pass.
+
+Schema 2 reports also identify the Git index and checkout contents with
+SHA-256 digests. The content digest includes tracked files, nonignored
+untracked files, file modes, regular-file link targets and their contents,
+and initialized submodules. A second edit to an already modified file is
+detectable even when the revision and Git status text stay the same. Stable
+uncommitted changes are allowed and remain visible in the report.
+
+Source, optional test-source, and image checks run again when validation
+finishes, including after a failed build or test. Changed or unavailable
+source state makes a successful command sequence fail validation. Reports
+retain the later source state and integrity errors; an earlier command
+failure keeps its original exit code. `sources_verified` and
+`inputs_verified` record which checks completed successfully.
+
+Git metadata must be readable from the validation environment. Git-ignored
+outputs and the selected build and report directories are excluded from
+untracked content. Output directories cannot contain tracked source or be
+ancestors of a source checkout. The digests identify content without copying
+source, firmware, or cartridges into the report.
+
+These checks compare the initial and final state; they do not lock the
+checkout or detect every edit that is reverted during a command. Run release
+validation in a dedicated checkout and leave it unchanged until the command
+finishes.
 
 Every command has a UTF-8 log containing standard output and diagnostics.
 CTest runs verbosely so successful cartridge summaries are retained alongside

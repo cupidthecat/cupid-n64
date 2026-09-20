@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from evidence import Evidence, repository_state
+from evidence import Evidence
 
 
 def main():
@@ -42,10 +42,13 @@ def main():
         "ubsan_options": os.environ.get("UBSAN_OPTIONS"),
         "default_suite": args.rom is not None, "extended_suite": args.extended_rom is not None,
     })
+    exit_code = 0
+    failure = None
+    outputs = (build, evidence.directory.parent)
     try:
-        evidence.data["source"] = repository_state(root)
+        evidence.add_source("source", root, outputs)
         if args.test_source:
-            evidence.data["test_source"] = repository_state(args.test_source.resolve())
+            evidence.add_source("test_source", args.test_source.resolve(), outputs)
         for name, path in (("default_rom", args.rom), ("extended_rom", args.extended_rom), ("pif", args.pif)):
             if path is not None:
                 evidence.add_input(name, path)
@@ -54,16 +57,24 @@ def main():
         evidence.run("formatter-version", [args.clang_format, "--version"], root)
         evidence.run("cmake-version", ["cmake", "--version"], root)
         validate(args, root, build, evidence)
-        evidence.verify_inputs()
     except subprocess.CalledProcessError as error:
-        evidence.finish(error.returncode, error)
-        return error.returncode
+        exit_code, failure = error.returncode, error
     except (OSError, ValueError, KeyboardInterrupt) as error:
-        evidence.finish(1, error)
-        print(error, file=sys.stderr)
-        return 1
-    evidence.finish(0)
-    return 0
+        exit_code, failure = 1, error
+    integrity_errors = []
+    for verify in (evidence.verify_sources, evidence.verify_inputs):
+        try:
+            verify()
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            integrity_errors.append(str(error))
+            if exit_code == 0:
+                exit_code, failure = 1, error
+    if integrity_errors:
+        evidence.data["integrity_errors"] = integrity_errors
+    evidence.finish(exit_code, failure)
+    if failure:
+        print(failure, file=sys.stderr)
+    return exit_code
 
 
 def validate(args, root, build, evidence):

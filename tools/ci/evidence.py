@@ -13,6 +13,8 @@ import subprocess
 import sys
 import uuid
 
+from source import repository_state
+
 
 def timestamp():
     return datetime.now(timezone.utc).isoformat()
@@ -27,27 +29,13 @@ def input_digest(path):
     return {"path": str(path), "bytes": path.stat().st_size, "sha256": digest.hexdigest()}
 
 
-def repository_state(path):
-    def git(*arguments):
-        result = subprocess.run(
-            ["git", "-C", str(path), *arguments], check=True, capture_output=True,
-            text=True, encoding="utf-8", errors="replace",
-        )
-        return result.stdout.strip()
-
-    try:
-        return {"revision": git("rev-parse", "HEAD"),
-                "changes": git("status", "--porcelain", "--untracked-files=normal")}
-    except (OSError, subprocess.CalledProcessError) as error:
-        return {"unavailable": str(error)}
-
-
 class Evidence:
     def __init__(self, directory, configuration):
         self.directory = Path(directory).resolve() / uuid.uuid4().hex
         self.directory.mkdir(parents=True, exist_ok=False)
+        self.sources = {}
         self.data = {
-            "schema": 1, "started_at": timestamp(), "status": "running",
+            "schema": 2, "started_at": timestamp(), "status": "running",
             "host": platform.platform(), "python": sys.version,
             "configuration": configuration, "inputs": {}, "commands": [],
         }
@@ -62,7 +50,39 @@ class Evidence:
         self.data["inputs"][name] = input_digest(path)
         self.save()
 
+    def add_source(self, name, path, output_directories=()):
+        self.sources[name] = (Path(path).resolve(), tuple(output_directories))
+        try:
+            self.data[name] = repository_state(path, output_directories)
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            self.data[name] = {"unavailable": str(error)}
+            raise ValueError(f"Cannot record validation source {name}: {error}") from error
+        finally:
+            self.save()
+
+    def verify_sources(self):
+        self.data["sources_verified"] = False
+        checks = {}
+        failures = []
+        for name, (path, outputs) in self.sources.items():
+            try:
+                actual = repository_state(path, outputs)
+                if actual != self.data[name]:
+                    checks[name] = {"status": "changed", "after": actual}
+                    failures.append(f"Validation source changed during the run: {name}")
+                else:
+                    checks[name] = {"status": "unchanged"}
+            except (OSError, ValueError, subprocess.CalledProcessError) as error:
+                checks[name] = {"status": "unavailable", "error": str(error)}
+                failures.append(f"Cannot verify validation source {name}: {error}")
+        self.data["source_checks"] = checks
+        self.data["sources_verified"] = not failures and bool(self.sources)
+        self.save()
+        if failures:
+            raise ValueError("; ".join(failures))
+
     def verify_inputs(self):
+        self.data.pop("inputs_verified", None)
         for name, expected in self.data["inputs"].items():
             actual = input_digest(expected["path"])
             if actual != expected:
