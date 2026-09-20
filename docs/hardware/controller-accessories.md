@@ -12,6 +12,7 @@ Each gamepad port has one accessory selection in `ControllerState::accessory`:
 | `ControllerAccessory::ControllerPak` | One 32 KiB save array per port, block reads/writes, address/data CRCs. |
 | `ControllerAccessory::RumblePak` | Identification reads, motor commands, motor-state readback, address/data CRCs. |
 | `ControllerAccessory::BioSensor` | Identification reads, externally supplied pulse levels, ignored writes, address/data CRCs. |
+| `ControllerAccessory::TransferPak` | Power/access registers and a banked Game Boy cartridge bus, including supported mapper RAM and clocks. |
 
 The default remains a connected gamepad with a Controller Pak. Update the
 selection and input state through `Bus::set_controller_state`; inspect it through
@@ -93,7 +94,11 @@ transaction traces remain unfinished under #28.
 The [cartridge RTC](cartridge-rtc.md) is selected separately on Joybus channel
 four and can coexist with any cartridge save chip.
 
-Transfer Pak, voice hardware, and 64DD are
+The [Transfer Pak](transfer-pak.md) owns an optional
+[Game Boy cartridge](game-boy-cartridge.md) for each port. Its cartridge mapper
+selection is independent of the adapter's 16 KiB window bank.
+
+Voice hardware and 64DD are
 not implemented or selectable as these accessories. The core does not claim
 their protocols or identify them as Rumble Paks. Unsupported Joybus commands
 retain the response bytes and set the no-response flag. The release compatibility

@@ -15,6 +15,7 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (!state.connected || device_changed || state.accessory != previous.accessory) {
         controller_rumble_[port] = false;
         bio_sensor_pulse_[port] = false;
+        transfer_paks[port].disconnect();
     }
     if (!state.connected || device_changed)
         mouse_inputs_[port] = {};
@@ -105,6 +106,8 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
                                                                : 0;
                 else if (controller.accessory == ControllerAccessory::BioSensor)
                     output[index] = read_bio_sensor(port, static_cast<u16>(pos));
+                else if (controller.accessory == ControllerAccessory::TransferPak)
+                    output[index] = transfer_paks[port].read(static_cast<u16>(pos));
             }
         }
         valid = true;
@@ -130,6 +133,9 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
                 }
             } else if (controller.accessory == ControllerAccessory::RumblePak && address >= 0xc000) {
                 controller_rumble_[port] = (input[3] & 1U) != 0;
+            } else if (controller.accessory == ControllerAccessory::TransferPak) {
+                for (unsigned index = 0; index < data_length; ++index)
+                    transfer_paks[port].write(static_cast<u16>(address + index), input[3 + index]);
             }
         }
         output[0] = data_length == 32 ? pak_crc(input + 3) : 0;

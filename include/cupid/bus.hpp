@@ -4,6 +4,7 @@
 #include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rcp/controller.hpp"
+#include "cupid/rcp/transfer_pak.hpp"
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
 #include "cupid/types.hpp"
@@ -82,6 +83,7 @@ class Bus {
     std::vector<u8> eeprom;
     std::optional<CartridgeRtc> rtc;
     std::array<std::array<u8, 32 * 1024>, 4> controller_paks{};
+    std::array<TransferPak, 4> transfer_paks;
 
     Rdp rdp;
 

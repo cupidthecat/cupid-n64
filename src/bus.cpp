@@ -391,6 +391,9 @@ void Bus::tick_devices(u64 rcp_cycles) {
     tick_eeprom(rcp_cycles);
     if (rtc)
         rtc->tick(rcp_cycles);
+    for (auto& pak : transfer_paks)
+        if (auto* cartridge = pak.cartridge())
+            cartridge->tick(rcp_cycles);
     tick_si(rcp_cycles);
     tick_flash(rcp_cycles);
     tick_ai(rcp_cycles);

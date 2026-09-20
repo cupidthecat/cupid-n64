@@ -77,6 +77,7 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [Controller Pak behavior](docs/hardware/controller-pak.md),
 [controller accessories and Rumble Pak](docs/hardware/controller-accessories.md),
 [Bio Sensor](docs/hardware/bio-sensor.md),
+[Transfer Pak and Game Boy cartridges](docs/hardware/transfer-pak.md),
 [mouse input](docs/hardware/mouse.md),
 [cartridge RTC](docs/hardware/cartridge-rtc.md),
 [cartridge SRAM](docs/hardware/sram.md), and
