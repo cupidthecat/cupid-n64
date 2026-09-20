@@ -60,6 +60,64 @@ TEST(rdp_color_rectangle_key_and_convert_command_fields) {
     CHECK_EQ(commands.pixel(1), 0x010101e0U);
 }
 
+TEST(rdp_color_rectangle_key_alpha_compare_rejects_before_depth_update_and_accepts_equality) {
+    ColorCommands commands;
+    commands.append(0x3e, 0x9000);
+    commands.system->bus.memory.write(0x9000, 2, 0xdead);
+    commands.system->bus.memory.set_hidden_pair(0x9000, 2);
+    commands.append(0x2e, (0x4000ULL << 16U) | 0x20U);
+    commands.append(0x39, 1);
+    commands.append(0x3a, 0x814020ff);
+    commands.append(0x2a, (32ULL << 44U) | (32ULL << 32U) | (64ULL << 24U) | (255ULL << 16U) | (32ULL << 8U) |
+                              255U);
+    commands.append(0x2b, (16ULL << 16U) | (128ULL << 8U) | 255U);
+    commands.append(0x3c, combine_word({}, {.a = 3, .b = 6, .c = 6, .d = 7}));
+    commands.modes((1ULL << 40U) | (1ULL << 5U) | (1ULL << 2U) | 1U);
+    commands.rectangle();
+    commands.append(0x2b, (24ULL << 16U) | (128ULL << 8U) | 255U);
+    commands.rectangle(4, 0, 8, 4);
+    commands.run();
+
+    CHECK_EQ(commands.pixel(0), 0U);
+    CHECK_EQ(commands.system->bus.memory.read(0x9000, 2), 0xdeadU);
+    CHECK_EQ(commands.system->bus.memory.hidden_pair(0x9000), 2U);
+    CHECK_EQ(commands.pixel(1), 0x814020e0U);
+    CHECK_EQ(commands.system->bus.memory.read(0x9002, 2), 0x2001U);
+    CHECK_EQ(commands.system->bus.memory.hidden_pair(0x9002), 1U);
+}
+
+TEST(rdp_color_rectangle_key_alpha_drives_blender_weight) {
+    ColorCommands commands;
+    commands.system->bus.memory.write(commands.address(0), 4, 0x204060e0);
+    commands.append(0x3a, 0x804020ff);
+    commands.append(0x2a, (16ULL << 44U) | (16ULL << 32U) | (64ULL << 24U) | (255ULL << 16U) | (32ULL << 8U) |
+                              255U);
+    commands.append(0x2b, (16ULL << 16U) | (128ULL << 8U) | 255U);
+    commands.append(0x3c, combine_word({}, {.a = 3, .b = 6, .c = 6, .d = 7}));
+    commands.modes((1ULL << 40U) | (1ULL << 14U) | (1ULL << 22U));
+    commands.rectangle();
+    commands.run();
+    CHECK_EQ(commands.pixel(), 0x504040e0U);
+}
+
+TEST(rdp_color_rectangle_two_cycle_key_compare_uses_first_cycle_key_alpha) {
+    ColorCommands commands;
+    commands.append(0x3a, 0x818080ff);
+    commands.append(0x3b, 0x808080ff);
+    commands.append(0x39, 1);
+    commands.append(0x2a, (32ULL << 44U) | (32ULL << 32U) | (128ULL << 24U) | (255ULL << 16U) |
+                              (128ULL << 8U) | 255U);
+    commands.append(0x2b, (16ULL << 16U) | (128ULL << 8U) | 255U);
+    commands.append(0x3c, combine_word({.a = 3, .b = 6, .c = 6, .d = 7}, {.a = 5, .b = 6, .c = 6, .d = 7}));
+    commands.modes((1ULL << 52U) | (1ULL << 40U) | 1U);
+    commands.rectangle();
+    commands.append(0x39, 0);
+    commands.rectangle(4, 0, 8, 4);
+    commands.run();
+    CHECK_EQ(commands.pixel(0), 0U);
+    CHECK_EQ(commands.pixel(1), 0x808080e0U);
+}
+
 TEST(rdp_color_rectangle_blender_can_select_fog_or_blend_color) {
     ColorCommands commands;
     commands.append(0x38, 0x12345678);

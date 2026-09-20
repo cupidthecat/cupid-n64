@@ -9,6 +9,10 @@ s32 signed_nine(s32 value) {
     return static_cast<s32>((static_cast<u32>(value) & 511U) ^ 256U) - 256;
 }
 
+s32 signed_seventeen(s32 value) {
+    return static_cast<s32>((static_cast<u32>(value) & 0x1ffffU) ^ 0x10000U) - 0x10000;
+}
+
 s32 expand(s32 value) {
     return signed_nine(value - 128) + 128;
 }
@@ -17,15 +21,21 @@ s32 clamp_color(s32 value) {
     return std::clamp(expand(value), 0, 255);
 }
 
-RdpColor combine_cycle(const RdpColorState& state, const RdpColorInputs& inputs, const RdpColor& combined,
-                       unsigned cycle) {
+struct CycleResult {
+    RdpColor color{};
+    std::array<s32, 3> key_value{};
+    std::array<s32, 3> bypass{};
+};
+
+CycleResult combine_cycle(const RdpColorState& state, const RdpColorInputs& inputs, const RdpColor& combined,
+                          unsigned cycle) {
     constexpr unsigned rgb_shifts[2][4] = {{52, 28, 47, 15}, {37, 24, 32, 6}};
     constexpr unsigned alpha_shifts[2][4] = {{44, 12, 41, 9}, {21, 3, 18, 0}};
     constexpr unsigned rgb_masks[4] = {15, 15, 31, 7};
     const std::array<RdpColor, 6> colors = {combined,      inputs.texel0,
                                             inputs.texel1, rdp_unpack_color(state.primitive),
                                             inputs.shade,  rdp_unpack_color(state.environment)};
-    RdpColor result{};
+    CycleResult result;
     for (unsigned channel = 0; channel < 4; ++channel) {
         std::array<s32, 4> terms{};
         for (unsigned term = 0; term < 4; ++term) {
@@ -70,19 +80,37 @@ RdpColor combine_cycle(const RdpColorState& state, const RdpColorInputs& inputs,
                     terms[term] = inputs.noise[cycle];
             }
         }
-        result[channel] =
-            (((expand(terms[0]) - expand(terms[1])) * signed_nine(terms[2]) + 128) >> 8) + expand(terms[3]);
+        const s32 multiplied = (expand(terms[0]) - expand(terms[1])) * signed_nine(terms[2]) + 128;
+        result.color[channel] = (multiplied >> 8) + expand(terms[3]);
+        if (channel < 3U) {
+            result.key_value[channel] = signed_seventeen(multiplied + (expand(terms[3]) << 8));
+            result.bypass[channel] = terms[0];
+        }
     }
     return result;
 }
 
-unsigned final_alpha(s32 value, u64 modes, unsigned coverage, unsigned dither) {
+unsigned key_alpha(const RdpColorState& state, const std::array<s32, 3>& values) {
+    s32 alpha = 255;
+    for (unsigned channel = 0; channel < 3; ++channel) {
+        const s32 magnitude = values[channel] < 0 ? -values[channel] : values[channel];
+        const s32 channel_alpha = (static_cast<s32>(state.key_width[channel]) << 4) - magnitude;
+        alpha = std::min(alpha, channel_alpha);
+    }
+    return static_cast<unsigned>(std::clamp(alpha, 0, 255));
+}
+
+unsigned final_alpha(s32 value, u64 modes, unsigned coverage, unsigned dither, bool key_enabled = false,
+                     unsigned key = 0) {
     unsigned alpha = static_cast<unsigned>(clamp_color(value));
     alpha += (alpha + 1U) >> 8U;
-    if ((modes & (1ULL << 13U)) != 0)
+    if ((modes & (1ULL << 13U)) != 0) {
         alpha = (modes & (1ULL << 12U)) != 0 ? (alpha * coverage + 4U) >> 3U : coverage << 5U;
-    else
+    } else if (key_enabled) {
+        alpha = key;
+    } else {
         alpha += dither;
+    }
     return std::min(alpha, 255U);
 }
 
@@ -120,20 +148,26 @@ RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInpu
     RdpColor combined{};
     unsigned test_alpha = 0;
     const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
+    const bool key_enabled = (modes & (1ULL << 40U)) != 0;
+    CycleResult result;
     if (two_cycles) {
-        combined = combine_cycle(state, inputs, combined, 0);
-        test_alpha = final_alpha(combined[3], modes, coverage, alpha_dither);
+        result = combine_cycle(state, inputs, combined, 0);
+        combined = result.color;
+        test_alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled,
+                                 key_alpha(state, result.key_value));
         std::swap(inputs.texel0, inputs.texel1);
     }
-    combined = combine_cycle(state, inputs, combined, 1);
-    const unsigned alpha = final_alpha(combined[3], modes, coverage, alpha_dither);
+    result = combine_cycle(state, inputs, combined, 1);
+    combined = result.color;
+    const unsigned alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled,
+                                       key_alpha(state, result.key_value));
     if ((modes & (1ULL << 12U)) != 0) {
         const unsigned clamped = static_cast<unsigned>(clamp_color(combined[3]));
         const unsigned expanded = clamped + ((clamped + 1U) >> 8U);
         coverage = ((expanded * coverage + 4U) >> 3U) >> 5U;
     }
     for (unsigned channel = 0; channel < 3; ++channel)
-        combined[channel] = clamp_color(combined[channel]);
+        combined[channel] = clamp_color(key_enabled ? result.bypass[channel] : combined[channel]);
     combined[3] = static_cast<s32>(alpha);
     return {combined, coverage, two_cycles ? test_alpha : alpha};
 }

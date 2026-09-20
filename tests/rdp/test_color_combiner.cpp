@@ -74,6 +74,62 @@ TEST(rdp_combiner_key_center_scale_and_signed_convert_constants) {
     CHECK_EQ(combine({.a = 8, .b = 7, .c = 15, .d = 7}, state).color[0], 0);
 }
 
+TEST(rdp_combiner_key_alpha_uses_signed_fixed_point_width_window) {
+    RdpColorState state;
+    state.key_width = {16, 32, 32};
+    state.key_center = {128, 128, 128};
+    state.key_scale = {255, 255, 255};
+    state.combine = combine_word({}, {.a = 3, .b = 6, .c = 6, .d = 7});
+    constexpr u64 key_enable = 1ULL << 40U;
+
+    state.primitive = 0x808080c8;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color, (RdpColor{128, 128, 128, 128}));
+    state.primitive = 0x818080c8;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color, (RdpColor{129, 128, 128, 0}));
+    state.primitive = 0x7f8080c8;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color, (RdpColor{127, 128, 128, 129}));
+
+    state.key_width[0] = 24;
+    state.primitive = 0x818080c8;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color[3], 1);
+    state.key_width[0] = 0;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color[3], 0);
+    state.key_width[0] = 4095;
+    state.primitive = 0xff8080c8;
+    CHECK_EQ(rdp_combine(state, key_enable, {}, 8, 0).color[3], 255);
+}
+
+TEST(rdp_combiner_key_alpha_follows_coverage_options_after_combiner_alpha) {
+    RdpColorState state;
+    state.primitive = 0x81808080;
+    state.key_width = {16, 32, 32};
+    state.key_center = {128, 128, 128};
+    state.key_scale = {255, 255, 255};
+    state.combine = combine_word({}, {.a = 3, .b = 6, .c = 6, .d = 7});
+    constexpr u64 key_enable = 1ULL << 40U;
+
+    auto pixel = rdp_combine(state, key_enable | (1ULL << 12U), {}, 8, 0);
+    CHECK_EQ(pixel.coverage, 4U);
+    CHECK_EQ(pixel.color[3], 0);
+
+    pixel = rdp_combine(state, key_enable | (1ULL << 13U), {}, 4, 7);
+    CHECK_EQ(pixel.coverage, 4U);
+    CHECK_EQ(pixel.color[3], 128);
+}
+
+TEST(rdp_combiner_two_cycle_key_uses_first_key_for_alpha_test_and_second_for_output) {
+    RdpColorState state;
+    state.primitive = 0x818080ff;
+    state.environment = 0x808080ff;
+    state.key_width = {16, 32, 32};
+    state.key_center = {128, 128, 128};
+    state.key_scale = {255, 255, 255};
+    state.combine = combine_word({.a = 3, .b = 6, .c = 6, .d = 7}, {.a = 5, .b = 6, .c = 6, .d = 7});
+    const auto pixel = rdp_combine(state, (1ULL << 52U) | (1ULL << 40U) | 1U, {}, 8, 0);
+    CHECK_EQ(pixel.test_alpha, 0U);
+    CHECK_EQ(pixel.color, (RdpColor{128, 128, 128, 128}));
+}
+
 TEST(rdp_combiner_special_nine_bit_overflow_clamps) {
     RdpColorState state;
     state.primitive = 0xffffffff;

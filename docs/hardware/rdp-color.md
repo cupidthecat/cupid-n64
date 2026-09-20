@@ -20,6 +20,22 @@ uses the first cycle's alpha for comparison. The combiner supports separate
 RGB and alpha selectors, key center/scale, K4/K5 conversion constants, primitive
 LOD fraction, and supplied shade, texel, LOD, and noise inputs.
 
+When color keying is enabled, the RGB combiner still evaluates the programmed
+`(A - CENTER) * SCALE` expression at its normal fixed-point precision. Alpha
+fixup interprets each RGB result as signed 17-bit data, subtracts its absolute
+magnitude from the channel's 12-bit key width expanded by four bits, takes the
+minimum of the three channels, and clamps that key alpha to 0-255. Final keyed
+RGB bypasses the equation result and uses the combiner's A input. This preserves
+the fractional key-window boundary rather than reducing the equation to an
+eight-bit color first.
+
+In two-cycle mode, alpha comparison uses the first cycle's key alpha while the
+second cycle produces the final key alpha and keyed RGB. Coverage-times-alpha
+continues to use the ordinary combiner alpha before key alpha substitution.
+Alpha-coverage-select can replace the final alpha with coverage as usual. These
+ordering rules keep alpha rejection ahead of framebuffer/depth writes and make
+key alpha available to the blender when alpha-coverage-select is disabled.
+
 An alpha value of 255 expands to 256 for coverage multiplication. Coverage can
 replace alpha, alpha can scale coverage, or both operations can be enabled.
 Alpha comparison accepts equality with the blend-color alpha threshold.
@@ -81,11 +97,13 @@ as a measured hardware sequence.
 ## Tests and limits
 
 `tests/rdp/test_color_combiner.cpp` checks selectors, fixed-point rounding,
-signed intermediates, overflow clamps, cycle feedback, alpha/coverage behavior,
+signed intermediates, overflow clamps, cycle feedback, key-window boundaries,
+key RGB bypass, two-cycle key alpha comparison, alpha/coverage behavior,
 blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
 `tests/rdp/test_color_rectangle.cpp`
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
-state changes, reset, alpha rejection, blending, and dither thresholds.
+state changes, reset, keyed alpha rejection/depth ordering, keyed blending,
+two-cycle key comparison, and dither thresholds.
 `tests/rdp/test_noise.cpp` and `tests/rdp/test_pixel_noise.cpp` add 18 checks for
 noise quantization, selector combinations, separate cycle inputs, per-channel
 dithering, saturation, alpha rejection, unchanged depth/hidden bits, clipping,
@@ -95,10 +113,17 @@ Rectangles and triangles supply [sampled texels and texture LOD](rdp-texture-sam
 to the combiner. [Triangles](rdp-triangles.md) also supply interpolated shade
 and depth. Rectangle shade inputs remain zero.
 
-Both primitives support depth comparison and writes. Color-key alpha generation,
-the exact hardware noise sequence, framebuffer/depth overlap ordering, and asynchronous
-rasterizer timing remain unfinished. Key center and scale can be selected by
-the combiner, but key widths do not yet affect alpha. K4 and K5 are available
-to the combiner, while K0 through K3 feed texture conversion. These tests do
-not establish complete rendering or gameplay correctness. Issues #18 through
-#22 track the remaining sampling and rendering work.
+Both primitives support depth comparison and writes. The key equation and
+alpha-fixup ordering follow the SGI RDP command summary and the Nintendo 64 RDP
+programming manual's chroma-key equations. `SetKeyR` and `SetKeyGB` widths remain
+12-bit command values; center and scale remain eight-bit values. The exact
+hardware noise sequence, framebuffer/depth overlap ordering, and asynchronous
+rasterizer timing remain unfinished. K4 and K5 are available to the combiner,
+while K0 through K3 feed texture conversion. These tests do not establish
+complete rendering or gameplay correctness. Issues #18 through #22 track the
+remaining sampling and rendering work.
+
+References:
+
+- <https://ultra64.ca/files/documentation/silicon-graphics/SGI_RDP_Command_Summary.pdf>
+- <https://ultra64.ca/files/documentation/online-manuals/man/pro-man/pro12/12-06.html>
