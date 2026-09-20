@@ -11,6 +11,7 @@ Each gamepad port has one accessory selection in `ControllerState::accessory`:
 | `ControllerAccessory::None` | Gamepad status/polling; Pak commands return rejected data CRCs. |
 | `ControllerAccessory::ControllerPak` | One 32 KiB save array per port, block reads/writes, address/data CRCs. |
 | `ControllerAccessory::RumblePak` | Identification reads, motor commands, motor-state readback, address/data CRCs. |
+| `ControllerAccessory::BioSensor` | Identification reads, externally supplied pulse levels, ignored writes, address/data CRCs. |
 
 The default remains a connected gamepad with a Controller Pak. Update the
 selection and input state through `Bus::set_controller_state`; inspect it through
@@ -23,7 +24,8 @@ hardware; that requires a frontend binding.
 `controller_pak` boolean has been removed. Existing callers should replace
 `controller_pak = true` with `accessory = ControllerAccessory::ControllerPak`
 and `controller_pak = false` with `accessory = ControllerAccessory::None`.
-The single selection prevents attaching both supported Paks to one port.
+The single selection permits one accessory per port. [Bio Sensor](bio-sensor.md)
+pulse input uses `Bus::set_bio_sensor_pulse` independently of gamepad buttons.
 
 ## Attachment and motor lifetime
 
@@ -91,7 +93,7 @@ transaction traces remain unfinished under #28.
 The [cartridge RTC](cartridge-rtc.md) is selected separately on Joybus channel
 four and can coexist with any cartridge save chip.
 
-Transfer Pak, voice hardware, Bio Sensor, and 64DD are
+Transfer Pak, voice hardware, and 64DD are
 not implemented or selectable as these accessories. The core does not claim
 their protocols or identify them as Rumble Paks. Unsupported Joybus commands
 retain the response bytes and set the no-response flag. The release compatibility

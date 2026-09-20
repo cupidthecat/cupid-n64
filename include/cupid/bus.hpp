@@ -60,6 +60,7 @@ class Bus {
     }
     void set_controller_state(unsigned port, ControllerState state);
     void add_mouse_input(unsigned port, MouseInput input);
+    void set_bio_sensor_pulse(unsigned port, bool active);
     [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
         return controllers_;
     }
@@ -93,6 +94,8 @@ class Bus {
     std::array<MouseInput, 4> mouse_inputs_{};
     std::array<bool, 4> controller_pak_changed_{true, true, true, true};
     std::array<bool, 4> controller_rumble_{};
+    std::array<bool, 4> bio_sensor_pulse_{};
+    [[nodiscard]] u8 read_bio_sensor(unsigned port, u16 address) const;
 
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);

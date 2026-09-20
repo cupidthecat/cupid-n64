@@ -45,7 +45,7 @@ responds to commands `06`, `07`, and `08` on the same channel independently of
 EEPROM presence and busy state.
 
 The selected [controller accessory](controller-accessories.md) supplies Pak
-read/write behavior. Controller Pak and Rumble Pak share status, detection,
+read/write behavior. Controller Pak, Rumble Pak, and [Bio Sensor](bio-sensor.md) share status, detection,
 CRC, packet-length, and error-flag handling.
 
 Selecting a [mouse](mouse.md) changes status and polling to the mouse protocol

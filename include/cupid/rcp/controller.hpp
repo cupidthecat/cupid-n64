@@ -13,6 +13,7 @@ enum class ControllerAccessory {
     None,
     ControllerPak,
     RumblePak,
+    BioSensor,
 };
 
 struct ControllerState {

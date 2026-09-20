@@ -12,8 +12,10 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (device_changed || state.accessory != previous.accessory ||
         (!previous.connected && state.connected && state.accessory != ControllerAccessory::None))
         controller_pak_changed_[port] = true;
-    if (!state.connected || device_changed || state.accessory != previous.accessory)
+    if (!state.connected || device_changed || state.accessory != previous.accessory) {
         controller_rumble_[port] = false;
+        bio_sensor_pulse_[port] = false;
+    }
     if (!state.connected || device_changed)
         mouse_inputs_[port] = {};
     controllers_[port] = state;
@@ -101,6 +103,8 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
                                     : pos < 0x9000             ? 0x80
                                     : controller_rumble_[port] ? 0xff
                                                                : 0;
+                else if (controller.accessory == ControllerAccessory::BioSensor)
+                    output[index] = read_bio_sensor(port, static_cast<u16>(pos));
             }
         }
         valid = true;
