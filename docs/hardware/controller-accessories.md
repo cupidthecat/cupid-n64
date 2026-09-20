@@ -1,5 +1,9 @@
 # Controller accessories
 
+`ControllerState::device` selects `Gamepad` or [Mouse](mouse.md) on each port.
+The following accessory selections apply to gamepads. Mouse input uses its
+separate relative-motion API and does not expose a Pak socket.
+
 Each gamepad port has one accessory selection in `ControllerState::accessory`:
 
 | Selection | Implemented behavior |
@@ -87,7 +91,7 @@ transaction traces remain unfinished under #28.
 The [cartridge RTC](cartridge-rtc.md) is selected separately on Joybus channel
 four and can coexist with any cartridge save chip.
 
-Transfer Pak, mouse, voice hardware, Bio Sensor, and 64DD are
+Transfer Pak, voice hardware, Bio Sensor, and 64DD are
 not implemented or selectable as these accessories. The core does not claim
 their protocols or identify them as Rumble Paks. Unsupported Joybus commands
 retain the response bytes and set the no-response flag. The release compatibility

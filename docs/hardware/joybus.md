@@ -48,6 +48,10 @@ The selected [controller accessory](controller-accessories.md) supplies Pak
 read/write behavior. Controller Pak and Rumble Pak share status, detection,
 CRC, packet-length, and error-flag handling.
 
+Selecting a [mouse](mouse.md) changes status and polling to the mouse protocol
+and rejects Pak commands. Mouse polls consume pending relative motion while
+retaining button levels.
+
 ## Controller polling
 
 `ControllerState::buttons` supplies the host's button inputs. Polling clears

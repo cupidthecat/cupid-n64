@@ -8,11 +8,14 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (port >= controllers_.size())
         return;
     const auto& previous = controllers_[port];
-    if (state.accessory != previous.accessory ||
+    const bool device_changed = state.device != previous.device;
+    if (device_changed || state.accessory != previous.accessory ||
         (!previous.connected && state.connected && state.accessory != ControllerAccessory::None))
         controller_pak_changed_[port] = true;
-    if (!state.connected || state.accessory != previous.accessory)
+    if (!state.connected || device_changed || state.accessory != previous.accessory)
         controller_rumble_[port] = false;
+    if (!state.connected || device_changed)
+        mouse_inputs_[port] = {};
     controllers_[port] = state;
 }
 
@@ -47,6 +50,10 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
     const ControllerState& controller = controllers_[port];
     if (!controller.connected)
         return;
+    if (controller.device == ControllerDevice::Mouse) {
+        execute_mouse(port, recv, command, output, valid, overflow);
+        return;
+    }
     if (command == 0x00 || command == 0xff) {
         output[0] = 0x05;
         output[1] = 0x00;

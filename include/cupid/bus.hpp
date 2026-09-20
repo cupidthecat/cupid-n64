@@ -59,6 +59,7 @@ class Bus {
         return flash_chip_;
     }
     void set_controller_state(unsigned port, ControllerState state);
+    void add_mouse_input(unsigned port, MouseInput input);
     [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
         return controllers_;
     }
@@ -89,6 +90,7 @@ class Bus {
 
     System& system_;
     std::array<ControllerState, 4> controllers_{};
+    std::array<MouseInput, 4> mouse_inputs_{};
     std::array<bool, 4> controller_pak_changed_{true, true, true, true};
     std::array<bool, 4> controller_rumble_{};
 
@@ -231,6 +233,7 @@ class Bus {
     void execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
                             bool& overflow);
     void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
+    void execute_mouse(unsigned port, u8 recv, u8 command, u8* output, bool& valid, bool& overflow);
     void tick_eeprom(u64 cycles);
     [[nodiscard]] static u8 pak_crc(const u8* data);
     [[nodiscard]] static u8 address_crc(u16 address);
