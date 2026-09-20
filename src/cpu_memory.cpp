@@ -11,6 +11,13 @@ u64 preview_rcp_cycles(u64 cpu_cycles, u64 rcp_fraction) {
     return whole * 2 + fraction / 3;
 }
 
+u64 appended_rcp_wait_cpu_cycles(u64 rcp_cycles, u64 preceding_cpu_cycles, u64 rcp_fraction) {
+    if (rcp_cycles == 0)
+        return 0;
+    const u64 end_fraction = ((preceding_cpu_cycles % 3) * 2 + rcp_fraction) % 3;
+    return (rcp_cycles * 3 - end_fraction + 1) / 2;
+}
+
 } // namespace
 
 u64 Cpu::rdram_refresh_delay(u32 physical) const {
@@ -118,7 +125,7 @@ bool Cpu::writeback(CacheLine<16>& line, unsigned index) {
     constexpr u64 nominal = 40;
     const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
         base, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-    const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+    const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
     add_cycles(nominal + rdram_refresh_delay(base) + overlap);
     synchronize();
     return system_.bus.write_cache(base, line.data);
@@ -133,7 +140,7 @@ bool Cpu::fill_data_cache(CacheLine<16>& line, u32 physical, unsigned index) {
     constexpr u64 nominal = 40;
     const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
         base, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-    const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+    const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
     add_cycles(nominal + rdram_refresh_delay(base) + overlap);
     synchronize();
     if (!system_.bus.read_cache(base, line.data))
@@ -166,7 +173,7 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         const u64 nominal = physical < 0x03f00000U ? 31 : 4;
         const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
             physical, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-        const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+        const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
         add_cycles(nominal + rdram_refresh_delay(physical) + overlap);
         synchronize();
         value = system_.bus.read(physical, width);
@@ -183,7 +190,7 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
             constexpr u64 nominal = 48;
             const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
                 base, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-            const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+            const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
             const u64 delay = nominal + rdram_refresh_delay(base) + overlap;
             if (!speculative_fetch_) {
                 add_cycles(delay);
@@ -322,7 +329,7 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
         constexpr u64 nominal = 48;
         const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
             base, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-        const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+        const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
         add_cycles(nominal + rdram_refresh_delay(base) + overlap);
         synchronize();
         if (!system_.bus.read_cache(base, instruction.data))
@@ -344,7 +351,7 @@ void Cpu::cache_operation(unsigned operation, u64 address) {
             constexpr u64 nominal = 48;
             const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
                 base, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-            const u64 overlap = refresh_overlap == 0 ? 0 : system_.cpu_cycles_for_rcp(refresh_overlap);
+            const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
             add_cycles(nominal + rdram_refresh_delay(base) + overlap);
             synchronize();
             if (!system_.bus.write_cache(base, instruction.data))

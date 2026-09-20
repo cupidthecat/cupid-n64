@@ -43,8 +43,10 @@ instruction samples its operands and device registers.
 A blocking CPU transaction also checks the next horizontal boundary before it
 starts its nominal response interval. If enabled refresh begins inside that
 interval, the request includes the clean or dirty recovery time selected from
-`RI_REFRESH`. This makes a large CPU clock advance produce the same completed
-request and refresh state as one-cycle bus advances.
+`RI_REFRESH`. The recovery delay is converted at the CPU/RCP phase after the
+nominal response interval, rather than reusing the request phase. This makes a
+large CPU clock advance produce the same completed request and refresh state as
+one-cycle bus advances.
 
 Disabling refresh prevents later requests but does not cancel a recovery already
 in progress. Reset cancels recovery. The [RI hardware notes](https://n64brew.dev/wiki/RDRAM_Interface)

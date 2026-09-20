@@ -63,7 +63,9 @@ Blocking CPU transfers also account for refresh that begins after the request wa
 issued but before its nominal response time. The transfer reaches the horizontal
 boundary, RI closes the open rows, and the CPU waits through the selected clean or
 dirty recovery interval before the result becomes visible. The same clock advance
-continues to drive Count, Compare, and connected devices.
+continues to drive Count, Compare, and connected devices. Recovery that is already
+active is converted from the request's CPU/RCP phase; recovery that starts during
+the nominal transfer is appended from the phase at the nominal response endpoint.
 
 `tests/cpu/test_memory_timing.cpp` checks all eight 1 MiB banks, translated
 uncached addresses, clock advancement, Compare events during the wait, device
@@ -79,6 +81,7 @@ shared-memory arbitration remain incomplete. Buffered stores and DMA engines do
 not yet share this transaction timing, and per-chip RAS/minimum-interval effects
 and the RI optimize bit are not modeled.
 
-The extended cartridge suite still detects cache-miss timing and the uncached
-read that shares VI's bank. The refresh-overlap model changes those averages but
-does not by itself establish the missing arbitration behavior.
+The extended cartridge suite now passes the VI-disabled cache-miss timing cases.
+Two VI-enabled cache-miss averages and the uncached read that shares VI's bank
+remain, so refresh timing by itself does not establish the missing arbitration
+behavior.

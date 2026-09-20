@@ -40,8 +40,40 @@ TEST(cpu_rdram_transfer_waits_for_refresh_that_begins_before_the_response) {
         CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
         system.cpu.write_cop0(11, 4);
         system.cpu.step();
-        CHECK_EQ(system.cpu.cycles, crosses_refresh ? 55U : 41U);
+        CHECK_EQ(system.cpu.cycles, crosses_refresh ? 56U : 41U);
         CHECK_EQ(system.cpu.cp0[13] & 0x8000U, 0x8000U);
+        CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
+    }
+}
+
+TEST(cpu_rdram_refresh_overlap_uses_the_phase_after_the_nominal_response) {
+    struct PhaseCase {
+        u64 preamble_cpu_cycles;
+        u64 preamble_rcp_cycles;
+        u64 expected_step_cycles;
+    };
+
+    // The instruction's initial cycle is synchronized before the request. These
+    // preambles therefore put the request at RCP fractions 2, 1, and 0. A 40-cycle
+    // cache fill moves those to fractions 1, 0, and 2 before the 10-RCP recovery.
+    // Converting that recovery at the endpoint gives literal totals 56, 56, 55.
+    constexpr PhaseCase cases[] = {
+        {0, 0, 56},
+        {1, 0, 56},
+        {2, 1, 55},
+    };
+    constexpr u32 hsync = 99;
+    for (const auto& phase : cases) {
+        System system;
+        prepare_load(system);
+        system.bus.write(ViHSync, 4, hsync);
+        system.bus.write(RiRefresh, 4, 0x00020a0aU);
+        system.bus.write(RiBankStatus, 4, 0);
+        system.advance(phase.preamble_cpu_cycles);
+        system.bus.tick(line_cycles(system, hsync) - phase.preamble_rcp_cycles - 10U);
+        CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
+        system.cpu.step();
+        CHECK_EQ(system.cpu.cycles, phase.expected_step_cycles);
         CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
     }
 }
