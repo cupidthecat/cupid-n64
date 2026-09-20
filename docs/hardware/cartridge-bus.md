@@ -27,6 +27,9 @@ Larger SRAM images use 32 KiB banks spaced 256 KiB apart in the cartridge addres
 window. Each bank responds only in its first 32 KiB. The gaps and absent banks
 leave the PI latch unchanged.
 
+[SRAM behavior](sram.md) records the tested 32, 96, and 128 KiB configurations,
+CPU subword access, reset preservation, and bank/DMA coverage.
+
 [FlashRAM](flash-memory.md) has its own burst counter, command decoder, page
 buffer, and timed status transitions on the same halfword bus.
 
