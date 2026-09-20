@@ -54,10 +54,11 @@ nust64 --elf target-extended/mips-nintendo64-none/release/n64-systemtest
 
 Record the ROM revision and enabled features with results. A successful default run does not establish that the optional groups passed.
 
-The current extended run reports 11 timing failures and 11 experimental
-triangle failures. The [triangle fixture audit](testing/rdp-triangle-fixtures.md)
-records the command-packing and coverage disagreements. These tests remain
-enabled and the extended validation command returns failure.
+The recorded run at `ee9205b` reports three VI-related timing failures and eleven
+experimental triangle failures. The [validation results](testing/validation-results.md)
+record the tested inputs and platforms. The [triangle fixture audit](testing/rdp-triangle-fixtures.md)
+describes the command-packing and coverage disagreements. All these tests remain
+enabled, and the extended validation command returns failure.
 
 Rebuild both images after updating the test checkout. A ROM left in an older
 output directory can contain different assertions even when the checkout is
