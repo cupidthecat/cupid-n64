@@ -1,14 +1,12 @@
 """Run formatting, a strict build, and CTest before publishing changes."""
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
 
-
-def run(command, root):
-    print("+ " + subprocess.list2cmdline([str(part) for part in command]), flush=True)
-    subprocess.run(command, cwd=root, check=True)
+from evidence import Evidence, repository_state
 
 
 def main():
@@ -23,6 +21,8 @@ def main():
     parser.add_argument("--extended-rom", type=Path)
     parser.add_argument("--clang-format", default="clang-format")
     parser.add_argument("--jobs", type=int, default=4)
+    parser.add_argument("--report-dir", type=Path)
+    parser.add_argument("--test-source", type=Path)
     args = parser.parse_args()
     if (args.rom or args.extended_rom) and not args.pif:
         parser.error("--rom and --extended-rom require --pif")
@@ -34,13 +34,46 @@ def main():
 
     root = Path(__file__).resolve().parents[2]
     build = args.build_dir.resolve()
+    evidence = Evidence(args.report_dir or build / "validation", {
+        "build_directory": str(build), "generator": args.generator,
+        "configuration": args.config, "requested_compiler": args.compiler,
+        "strict": True, "sanitizers": args.sanitizers, "jobs": args.jobs,
+        "asan_options": os.environ.get("ASAN_OPTIONS"),
+        "ubsan_options": os.environ.get("UBSAN_OPTIONS"),
+        "default_suite": args.rom is not None, "extended_suite": args.extended_rom is not None,
+    })
+    try:
+        evidence.data["source"] = repository_state(root)
+        if args.test_source:
+            evidence.data["test_source"] = repository_state(args.test_source.resolve())
+        for name, path in (("default_rom", args.rom), ("extended_rom", args.extended_rom), ("pif", args.pif)):
+            if path is not None:
+                evidence.add_input(name, path)
+        evidence.run("validation-tests", [sys.executable, "-m", "unittest", "discover", "-s",
+                                         root / "tools/ci/tests", "-p", "test_*.py"], root)
+        evidence.run("formatter-version", [args.clang_format, "--version"], root)
+        evidence.run("cmake-version", ["cmake", "--version"], root)
+        validate(args, root, build, evidence)
+        evidence.verify_inputs()
+    except subprocess.CalledProcessError as error:
+        evidence.finish(error.returncode, error)
+        return error.returncode
+    except (OSError, ValueError, KeyboardInterrupt) as error:
+        evidence.finish(1, error)
+        print(error, file=sys.stderr)
+        return 1
+    evidence.finish(0)
+    return 0
+
+
+def validate(args, root, build, evidence):
     sources = sorted(
         path
         for folder in ("src", "include", "tests")
         for path in (root / folder).rglob("*")
         if path.suffix in (".cpp", ".hpp")
     )
-    run([args.clang_format, "--dry-run", "--Werror", *sources], root)
+    evidence.run("format", [args.clang_format, "--dry-run", "--Werror", *sources], root)
     configure = [
         "cmake", "-S", root, "-B", build, "-G", args.generator,
         f"-DCMAKE_BUILD_TYPE={args.config}", "-DCUPID_STRICT=ON",
@@ -51,14 +84,17 @@ def main():
     ]
     if args.compiler:
         configure.append(f"-DCMAKE_CXX_COMPILER={args.compiler}")
-    run(configure, root)
-    run(["cmake", "--build", build, "--config", args.config, "--parallel", str(args.jobs)], root)
-    run(["ctest", "--test-dir", build, "-C", args.config, "--output-on-failure"], root)
+    evidence.run("configure", configure, root)
+    evidence.add_build(build)
+    evidence.run("build", ["cmake", "--build", build, "--config", args.config,
+                           "--parallel", str(args.jobs)], root)
+    evidence.run("ctest", ["ctest", "--test-dir", build, "-C", args.config,
+                           "--output-on-failure", "--no-tests=error", "--verbose"], root)
 
 
 if __name__ == "__main__":
     try:
-        main()
+        sys.exit(main())
     except subprocess.CalledProcessError as error:
         sys.exit(error.returncode)
     except OSError as error:

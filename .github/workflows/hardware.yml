@@ -33,6 +33,14 @@ jobs:
         run: >-
           python3 tools/ci/validate.py --build-dir build --compiler ${{ matrix.compiler }} --jobs 2
           --clang-format .work/format/bin/clang-format
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-${{ matrix.compiler }}-validation
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   windows:
     name: Windows MSVC
@@ -49,6 +57,14 @@ jobs:
         run: >-
           python tools/ci/validate.py --build-dir build --generator "Visual Studio 17 2022" --jobs 2
           --clang-format .work/format/Scripts/clang-format.exe
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-validation
+          path: build/validation/
+          if-no-files-found: error
+          retention-days: 14
 
   accuracy:
     name: Full ROM suite and sanitizers
@@ -68,13 +84,18 @@ jobs:
         env:
           N64_PIF_NTSC: ${{ secrets.N64_PIF_NTSC }}
         run: python3 tools/prepare_ci_firmware.py .work/pif.ntsc.rom
-      - name: Build the complete test ROM
+      - name: Build the default and extended test ROMs
+        id: roms
         working-directory: .work/nemu64-test
         run: |
-          cargo build --release --locked
           cargo +stable install nust64 --version 0.4.1 --locked --root ../tools
-          ../tools/bin/nust64 --elf target/mips-nintendo64-none/release/n64-systemtest
+          cargo build --release --locked --target-dir target-default
+          ../tools/bin/nust64 --elf target-default/mips-nintendo64-none/release/n64-systemtest
+          cargo build --release --locked --target-dir target-extended \
+            --features timing,cycle,cop0hazard,poorly_understood_quirk,experimental_rdp
+          ../tools/bin/nust64 --elf target-extended/mips-nintendo64-none/release/n64-systemtest
       - name: Install formatter
+        id: formatter
         run: |
           python3 -m venv .work/format
           .work/format/bin/python -m pip install clang-format==22.1.0
@@ -82,9 +103,12 @@ jobs:
         run: >-
           python3 tools/ci/validate.py --build-dir build --compiler clang++ --jobs 2
           --clang-format .work/format/bin/clang-format
-          --rom .work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          --test-source .work/nemu64-test
+          --rom .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest.z64
+          --extended-rom .work/nemu64-test/target-extended/mips-nintendo64-none/release/n64-systemtest.z64
           --pif .work/pif.ntsc.rom
       - name: Run sanitizer validation
+        if: ${{ !cancelled() && steps.roms.outcome == 'success' && steps.formatter.outcome == 'success' }}
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
@@ -92,5 +116,17 @@ jobs:
           python3 tools/ci/validate.py --build-dir build-sanitize --compiler clang++ --jobs 2
           --clang-format .work/format/bin/clang-format
           --config RelWithDebInfo --sanitizers
-          --rom .work/nemu64-test/target/mips-nintendo64-none/release/n64-systemtest.z64
+          --test-source .work/nemu64-test
+          --rom .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest.z64
+          --extended-rom .work/nemu64-test/target-extended/mips-nintendo64-none/release/n64-systemtest.z64
           --pif .work/pif.ntsc.rom
+      - name: Retain both accuracy runs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: accuracy-validation
+          path: |
+            build/validation/
+            build-sanitize/validation/
+          if-no-files-found: error
+          retention-days: 14

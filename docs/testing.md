@@ -100,7 +100,12 @@ A passing regression should demonstrate the affected behavior, including observa
 
 The accuracy job reads an NTSC boot ROM from the `N64_PIF_NTSC` repository secret, stored as base64. The preparation script checks its length and writes it into the temporary `.work` directory. The job requires this secret before it can run cartridge tests.
 
-The workflow builds with GCC and Clang on Linux and MSVC on Windows. A separate Clang job runs the local regressions and complete default ROM suite, followed by the same checks with sanitizers.
+The workflow builds with GCC and Clang on Linux and MSVC on Windows. A separate
+Clang job builds both pinned cartridge variants in separate target directories
+and runs the local regressions, default suite, and extended suite in release
+and sanitizer builds. Missing extended groups and failed cases make the job
+fail. Each run retains its logs, input hashes, compiler details, and exit codes;
+see [continuous integration](testing/continuous-integration.md).
 
 When a default test ROM is configured, CTest also runs `nemu64_warm_reset`.
 This check completes the entire cartridge suite, presses and releases the reset

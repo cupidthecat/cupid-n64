@@ -21,6 +21,7 @@ struct Options {
     std::filesystem::path pif;
     cupid::u64 max_instructions{4000000000ULL};
     bool require_success{};
+    bool require_extended{};
 };
 
 bool number(std::string_view text, cupid::u64& result) {
@@ -30,7 +31,8 @@ bool number(std::string_view text, cupid::u64& result) {
 
 void usage() {
     std::cout
-        << "Usage: cupid-n64 CARTRIDGE --pif BOOT_ROM [--max-instructions COUNT] [--require-test-success]\n";
+        << "Usage: cupid-n64 CARTRIDGE --pif BOOT_ROM [--max-instructions COUNT] [--require-test-success] "
+           "[--require-extended-tests]\n";
 }
 
 std::optional<Options> options(int argc, char** argv) {
@@ -44,6 +46,8 @@ std::optional<Options> options(int argc, char** argv) {
                 std::cerr << "The instruction limit must be a positive integer.\n";
                 return std::nullopt;
             }
+        } else if (arg == "--require-extended-tests") {
+            parsed.require_extended = parsed.require_success = true;
         } else if (arg == "--require-test-success")
             parsed.require_success = true;
         else if (!arg.empty() && arg.front() != '-' && parsed.cartridge.empty())
@@ -98,6 +102,8 @@ int main(int argc, char** argv) {
             return 2;
         }
         cupid::TestReport report;
+        if (config->require_extended)
+            report.expect_extended();
         system->bus.debug_output = [&](std::string_view output) {
             std::cout << output << std::flush;
             report.append(output);

@@ -149,3 +149,49 @@ TEST(test_report_keeps_panics_and_output_overflow_as_failures) {
     long_line.append(ending);
     CHECK(long_line.failed);
 }
+
+TEST(test_report_extended_validation_rejects_a_default_only_cartridge) {
+    for (bool late : {false, true}) {
+        cupid::TestReport report;
+        if (!late)
+            report.expect_extended();
+        report.append(header);
+        report.append(success);
+        report.append(ending);
+        if (late)
+            report.expect_extended();
+        CHECK(report.complete);
+        CHECK(report.failed);
+    }
+}
+
+TEST(test_report_extended_validation_requires_the_unadvertised_quirk_category) {
+    constexpr std::array<std::string_view, 5> categories{
+        "Base: Failed 0 of 12 tests\n", "Timing: Failed 0 of 4 tests\n", "Cycle: Failed 0 of 3 tests\n",
+        "CP0-hazards: Failed 0 of 2 tests\n", "Poorly-understood-quirk: Failed 0 of 1 tests\n"};
+    for (std::size_t omitted = 0; omitted <= categories.size(); ++omitted) {
+        cupid::TestReport report;
+        report.expect_extended();
+        report.append("n64-systemtest 3.0.0 (base=1 timing=1 cycle=1 cp0-hazards=1)\n");
+        for (std::size_t category = 0; category < categories.size(); ++category)
+            if (category != omitted)
+                report.append(categories[category]);
+        report.append(ending);
+        CHECK(report.complete);
+        CHECK_EQ(report.failed, omitted < categories.size());
+        if (omitted == categories.size())
+            CHECK_EQ(report.tests, 22ULL);
+    }
+}
+
+TEST(test_report_extended_validation_rejects_disabled_feature_flags_even_with_results) {
+    cupid::TestReport report;
+    report.expect_extended();
+    report.append(header);
+    report.append(success);
+    report.append("Timing: Failed 0 of 4 tests\nCycle: Failed 0 of 3 tests\n"
+                  "CP0-hazards: Failed 0 of 2 tests\nPoorly-understood-quirk: Failed 0 of 1 tests\n");
+    report.append(ending);
+    CHECK(report.complete);
+    CHECK(report.failed);
+}

@@ -18,6 +18,16 @@ constexpr std::array<std::string_view, 5> names{
 
 } // namespace
 
+void TestReport::expect_extended() {
+    require_extended_ = true;
+    if (complete) {
+        for (const bool present : categories_)
+            failed = failed || !present;
+        for (const bool enabled : enabled_)
+            failed = failed || !enabled;
+    }
+}
+
 void TestReport::append(std::string_view bytes) {
     for (const char character : bytes) {
         if (character == '\n') {
@@ -96,6 +106,12 @@ void TestReport::consume_line() {
         for (std::size_t index = 0; index < enabled_.size(); ++index) {
             if (enabled_[index] && !categories_[index])
                 failed = true;
+        }
+        if (require_extended_) {
+            for (const bool present : categories_)
+                failed = failed || !present;
+            for (const bool enabled : enabled_)
+                failed = failed || !enabled;
         }
         failed = failed || tests == 0;
         complete = true;

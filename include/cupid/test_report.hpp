@@ -11,6 +11,7 @@ namespace cupid {
 class TestReport {
   public:
     void append(std::string_view bytes);
+    void expect_extended();
 
     bool complete{};
     bool failed{};
@@ -21,6 +22,7 @@ class TestReport {
     std::array<bool, 5> categories_{};
     std::array<bool, 4> enabled_{};
     bool summary_{};
+    bool require_extended_{};
 
     void consume_line();
 };
