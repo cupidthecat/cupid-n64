@@ -1,6 +1,7 @@
 #include "cupid/host/hardware.hpp"
 
 #include "cupid/host/media.hpp"
+#include "cupid/host/storage.hpp"
 
 #include <array>
 #include <sstream>
@@ -73,6 +74,8 @@ bool configure_ports(System& system, const Options& options, std::string& error)
 
 std::unique_ptr<System> create_system(const Options& options, std::string& error) {
     error.clear();
+    if (!validate_storage_paths(options, error))
+        return nullptr;
     std::vector<u8> cartridge;
     std::vector<u8> firmware;
     if (!read_media(options.cartridge, MediaKind::Cartridge, cartridge, error) ||
@@ -128,7 +131,8 @@ std::unique_ptr<System> create_system(const Options& options, std::string& error
         return nullptr;
     }
     system->reset();
-    if (!configure_storage(*system, options, *save, error) || !configure_ports(*system, options, error))
+    if (!configure_storage(*system, options, *save, error) || !configure_ports(*system, options, error) ||
+        !load_persistent_storage(*system, options, error))
         return nullptr;
     if (!system->load_pif(firmware, error) || !system->boot_cartridge(error))
         return nullptr;

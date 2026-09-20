@@ -14,6 +14,7 @@ namespace cupid::host {
 struct TransferOptions {
     std::filesystem::path cartridge;
     std::filesystem::path save_file;
+    std::filesystem::path rtc_file;
     std::optional<GameBoyMapper> mapper;
     std::optional<unsigned> ram_bytes;
     std::optional<bool> clock;
@@ -32,6 +33,7 @@ struct Options {
     std::filesystem::path cartridge;
     std::filesystem::path pif;
     std::filesystem::path save_file;
+    std::filesystem::path rtc_file;
     u64 max_instructions{4000000000ULL};
     bool require_success{};
     bool require_extended{};

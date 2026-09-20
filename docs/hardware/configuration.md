@@ -21,13 +21,13 @@ Cartridge save hardware is never selected from the product code alone. Every run
 
 FlashRAM supports `mx29l0000`, `mx29l0001`, `mx29l1100`, `mx29l1101a`, `mx29l1101b`, `mx29l1101c`, and `mn63f81mpn`. `--rtc` attaches the cartridge real-time clock independently of the save device.
 
-Storage file loading and flushing are documented separately once persistent host storage is enabled; selecting hardware does not change the device protocol itself.
+Storage file loading and flushing are described in [persistent storage](storage.md); selecting hardware does not change the device protocol itself.
 
 ## Controllers and accessories
 
 Ports start disconnected with no accessory. `--controller PORT:gamepad|mouse|none` selects the device on a port. Gamepad accessories use `--accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak`. Accessories require a connected gamepad.
 
-A Transfer Pak uses `--transfer-rom PORT:FILE`. Recognized Game Boy headers provide mapper and RAM defaults when their ROM length agrees with the header. Unsupported or ambiguous boards require explicit `--transfer-mapper` and `--transfer-ram`. The runner also accepts `--transfer-rtc PORT:on|off` and `--transfer-rumble PORT:on|off` to override those cartridge features. Mapper choices are `linear`, `mbc1`, `mbc2`, `mbc3`, `mbc30`, and `mbc5`.
+A Transfer Pak uses `--transfer-rom PORT:FILE`. Recognized Game Boy headers provide mapper and RAM defaults when their ROM length agrees with the header. Unsupported or ambiguous boards require explicit `--transfer-mapper` and `--transfer-ram`. The runner also accepts `--transfer-rtc PORT:on|off` and `--transfer-rumble PORT:on|off` to override those cartridge features. Mapper choices are `linear`, `mbc1`, `mbc2`, `mbc3`, `mbc30`, and `mbc5`. `--transfer-save PORT:FILE` and `--transfer-rtc-file PORT:FILE` select persistent RAM and clock-state files.
 
 Host paths are stored as filesystem paths and preserve UTF-8 text supplied through the runner option parser. Media tests cover non-ASCII cartridge paths on Windows.
 

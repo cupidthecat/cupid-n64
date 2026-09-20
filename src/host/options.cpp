@@ -70,7 +70,8 @@ bool port_value(std::string_view name, std::string_view value, unsigned& port, s
 bool is_port_option(std::string_view name) {
     return name == "--controller" || name == "--accessory" || name == "--pak-file" ||
            name == "--transfer-rom" || name == "--transfer-save" || name == "--transfer-mapper" ||
-           name == "--transfer-ram" || name == "--transfer-rtc" || name == "--transfer-rumble";
+           name == "--transfer-ram" || name == "--transfer-rtc" || name == "--transfer-rtc-file" ||
+           name == "--transfer-rumble";
 }
 
 bool set_port(std::string_view name, std::string_view value, PortOptions& port, std::string& error) {
@@ -100,6 +101,8 @@ bool set_port(std::string_view name, std::string_view value, PortOptions& port, 
         port.transfer.cartridge = argument_path(value);
     } else if (name == "--transfer-save") {
         port.transfer.save_file = argument_path(value);
+    } else if (name == "--transfer-rtc-file") {
+        port.transfer.rtc_file = argument_path(value);
     } else if (name == "--transfer-mapper") {
         return select(name, value, port.transfer.mapper,
                       {{"linear", GameBoyMapper::Linear},
@@ -127,6 +130,8 @@ bool set_option(std::string_view name, std::string_view value, Options& options,
         options.pif = argument_path(value);
     else if (name == "--save-file")
         options.save_file = argument_path(value);
+    else if (name == "--rtc-file")
+        options.rtc_file = argument_path(value);
     else if (name == "--max-instructions") {
         if (!number(name, value, options.max_instructions, error))
             return false;
@@ -217,6 +222,10 @@ bool validate(Options& options, std::string& error) {
         error = "--save-file cannot be used with --save none.";
         return false;
     }
+    if (!options.rtc_file.empty() && !options.rtc) {
+        error = "--rtc-file requires --rtc.";
+        return false;
+    }
     for (unsigned index = 0; index < options.ports.size(); ++index) {
         auto& port = options.ports[index];
         const bool gamepad = port.controller.connected && port.controller.device == ControllerDevice::Gamepad;
@@ -239,7 +248,7 @@ bool validate(Options& options, std::string& error) {
         }
         if (port.transfer.cartridge.empty() &&
             (port.transfer.mapper || port.transfer.ram_bytes || port.transfer.clock || port.transfer.rumble ||
-             !port.transfer.save_file.empty())) {
+             !port.transfer.save_file.empty() || !port.transfer.rtc_file.empty())) {
             error = "Port " + std::to_string(index + 1) + ": Game Boy settings require --transfer-rom.";
             return false;
         }
@@ -330,6 +339,7 @@ std::string_view usage() {
            "  --flash-chip mx29l0000|mx29l0001|mx29l1100|mx29l1101a|mx29l1101b|mx29l1101c|mn63f81mpn\n"
            "  --save-file FILE            Raw cartridge save image\n"
            "  --rtc                       Attach a cartridge real-time clock\n"
+           "  --rtc-file FILE             Raw 32-byte cartridge RTC register image\n"
            "  --controller PORT:gamepad|mouse|none\n"
            "  --accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak\n"
            "  --pak-file PORT:FILE        Raw Controller Pak image\n"
@@ -337,6 +347,7 @@ std::string_view usage() {
            "  --transfer-mapper PORT:linear|mbc1|mbc2|mbc3|mbc30|mbc5\n"
            "  --transfer-ram PORT:BYTES   Override Game Boy RAM capacity\n"
            "  --transfer-rtc PORT:on|off  Override Game Boy clock presence\n"
+           "  --transfer-rtc-file PORT:FILE Persist Game Boy RTC state\n"
            "  --transfer-rumble PORT:on|off\n"
            "  --transfer-save PORT:FILE   Raw Game Boy cartridge RAM\n"
            "  --max-instructions COUNT   Positive instruction limit (default: 4000000000)\n"

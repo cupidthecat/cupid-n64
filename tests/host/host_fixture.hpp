@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +41,12 @@ class TempDirectory {
         output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
         CHECK(output.good());
         return file_path;
+    }
+
+    std::vector<u8> read(const std::filesystem::path& file_path) const {
+        std::ifstream input(file_path, std::ios::binary);
+        CHECK(input.good());
+        return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
     }
 
   private:

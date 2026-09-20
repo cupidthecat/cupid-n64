@@ -62,6 +62,9 @@ TEST(host_options_reject_incompatible_flash_and_storage_combinations) {
     CHECK(!test::host::parse({"game.z64", "--pif", "pif.rom", "--save", "none", "--save-file", "save.bin"},
                              error));
     CHECK(error.find("--save-file") != std::string::npos);
+    CHECK(!test::host::parse({"game.z64", "--pif", "pif.rom", "--save", "none", "--rtc-file", "rtc.bin"},
+                             error));
+    CHECK(error.find("--rtc-file requires --rtc") != std::string::npos);
 }
 
 TEST(host_options_make_controller_accessories_and_transfer_hardware_explicit) {

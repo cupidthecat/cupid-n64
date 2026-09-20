@@ -30,6 +30,9 @@ target_link_libraries(cupid_host PUBLIC cupid_core)
 
 add_executable(cupid-n64 src/main.cpp)
 target_link_libraries(cupid-n64 PRIVATE cupid_host)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(cupid-n64 PRIVATE -municode)
+endif()
 
 enable_testing()
 file(GLOB CUPID_TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.cpp")
@@ -101,6 +104,16 @@ if(CUPID_TEST_ROM)
     cupid_add_rom_test(nemu64_complete "${CUPID_TEST_ROM}")
     add_test(NAME nemu64_warm_reset COMMAND cupid-warm-reset-tests "${CUPID_TEST_ROM}" "${CUPID_PIF_ROM}")
     set_tests_properties(nemu64_warm_reset PROPERTIES TIMEOUT 1800 LABELS "accuracy;boot")
+    if(CUPID_PIF_ROM)
+        add_test(NAME host_storage_runner
+            COMMAND "${CMAKE_COMMAND}"
+                -DRUNNER=$<TARGET_FILE:cupid-n64>
+                -DROM=${CUPID_TEST_ROM}
+                -DPIF=${CUPID_PIF_ROM}
+                -DWORK=${CMAKE_CURRENT_BINARY_DIR}/host-storage-runner
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/runner_storage.cmake)
+        set_tests_properties(host_storage_runner PROPERTIES LABELS "host")
+    endif()
 endif()
 if(CUPID_EXTENDED_TEST_ROM)
     cupid_add_rom_test(nemu64_extended "${CUPID_EXTENDED_TEST_ROM}")
