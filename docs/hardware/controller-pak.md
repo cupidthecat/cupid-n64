@@ -1,4 +1,4 @@
-# Controller Pak detection
+# Controller Pak behavior
 
 The core provides a separate 32 KiB Controller Pak array for each controller
 port. Update inputs and connection state through `Bus::set_controller_state`.
@@ -38,6 +38,26 @@ After status acknowledges an attached Pak, reads and writes use the existing
 32-byte block and CRC rules. A bad address CRC does not clear or reassert the
 detection latch. Changes and acknowledgements on one port do not affect another.
 
+Each request encodes a 32-byte-aligned address in the upper 11 bits and an
+address CRC in the low five bits. The address polynomial is `0x35`; the data
+polynomial is `0x185`, including the leading term in each notation. Data CRCs
+cover 32 bytes followed by eight zero bits.
+
+The supported Pak has one 32 KiB bank. Addresses `0x0000` through `0x7fe0`
+select its blocks. Reads at `0x8000` and above return zero data with a valid CRC;
+writes to that range acknowledge the supplied data without changing storage.
+The bank-select address `0x8000` cannot select another bank in this configuration.
+Addresses do not wrap back into the array.
+
+A read returns up to 32 data bytes and supplies the CRC only when at least
+33 reply bytes were requested. A write stores at most the first 32 supplied
+data bytes. Short writes leave the rest of the block unchanged and return CRC
+zero; a rejected short write returns `0xff`. Extra write data is ignored, and
+extra reply bytes after the CRC are zero. Reads need three command bytes,
+writes need at least four, and both require at least one reply byte. Requests
+that do not meet these lengths leave storage and the response area unchanged
+and set the PIF no-response flag.
+
 ## Reset and storage lifecycle
 
 Console reset preserves controller inputs, Pak presence, saved bytes, and both
@@ -59,7 +79,18 @@ acknowledgement at DMA completion in both directions under bulk and single-cycle
 CPU/RCP advances. The existing parser and address-CRC tests acknowledge initial
 attachment before exercising ordinary Pak access.
 
-Additional accessory types, larger Pak banking, game-level persistence, and
-hardware lifecycle captures remain unfinished under issue #29 and related
-release work. [Joybus packets](joybus.md) describes packet boundaries and replies;
+`tests/rcp/test_controller_pak_transfers.cpp` verifies all 8,192 port/address
+pairs and 40,960 single-bit address-CRC corruptions with a polynomial-division
+oracle. Data checks include fixed vectors, every one-hot bit in a block, and
+256 deterministic mixed blocks. Boundary and malformed-length tests compare
+all four storage arrays, including after reset. Last-block reads and writes
+also run through both SI DMA directions with bulk/single-cycle CPU and RCP
+advances, checking storage immediately before and at completion.
+
+Additional accessory types, larger Pak banking, and game-level persistence
+remain separate release work. Hardware transaction timing and retained PIF
+descriptors remain open under issue #28. These tests establish the supported
+core's packet and storage behavior; they do not substitute for hardware traces
+or a game-save persistence test.
+[Joybus packets](joybus.md) describes packet boundaries and replies;
 [serial-interface timing](serial-interface.md) records the current timing limits.

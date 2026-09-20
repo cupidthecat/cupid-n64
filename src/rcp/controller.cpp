@@ -54,10 +54,20 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
         return;
     }
     if (command == 0x01) {
-        output[0] = static_cast<u8>(controller.buttons >> 8U);
-        output[1] = static_cast<u8>(controller.buttons);
-        output[2] = static_cast<u8>(controller.stick_x);
-        output[3] = static_cast<u8>(controller.stick_y);
+        u16 buttons = controller.buttons & 0xff3fU;
+        // Opposing D-pad directions cancel independently on each axis.
+        if ((buttons & 0x0c00U) == 0x0c00U)
+            buttons &= 0xf3ffU;
+        if ((buttons & 0x0300U) == 0x0300U)
+            buttons &= 0xfcffU;
+        // L+R+Start reports stick reset instead of Start while the chord is held.
+        const bool reset_stick = (buttons & 0x1030U) == 0x1030U;
+        if (reset_stick)
+            buttons = static_cast<u16>((buttons & 0xefffU) | 0x0080U);
+        output[0] = static_cast<u8>(buttons >> 8U);
+        output[1] = static_cast<u8>(buttons);
+        output[2] = reset_stick ? 0 : static_cast<u8>(controller.stick_x);
+        output[3] = reset_stick ? 0 : static_cast<u8>(controller.stick_y);
         overflow = recv > 4;
         valid = true;
         return;

@@ -42,6 +42,20 @@ commands retain their address/data CRC and data-access rules; extra reply bytes
 after the data or CRC are zero. Cartridge EEPROM replies are described in
 [EEPROM behavior](eeprom.md).
 
+## Controller polling
+
+`ControllerState::buttons` supplies the host's button inputs. Polling clears
+the reserved ground and reset bits (`0x0040` and `0x0080`); the controller
+generates the reset bit itself. Opposing D-pad directions cancel independently
+on each axis. Other buttons, including opposing C buttons, remain independent.
+
+Holding L, R, and Start together returns both stick bytes as zero, sets reset
+bit `0x0080`, and clears Start in the response. L and R remain pressed. Releasing
+the combination restores the supplied axis values and clears reset. Forming
+the reply does not change the stored host inputs or acknowledge Pak detection.
+The signed stick values are already controller samples; the core does not
+apply host-device deadzones or an analog gate calibration.
+
 ## Validation and limits
 
 `tests/rcp/test_joybus.cpp` checks skip/reset flags, zero-payload flagged packets,
@@ -52,9 +66,14 @@ runs through CPU PIF writes and both SI DMA directions under bulk and single-cyc
 CPU/RCP advances. `tests/rcp/test_si.cpp` separately checks the existing DMA
 deadlines for normal, reset, and skipped cartridge requests.
 
+`tests/rcp/test_controller_poll.cpp` checks reserved bits, all 16 D-pad
+combinations, all eight L/R/Start combinations, reset release, and short/padded
+reset replies on all four ports. Controller Pak addressing, CRCs, storage
+isolation, and reset are covered by the [Pak tests](controller-pak.md).
+
 Packet parsing still runs as part of the core's command execution path. It does
 not reproduce the PIF's internal instruction timing or retained channel
-descriptors. Serial delays remain estimates; additional accessory types,
-broader Pak behavior, and hardware transaction captures need more work.
-Issues #28 and #29 remain open for those requirements. See
+descriptors. Serial delays remain estimates, and hardware transaction captures
+remain unfinished under issue #28. Additional accessory types remain separate
+release work. See
 [serial-interface timing](serial-interface.md).
