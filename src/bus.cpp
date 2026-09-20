@@ -56,6 +56,8 @@ void Bus::reset() {
     si_dma_counter_ = 0;
     si_io_counter_ = 0;
     eeprom_busy_counter_ = 0;
+    if (rtc)
+        rtc->reset_clock();
     vi_current_ = 0;
     vi_leap_counter_ = 0;
     vi_field_sequence_ = 0;
@@ -387,6 +389,8 @@ void Bus::tick_devices(u64 rcp_cycles) {
             pi_dma_counter_ -= rcp_cycles;
     }
     tick_eeprom(rcp_cycles);
+    if (rtc)
+        rtc->tick(rcp_cycles);
     tick_si(rcp_cycles);
     tick_flash(rcp_cycles);
     tick_ai(rcp_cycles);

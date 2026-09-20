@@ -65,8 +65,11 @@ void Bus::execute_joybus(unsigned channel, u8 send, u8 recv, const u8* input, u8
     if (channel < 4)
         execute_controller(channel, send, recv, input, output, valid, overflow);
 
-    if (channel == 4)
+    if (channel == 4) {
         execute_eeprom(send, recv, input, output, valid);
+        if (!valid && rtc)
+            valid = rtc->execute({input, send}, {output, recv});
+    }
 }
 
 } // namespace cupid

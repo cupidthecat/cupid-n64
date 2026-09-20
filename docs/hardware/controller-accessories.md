@@ -84,7 +84,10 @@ advances, checking state immediately before and at each completion boundary.
 These deadlines come from the current SI model; accessory-specific hardware
 transaction traces remain unfinished under #28.
 
-Transfer Pak, mouse, voice hardware, Bio Sensor, cartridge RTC, and 64DD are
+The [cartridge RTC](cartridge-rtc.md) is selected separately on Joybus channel
+four and can coexist with any cartridge save chip.
+
+Transfer Pak, mouse, voice hardware, Bio Sensor, and 64DD are
 not implemented or selectable as these accessories. The core does not claim
 their protocols or identify them as Rumble Paks. Unsupported Joybus commands
 retain the response bytes and set the no-response flag. The release compatibility

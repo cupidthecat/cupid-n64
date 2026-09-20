@@ -18,6 +18,8 @@ u64 Bus::next_event() const {
     include(si_io_busy_, si_io_counter_);
     include(si_dma_pending_, si_dma_counter_);
     include(eeprom_busy_counter_ != 0, eeprom_busy_counter_);
+    if (rtc)
+        include(rtc->running(), rtc->next_tick());
     include(ri_refresh_counter_ != 0, ri_refresh_counter_);
     if (((ri_[4] & 0x20000U) != 0 && memory.bus_active()) || (video_output_ && (vi_[0] & 3U) != 0))
         include(true, next_vi_line());

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cupid/cartridge/flash.hpp"
+#include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rcp/controller.hpp"
 #include "cupid/rdp.hpp"
@@ -77,6 +78,7 @@ class Bus {
     std::vector<u8> sram;
     std::vector<u8> flashram;
     std::vector<u8> eeprom;
+    std::optional<CartridgeRtc> rtc;
     std::array<std::array<u8, 32 * 1024>, 4> controller_paks{};
 
     Rdp rdp;

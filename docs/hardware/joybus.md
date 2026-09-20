@@ -40,7 +40,9 @@ button word followed by the signed X and Y stick bytes. Short requests return
 the corresponding prefix, including a zero-length reply. Controller Pak
 commands retain their address/data CRC and data-access rules; extra reply bytes
 after the data or CRC are zero. Cartridge EEPROM replies are described in
-[EEPROM behavior](eeprom.md).
+[EEPROM behavior](eeprom.md). The optional [cartridge RTC](cartridge-rtc.md)
+responds to commands `06`, `07`, and `08` on the same channel independently of
+EEPROM presence and busy state.
 
 The selected [controller accessory](controller-accessories.md) supplies Pak
 read/write behavior. Controller Pak and Rumble Pak share status, detection,
