@@ -79,6 +79,11 @@ both channels of all six samples across three buffers.
 The divider-handoff trace expects the interrupt on the outgoing buffer's last
 sample callback, when promotion occurs.
 
+`test_ai_conformance.cpp` adds independently specified raw RDRAM/register
+fixtures with literal signed samples and RCP timestamps. The fixture inputs,
+source documents, hashes, exact comparisons, and remaining limits are recorded
+in [the audio conformance fixture notes](../testing/audio-conformance-fixtures.md).
+
 The SDK's [osAiSetFrequency documentation](https://ultra64.ca/files/documentation/online-manuals/man/n64man/os/osAiSetFrequency.html)
 describes selecting internal divisors and returning the resulting frequency.
 The extreme divider tests here exercise register arithmetic; they do not establish
