@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/rdp/texture_coordinates.hpp"
 #include "cupid/rdp/tile.hpp"
 #include "cupid/types.hpp"
 
@@ -100,8 +101,12 @@ class Rdp {
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
     void fill_span(unsigned y, unsigned left, unsigned right);
-    void fill_cycle_triangle();
+    void fill_copy_triangle(bool copy);
     void copy_rectangle(u64 command, bool flipped);
+    [[nodiscard]] RdpTextureAttributes triangle_texture_attributes() const;
+    void copy_triangle_span(unsigned y, unsigned left, unsigned right,
+                            const RdpTextureAttributes& attributes);
+    void write_copy_pixel(unsigned x, unsigned y, u16 value);
     [[nodiscard]] u16 copy_texel(const RdpTile& tile, s32 s, s32 t, unsigned lane) const;
     void fill_triangle();
     void set_tile(u64 command);

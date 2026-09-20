@@ -2,8 +2,9 @@
 
 `src/rdp/fill.cpp` handles FillRectangle and textured rectangle commands in fill cycle. The command
 processor retains color-image state, the fill word, and the scissor rectangle.
-`src/rdp/fill_triangle.cpp` generates fill-cycle spans for all eight triangle
+`src/rdp/triangle_spans.cpp` generates fill-cycle spans for all eight triangle
 opcodes. Both paths use the same fill-word packing and hidden-bit writes.
+Copy-cycle triangles use the same edge walker.
 SetColorImage has a ten-bit width-minus-one field and a 24-bit address field;
 reserved bits do not contribute to either value.
 
@@ -84,7 +85,7 @@ stride overflow, packing, hidden bits, and incomplete commands.
 
 Four-bit fill destinations halt command processing. Other invalid fill states
 and [copy-cycle rectangles](rdp-copy.md) have separate tests. One-cycle and
-two-cycle rectangles, shaded and textured triangle rendering, copy-cycle
-triangles, and the complete color/depth pipeline remain unfinished.
+two-cycle rectangles, one-cycle and two-cycle shaded/textured triangles, and
+the complete color/depth pipeline remain unfinished.
 These fill tests do not establish their correctness. Drawing is synchronous
 and does not model RDRAM contention or per-pixel DP timing.

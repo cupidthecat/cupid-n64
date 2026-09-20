@@ -1,0 +1,18 @@
+#pragma once
+
+#include "cupid/types.hpp"
+
+#include <array>
+
+namespace cupid {
+
+struct RdpTextureAttributes {
+    std::array<u32, 3> value{};
+    std::array<u32, 3> dx{};
+    std::array<u32, 3> de{};
+    std::array<u32, 3> dy{};
+};
+
+[[nodiscard]] s16 rdp_perspective_coordinate(s16 coordinate, s16 w);
+
+} // namespace cupid

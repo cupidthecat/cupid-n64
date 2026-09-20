@@ -388,8 +388,8 @@ void Rdp::execute(u8 opcode) {
     case 0x0d:
     case 0x0e:
     case 0x0f:
-        if (cycle == 3U)
-            fill_cycle_triangle();
+        if (cycle == 3U || cycle == 2U)
+            fill_copy_triangle(cycle == 2U);
         else if (opcode == 0x08)
             fill_triangle();
         return;

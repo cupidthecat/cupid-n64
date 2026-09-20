@@ -97,7 +97,6 @@ void Rdp::copy_rectangle(u64 command, bool flipped) {
                    << 11U;
     const RdpTile& tile = tiles_[untextured ? 0U : (command >> 24U) & 7U];
     const unsigned group_size = color_image_size_ == 1U ? 8U : 4U;
-    const unsigned bytes = color_image_size_ == 2U ? 2U : 1U;
     for (unsigned y = y0 >> 2U; y <= (y1 - 1U) >> 2U; ++y) {
         if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
             continue;
@@ -111,16 +110,21 @@ void Rdp::copy_rectangle(u64 command, bool flipped) {
             if ((other_modes_ & (1ULL << 51U)) != 0)
                 s = t = 0x7fff;
             const u16 value = color_image_size_ == 0U ? 0U : copy_texel(tile, s, t, (x - left) % group_size);
-            if (color_image_size_ == 2U && (other_modes_ & 1U) != 0 && (value & 1U) == 0)
-                continue;
-            const u32 address = color_image_address_ + (y * color_image_width_ + x) * bytes;
-            const u8 hidden = bus_.memory.hidden_pair(address);
-            bus_.memory.write(address, bytes, value);
-            if (bytes == 1U)
-                bus_.memory.set_hidden_pair(address, (address & 1U) != 0 ? static_cast<u8>((value & 1U) * 3U)
-                                                                         : hidden);
+            write_copy_pixel(x, y, value);
         }
     }
+}
+
+void Rdp::write_copy_pixel(unsigned x, unsigned y, u16 value) {
+    if (color_image_size_ == 2U && (other_modes_ & 1U) != 0 && (value & 1U) == 0)
+        return;
+    const unsigned bytes = color_image_size_ == 2U ? 2U : 1U;
+    const u32 address = color_image_address_ + (y * color_image_width_ + x) * bytes;
+    const u8 hidden = bus_.memory.hidden_pair(address);
+    bus_.memory.write(address, bytes, value);
+    if (bytes == 1U)
+        bus_.memory.set_hidden_pair(address,
+                                    (address & 1U) != 0 ? static_cast<u8>((value & 1U) * 3U) : hidden);
 }
 
 } // namespace cupid

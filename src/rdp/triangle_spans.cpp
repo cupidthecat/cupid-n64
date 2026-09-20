@@ -30,7 +30,7 @@ struct Edge {
 
 } // namespace
 
-void Rdp::fill_cycle_triangle() {
+void Rdp::fill_copy_triangle(bool copy) {
     const u64 command = buffered_word(0);
     const bool left_major = (command & (1ULL << 55U)) != 0;
     const s32 top = signed_field(static_cast<u32>(command), 14);
@@ -40,6 +40,7 @@ void Rdp::fill_cycle_triangle() {
     const Edge lower(buffered_word(8));
     const Edge major(buffered_word(16));
     const Edge upper(buffered_word(24));
+    const RdpTextureAttributes attributes = copy ? triangle_texture_attributes() : RdpTextureAttributes{};
     const s32 first = std::max(top, static_cast<s32>(scissor_y0_));
     const s32 limit = std::min(bottom, static_cast<s32>(scissor_y1_));
     const s32 clip_left = static_cast<s32>(scissor_x0_) * 2;
@@ -71,9 +72,15 @@ void Rdp::fill_cycle_triangle() {
             left = std::min(left, std::clamp(l, clip_left, clip_right));
             right = std::max(right, std::clamp(r, clip_left, clip_right));
         }
-        if (valid && !outside_left && !outside_right)
-            fill_span(static_cast<unsigned>(y), static_cast<unsigned>(left >> 3),
-                      static_cast<unsigned>(right >> 3));
+        if (valid && !outside_left && !outside_right) {
+            const auto row = static_cast<unsigned>(y);
+            const auto start = static_cast<unsigned>(left >> 3);
+            const auto end = static_cast<unsigned>(right >> 3);
+            if (copy)
+                copy_triangle_span(row, start, end, attributes);
+            else
+                fill_span(row, start, end);
+        }
     }
 }
 
