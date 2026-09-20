@@ -130,8 +130,6 @@ void Rdp::write_register(u32 offset, u32 value) {
         end_ = value & address_mask;
         if (start_valid_) {
             current_ = start_;
-            command_buffer_size_ = 0;
-            command_buffer_address_ = current_;
             start_valid_ = false;
         }
         run_commands();
