@@ -65,7 +65,7 @@ TEST(bus_pif_rom_lockout_hides_boot_code_until_reset) {
     system.bus.pif[0] = 0xab;
     CHECK_EQ(system.bus.read(0x1fc00000, 1), 0xabU);
     system.bus.write(0x1fc007fc, 4, 0x10);
-    system.bus.tick(2150);
+    system.bus.tick(27307);
     CHECK_EQ(system.bus.read(0x1fc00000, 1), 0U);
     CHECK_EQ(system.bus.read(0x1fc00800, 4), 0U);
     system.bus.write(0x1fc007c0, 4, 0x12345678);

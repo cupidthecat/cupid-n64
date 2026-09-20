@@ -29,9 +29,7 @@ void Bus::reset() {
     memory.reset();
 
     std::fill(pif.begin() + PifRamOffset, pif.end(), u8{0});
-    pif[0x7e5] = 0x04;
-    pif[0x7e6] = cic.seed();
-    pif[0x7e7] = cic.seed();
+    pif_boot.reset();
 
     open_bus_ = 0;
     mi_mode_ = 0;
@@ -82,10 +80,6 @@ void Bus::reset() {
     cart_device_ = CartDevice::Open;
     cart_offset_ = 0;
     cart_limit_ = 0;
-    pif_rom_locked_ = false;
-    pif_boot_terminated_ = false;
-    pif_cpu_checksum_.fill(0);
-    pif_checksum_valid_ = false;
 
     reset_flash();
 
@@ -159,7 +153,7 @@ void Bus::write_sp_memory(u32 physical, unsigned width, u64 value) {
 
 u32 Bus::read_pif_word(u32 address) const {
     const u32 offset = address & 0x7fcU;
-    return offset < PifRamOffset && pif_rom_locked_ ? 0 : read_word_be(pif.data(), pif.size(), offset);
+    return offset < PifRamOffset && pif_boot.rom_locked() ? 0 : read_word_be(pif.data(), pif.size(), offset);
 }
 
 void Bus::write_pif_word(u32 physical, u32 value) {
@@ -374,6 +368,7 @@ void Bus::tick_devices(u64 rcp_cycles) {
     tick_vi(rcp_cycles);
     if (rcp_cycles == 0)
         return;
+    pif_boot.tick(rcp_cycles);
 
     if (pi_io_busy_) {
         if (rcp_cycles >= pi_io_counter_) {
@@ -522,25 +517,9 @@ void Bus::finish_pi_dma() {
 }
 
 void Bus::process_pif_control() {
-    u8& command = pif[0x7ff];
-    if ((command & 0x10U) != 0)
-        pif_rom_locked_ = true;
-    if ((command & 0x20U) != 0) {
-        std::copy_n(pif.begin() + 0x7f2, pif_cpu_checksum_.size(), pif_cpu_checksum_.begin());
-        std::fill(pif.begin() + 0x7f2, pif.begin() + 0x7f8, u8{0});
-        pif[0x7e5] = 0;
-        pif[0x7e6] = 0;
-        pif[0x7e7] = 0;
-        command |= 0x80U;
-    }
-    if ((command & 0x40U) != 0) {
-        pif_checksum_valid_ = cic.verify_checksum(pif_cpu_checksum_);
-    }
-    if ((command & 0x08U) != 0) {
-        pif_boot_terminated_ = true;
-        command = 0;
+    if (pif_boot.failed())
         return;
-    }
+    u8& command = pif[0x7ff];
     if ((command & 0x01U) != 0) {
         command &= static_cast<u8>(~1U);
         joybus.configure();

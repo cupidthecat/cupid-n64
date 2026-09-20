@@ -1,13 +1,12 @@
 #include "cupid/bus.hpp"
 
 #include <algorithm>
-#include <limits>
 #include <utility>
 
 namespace cupid {
 
 u64 Bus::next_event() const {
-    u64 next = std::numeric_limits<u64>::max();
+    u64 next = pif_boot.next_event();
     const auto include = [&](bool pending, u64 cycles) {
         if (pending)
             next = std::min(next, std::max<u64>(1, cycles));

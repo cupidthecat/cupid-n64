@@ -46,7 +46,7 @@ TEST(si_dma_read_respects_rom_lockout_without_hiding_pif_ram) {
     system.bus.pif[0x7ff] = 0;
     system.bus.pif[0x7c0] = 0xfe;
     system.bus.write(0x1fc007fc, 4, 0x10);
-    system.bus.tick(2150);
+    system.bus.tick(27307);
     system.bus.write(0x04800018, 4, 0);
     start_dma(system, 0x1fc007a0, true);
     system.bus.tick(15020);

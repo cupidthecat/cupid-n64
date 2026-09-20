@@ -5,6 +5,8 @@
 namespace cupid {
 
 void Bus::process_pif() {
+    if (pif_boot.failed())
+        return;
     if ((pif[0x7ff] & 0x02U) != 0) {
         std::span<u8, 15> challenge(pif.data() + 0x7c0U + 0x30, 15);
         cic.challenge(challenge);

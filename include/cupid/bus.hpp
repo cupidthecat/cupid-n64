@@ -5,6 +5,7 @@
 #include "cupid/cic.hpp"
 #include "cupid/rcp/controller.hpp"
 #include "cupid/rcp/joybus.hpp"
+#include "cupid/rcp/pif_boot.hpp"
 #include "cupid/rcp/transfer_pak.hpp"
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
@@ -73,6 +74,7 @@ class Bus {
     std::vector<u8> rdram;
     Rdram memory{rdram};
     Cic cic;
+    PifBoot pif_boot{*this};
     std::vector<u8> rom;
     std::array<u8, 2048> pif{};
     std::function<void(std::string_view)> debug_output;
@@ -92,6 +94,7 @@ class Bus {
   private:
     friend class Rdp;
     friend class Joybus;
+    friend class PifBoot;
     friend class System;
 
     System& system_;
@@ -165,10 +168,6 @@ class Bus {
     CartDevice cart_device_{CartDevice::Open};
     u32 cart_offset_{};
     u32 cart_limit_{};
-    bool pif_rom_locked_{};
-    bool pif_boot_terminated_{};
-    std::array<u8, 6> pif_cpu_checksum_{};
-    bool pif_checksum_valid_{};
 
     enum class FlashMode { ReadArray, Status, LoadPage, SiliconId };
     FlashChip flash_chip_{FlashChip::Mx29L1100};

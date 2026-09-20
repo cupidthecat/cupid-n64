@@ -161,9 +161,13 @@ TEST(bus_pif_control_uses_cic_seed_and_hides_boot_secrets) {
     CHECK_EQ(bus.pif[0x7e6], 0x91U);
     CHECK_EQ(bus.pif[0x7e7], 0x91U);
 
+    bus.write(0x1fc007fcU, 4, 0x10U);
+    bus.tick(27307);
+
     const std::array<u8, 6> checksum{0x86, 0x18, 0xa4, 0x5b, 0xc2, 0xd3};
     std::copy(checksum.begin(), checksum.end(), bus.pif.begin() + 0x7f2);
     bus.write(0x1fc007fcU, 4, 0x00000020U);
+    bus.tick(27307);
     CHECK((bus.pif[0x7ff] & 0x80U) != 0);
     CHECK_EQ(bus.pif[0x7e5], 0U);
     CHECK_EQ(bus.pif[0x7e6], 0U);
@@ -171,8 +175,10 @@ TEST(bus_pif_control_uses_cic_seed_and_hides_boot_secrets) {
     for (unsigned index = 0; index < checksum.size(); ++index)
         CHECK_EQ(bus.pif[0x7f2 + index], 0U);
 
-    bus.tick(2150);
+    bus.write(0x1fc007fcU, 4, 0x40U);
+    bus.tick(27307);
     bus.write(0x1fc007fcU, 4, 0x00000008U);
+    bus.tick(27307);
     CHECK_EQ(bus.pif[0x7ff], 0U);
 }
 

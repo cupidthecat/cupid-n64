@@ -56,8 +56,8 @@ prefetched instructions, clock progression, stalled-bus state, and cold reset.
 under bulk/single-cycle CPU/RCP advances, EEPROM's busy deadline, saved bytes,
 and a request made during audio delivery.
 
-This CPU event is one part of the console reset lifecycle. Reset-button input,
-pre-NMI notification, PIF reset sequencing and ROM unlocking, boot checksum
-failure handling, and warm reboot with supplied firmware remain unfinished
+The [PIF boot controller](pif-boot.md) uses this event for checksum failures and
+boot timeout. Reset-button input, pre-NMI notification, PIF warm-reset sequencing
+and ROM unlocking, and warm reboot with supplied firmware remain unfinished
 under #35. Exception timing captures remain under #8. These tests establish the
 implemented state and event ordering, not a completed console reset sequence.

@@ -22,6 +22,11 @@ upload from consuming input or changing accessory state before the read phase.
 CPU PIF stores can also configure descriptors; ordinary CPU reads do not execute
 the channel list. See [Joybus configuration and execution](joybus.md).
 
+[PIF boot control](pif-boot.md) observes lockout, checksum, and termination bits
+on separate clock boundaries. SI write completion does not execute those stages
+immediately. Security failure stops Joybus handling, though the current SI model
+still completes transfers and copies PIF RAM.
+
 The model completes writes after 4,065 RCP cycles. Read timing starts at 13,600
 RCP cycles and adds time for each Joybus packet: 22,000 cycles for a connected
 controller, 18,000 for an absent controller, or 20,000 for the cartridge channel.
