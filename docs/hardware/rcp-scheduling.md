@@ -15,6 +15,11 @@ samples. `Bus::tick` also honors these deadlines when called directly. Device
 clocks advance before event callbacks, so an audio callback observes its sample's
 DP clock rather than the beginning or end of a larger CPU batch.
 
+Audio deadlines use the period latched for the active DAC interval. If video
+callbacks are registered, idle DAC boundaries also bound the advance so a callback
+cannot start a buffer retroactively. Without an observable sample or video
+callback, idle audio periods can advance in bulk. See [audio timing](audio-timing.md).
+
 This ordering preserves memory visibility between devices. An SP DMA that
 finishes before an audio sample supplies that sample's data. A later SI write
 cannot change an earlier audio sample. The RSP's direct tick path likewise

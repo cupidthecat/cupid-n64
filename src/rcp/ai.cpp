@@ -6,6 +6,19 @@
 
 namespace cupid {
 
+void Bus::reset_ai_clock() {
+    ai_counter_ = 0;
+    ai_clock_rate_ = static_cast<u64>(system_.video_frequency()) * 44100;
+    ai_clock_period_ = 62500000ULL * system_.video_frequency();
+    ai_clock_started_ = false;
+    ai_dac_rate_written_ = false;
+}
+
+void Bus::latch_ai_period() {
+    if (ai_dac_rate_written_)
+        ai_clock_period_ = 62500000ULL * 44100 * (ai_[4] + 1U);
+}
+
 u32 Bus::read_ai(u32 offset) const {
     const unsigned index = (offset & 0x1fU) >> 2U;
     if (index != 3)
@@ -42,8 +55,9 @@ void Bus::write_ai(u32 offset, u32 value) {
         return;
     case 4:
         ai_[4] = value & 0x3fffU;
-        ai_clock_rate_ = system_.video_frequency();
-        ai_clock_period_ = 62500000ULL * (ai_[4] + 1U);
+        ai_dac_rate_written_ = true;
+        if (!ai_clock_started_)
+            latch_ai_period();
         return;
     case 5:
         ai_[5] = value & 0xfU;
@@ -85,13 +99,14 @@ void Bus::tick_ai(u64 rcp_cycles) {
             std::min(rcp_cycles, (std::numeric_limits<u64>::max() - ai_counter_) / ai_clock_rate_);
         ai_counter_ += chunk * ai_clock_rate_;
         rcp_cycles -= chunk;
-        u64 samples = ai_counter_ / ai_clock_period_;
-        ai_counter_ %= ai_clock_period_;
-        while (samples != 0 && ai_fifo_count_ != 0) {
-            if ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)
-                break;
+        while (ai_counter_ >= ai_clock_period_) {
+            ai_counter_ -= ai_clock_period_;
             sample_ai();
-            --samples;
+            latch_ai_period();
+            if (ai_fifo_count_ == 0 || ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)) {
+                ai_counter_ %= ai_clock_period_;
+                break;
+            }
         }
     }
 }

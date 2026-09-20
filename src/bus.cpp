@@ -48,9 +48,7 @@ void Bus::reset() {
     vi_counter_ = 0;
     vi_line_period_.reset();
     vi_clock_fraction_ = 0;
-    ai_counter_ = 0;
-    ai_clock_rate_ = 44100;
-    ai_clock_period_ = 62500000;
+    reset_ai_clock();
     ai_address_carry_ = false;
     pi_dma_counter_ = 0;
     pi_io_counter_ = 0;

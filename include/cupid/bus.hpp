@@ -106,8 +106,10 @@ class Bus {
     std::optional<u64> vi_line_period_;
     u64 vi_clock_fraction_{};
     u64 ai_counter_{};
-    u64 ai_clock_rate_{44100};
-    u64 ai_clock_period_{62500000};
+    u64 ai_clock_rate_{};
+    u64 ai_clock_period_{};
+    bool ai_clock_started_{};
+    bool ai_dac_rate_written_{};
     bool ai_address_carry_{};
     u64 pi_dma_counter_{};
     u64 pi_io_counter_{};
@@ -180,6 +182,8 @@ class Bus {
     void write_ai(u32 offset, u32 value);
     void tick_ai(u64 rcp_cycles);
     void sample_ai();
+    void reset_ai_clock();
+    void latch_ai_period();
     [[nodiscard]] u32 read_pi(u32 offset) const;
     void write_pi(u32 offset, u32 value);
     [[nodiscard]] u32 read_ri(u32 offset) const;
