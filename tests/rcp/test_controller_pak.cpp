@@ -40,13 +40,13 @@ TEST(controller_pak_removal_retains_storage_and_reports_absence_until_reinserted
         fixture.ready();
         fixture.bus.controller_paks[port].fill(0xa5);
         ControllerState state;
-        state.controller_pak = false;
+        state.accessory = ControllerAccessory::None;
         fixture.bus.set_controller_state(port, state);
         fixture.blocked(port);
         CHECK_EQ(fixture.status(port), 2U);
         fixture.blocked(port);
         CHECK_EQ(fixture.status(port), 2U);
-        state.controller_pak = true;
+        state.accessory = ControllerAccessory::ControllerPak;
         fixture.bus.set_controller_state(port, state);
         CHECK_EQ(fixture.status(port), 3U);
         const auto read = fixture.command(port, {2, 0, 0}, 8);
@@ -145,7 +145,7 @@ TEST(controller_pak_controller_reconnection_reestablishes_attachment_detection) 
             fixture.ready();
             ControllerState state;
             state.connected = false;
-            state.controller_pak = pak;
+            state.accessory = pak ? ControllerAccessory::ControllerPak : ControllerAccessory::None;
             fixture.bus.set_controller_state(port, state);
             const auto reply = fixture.command(port, {0}, 3);
             CHECK_EQ(fixture.bus.pif[0x7c1 + port], 0x83U);

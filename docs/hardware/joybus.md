@@ -42,6 +42,10 @@ commands retain their address/data CRC and data-access rules; extra reply bytes
 after the data or CRC are zero. Cartridge EEPROM replies are described in
 [EEPROM behavior](eeprom.md).
 
+The selected [controller accessory](controller-accessories.md) supplies Pak
+read/write behavior. Controller Pak and Rumble Pak share status, detection,
+CRC, packet-length, and error-flag handling.
+
 ## Controller polling
 
 `ControllerState::buttons` supplies the host's button inputs. Polling clears

@@ -2,6 +2,7 @@
 
 #include "cupid/cartridge/flash.hpp"
 #include "cupid/cic.hpp"
+#include "cupid/rcp/controller.hpp"
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
 #include "cupid/types.hpp"
@@ -27,14 +28,6 @@ enum class SaveType {
     FlashRam,
     Eeprom4K,
     Eeprom16K,
-};
-
-struct ControllerState {
-    bool connected{true};
-    u16 buttons{};
-    s8 stick_x{};
-    s8 stick_y{};
-    bool controller_pak{true};
 };
 
 class Bus {
@@ -68,6 +61,9 @@ class Bus {
     [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
         return controllers_;
     }
+    [[nodiscard]] bool rumble_active(unsigned port) const {
+        return port < controller_rumble_.size() && controller_rumble_[port];
+    }
 
     std::vector<u8> rdram;
     Rdram memory{rdram};
@@ -92,6 +88,7 @@ class Bus {
     System& system_;
     std::array<ControllerState, 4> controllers_{};
     std::array<bool, 4> controller_pak_changed_{true, true, true, true};
+    std::array<bool, 4> controller_rumble_{};
 
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);

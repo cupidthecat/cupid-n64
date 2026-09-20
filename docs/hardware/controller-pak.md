@@ -5,6 +5,11 @@ port. Update inputs and connection state through `Bus::set_controller_state`.
 `Bus::controllers()` exposes a read-only view; connection changes cannot bypass
 the setter by modifying that view.
 
+Select `ControllerAccessory::ControllerPak` in `ControllerState::accessory`.
+The old `controller_pak` boolean is replaced by this explicit selection; use
+`ControllerAccessory::None` to remove the Pak. [Controller accessories](controller-accessories.md)
+also describes Rumble Pak selection and the shared attachment rules.
+
 ## Attachment and acknowledgement
 
 Each newly constructed controller starts with its configured Pak attached and

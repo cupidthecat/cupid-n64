@@ -49,9 +49,9 @@ struct PakFixture {
 
     void insert(unsigned port) {
         ControllerState state;
-        state.controller_pak = false;
+        state.accessory = ControllerAccessory::None;
         bus.set_controller_state(port, state);
-        state.controller_pak = true;
+        state.accessory = ControllerAccessory::ControllerPak;
         bus.set_controller_state(port, state);
     }
 

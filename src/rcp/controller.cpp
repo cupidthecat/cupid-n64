@@ -8,9 +8,11 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (port >= controllers_.size())
         return;
     const auto& previous = controllers_[port];
-    if (state.controller_pak != previous.controller_pak ||
-        (!previous.connected && state.connected && state.controller_pak))
+    if (state.accessory != previous.accessory ||
+        (!previous.connected && state.connected && state.accessory != ControllerAccessory::None))
         controller_pak_changed_[port] = true;
+    if (!state.connected || state.accessory != previous.accessory)
+        controller_rumble_[port] = false;
     controllers_[port] = state;
 }
 
@@ -48,7 +50,9 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
     if (command == 0x00 || command == 0xff) {
         output[0] = 0x05;
         output[1] = 0x00;
-        output[2] = controller.controller_pak ? controller_pak_changed_[port] ? 0x03 : 0x01 : 0x02;
+        output[2] = (controller.accessory != ControllerAccessory::None)
+                        ? controller_pak_changed_[port] ? 0x03 : 0x01
+                        : 0x02;
         controller_pak_changed_[port] = false;
         valid = true;
         return;
@@ -76,14 +80,20 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
         const u16 encoded = static_cast<u16>((static_cast<u16>(input[1]) << 8U) | input[2]);
         const u16 address = encoded & 0xffe0U;
         const unsigned data_length = std::min<unsigned>(recv, 32);
-        const bool accessible = controller.controller_pak && !controller_pak_changed_[port] &&
-                                (encoded & 0x1fU) == address_crc(address);
+        const bool accessible = (controller.accessory != ControllerAccessory::None) &&
+                                !controller_pak_changed_[port] && (encoded & 0x1fU) == address_crc(address);
         for (unsigned index = 0; index < std::min<unsigned>(recv, 33); ++index)
             output[index] = 0;
         if (accessible) {
             for (unsigned index = 0; index < data_length; ++index) {
                 const u32 pos = static_cast<u32>(address) + index;
-                output[index] = pos < controller_paks[port].size() ? controller_paks[port][pos] : 0;
+                if (controller.accessory == ControllerAccessory::ControllerPak)
+                    output[index] = pos < controller_paks[port].size() ? controller_paks[port][pos] : 0;
+                else if (controller.accessory == ControllerAccessory::RumblePak)
+                    output[index] = pos < 0x8000               ? 0
+                                    : pos < 0x9000             ? 0x80
+                                    : controller_rumble_[port] ? 0xff
+                                                               : 0;
             }
         }
         valid = true;
@@ -98,13 +108,17 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
         const u16 encoded = static_cast<u16>((static_cast<u16>(input[1]) << 8U) | input[2]);
         const u16 address = encoded & 0xffe0U;
         const unsigned data_length = std::min<unsigned>(send - 3U, 32);
-        const bool accessible = controller.controller_pak && !controller_pak_changed_[port] &&
-                                (encoded & 0x1fU) == address_crc(address);
-        if (accessible && address != 0x8000U) {
-            for (unsigned index = 0; index < data_length; ++index) {
-                const u32 pos = static_cast<u32>(address) + index;
-                if (pos < controller_paks[port].size())
-                    controller_paks[port][pos] = input[3 + index];
+        const bool accessible = (controller.accessory != ControllerAccessory::None) &&
+                                !controller_pak_changed_[port] && (encoded & 0x1fU) == address_crc(address);
+        if (accessible) {
+            if (controller.accessory == ControllerAccessory::ControllerPak && address != 0x8000U) {
+                for (unsigned index = 0; index < data_length; ++index) {
+                    const u32 pos = static_cast<u32>(address) + index;
+                    if (pos < controller_paks[port].size())
+                        controller_paks[port][pos] = input[3 + index];
+                }
+            } else if (controller.accessory == ControllerAccessory::RumblePak && address >= 0xc000) {
+                controller_rumble_[port] = (input[3] & 1U) != 0;
             }
         }
         output[0] = data_length == 32 ? pak_crc(input + 3) : 0;

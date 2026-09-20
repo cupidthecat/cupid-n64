@@ -1,29 +1,12 @@
 #include "controller_pak_fixture.hpp"
+#include "pak_crc_oracle.hpp"
 #include "test_system.hpp"
 
 namespace {
 using namespace cupid;
+using test::address_remainder;
+using test::data_remainder;
 using test::PakFixture;
-
-// Polynomial long division keeps the oracle independent of the serial CRC loop.
-u8 address_remainder(u16 address) {
-    unsigned remainder = address;
-    for (int bit = 15; bit >= 5; --bit)
-        if (remainder & (1U << bit))
-            remainder ^= 0x35U << (bit - 5);
-    return static_cast<u8>(remainder);
-}
-
-u8 data_remainder(std::span<const u8, 32> data) {
-    unsigned remainder = 0;
-    for (unsigned byte = 0; byte <= data.size(); ++byte) {
-        remainder = (remainder << 8) | (byte == data.size() ? 0 : data[byte]);
-        for (int bit = 15; bit >= 8; --bit)
-            if (remainder & (1U << bit))
-                remainder ^= 0x185U << (bit - 8);
-    }
-    return static_cast<u8>(remainder);
-}
 
 std::array<u8, 35> write_packet(u16 address, const std::array<u8, 32>& data) {
     const auto encoded = static_cast<u16>(address | address_remainder(address));

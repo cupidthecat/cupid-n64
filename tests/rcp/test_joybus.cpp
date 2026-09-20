@@ -113,7 +113,8 @@ TEST(joybus_controller_status_and_poll_return_prefixes_and_zero_padded_replies) 
                 controller.buttons = 0xa123;
                 controller.stick_x = -7;
                 controller.stick_y = 31;
-                controller.controller_pak = (port & 1U) == 0;
+                controller.accessory =
+                    (port & 1U) == 0 ? ControllerAccessory::ControllerPak : ControllerAccessory::None;
                 fixture.bus.set_controller_state(port, controller);
                 for (unsigned index = 0; index < port; ++index)
                     fixture.byte(0);
@@ -123,7 +124,10 @@ TEST(joybus_controller_status_and_poll_return_prefixes_and_zero_padded_replies) 
                 const std::array<u8, 8> expected =
                     command == 1
                         ? std::array<u8, 8>{0xa1, 0x23, 0xf9, 31, 0, 0, 0, 0}
-                        : std::array<u8, 8>{5, 0, controller.controller_pak ? u8{1} : u8{2}, 0, 0, 0, 0, 0};
+                        : std::array<u8, 8>{
+                              5, 0, controller.accessory != ControllerAccessory::None ? u8{1} : u8{2},
+                              0, 0, 0,
+                              0, 0};
                 for (unsigned index = 0; index < receive; ++index)
                     CHECK_EQ(fixture.at(response + index), expected[index]);
                 CHECK_EQ(fixture.at(response - 2), receive | (command == 1 && receive > 4 ? 0x40U : 0U));

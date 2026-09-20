@@ -75,6 +75,7 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [EEPROM](docs/hardware/eeprom.md),
 [Joybus packets](docs/hardware/joybus.md),
 [Controller Pak behavior](docs/hardware/controller-pak.md),
+[controller accessories and Rumble Pak](docs/hardware/controller-accessories.md),
 [cartridge SRAM](docs/hardware/sram.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
