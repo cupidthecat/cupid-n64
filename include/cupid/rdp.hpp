@@ -99,6 +99,8 @@ class Rdp {
     [[nodiscard]] unsigned command_length(u8 opcode) const;
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
+    void fill_span(unsigned y, unsigned left, unsigned right);
+    void fill_cycle_triangle();
     void copy_rectangle(u64 command, bool flipped);
     [[nodiscard]] u16 copy_texel(const RdpTile& tile, s32 s, s32 t, unsigned lane) const;
     void fill_triangle();

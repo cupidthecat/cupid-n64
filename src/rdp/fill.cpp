@@ -31,28 +31,31 @@ void Rdp::fill_rectangle(u64 command) {
     const unsigned right = clip_x(raw_right);
     const unsigned top = y0 >> 2U;
     const unsigned bottom = (y1 - 1U) >> 2U;
-    const unsigned bytes_per_pixel = 1U << (color_image_size_ - 1U);
-
     for (unsigned y = top; y <= bottom; ++y) {
         if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
             continue;
         // Fill uses the inclusive integer span, including a clipped right edge.
-        for (unsigned x = left; x <= right; ++x) {
-            const u32 pixel = y * color_image_width_ + x;
-            const u32 address = color_image_address_ + pixel * bytes_per_pixel;
-            if (color_image_size_ == 1U) {
-                const u8 color = static_cast<u8>(fill_color_ >> ((3U - (address & 3U)) * 8U));
-                const u8 hidden = bus_.memory.hidden_pair(address);
-                bus_.memory.write(address, 1, color);
-                // Only the odd byte drives the hidden pair in an 8-bit fill.
-                bus_.memory.set_hidden_pair(address, (address & 1U) != 0 ? static_cast<u8>((color & 1U) * 3U)
-                                                                         : hidden);
-            } else if (color_image_size_ == 2U) {
-                const u16 color = static_cast<u16>(fill_color_ >> ((address & 2U) == 0 ? 16U : 0U));
-                bus_.memory.write(address, 2, color);
-            } else {
-                bus_.memory.write(address, 4, fill_color_);
-            }
+        fill_span(y, left, right);
+    }
+}
+
+void Rdp::fill_span(unsigned y, unsigned left, unsigned right) {
+    const unsigned bytes_per_pixel = 1U << (color_image_size_ - 1U);
+    for (unsigned x = left; x <= right; ++x) {
+        const u32 pixel = y * color_image_width_ + x;
+        const u32 address = color_image_address_ + pixel * bytes_per_pixel;
+        if (color_image_size_ == 1U) {
+            const u8 color = static_cast<u8>(fill_color_ >> ((3U - (address & 3U)) * 8U));
+            const u8 hidden = bus_.memory.hidden_pair(address);
+            bus_.memory.write(address, 1, color);
+            // Only the odd byte drives the hidden pair in an 8-bit fill.
+            bus_.memory.set_hidden_pair(address,
+                                        (address & 1U) != 0 ? static_cast<u8>((color & 1U) * 3U) : hidden);
+        } else if (color_image_size_ == 2U) {
+            const u16 color = static_cast<u16>(fill_color_ >> ((address & 2U) == 0 ? 16U : 0U));
+            bus_.memory.write(address, 2, color);
+        } else {
+            bus_.memory.write(address, 4, fill_color_);
         }
     }
 }
