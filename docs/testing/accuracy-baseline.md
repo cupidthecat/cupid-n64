@@ -11,6 +11,10 @@ experimental RDP fixtures. Their command packing and coverage expectations are
 audited [separately](rdp-triangle-fixtures.md). The results below remain the
 historical baseline for `be366ff`, not the current extended-suite totals.
 
+Later [VI line-latching results](vi-timing-results.md) record changed cache-miss
+averages after correcting horizontal deadlines. The same timing cases still
+fail; the original expectations remain unchanged.
+
 ## Inputs
 
 The test source is `thelemmy/nemu64-test` commit

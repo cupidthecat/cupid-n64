@@ -37,7 +37,7 @@ u64 Bus::vi_line_cycles() const {
 }
 
 u64 Bus::next_vi_line() const {
-    const u64 period = vi_line_cycles();
+    const u64 period = vi_line_period_.value_or(vi_line_cycles());
     if (vi_counter_ >= period)
         return 1;
     const u64 numerator = (period - vi_counter_) * 62500000 - vi_clock_fraction_;
@@ -50,25 +50,30 @@ void Bus::tick_vi(u64 rcp_cycles) {
     const u64 clocks = (rcp_cycles / rcp_frequency) * system_.video_frequency() + fraction / rcp_frequency;
     vi_clock_fraction_ = fraction % rcp_frequency;
     const bool active = (vi_[0] & 3U) != 0;
-    if (!active)
-        vi_current_ = 0;
+    if (!vi_line_period_)
+        vi_line_period_ = vi_line_cycles();
     vi_counter_ += clocks;
     while (true) {
-        const u64 line_cycles = vi_line_cycles();
+        const u64 line_cycles = *vi_line_period_;
         if (vi_counter_ < line_cycles)
             break;
         vi_counter_ -= line_cycles;
         start_rdram_refresh();
-        if (!active)
+        if (!active) {
+            vi_current_ &= 1U;
+            vi_line_period_ = vi_line_cycles();
             continue;
+        }
 
         const bool interlaced = (vi_[6] & 1U) == 0;
-        vi_current_ += 2;
+        const u32 previous = vi_current_;
+        vi_current_ = (vi_current_ + 2) & 0x3ffU;
         if (vi_current_ >= vi_[6] + 1) {
             vi_current_ = (vi_current_ & 1U) ^ static_cast<u32>(interlaced);
             vi_leap_counter_ = (vi_leap_counter_ + 1) % 5;
             ++vi_field_sequence_;
-        }
+        } else if (vi_current_ < previous)
+            ++vi_field_sequence_;
 
         const u32 compare = vi_[3];
         bool interrupt = false;
@@ -81,6 +86,7 @@ void Bus::tick_vi(u64 rcp_cycles) {
         }
         if (interrupt)
             set_interrupt(3, true);
+        vi_line_period_ = vi_line_cycles();
     }
 }
 

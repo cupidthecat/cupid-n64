@@ -101,6 +101,7 @@ class Bus {
     [[nodiscard]] u64 next_vi_line() const;
 
     u64 vi_counter_{};
+    std::optional<u64> vi_line_period_;
     u64 vi_clock_fraction_{};
     u64 ai_counter_{};
     u64 ai_clock_rate_{44100};

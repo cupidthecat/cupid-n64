@@ -46,6 +46,7 @@ void Bus::reset() {
     si_.fill(0);
 
     vi_counter_ = 0;
+    vi_line_period_.reset();
     vi_clock_fraction_ = 0;
     ai_counter_ = 0;
     ai_clock_rate_ = 44100;

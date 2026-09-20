@@ -12,6 +12,12 @@ selects the low or high leap value, advancing one bit per field and repeating
 after five fields. H_SYNC resets to 2047. Software-written zero timing values
 are used directly; there is no fallback to a standard video mode.
 
+The duration and leap selection are sampled when a line begins. Writes to
+H_SYNC or H_SYNC_LEAP become readable immediately but do not shorten, extend,
+or replace the active line. The following line uses the new register values.
+RI refresh uses the same latched deadline. Reset discards the pending period;
+register writes before the first elapsed cycle configure that first line.
+
 CURRENT reports the vertical counter in half-lines and includes the field bit.
 An odd V_SYNC value produces progressive fields. An even value alternates the
 field bit, so successive fields contain different numbers of complete scanlines.
@@ -19,8 +25,19 @@ The interrupt comparison follows that field phase. Odd comparator values match
 the same scanline in both fields; even values account for the half-line offset.
 The zero comparator also matches the final even half-line of an interlaced field.
 
+The vertical line counter is nine bits, separate from the field bit. Its natural
+512-line wrap preserves field parity and does not advance the five-field leap
+pattern. A programmed V_SYNC restart performs those updates separately. At
+the largest V_SYNC values, the counter can wrap before reaching the programmed
+restart comparison. Changing V_SYNC or the interrupt target affects the next
+line boundary; it does not restart the counter or raise a retroactive interrupt
+at the write itself.
+
 Writing CURRENT acknowledges the VI interrupt without changing the counter.
-A zero video type holds CURRENT at zero and prevents VI interrupts. The
+A zero video type resets the vertical line counter at the next horizontal
+boundary and prevents new VI interrupts. It preserves the field bit and any
+already pending interrupt, so CURRENT can remain 1 while blanked. A blank and
+unblank sequence entirely within one line does not reset the counter. The
 horizontal counter continues to drive [RI refresh](rdram-interface.md), and
 re-enabling video resumes vertical counting at the next horizontal boundary.
 Reset clears the counters, leap phase, and fractional clock state, initializes
@@ -28,8 +45,20 @@ the interrupt comparator to 256, and restores the 2048-clock horizontal period.
 
 `tests/rcp/test_vi.cpp` checks region-specific boundaries, fractional clocks,
 blanking, leap selection, field-dependent interrupts, reset, and zero periods.
+`tests/vi/test_timing_registers.cpp` checks writes during normal and leap lines,
+blanking on odd fields, short blank pulses, counter wrap, reset cancellation,
+and refresh deadlines. Ten-field NTSC/PAL progressive and interlaced traces
+compare line counts, interrupt edges, and leap phase under bulk and single-cycle
+advances. These traces use short programmed horizontal periods to exercise the
+regional clock conversion and field boundaries without assuming a broadcast
+display mode.
+Another trace changes VI registers at audio sample boundaries while SP DMA and
+RI refresh are active, comparing counters, interrupts, sample clocks, audio
+data, and bank state across CPU tick sizes.
 
 VI framebuffer reads do not yet contend with CPU or other RCP memory requests.
 The extended cartridge suite still reports the RDRAM timing limits described in
-[CPU timing](cpu-timing.md). Correct scanline timing alone does not establish
+[CPU timing](cpu-timing.md). Updated measurements after line-duration latching
+are recorded in the [VI timing results](../testing/vi-timing-results.md).
+Correct scanline timing alone does not establish
 accurate RDRAM arbitration.
