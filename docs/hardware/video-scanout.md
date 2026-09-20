@@ -1,9 +1,33 @@
-# Video field snapshots
+# Video field output
 
 `Bus::scan_video()` returns a field decoded from the current VI registers and
 installed RDRAM. It is a snapshot: calling it does not advance the VI, perform
 DMA, change memory-bank state, or retain pixels from an earlier call. The
 implementation lives in `src/vi/scanout.cpp`, `filter.cpp`, and `gamma.cpp`.
+
+Call `Bus::set_video_output(callback)` to receive fields as emulation advances.
+Pass an empty callback to stop delivery. At each active line boundary, the
+vertical counter is compared with `V_START >> 1`.
+A match decodes the current registers and framebuffer and passes an owned
+`VideoField` to the callback. The callback can move that field into storage;
+later emulation cannot overwrite its pixels. The delivery boundary is the
+start of the programmed vertical window, not the interrupt comparator or
+the end of the field.
+
+The scheduler stops at VI line boundaries while a callback is registered and
+video is active, including when RI refresh is disabled. Callbacks observe the
+updated CURRENT register, interrupt state, and DP clock at that boundary.
+The next horizontal period is already latched. A callback may write registers
+or replace/remove itself, but must not recursively advance or reset the system.
+Reset preserves the registered callback and restarts video timing. Registration
+does not deliver an immediate field or replay a missed boundary.
+
+The start comparison ignores the low bit of V_START in both field phases.
+Changing V_START affects subsequent boundary comparisons, so software can
+cause multiple deliveries in one field or skip a field. A start of zero matches
+counter rollover; a start beyond the vertical counter's programmed range never
+matches. Video type zero suppresses delivery. The reserved nonzero type keeps
+timing active but decodes to black, as it does in explicit snapshots.
 
 `VideoField` contains 640 by 240 pixels for NTSC or 640 by 288 for PAL. Pixels
 are packed RGBA8888 with alpha 255. Areas outside the display window are black.
@@ -78,12 +102,14 @@ sequence or clock phase.
 
 Snapshots read the installed RDRAM bytes directly. They do not model chip
 remapping, VI fetch traffic, arbitration, line-buffer retention, or register
-latching during a field. A write between calls changes the next snapshot;
-this does not establish when hardware would latch that write. Timed field
-delivery, odd-halfline boundary behavior, and filtering across mid-field
-register changes still need validation. Issues #23 and #24 track this remaining
-work. Hardware captures are also needed to check noise correlations and the
-repeated-row behavior independently.
+latching during a field. Timed delivery takes a whole-field snapshot at the
+vertical-start boundary. It does not retain rows as they are scanned, and a
+later framebuffer write cannot change the field already delivered. A write
+between snapshots changes the next snapshot; this does not establish when
+hardware would latch that write. Odd-halfline pixel placement and filtering
+across mid-field register changes still need validation. Issues #23 and #24
+track this remaining work. Hardware captures are also needed to check noise
+correlations and the repeated-row behavior independently.
 
 ## Regression coverage
 
@@ -98,3 +124,12 @@ negative corrections, divot medians, restoration, repeated rows, gamma-table
 addresses, and noise-channel correlations. `test_filter_scanout.cpp` checks
 register control, filter order, both framebuffer sizes, repeated-row selection,
 field-dependent noise, reset, black borders, and memory-state preservation.
+
+`test_output.cpp` checks delivery deadlines, ten-field NTSC/PAL traces, leap
+patterns, interlaced parity, odd/even vertical starts, start-register writes,
+counter wrap, blanking, framebuffer changes, owned pixels, callback replacement,
+and reset. Scheduling tests compare bulk and single-cycle CPU advances while
+SP and SI transfers, RDP drawing, audio, and refresh are active. These tests
+check that successive fields contain the SP-written, RDP-filled, and SI-written
+pixels in that order. They exercise the existing transfer and drawing models;
+VI fetch contention and asynchronous RDP execution remain unimplemented.

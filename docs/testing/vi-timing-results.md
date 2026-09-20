@@ -49,6 +49,7 @@ and interlaced counts. A separate trace changes VI registers while refresh,
 SP DMA, and audio DMA are active, comparing bulk and single-cycle advances.
 
 VI framebuffer traffic still does not participate in memory arbitration.
-Timed output delivery, scanout register latches, and line-buffer retention also
-remain unfinished. Issues #5, #6, #23, and #24 remain open. These results update
+Scanout register latches and line-buffer retention also remain unfinished;
+[timed field output](../hardware/video-scanout.md) uses a whole-field snapshot.
+Issues #5, #6, #23, and #24 remain open. These results update
 the measured state; they are not new acceptance thresholds.

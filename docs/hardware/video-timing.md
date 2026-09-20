@@ -56,6 +56,14 @@ Another trace changes VI registers at audio sample boundaries while SP DMA and
 RI refresh are active, comparing counters, interrupts, sample clocks, audio
 data, and bank state across CPU tick sizes.
 
+Registered [video output callbacks](video-scanout.md) receive a field when the
+vertical counter reaches `V_START >> 1`. Their event deadline participates in
+RCP scheduling even without RI refresh. `tests/vi/test_output.cpp` checks exact
+delivery clocks, progressive and interlaced ten-field traces in both regions,
+start-register changes, blanking, and counter wrap. Bulk and single-cycle CPU
+advances also produce matching fields while SP/SI DMA, RDP drawing, audio,
+and refresh modify the machine state.
+
 VI framebuffer reads do not yet contend with CPU or other RCP memory requests.
 The extended cartridge suite still reports the RDRAM timing limits described in
 [CPU timing](cpu-timing.md). Updated measurements after line-duration latching

@@ -1,6 +1,12 @@
 #include "cupid/system.hpp"
 
+#include <utility>
+
 namespace cupid {
+
+void Bus::set_video_output(std::function<void(VideoField)> output) {
+    video_output_ = output ? std::make_shared<std::function<void(VideoField)>>(std::move(output)) : nullptr;
+}
 
 u32 Bus::read_vi(u32 offset) const {
     const unsigned index = static_cast<unsigned>((offset & 0x3fU) >> 2U);
@@ -49,7 +55,6 @@ void Bus::tick_vi(u64 rcp_cycles) {
     const u64 fraction = (rcp_cycles % rcp_frequency) * system_.video_frequency() + vi_clock_fraction_;
     const u64 clocks = (rcp_cycles / rcp_frequency) * system_.video_frequency() + fraction / rcp_frequency;
     vi_clock_fraction_ = fraction % rcp_frequency;
-    const bool active = (vi_[0] & 3U) != 0;
     if (!vi_line_period_)
         vi_line_period_ = vi_line_cycles();
     vi_counter_ += clocks;
@@ -59,7 +64,7 @@ void Bus::tick_vi(u64 rcp_cycles) {
             break;
         vi_counter_ -= line_cycles;
         start_rdram_refresh();
-        if (!active) {
+        if ((vi_[0] & 3U) == 0) {
             vi_current_ &= 1U;
             vi_line_period_ = vi_line_cycles();
             continue;
@@ -87,6 +92,10 @@ void Bus::tick_vi(u64 rcp_cycles) {
         if (interrupt)
             set_interrupt(3, true);
         vi_line_period_ = vi_line_cycles();
+        if (video_output_ && (vi_current_ >> 1) == (vi_[10] >> 17)) {
+            const auto output = video_output_;
+            (*output)(scan_video());
+        }
     }
 }
 

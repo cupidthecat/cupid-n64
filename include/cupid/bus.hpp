@@ -8,6 +8,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -45,6 +46,7 @@ class Bus {
     bool write_cache(u32 physical, std::span<const u8> bytes);
     void tick(u64 rcp_cycles);
     [[nodiscard]] VideoField scan_video() const;
+    void set_video_output(std::function<void(VideoField)> output);
     [[nodiscard]] u64 rdram_refresh_wait() const {
         return ri_refresh_counter_;
     }
@@ -116,6 +118,7 @@ class Bus {
     u32 vi_current_{};
     unsigned vi_leap_counter_{};
     u32 vi_field_sequence_{};
+    std::shared_ptr<std::function<void(VideoField)>> video_output_;
     u32 ai_fifo_count_{};
     std::array<u32, 2> ai_addresses_{};
     std::array<u32, 2> ai_lengths_{};
