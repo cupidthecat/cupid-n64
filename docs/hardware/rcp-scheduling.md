@@ -10,6 +10,15 @@ clock. An active RSP executes at one-cycle boundaries. When it is halted, the
 scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
 store, or peripheral event.
 
+The inverse conversion rounds an RCP wait up to the first reachable CPU clock
+while retaining that fractional phase. A zero wait costs no cycles at any phase.
+The arithmetic avoids overflowing intermediate products; waits beyond the
+64-bit CPU clock horizon saturate at that horizon. Current CPU callers use
+short refresh and buffered-store waits. The larger values are arithmetic
+boundary coverage, not a claim of running a cartridge for that many cycles.
+`tests/rcp/test_clock_conversion.cpp` checks all three phases, minimal rounding,
+zero waits, large representable values, and saturation.
+
 Peripheral deadlines include PI and SI completion, EEPROM busy expiry, and audio
 samples. `Bus::tick` also honors these deadlines when called directly. Audio and
 video output are queued while devices advance, then delivered after the boundary

@@ -1,5 +1,7 @@
 #include "cupid/system.hpp"
 
+#include "cupid/rcp/clocks.hpp"
+
 #include <algorithm>
 #include <fstream>
 #include <limits>
@@ -66,7 +68,7 @@ void System::advance(u64 cpu_cycles) {
 }
 
 u64 System::cpu_cycles_for_rcp(u64 rcp_cycles) const {
-    return (rcp_cycles * 3 - rcp_fraction_ + 1) / 2;
+    return rcp::cpu_cycles_for_rcp(rcp_cycles, rcp_fraction_);
 }
 
 bool System::load_rom(const std::filesystem::path& path, std::string& error) {
