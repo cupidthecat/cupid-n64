@@ -50,7 +50,7 @@ write color before depth.
 
 ## Validation and limits
 
-`tests/rdp/test_framebuffer.cpp` adds 20 regressions. The command fixtures cover
+`tests/rdp/test_framebuffer.cpp` adds 23 regressions. The command fixtures cover
 every size and format code in both cycle modes, all eight triangle forms,
 untouched neighbors, odd origins and strides, hidden pairs, intensity blending,
 coverage and memory-alpha reads, fields, alpha/depth rejection, and color/depth
@@ -59,15 +59,20 @@ that wrapping preserves word lanes and hidden bits.
 
 Shared color/depth halfwords are checked across all 16-bit format codes:
 primitive depth `0x4000` and delta `0x80` leave visible word `0x2001` and hidden
-pair three. This does not establish arbitrary overlapping buffers,
-every delta encoding under aliasing, or the ordering of deferred rasterizer
-writes. Those cases need further validation, as does scanout from unusual
-framebuffer layouts. Drawing remains synchronous. Issues #22, #23, #37, and
-#49 track these remaining checks.
+pair three. The same exact-origin alias is also checked for every compressed
+depth-delta code. RGBA16 keeps the depth delta's low two hidden bits; non-RGBA
+16-bit formats repack the updated depth through the intensity/alpha storage
+path, so the low visible bit is replicated into the hidden pair.
 
-One unresolved alias case uses a non-RGBA 16-bit color buffer and depth buffer
-at the same origin, primitive depth `0x4000`, and delta `0x20`. The current
-depth-write path leaves visible word `0x2001` and hidden pair one. Packing that
-same word through the intensity color path would leave hidden pair three.
-Which route controls the hidden bits, and what a following primitive reads
-before synchronization, still needs validation.
+Exact matching color and depth origins select alias behavior for every color
+size. A successful depth update does not issue a second depth-memory write for
+4-bit, 8-bit, or 32-bit color images, even when that pixel's color bytes and
+two-byte depth lane do not overlap. The color write therefore remains intact,
+and neighboring depth-lane bytes remain untouched. For 16-bit color, the depth
+state is instead represented through the color format as described above.
+
+These regressions establish the synchronous storage rules for exact-origin
+color/depth aliasing. Arbitrary offset overlaps, deferred rasterizer ordering,
+and scanout from unusual framebuffer layouts still need hardware captures.
+Drawing remains synchronous. Issues #22, #23, #37, and #49 track those broader
+checks.

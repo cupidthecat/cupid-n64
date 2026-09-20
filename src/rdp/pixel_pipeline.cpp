@@ -73,9 +73,15 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     write_framebuffer_color(address, color, coverage);
     if ((other_modes_ & (1ULL << 5U)) != 0) {
         const unsigned delta = rdp_compress_depth_delta(depth.delta);
-        bus_.memory.write(depth_address, 2,
-                          (static_cast<u32>(rdp_compress_depth(depth.value)) << 2U) | (delta >> 2U));
-        bus_.memory.set_hidden_pair(depth_address, static_cast<u8>(delta & 3U));
+        const bool depth_alias = color_image_address_ == depth_image_address_;
+        if (!depth_alias || color_image_size_ == 2U) {
+            bus_.memory.write(depth_address, 2,
+                              (static_cast<u32>(rdp_compress_depth(depth.value)) << 2U) | (delta >> 2U));
+            const bool intensity_alias = depth_alias && color_image_format_ != 0U;
+            const u8 hidden =
+                intensity_alias ? static_cast<u8>(((delta >> 2U) & 1U) * 3U) : static_cast<u8>(delta & 3U);
+            bus_.memory.set_hidden_pair(depth_address, hidden);
+        }
     }
 }
 

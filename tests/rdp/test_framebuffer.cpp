@@ -283,6 +283,57 @@ TEST(rdp_framebuffer_depth_updates_follow_color_when_halfwords_overlap) {
     }
 }
 
+TEST(rdp_16bit_depth_alias_uses_color_format_hidden_packing) {
+    for (unsigned format = 0; format < 8; ++format)
+        for (unsigned code = 0; code < 16; ++code) {
+            const u16 delta =
+                static_cast<u16>(((code & 1U) != 0 ? 0x0002U : 0U) | ((code & 2U) != 0 ? 0x0004U : 0U) |
+                                 ((code & 4U) != 0 ? 0x0010U : 0U) | ((code & 8U) != 0 ? 0x0100U : 0U));
+            FramebufferCommands commands(2, format);
+            commands.append(0x3e, 0x8000);
+            commands.append(0x2e, 0x40000000U | delta);
+            commands.modes(4U | 32U);
+            commands.rectangle();
+            commands.run();
+            CHECK_EQ(commands.pixel(), 0x2000U | (code >> 2U));
+            const u8 hidden =
+                format == 0U ? static_cast<u8>(code & 3U) : static_cast<u8>(((code >> 2U) & 1U) * 3U);
+            CHECK_EQ(commands.system->bus.memory.hidden_pair(0x8000), hidden);
+        }
+}
+
+TEST(rdp_narrow_and_rgba32_depth_alias_keeps_color_writeback) {
+    for (bool two_cycles : {false, true})
+        for (unsigned size : {0U, 1U, 3U}) {
+            FramebufferCommands commands(size);
+            commands.append(0x3e, 0x8000);
+            commands.append(0x2e, 0x40000020);
+            commands.modes((static_cast<u64>(two_cycles) << 52U) | 4U | 32U);
+            commands.rectangle();
+            commands.run();
+            CHECK_EQ(commands.pixel(), commands.solid());
+            CHECK_EQ(commands.pixel(1), size < 2U ? 0xa5U : 0xa5a5a5a5U);
+            CHECK_EQ(commands.system->bus.memory.hidden_pair(0x8000), size == 3U ? 3U : 2U);
+            if (size == 3U)
+                CHECK_EQ(commands.system->bus.memory.hidden_pair(0x8002), 0U);
+        }
+}
+
+TEST(rdp_narrow_and_rgba32_depth_alias_suppresses_disjoint_depth_lane_write) {
+    for (bool two_cycles : {false, true})
+        for (unsigned size : {0U, 1U, 3U}) {
+            FramebufferCommands commands(size);
+            commands.append(0x3e, 0x8000);
+            commands.append(0x2e, 0x40000020);
+            commands.modes((static_cast<u64>(two_cycles) << 52U) | 4U | 32U);
+            commands.rectangle(4, 0, 8, 4);
+            commands.run();
+            CHECK_EQ(commands.pixel(1), commands.solid(1));
+            CHECK_EQ(commands.system->bus.memory.read(0x8002, 2), 0xa5a5U);
+            CHECK_EQ(commands.system->bus.memory.hidden_pair(0x8002), 2U);
+        }
+}
+
 TEST(rdp_framebuffer_narrow_color_depth_rejection_preserves_neighboring_bytes) {
     for (unsigned size : {0U, 1U, 2U}) {
         FramebufferCommands commands(size, 3);
