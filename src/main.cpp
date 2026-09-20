@@ -1,65 +1,21 @@
-#include "cupid/system.hpp"
+#include "cupid/host/hardware.hpp"
+#include "cupid/host/options.hpp"
 #include "cupid/test_report.hpp"
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <chrono>
-#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace {
 
-struct Options {
-    std::filesystem::path cartridge;
-    std::filesystem::path pif;
-    cupid::u64 max_instructions{4000000000ULL};
-    bool require_success{};
-    bool require_extended{};
-};
-
-bool number(std::string_view text, cupid::u64& result) {
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), result);
-    return error == std::errc{} && end == text.data() + text.size();
-}
-
 void usage() {
-    std::cout
-        << "Usage: cupid-n64 CARTRIDGE --pif BOOT_ROM [--max-instructions COUNT] [--require-test-success] "
-           "[--require-extended-tests]\n";
-}
-
-std::optional<Options> options(int argc, char** argv) {
-    Options parsed;
-    for (int index = 1; index < argc; ++index) {
-        const std::string_view arg = argv[index];
-        if (arg == "--pif" && index + 1 < argc)
-            parsed.pif = argv[++index];
-        else if (arg == "--max-instructions" && index + 1 < argc) {
-            if (!number(argv[++index], parsed.max_instructions) || parsed.max_instructions == 0) {
-                std::cerr << "The instruction limit must be a positive integer.\n";
-                return std::nullopt;
-            }
-        } else if (arg == "--require-extended-tests") {
-            parsed.require_extended = parsed.require_success = true;
-        } else if (arg == "--require-test-success")
-            parsed.require_success = true;
-        else if (!arg.empty() && arg.front() != '-' && parsed.cartridge.empty())
-            parsed.cartridge = argv[index];
-        else {
-            std::cerr << "Unrecognized or incomplete argument: " << arg << '\n';
-            return std::nullopt;
-        }
-    }
-    if (parsed.cartridge.empty() || parsed.pif.empty())
-        return std::nullopt;
-    return parsed;
+    std::cout << cupid::host::usage();
 }
 
 void dump_state(const cupid::System& system, const std::array<cupid::u64, 32>& history, cupid::u64 steps) {
@@ -84,23 +40,30 @@ void dump_state(const cupid::System& system, const std::array<cupid::u64, 32>& h
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc == 2 && std::string_view(argv[1]) == "--help") {
-        usage();
-        return 0;
-    }
-    const auto config = options(argc, argv);
+    std::vector<std::string_view> arguments;
+    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0);
+    for (int index = 1; index < argc; ++index)
+        arguments.emplace_back(argv[index]);
+
+    std::string error;
+    const auto config = cupid::host::parse_options(arguments, error);
     if (!config) {
+        if (!error.empty())
+            std::cerr << error << '\n';
         usage();
         return 2;
     }
+    if (config->help) {
+        usage();
+        return 0;
+    }
     try {
-        auto system = std::make_unique<cupid::System>();
-        std::string error;
-        if (!system->load_rom(config->cartridge, error) || !system->load_pif(config->pif, error) ||
-            !system->boot_cartridge(error)) {
+        auto system = cupid::host::create_system(*config, error);
+        if (!system) {
             std::cerr << error << '\n';
             return 2;
         }
+        std::cerr << "Hardware: " << cupid::host::describe_hardware(*system) << '\n';
         cupid::TestReport report;
         if (config->require_extended)
             report.expect_extended();

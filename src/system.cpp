@@ -82,6 +82,10 @@ bool System::load_pif(const std::filesystem::path& path, std::string& error) {
     std::vector<u8> bytes;
     if (!read_file(path, bytes, error))
         return false;
+    return load_pif(bytes, error);
+}
+
+bool System::load_pif(std::span<const u8> bytes, std::string& error) {
     if (bytes.size() != 0x7c0 && bytes.size() != 0x800) {
         error = "The PIF boot ROM must contain 1984 or 2048 bytes.";
         return false;

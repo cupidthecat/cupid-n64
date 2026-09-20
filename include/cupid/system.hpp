@@ -6,6 +6,7 @@
 #include "cupid/types.hpp"
 
 #include <filesystem>
+#include <span>
 #include <string>
 
 namespace cupid {
@@ -28,6 +29,7 @@ class System {
     void advance(u64 cpu_cycles);
     bool load_rom(const std::filesystem::path& path, std::string& error);
     bool load_pif(const std::filesystem::path& path, std::string& error);
+    bool load_pif(std::span<const u8> bytes, std::string& error);
     bool boot_cartridge(std::string& error);
 
     Cpu cpu;
