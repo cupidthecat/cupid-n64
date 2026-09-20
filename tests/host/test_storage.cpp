@@ -3,6 +3,7 @@
 #include "cupid/host/hardware.hpp"
 #include "cupid/host/storage.hpp"
 
+#include <algorithm>
 #include <array>
 #include <filesystem>
 
@@ -58,8 +59,8 @@ TEST(host_storage_roundtrips_every_sram_and_eeprom_size) {
         options.sram_bytes = size;
         check_restart(directory, options, size, 0);
     }
-    for (const auto [type, size] : std::array{std::pair{SaveType::Eeprom4K, std::size_t{512}},
-                                              std::pair{SaveType::Eeprom16K, std::size_t{2048}}}) {
+    for (const auto& [type, size] : std::array{std::pair{SaveType::Eeprom4K, std::size_t{512}},
+                                               std::pair{SaveType::Eeprom16K, std::size_t{2048}}}) {
         test::host::TempDirectory directory;
         auto options = test::host::base_options(directory);
         options.save = type;
@@ -146,7 +147,7 @@ TEST(host_storage_roundtrips_controller_pak_across_system_restart) {
 }
 
 TEST(host_storage_roundtrips_transfer_pak_ram_for_mbc1_and_mbc2) {
-    for (const auto [type, size] :
+    for (const auto& [type, size] :
          std::array{std::pair{u8{0x03}, std::size_t{0x8000}}, std::pair{u8{0x06}, std::size_t{256}}}) {
         test::host::TempDirectory directory;
         auto options = test::host::base_options(directory);

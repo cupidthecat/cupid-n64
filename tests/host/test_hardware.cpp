@@ -33,8 +33,8 @@ TEST(host_hardware_configures_all_sram_and_eeprom_capacities) {
         CHECK_EQ(system->bus.save_type, SaveType::Sram);
         CHECK_EQ(system->bus.sram.size(), size);
     }
-    for (const auto [type, size] : std::array{std::pair{SaveType::Eeprom4K, std::size_t{512}},
-                                              std::pair{SaveType::Eeprom16K, std::size_t{2048}}}) {
+    for (const auto& [type, size] : std::array{std::pair{SaveType::Eeprom4K, std::size_t{512}},
+                                               std::pair{SaveType::Eeprom16K, std::size_t{2048}}}) {
         auto options = test::host::base_options(directory);
         options.save = type;
         auto system = create_system(options, error);
