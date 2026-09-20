@@ -114,6 +114,7 @@ class Bus {
     u64 flash_busy_counter_{};
     u32 vi_current_{};
     unsigned vi_leap_counter_{};
+    u32 vi_field_sequence_{};
     u32 ai_fifo_count_{};
     std::array<u32, 2> ai_addresses_{};
     std::array<u32, 2> ai_lengths_{};

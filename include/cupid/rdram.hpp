@@ -4,6 +4,7 @@
 
 #include <array>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace cupid {
@@ -34,6 +35,9 @@ class Rdram {
     [[nodiscard]] u64 read(u32 address, unsigned width, bool ebus = false) const;
     void write(u32 address, unsigned width, u64 value, bool ebus = false);
     [[nodiscard]] u8 hidden_pair(u32 address) const;
+    [[nodiscard]] std::span<const u8> hidden_memory() const {
+        return hidden_;
+    }
     void set_hidden_pair(u32 address, u8 value);
 
   private:

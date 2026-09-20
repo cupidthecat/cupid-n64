@@ -4,6 +4,8 @@ namespace cupid {
 
 u32 Bus::read_vi(u32 offset) const {
     const unsigned index = static_cast<unsigned>((offset & 0x3fU) >> 2U);
+    if (index == 0)
+        return vi_[0] & 0xffffU;
     if (index == 4)
         return vi_current_;
     if (index >= vi_.size())
@@ -20,7 +22,7 @@ void Bus::write_vi(u32 offset, u32 value) {
         return;
     }
     static constexpr std::array<u32, 14> masks = {
-        0x0000ffffU, 0x00ffffffU, 0x00000fffU, 0x000003ffU, 0,           0x3fffffffU, 0x000003ffU,
+        0x0001ffffU, 0x00ffffffU, 0x00000fffU, 0x000003ffU, 0,           0x3fffffffU, 0x000003ffU,
         0x001f0fffU, 0x0fff0fffU, 0x03ff03ffU, 0x03ff03ffU, 0x03ff03ffU, 0x0fff0fffU, 0x0fff0fffU,
     };
     vi_[index] = value & masks[index];
@@ -65,6 +67,7 @@ void Bus::tick_vi(u64 rcp_cycles) {
         if (vi_current_ >= vi_[6] + 1) {
             vi_current_ = (vi_current_ & 1U) ^ static_cast<u32>(interlaced);
             vi_leap_counter_ = (vi_leap_counter_ + 1) % 5;
+            ++vi_field_sequence_;
         }
 
         const u32 compare = vi_[3];

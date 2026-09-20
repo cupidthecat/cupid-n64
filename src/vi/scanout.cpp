@@ -1,4 +1,5 @@
 #include "cupid/system.hpp"
+#include "cupid/vi/filter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,15 +15,6 @@ Color interpolate(const Color& first, const Color& second, u32 fraction) {
     return result;
 }
 
-Color fetch(std::span<const u8> memory, u32 origin, u32 stride, u32 x, u32 y, unsigned bytes) {
-    const u32 address = (origin & ~(bytes - 1U)) + (y * stride + x) * bytes;
-    u32 value = 0;
-    for (unsigned byte = 0; byte < bytes; ++byte)
-        value = (value << 8) | memory[(static_cast<std::size_t>(address) + byte) % memory.size()];
-    if (bytes == 2)
-        return {(value >> 8) & 248U, (value >> 3) & 248U, (value << 2) & 248U};
-    return {value >> 24, (value >> 16) & 255U, (value >> 8) & 255U};
-}
 } // namespace
 
 VideoField Bus::scan_video() const {
@@ -47,17 +39,21 @@ VideoField Bus::scan_video() const {
     const s32 last_x = std::min<s32>(640, right > 640 ? right : right - 7);
     const s32 first_y = std::max<s32>(0, top);
     const s32 last_y = std::min<s32>(static_cast<s32>(output.height), top + rows);
-    const unsigned bytes = format == 2 ? 2 : 4;
+    const ViFilter filter(rdram, memory.hidden_memory(), vi_);
     const bool resample = ((vi_[0] >> 8) & 3U) != 3;
 
     for (s32 y = first_y; y < last_y; ++y) {
         const u32 sample_y = (vi_[13] >> 16) + static_cast<u32>(y - top) * (vi_[13] & 4095U);
         for (s32 x = first_x; x < last_x; ++x) {
             const u32 sample_x = (vi_[12] >> 16) + static_cast<u32>(x - left) * (vi_[12] & 4095U);
-            const u32 source_x = sample_x >> 10;
-            const u32 source_y = sample_y >> 10;
-            const auto read = [&](u32 dx, u32 dy) {
-                return fetch(rdram, vi_[1], vi_[2], source_x + dx, source_y + dy, bytes);
+            const s32 source_x = static_cast<s32>(sample_x >> 10);
+            const s32 source_y = static_cast<s32>(sample_y >> 10);
+            const u32 y_step = vi_[13] & 4095U;
+            const bool repeat_lower = y_step < 1024 && y != first_y &&
+                                      (sample_y >> 10) == ((sample_y - y_step) >> 10) &&
+                                      (sample_y >> 10) != ((sample_y + y_step) >> 10);
+            const auto read = [&](s32 dx, s32 dy) {
+                return filter.sample(source_x + dx, source_y + dy, dy != 0 && repeat_lower);
             };
             Color color = read(0, 0);
             if (resample) {
@@ -66,6 +62,9 @@ VideoField Bus::scan_video() const {
                 const Color column1 = interpolate(read(1, 0), read(1, 1), fraction_y);
                 color = interpolate(column0, column1, (sample_x >> 5) & 31U);
             }
+            color = vi_gamma(color, (vi_[0] & 8U) != 0, (vi_[0] & 4U) != 0,
+                             vi_gamma_noise(vi_field_sequence_, static_cast<unsigned>(x - left),
+                                            static_cast<unsigned>(y - top)));
             output.pixels[static_cast<std::size_t>(y) * output.width + static_cast<unsigned>(x)] =
                 (color[0] << 24) | (color[1] << 16) | (color[2] << 8) | 255U;
         }

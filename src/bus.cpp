@@ -59,6 +59,7 @@ void Bus::reset() {
     flash_busy_counter_ = 0;
     vi_current_ = 0;
     vi_leap_counter_ = 0;
+    vi_field_sequence_ = 0;
     ai_fifo_count_ = 0;
     ai_addresses_.fill(0);
     ai_lengths_.fill(0);
