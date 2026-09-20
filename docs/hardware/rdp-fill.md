@@ -87,7 +87,6 @@ Four-bit fill destinations halt command processing. Other invalid fill states
 and [copy-cycle rectangles](rdp-copy.md) have separate tests. Solid rectangles
 in one-cycle and two-cycle modes use the [color pipeline](rdp-color.md).
 [Textured rectangles](rdp-texture-sampling.md) share that color pipeline.
-One-cycle and two-cycle shaded/textured triangles and the complete color/depth
-pipeline remain unfinished.
-These fill tests do not establish their correctness. Drawing is synchronous
+[One-cycle and two-cycle triangles](rdp-triangles.md) use the same edge walker
+and have separate color/depth tests. Drawing is synchronous
 and does not model RDRAM contention or per-pixel DP timing.

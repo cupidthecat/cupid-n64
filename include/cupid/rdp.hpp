@@ -107,7 +107,8 @@ class Rdp {
     void fill_rectangle(u64 command);
     void color_rectangle(u64 command, bool flipped);
     [[nodiscard]] RdpColorInputs sample_color_textures(const RdpTextureCoordinates& coordinates,
-                                                       unsigned tile, unsigned inputs) const;
+                                                       unsigned tile, unsigned inputs,
+                                                       unsigned maximum_level = 0) const;
     void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
                            RdpDepth depth);
     void fill_span(unsigned y, unsigned left, unsigned right);
@@ -118,7 +119,7 @@ class Rdp {
                             const RdpTextureAttributes& attributes);
     void write_copy_pixel(unsigned x, unsigned y, u16 value);
     [[nodiscard]] u16 copy_texel(const RdpTile& tile, s32 s, s32 t, unsigned lane) const;
-    void fill_triangle();
+    void color_triangle();
     void set_tile(u64 command);
     void set_tile_size(u64 command);
     void load_texture(u64 command, u8 opcode);

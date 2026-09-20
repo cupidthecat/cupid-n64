@@ -14,5 +14,6 @@ struct RdpTextureAttributes {
 };
 
 [[nodiscard]] s16 rdp_perspective_coordinate(s16 coordinate, s16 w);
+[[nodiscard]] s32 rdp_perspective_coordinate_wide(s16 coordinate, s16 w, bool& overflow);
 
 } // namespace cupid

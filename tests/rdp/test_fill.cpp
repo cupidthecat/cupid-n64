@@ -225,7 +225,7 @@ TEST(rdp_unshaded_triangle_obeys_scissor_field_selection) {
             for (unsigned x = 0; x < 8; ++x) {
                 const bool selected = field < 2 || (y & 1U) == (field & 1U);
                 CHECK_EQ(commands.system->bus.memory.read(framebuffer + (y * 8U + x) * 4U, 4),
-                         x < 2 && selected ? 0xe0000000ULL : 0ULL);
+                         x < 2 && selected ? 0x000000e0ULL : 0ULL);
             }
         }
     }

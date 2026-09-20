@@ -53,8 +53,9 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
         rdp_test_depth(depth, stored_depth, hidden_depth, combined.coverage, old_coverage, other_modes_);
     if (!tested.pass || (antialias && tested.coverage == 0U))
         return;
+    const unsigned shade_alpha = std::min(255U, static_cast<unsigned>(inputs.shade[3]) + alpha_dither);
     RdpColor color =
-        rdp_blend(color_state_, other_modes_, combined.color, memory, alpha_dither, tested.blend_enabled,
+        rdp_blend(color_state_, other_modes_, combined.color, memory, shade_alpha, tested.blend_enabled,
                   tested.coverage_wrap, tested.memory_alpha_shift, tested.pixel_alpha_shift);
     if (rgb_mode < 2U) {
         for (unsigned channel = 0; channel < 3; ++channel) {

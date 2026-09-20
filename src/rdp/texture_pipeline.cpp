@@ -3,12 +3,12 @@
 namespace cupid {
 
 RdpColorInputs Rdp::sample_color_textures(const RdpTextureCoordinates& coordinates, unsigned tile,
-                                          unsigned inputs) const {
+                                          unsigned inputs, unsigned maximum_level) const {
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
     const bool convert = (other_modes_ & (1ULL << 41U)) != 0;
     RdpTextureLod lod{tile, (tile + 1U) & 7U, 0};
     if ((inputs & 4U) != 0)
-        lod = rdp_texture_lod(coordinates.point, coordinates.next_x, coordinates.next_y, tile, 0,
+        lod = rdp_texture_lod(coordinates.point, coordinates.next_x, coordinates.next_y, tile, maximum_level,
                               color_state_.minimum_lod, other_modes_, coordinates.overflow);
     RdpColorInputs result;
     result.lod_fraction = lod.fraction;

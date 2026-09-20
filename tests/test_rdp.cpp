@@ -177,8 +177,8 @@ TEST(rdp_unshaded_triangle_rasterizes_subpixel_coverage) {
 
     const u64 set_color = command(0x3f, (3ULL << 51U) | (static_cast<u64>(width - 1U) << 32U) | framebuffer);
     const u64 set_scissor = command(0x2d, (16ULL << 12U) | 4ULL);
-    const u64 set_other = command(0x2f, 2ULL << 8U);
-    const u64 set_blend = command(0x39, 0x00ff0000U);
+    const u64 set_other = command(0x2f, (2ULL << 30U) | (2ULL << 8U));
+    const u64 set_blend = command(0x39, 0xff0000ffU);
     const u64 edge = command(0x08, (1ULL << 55U) | (4ULL << 32U));
     const u64 low = static_cast<u64>(4U << 16U) << 32U;
     const u64 high = 0;
@@ -198,7 +198,7 @@ TEST(rdp_unshaded_triangle_rasterizes_subpixel_coverage) {
     rdp.write_register(0x00, stream);
     rdp.write_register(0x04, stream + 0x48);
     for (unsigned x = 0; x < width; ++x) {
-        CHECK_EQ(bus.memory.read(framebuffer + x * 4U, 4), 0xe0ff0000ULL);
+        CHECK_EQ(bus.memory.read(framebuffer + x * 4U, 4), 0xff0000e0ULL);
     }
     CHECK_EQ(rdp.current(), stream + 0x48);
 }

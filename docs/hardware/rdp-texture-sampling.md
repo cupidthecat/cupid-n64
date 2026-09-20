@@ -1,6 +1,6 @@
 # RDP texture sampling
 
-One-cycle and two-cycle rectangle commands now sample TMEM and pass their texels
+One-cycle and two-cycle rectangle and triangle commands sample TMEM and pass their texels
 through the [color pipeline](rdp-color.md). `TextureRectangle` and
 `TextureRectangleFlip` interpolate their encoded S/T coordinates. `FillRectangle`
 can also select a texel through the combiner, using tile zero and zero texture
@@ -93,14 +93,15 @@ rectangle directions, interpolation, clipping, fields, alpha comparison,
 two-cycle sampling, lookahead, and incomplete commands. Together they add
 59 regressions.
 
-One-cycle and two-cycle triangles still need attribute interpolation and
-integration with this sampler. Their general perspective/LOD behavior is not
-established by the rectangle tests. Reserved texture formats and YUV with TLUT
+[Triangles](rdp-triangles.md) interpolate S/T/W, retain 17-bit perspective
+coordinates for LOD, and supply the packet's maximum mip level. Their command
+tests cover perspective, LOD, and lookahead separately from rectangles.
+Reserved texture formats and YUV with TLUT
 currently supply zero; non-16-bit YUV uses the 16-bit addressing path. Those
 are implementation limits, not verified hardware dispositions. Unusual texture
 load combinations retain the limits described in [texture loads](rdp-texture-loads.md).
 
-Textured rectangles use the [depth comparison and update stage](rdp-depth.md).
-Triangle depth integration, key-generated alpha, noise and random dithering,
+Textured primitives use the [depth comparison and update stage](rdp-depth.md).
+Key-generated alpha, noise and random dithering,
 other framebuffer formats, and asynchronous DP timing remain unfinished.
 Issues #18 through #22 remain open.

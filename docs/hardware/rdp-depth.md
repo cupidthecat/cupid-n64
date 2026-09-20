@@ -1,6 +1,6 @@
 # RDP depth and coverage
 
-One-cycle and two-cycle rectangles compare and update depth through the pixel
+One-cycle and two-cycle rectangles and triangles compare and update depth through the pixel
 pipeline. `SetDepthImage` supplies the depth-buffer address; its stride follows
 the color-image width, with two bytes per pixel regardless of color size.
 The address field is 24 bits; higher command bits are ignored.
@@ -82,8 +82,8 @@ color, depth, and hidden bits in memory. Cases cover reserved address bits,
 CPU/SP DMA overwrites, color/depth aliasing, clipping and fields, alpha
 rejection, and textured draws in both directions and cycle modes.
 
-Triangle depth interpolation and integration remain unfinished. The legacy
-one-cycle unshaded triangle path does not use this pipeline. Arbitrary partial
+[Triangle interpolation](rdp-triangles.md) supplies depth and normalized depth
+gradients, or uses the primitive depth override. Arbitrary partial
 overlaps between color and depth buffers, other framebuffer formats, and
 asynchronous rasterizer memory ordering need further validation. These checks
 do not establish complete rendering or gameplay correctness. Issue #22 tracks

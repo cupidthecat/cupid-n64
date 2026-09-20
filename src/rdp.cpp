@@ -3,40 +3,11 @@
 #include <algorithm>
 #include <bit>
 #include <cstddef>
-#include <vector>
 
 namespace cupid {
 namespace {
 
 constexpr u32 address_mask = 0x00fffff8U;
-
-s32 sign_extend14(u16 value) {
-    const u32 raw = static_cast<u32>(value) & 0x3fffU;
-    return static_cast<s32>((raw ^ 0x2000U) - 0x2000U);
-}
-
-u8 coverage_alpha(unsigned coverage, unsigned mode) {
-    if (mode == 2U || mode == 1U)
-        return 0xe0U;
-    if (mode == 3U)
-        return static_cast<u8>(coverage);
-    switch (coverage) {
-    case 4:
-        return 0x20;
-    case 7:
-        return 0x40;
-    case 8:
-    case 9:
-    case 10:
-        return 0x60;
-    case 12:
-        return 0xa0;
-    case 16:
-        return 0xe0;
-    default:
-        return static_cast<u8>(coverage);
-    }
-}
 
 u32 status_word(bool source_dmem, bool freeze, bool flush, bool start_gclk, u32 tmem_busy, u32 pipe_busy,
                 u32 buffer_busy, bool ready, bool end_valid, bool start_valid, bool crashed) {
@@ -392,8 +363,8 @@ void Rdp::execute(u8 opcode) {
     case 0x0f:
         if (cycle == 3U || cycle == 2U)
             fill_copy_triangle(cycle == 2U);
-        else if (opcode == 0x08)
-            fill_triangle();
+        else
+            color_triangle();
         return;
     case 0x24:
     case 0x25:
@@ -491,98 +462,6 @@ void Rdp::execute(u8 opcode) {
         return;
     default:
         return;
-    }
-}
-
-void Rdp::fill_triangle() {
-    if (((other_modes_ >> 52U) & 3U) != 0U)
-        return;
-    if (color_image_format_ != 0U || (color_image_size_ != 2U && color_image_size_ != 3U))
-        return;
-
-    const u64 edge = buffered_word(0);
-    const bool right_major = ((edge >> 55U) & 1U) != 0;
-    const s32 yl = sign_extend14(static_cast<u16>(edge >> 32U));
-    const s32 ym = sign_extend14(static_cast<u16>(edge >> 16U));
-    const s32 yh = sign_extend14(static_cast<u16>(edge));
-    const u64 low = buffered_word(8);
-    const u64 high = buffered_word(16);
-    const u64 middle = buffered_word(24);
-    const s64 xl = static_cast<s64>(std::bit_cast<s32>(static_cast<u32>(low >> 32U))) << 2U;
-    const s64 dl = std::bit_cast<s32>(static_cast<u32>(low));
-    const s64 xh = static_cast<s64>(std::bit_cast<s32>(static_cast<u32>(high >> 32U))) << 2U;
-    const s64 dh = std::bit_cast<s32>(static_cast<u32>(high));
-    const s64 xm = static_cast<s64>(std::bit_cast<s32>(static_cast<u32>(middle >> 32U))) << 2U;
-    const s64 dm = std::bit_cast<s32>(static_cast<u32>(middle));
-
-    const unsigned width = color_image_width_;
-    const unsigned height = std::min(1024U, std::max(1U, (static_cast<unsigned>(scissor_y1_) + 3U) >> 2U));
-    std::vector<u8> coverage(static_cast<std::size_t>(width) * height, 0);
-    s64 major_x = xh;
-    s32 y = yh;
-
-    const auto section = [&](s32 target_y, s64 initial_minor, s64 minor_increment, s32& current_y,
-                             s64& current_major) {
-        s64 minor_x = initial_minor;
-        while (current_y < target_y) {
-            if ((current_y >> 2) >= ((static_cast<s32>(scissor_y0_) + 3) >> 2) &&
-                current_y < static_cast<s32>(scissor_y1_)) {
-                const s64 left = right_major ? current_major : minor_x;
-                const s64 right = right_major ? minor_x : current_major;
-                if (right >= left) {
-                    const s64 subpixel_left = left >> 16;
-                    const s64 subpixel_right = (right - 8) >> 16;
-                    for (s64 x = subpixel_left; x <= subpixel_right; ++x) {
-                        if ((x >> 2) < ((static_cast<s64>(scissor_x0_) + 3) >> 2))
-                            continue;
-                        if (x >= static_cast<s64>(scissor_x1_))
-                            break;
-                        const s64 pixel_x = x >> 2;
-                        const s64 pixel_y = static_cast<s64>(current_y) >> 2;
-                        if (pixel_x < 0 || pixel_y < 0 || pixel_x >= static_cast<s64>(width) ||
-                            pixel_y >= static_cast<s64>(height))
-                            continue;
-                        u8& count = coverage[static_cast<std::size_t>(pixel_y) * width +
-                                             static_cast<std::size_t>(pixel_x)];
-                        if (count != 0xffU)
-                            ++count;
-                    }
-                }
-            }
-            ++current_y;
-            current_major += dh;
-            minor_x += minor_increment;
-        }
-    };
-
-    section(ym, xm, dm, y, major_x);
-    section(yl, xl, dl, y, major_x);
-
-    const unsigned coverage_mode = static_cast<unsigned>((other_modes_ >> 8U) & 3U);
-    const u8 red = static_cast<u8>(color_state_.blend >> 16U);
-    const u8 green = static_cast<u8>(color_state_.blend >> 8U);
-    const u8 blue = static_cast<u8>(color_state_.blend);
-    for (unsigned pixel_y = 0; pixel_y < height; ++pixel_y) {
-        if (scissor_field_enabled_ && (pixel_y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
-            continue;
-        for (unsigned pixel_x = 0; pixel_x < width; ++pixel_x) {
-            const unsigned count = coverage[static_cast<std::size_t>(pixel_y) * width + pixel_x];
-            if (count == 0)
-                continue;
-            const u8 alpha = coverage_alpha(count, coverage_mode);
-            const u32 pixel = pixel_y * width + pixel_x;
-            if (color_image_size_ == 2U) {
-                const u32 color_bits = (static_cast<u32>(red >> 3U) << 11U) |
-                                       (static_cast<u32>(green >> 3U) << 6U) |
-                                       (static_cast<u32>(blue >> 3U) << 1U) | (alpha > 127U ? 1U : 0U);
-                const u16 color = static_cast<u16>(color_bits);
-                bus_.memory.write(color_image_address_ + pixel * 2U, 2, color);
-            } else {
-                const u32 color = (static_cast<u32>(alpha) << 24U) | (static_cast<u32>(red) << 16U) |
-                                  (static_cast<u32>(green) << 8U) | blue;
-                bus_.memory.write(color_image_address_ + pixel * 4U, 4, color);
-            }
-        }
     }
 }
 

@@ -17,8 +17,16 @@ constexpr std::array<s32, 65> reciprocals{
 } // namespace
 
 s16 rdp_perspective_coordinate(s16 coordinate, s16 w) {
-    if (w <= 0)
+    bool overflow = false;
+    return static_cast<s16>(
+        std::clamp(rdp_perspective_coordinate_wide(coordinate, w, overflow), -0x8000, 0x7fff));
+}
+
+s32 rdp_perspective_coordinate_wide(s16 coordinate, s16 w, bool& overflow) {
+    if (w <= 0) {
+        overflow = true;
         return 0x7fff;
+    }
     const unsigned shift = 15U - static_cast<unsigned>(std::bit_width(static_cast<u32>(w)));
     const unsigned normalized = (static_cast<u32>(w) << shift) & 0x3fffU;
     const unsigned index = normalized >> 8U;
@@ -27,8 +35,13 @@ s16 rdp_perspective_coordinate(s16 coordinate, s16 w) {
         reciprocals[index] + (((reciprocals[index + 1] - reciprocals[index]) * fraction) >> 8);
     const s32 product = static_cast<s32>(coordinate) * reciprocal;
     const s32 divided = shift == 14U ? product * 2 : product >> (13U - shift);
-    // Copy addressing clamps the divider's signed 17-bit result to signed 16 bits.
-    return static_cast<s16>(std::clamp(divided, -0x8000, 0x7fff));
+    const u32 mask = 0x3fffffffU & (0U - (1U << (29U - shift)));
+    const u32 outside = static_cast<u32>(product) & mask;
+    if (outside != 0 && outside != mask) {
+        overflow = true;
+        return ((shift == 14U ? product : divided) & (1 << 29)) != 0 ? -0x8000 : 0x7fff;
+    }
+    return std::clamp(divided, -0x10000, 0xffff);
 }
 
 } // namespace cupid

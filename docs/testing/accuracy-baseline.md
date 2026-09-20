@@ -6,6 +6,11 @@ It is a comparison point for subsequent fixes, not a release qualification.
 The extended suite fails 11 timing cases. Rendering, audio, accessories, and
 cartridge compatibility require testing beyond these suites.
 
+Subsequent triangle-pipeline work exposes 11 additional failures in the pinned
+experimental RDP fixtures. Their command packing and coverage expectations are
+audited [separately](rdp-triangle-fixtures.md). The results below remain the
+historical baseline for `be366ff`, not the current extended-suite totals.
+
 ## Inputs
 
 The test source is `thelemmy/nemu64-test` commit
