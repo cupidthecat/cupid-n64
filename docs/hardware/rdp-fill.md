@@ -84,8 +84,9 @@ field selection, accumulator wrap, slope quantization, edge-order precision,
 stride overflow, packing, hidden bits, and incomplete commands.
 
 Four-bit fill destinations halt command processing. Other invalid fill states
-and [copy-cycle rectangles](rdp-copy.md) have separate tests. One-cycle and
-two-cycle rectangles, one-cycle and two-cycle shaded/textured triangles, and
+and [copy-cycle rectangles](rdp-copy.md) have separate tests. Solid rectangles
+in one-cycle and two-cycle modes use the [color pipeline](rdp-color.md).
+Textured rectangles, one-cycle and two-cycle shaded/textured triangles, and
 the complete color/depth pipeline remain unfinished.
 These fill tests do not establish their correctness. Drawing is synchronous
 and does not model RDRAM contention or per-pixel DP timing.

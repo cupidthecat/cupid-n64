@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/rdp/color_pipeline.hpp"
 #include "cupid/rdp/texture_coordinates.hpp"
 #include "cupid/rdp/tile.hpp"
 #include "cupid/types.hpp"
@@ -79,7 +80,9 @@ class Rdp {
     std::array<u8, 4096> texture_memory_{};
     std::array<RdpTile, 8> tiles_{};
     u32 fill_color_{};
-    u32 blend_color_{};
+    RdpColorState color_state_{};
+    u16 primitive_depth_{};
+    u16 primitive_delta_depth_{};
     u64 other_modes_{};
     u16 scissor_x0_{};
     u16 scissor_y0_{};
@@ -100,6 +103,8 @@ class Rdp {
     [[nodiscard]] unsigned command_length(u8 opcode) const;
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
+    void color_rectangle(u64 command);
+    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask);
     void fill_span(unsigned y, unsigned left, unsigned right);
     void fill_copy_triangle(bool copy);
     void copy_rectangle(u64 command, bool flipped);

@@ -62,6 +62,7 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [RDP fill rectangles and triangles](docs/hardware/rdp-fill.md),
 [RDP copy primitives and draw validation](docs/hardware/rdp-copy.md),
 [RDP texture loads](docs/hardware/rdp-texture-loads.md),
+[RDP solid-rectangle color processing](docs/hardware/rdp-color.md),
 [PI transfer timing](docs/hardware/peripheral-interface.md),
 [cartridge bus transactions](docs/hardware/cartridge-bus.md),
 [FlashRAM](docs/hardware/flash-memory.md), and

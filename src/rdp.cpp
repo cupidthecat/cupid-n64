@@ -103,7 +103,9 @@ void Rdp::reset() {
     texture_memory_.fill(0);
     tiles_.fill({});
     fill_color_ = 0;
-    blend_color_ = 0;
+    color_state_ = {};
+    primitive_depth_ = 0;
+    primitive_delta_depth_ = 0;
     other_modes_ = 0;
     scissor_x0_ = 0;
     scissor_y0_ = 0;
@@ -398,6 +400,8 @@ void Rdp::execute(u8 opcode) {
     case 0x36:
         if (((other_modes_ >> 52U) & 3U) == 3U)
             fill_rectangle(command);
+        else if (cycle < 2U && opcode == 0x36)
+            color_rectangle(command);
         else
             copy_rectangle(command, opcode == 0x25);
         return;
@@ -407,6 +411,23 @@ void Rdp::execute(u8 opcode) {
         pipe_busy_ = 0;
         start_gclk_ = false;
         return;
+    case 0x2a:
+        color_state_.key_width[1] = static_cast<u16>((command >> 44U) & 4095U);
+        color_state_.key_width[2] = static_cast<u16>((command >> 32U) & 4095U);
+        color_state_.key_center[1] = static_cast<u8>(command >> 24U);
+        color_state_.key_scale[1] = static_cast<u8>(command >> 16U);
+        color_state_.key_center[2] = static_cast<u8>(command >> 8U);
+        color_state_.key_scale[2] = static_cast<u8>(command);
+        return;
+    case 0x2b:
+        color_state_.key_width[0] = static_cast<u16>((command >> 16U) & 4095U);
+        color_state_.key_center[0] = static_cast<u8>(command >> 8U);
+        color_state_.key_scale[0] = static_cast<u8>(command);
+        return;
+    case 0x2c:
+        for (unsigned index = 0; index < 6; ++index)
+            color_state_.convert[index] = static_cast<u16>((command >> ((5U - index) * 9U)) & 511U);
+        return;
     case 0x2d:
         scissor_x0_ = static_cast<u16>((command >> 44) & 0x0fffU);
         scissor_y0_ = static_cast<u16>((command >> 32) & 0x0fffU);
@@ -414,6 +435,10 @@ void Rdp::execute(u8 opcode) {
         scissor_y1_ = static_cast<u16>(command & 0x0fffU);
         scissor_field_enabled_ = (command & (1ULL << 25U)) != 0;
         scissor_keep_odd_ = (command & (1ULL << 24U)) != 0;
+        return;
+    case 0x2e:
+        primitive_depth_ = static_cast<u16>(command >> 16U);
+        primitive_delta_depth_ = static_cast<u16>(command);
         return;
     case 0x2f:
         other_modes_ = command & 0x00ffffffffffffffULL;
@@ -432,8 +457,22 @@ void Rdp::execute(u8 opcode) {
     case 0x37:
         fill_color_ = static_cast<u32>(command);
         return;
+    case 0x38:
+        color_state_.fog = static_cast<u32>(command);
+        return;
     case 0x39:
-        blend_color_ = static_cast<u32>(command);
+        color_state_.blend = static_cast<u32>(command);
+        return;
+    case 0x3a:
+        color_state_.primitive = static_cast<u32>(command);
+        color_state_.minimum_lod = static_cast<u8>((command >> 40U) & 31U);
+        color_state_.primitive_lod = static_cast<u8>(command >> 32U);
+        return;
+    case 0x3b:
+        color_state_.environment = static_cast<u32>(command);
+        return;
+    case 0x3c:
+        color_state_.combine = command & 0x00ffffffffffffffULL;
         return;
     case 0x3d:
         texture_image_format_ = static_cast<u8>((command >> 53) & 7U);
@@ -520,9 +559,9 @@ void Rdp::fill_triangle() {
     section(yl, xl, dl, y, major_x);
 
     const unsigned coverage_mode = static_cast<unsigned>((other_modes_ >> 8U) & 3U);
-    const u8 red = static_cast<u8>(blend_color_ >> 16U);
-    const u8 green = static_cast<u8>(blend_color_ >> 8U);
-    const u8 blue = static_cast<u8>(blend_color_);
+    const u8 red = static_cast<u8>(color_state_.blend >> 16U);
+    const u8 green = static_cast<u8>(color_state_.blend >> 8U);
+    const u8 blue = static_cast<u8>(color_state_.blend);
     for (unsigned pixel_y = 0; pixel_y < height; ++pixel_y) {
         if (scissor_field_enabled_ && (pixel_y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
             continue;
