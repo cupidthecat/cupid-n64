@@ -72,7 +72,8 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [PI transfer timing](docs/hardware/peripheral-interface.md),
 [cartridge bus transactions](docs/hardware/cartridge-bus.md),
 [FlashRAM](docs/hardware/flash-memory.md),
-[EEPROM](docs/hardware/eeprom.md), and
+[EEPROM](docs/hardware/eeprom.md),
+[Joybus packets](docs/hardware/joybus.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
 

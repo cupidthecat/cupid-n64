@@ -21,6 +21,9 @@ Padding, skipped channels, channel resets, and the end marker each add 1,420
 cycles. Parsing stops at the end marker, the end of the 64-byte packet, or after
 the fifth channel. The length fields exclude their status flags.
 
+[Joybus packet handling](joybus.md) describes skip/reset flags, reply lengths,
+error flags, controller-port isolation, and the PIF control-byte boundary.
+
 These delays estimate serial transactions; they do not simulate each Joybus bit
 or accessory-specific response time. The DMA status reports PCH/DMA states 4/1
 for reads and 1/4 for writes. Completion clears those states and the busy bit,
