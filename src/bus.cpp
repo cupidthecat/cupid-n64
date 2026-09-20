@@ -386,14 +386,9 @@ void Bus::tick_devices(u64 rcp_cycles) {
         } else
             pi_dma_counter_ -= rcp_cycles;
     }
+    tick_eeprom(rcp_cycles);
     tick_si(rcp_cycles);
     tick_flash(rcp_cycles);
-    if (eeprom_busy_counter_ != 0) {
-        if (rcp_cycles >= eeprom_busy_counter_)
-            eeprom_busy_counter_ = 0;
-        else
-            eeprom_busy_counter_ -= rcp_cycles;
-    }
     tick_ai(rcp_cycles);
 }
 
@@ -663,38 +658,8 @@ void Bus::execute_joybus(unsigned channel, u8 send, u8 recv, const u8* input, u8
         return;
     }
 
-    if (channel != 4 || (save_type != SaveType::Eeprom4K && save_type != SaveType::Eeprom16K) ||
-        eeprom.empty())
-        return;
-    if ((command == 0x00 || command == 0xff) && recv >= 3) {
-        output[0] = 0;
-        output[1] = eeprom.size() == 512 ? 0x80 : 0xc0;
-        output[2] = eeprom_busy_counter_ != 0 ? 0x80 : 0;
-        valid = true;
-        return;
-    }
-    if (command == 0x04 && send >= 2) {
-        const u32 address = static_cast<u32>(input[1]) * 8U;
-        for (unsigned index = 0; index < recv; ++index) {
-            const u32 pos = address + index;
-            output[index] = eeprom_busy_counter_ == 0 && pos < eeprom.size() ? eeprom[pos] : 0xff;
-        }
-        valid = true;
-        return;
-    }
-    if (command == 0x05 && send >= 2 && recv >= 1) {
-        output[0] = eeprom_busy_counter_ != 0 ? 0x80 : 0;
-        valid = true;
-        if (eeprom_busy_counter_ == 0) {
-            const u32 address = static_cast<u32>(input[1]) * 8U;
-            for (unsigned index = 0; index + 2U < send; ++index) {
-                const u32 pos = address + index;
-                if (pos < eeprom.size())
-                    eeprom[pos] = input[2 + index];
-            }
-            eeprom_busy_counter_ = 375000;
-        }
-    }
+    if (channel == 4)
+        execute_eeprom(send, recv, input, output, valid);
 }
 
 void Bus::process_pif_control() {

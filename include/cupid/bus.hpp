@@ -225,6 +225,8 @@ class Bus {
     void process_pif_control();
     void execute_joybus(unsigned channel, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
                         bool& overflow);
+    void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
+    void tick_eeprom(u64 cycles);
     [[nodiscard]] static u8 pak_crc(const u8* data);
     [[nodiscard]] static u8 address_crc(u16 address);
     void flash_command(u32 value);

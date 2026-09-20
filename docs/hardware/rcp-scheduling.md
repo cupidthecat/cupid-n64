@@ -16,6 +16,12 @@ video output are queued while devices advance, then delivered after the boundary
 finishes. In `System::advance`, that includes SP execution/DMA and buffered CPU
 stores. Direct `Bus::tick` calls deliver after the bus devices finish.
 
+EEPROM busy time advances before SI completes at a shared boundary. A newly
+delivered write therefore retains its full interval, while a previous write
+finishing at that clock is already ready for the next command. The EEPROM
+regressions cover both cases through CPU PIF stores and SI DMA; see
+[EEPROM behavior](eeprom.md).
+
 Callbacks observe the boundary's DP clock and completed device state. A transfer
 started by a callback retains its full delay; it cannot consume cycles from
 before the write. Video callbacks can observe PI and SP completion at the same
