@@ -56,7 +56,6 @@ void Bus::reset() {
     si_dma_counter_ = 0;
     si_io_counter_ = 0;
     eeprom_busy_counter_ = 0;
-    flash_busy_counter_ = 0;
     vi_current_ = 0;
     vi_leap_counter_ = 0;
     vi_field_sequence_ = 0;
@@ -85,18 +84,7 @@ void Bus::reset() {
     pif_cpu_checksum_.fill(0);
     pif_checksum_valid_ = false;
 
-    flash_mode_ = FlashMode::ReadArray;
-    flash_erase_ = FlashErase::None;
-    flash_sector_ = 0;
-    flash_page_.fill(0xff);
-    flash_status_ = 0x8c;
-    flash_status_commands_ = 0;
-    flash_command_high_ = 0;
-    flash_previous_read_ = 0;
-    flash_burst_index_ = 0;
-    flash_command_high_valid_ = false;
-    flash_status_stale_ = false;
-    flash_open_bus_ = false;
+    reset_flash();
 
     rdp.reset();
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/cartridge/flash.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rdp.hpp"
 #include "cupid/rdram.hpp"
@@ -59,6 +60,10 @@ class Bus {
 
     bool load_rom(std::vector<u8> data, std::string& error);
     void set_save_type(SaveType type);
+    void set_flash_chip(FlashChip chip);
+    [[nodiscard]] FlashChip flash_chip() const {
+        return flash_chip_;
+    }
     void set_controller_state(unsigned port, ControllerState state);
 
     std::vector<u8> rdram;
@@ -153,6 +158,8 @@ class Bus {
     bool pif_checksum_valid_{};
 
     enum class FlashMode { ReadArray, Status, LoadPage, SiliconId };
+    FlashChip flash_chip_{FlashChip::Mx29L1100};
+    void reset_flash();
     enum class FlashErase { None, Chip, Sector };
     FlashMode flash_mode_{FlashMode::ReadArray};
     FlashErase flash_erase_{FlashErase::None};
