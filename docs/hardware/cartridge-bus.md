@@ -16,6 +16,16 @@ address. Both directions use the page-size register for the starting address's
 domain. A DMA write updates the latch even if no device accepts the data. CPU
 stores retain their full 32-bit latch while I/O is busy.
 
+DMA address phases and sequential halfword effects become visible as the PI
+reaches their scheduled transfer boundary. A cartridge-to-RDRAM transfer may
+read several page segments into one internal buffer before the corresponding
+RDRAM block becomes visible. An RDRAM-to-cartridge transfer writes each scheduled
+segment using the RDRAM contents sampled at that time. CPU cartridge accesses
+during DMA use the ordinary cartridge transaction path and may replace the latch,
+selected device, and visible cartridge address. The DMA retains a separate cursor;
+if CPU I/O changed the selection, the next DMA progress event reselects its own
+current cartridge address before continuing.
+
 ## SRAM addressing
 
 A 32 KiB SRAM mirrors its address when the PI selects it. Sequential beats stop
@@ -37,9 +47,10 @@ buffer, and timed status transitions on the same halfword bus.
 
 `src/cartridge/pi_bus.cpp` handles device selection, sequential halfword access,
 and CPU cartridge transactions. `tests/rcp/test_pi_bus.cpp` exercises open-bus
-reads, both DMA directions, page and buffer boundaries, ROM exhaustion, SRAM
-mirrors, bank selection, and unmapped bank gaps through the public bus interface.
+reads, both DMA directions, temporal page and buffer boundaries, ROM exhaustion,
+SRAM mirrors, bank selection, and unmapped bank gaps through the public bus
+interface.
 
-DMA payload copies still occur at transfer start. The separate PI completion
-timer controls busy status and interrupt delivery. Cartridge response timing
-and shared RDRAM arbitration remain incomplete.
+PI progress is scheduled from the configured domain timing and page geometry;
+the completion event separately controls busy status and interrupt delivery.
+Shared RDRAM arbitration remains incomplete.

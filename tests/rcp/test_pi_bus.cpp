@@ -33,6 +33,12 @@ TEST(pi_bus_dma_reselects_unmapped_addresses_only_at_domain_page_boundaries) {
         start(bus, cart, 24);
         const bool domain2 = cart < 0x06000000U || (cart >= 0x08000000U && cart < 0x10000000U);
         const u32 page_mask = domain2 ? 7U : 15U;
+        const u64 deadline = domain2 ? 92U : 78U;
+        bus.tick(deadline - 1);
+        for (u32 offset = 0; offset < 24; offset += 2)
+            CHECK_EQ(bus.read(0x2000 + offset, 2), 0U);
+        CHECK_EQ(bus.read(0x04600004, 4), cart + (domain2 ? 20U : 12U));
+        bus.tick(1);
         for (u32 offset = 0; offset < 24; offset += 2) {
             const u32 address = cart + offset;
             const u32 selected = (address & ~page_mask) == (cart & ~page_mask) ? cart : address & ~page_mask;
@@ -48,6 +54,19 @@ TEST(pi_bus_dma_buffer_boundaries_do_not_start_another_address_phase) {
     auto& bus = system.bus;
     bus.write(0x0460001c, 4, 8); // 1024-byte page, spanning two DMA buffers.
     start(bus, 0x10000120, 256);
+    bus.tick(270);
+    for (u32 offset = 0; offset < 256; offset += 2)
+        CHECK_EQ(bus.read(0x2000 + offset, 2), 0U);
+    CHECK_EQ(bus.read(0x04600004, 4), 0x10000120U);
+    bus.tick(1);
+    for (u32 offset = 0; offset < 128; offset += 2)
+        CHECK_EQ(bus.read(0x2000 + offset, 2), 0x0120U);
+    for (u32 offset = 128; offset < 256; offset += 2)
+        CHECK_EQ(bus.read(0x2000 + offset, 2), 0U);
+    CHECK_EQ(bus.read(0x04600004, 4), 0x100001a0U);
+    bus.tick(255);
+    CHECK_EQ(bus.read(0x2080, 2), 0U);
+    bus.tick(1);
     for (u32 offset = 0; offset < 256; offset += 2)
         CHECK_EQ(bus.read(0x2000 + offset, 2), 0x0120U);
     CHECK_EQ(bus.read(0x04600034, 4), 0x01200120U);
@@ -61,6 +80,12 @@ TEST(pi_bus_rom_exhaustion_retains_the_last_driven_halfword) {
     CHECK_EQ(bus.read(0x10000006, 4), 0xabcdabcdU);
     bus.write(0x0460001c, 4, 2);
     start(bus, 0x10000006, 16);
+    bus.tick(61);
+    for (u32 offset = 0; offset < 16; offset += 2)
+        CHECK_EQ(bus.read(0x2000 + offset, 2), 0U);
+    CHECK_EQ(bus.read(0x04600034, 4), 0xabcdabcdU);
+    CHECK_EQ(bus.read(0x04600004, 4), 0x10000010U);
+    bus.tick(1);
     for (u32 offset = 0; offset < 10; offset += 2)
         CHECK_EQ(bus.read(0x2000 + offset, 2), 0xabcdU);
     for (u32 offset = 10; offset < 16; offset += 2)
@@ -77,6 +102,20 @@ TEST(pi_bus_dma_writes_latch_data_even_without_a_cartridge_device) {
         bus.write(0x2000, 4, 0x12345678);
         bus.write(0x2004, 4, 0x9abcdef0);
         start(bus, 0x08000000, 8, false);
+        CHECK_EQ(bus.read(0x04600034, 4), 0U);
+        if (sram)
+            CHECK_EQ(read_be32(bus.sram.data()), 0U);
+        bus.tick(46);
+        CHECK_EQ(bus.read(0x04600034, 4), 0U);
+        bus.tick(1);
+        CHECK_EQ(bus.read(0x04600034, 4), 0x56785678U);
+        if (sram) {
+            CHECK_EQ(read_be32(bus.sram.data()), 0x12345678U);
+            CHECK_EQ(read_be32(bus.sram.data() + 4), 0U);
+        }
+        bus.tick(46);
+        CHECK_EQ(bus.read(0x04600034, 4), 0x56785678U);
+        bus.tick(1);
         CHECK_EQ(bus.read(0x04600034, 4), 0xdef0def0U);
         CHECK_EQ(bus.read(0x04600038, 4), 0xdef0def0U);
         if (sram)
@@ -106,6 +145,11 @@ TEST(pi_bus_sram_mirroring_applies_at_the_address_phase) {
         write_be32(bus.sram.data() + 0x7ffc, 0xabcdef01);
         bus.write(0x0460002c, 4, page_crossing ? 5 : 15);
         start(bus, 0x08007ffc, 8);
+        const u64 deadline = page_crossing ? 46U : 31U;
+        bus.tick(deadline - 1);
+        CHECK_EQ(bus.read(0x2000, 4), 0U);
+        CHECK_EQ(bus.read(0x2004, 4), 0U);
+        bus.tick(1);
         CHECK_EQ(bus.read(0x2000, 4), 0xabcdef01U);
         CHECK_EQ(bus.read(0x2004, 4), page_crossing ? 0x12345678U : 0xef01ef01U);
     }
@@ -121,6 +165,22 @@ TEST(pi_bus_sram_writes_do_not_wrap_without_an_address_phase) {
         bus.write(0x2004, 4, 0xabcdef01);
         bus.write(0x0460002c, 4, page_crossing ? 5 : 15);
         start(bus, 0x08007ffc, 8, false);
+        if (page_crossing) {
+            bus.tick(22);
+            CHECK_EQ(read_be32(bus.sram.data() + 0x7ffc), 0U);
+            CHECK_EQ(read_be32(bus.sram.data()), 0U);
+            bus.tick(1);
+            CHECK_EQ(read_be32(bus.sram.data() + 0x7ffc), 0x12345678U);
+            CHECK_EQ(read_be32(bus.sram.data()), 0U);
+            bus.tick(22);
+            CHECK_EQ(read_be32(bus.sram.data()), 0U);
+            bus.tick(1);
+        } else {
+            bus.tick(30);
+            CHECK_EQ(read_be32(bus.sram.data() + 0x7ffc), 0U);
+            CHECK_EQ(read_be32(bus.sram.data()), 0U);
+            bus.tick(1);
+        }
         CHECK_EQ(read_be32(bus.sram.data() + 0x7ffc), 0x12345678U);
         CHECK_EQ(read_be32(bus.sram.data()), page_crossing ? 0xabcdef01U : 0U);
     }

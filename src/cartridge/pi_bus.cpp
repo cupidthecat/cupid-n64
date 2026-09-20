@@ -55,6 +55,8 @@ u64 Bus::read_cart(u32 physical, unsigned width) {
         pi_io_counter_ = 0;
         return extract_word_lane(pi_bus_latch_, physical, width);
     }
+    if (pi_dma_pending_)
+        pi_dma_transfer_.cart_selected = false;
     select_cart(physical);
     const u16 high = cart_read_half();
     const u16 low = cart_read_half();
@@ -67,6 +69,8 @@ u64 Bus::read_cart(u32 physical, unsigned width) {
 void Bus::write_cart(u32 physical, unsigned width, u64 value) {
     if (pi_io_busy_)
         return;
+    if (pi_dma_pending_)
+        pi_dma_transfer_.cart_selected = false;
     select_cart(physical);
     const u32 word = expand_rcp_write(physical, width, value);
     pi_io_busy_ = true;

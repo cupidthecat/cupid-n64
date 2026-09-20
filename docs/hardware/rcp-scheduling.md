@@ -19,11 +19,12 @@ boundary coverage, not a claim of running a cartridge for that many cycles.
 `tests/rcp/test_clock_conversion.cpp` checks all three phases, minimal rounding,
 zero waits, large representable values, and saturation.
 
-Peripheral deadlines include PI and SI completion, EEPROM busy expiry, and audio
-samples. `Bus::tick` also honors these deadlines when called directly. Audio and
-video output are queued while devices advance, then delivered after the boundary
-finishes. In `System::advance`, that includes SP execution/DMA and buffered CPU
-stores. Direct `Bus::tick` calls deliver after the bus devices finish.
+Peripheral deadlines include PI progress and completion, SI completion, EEPROM
+busy expiry, and audio samples. `Bus::tick` also honors these deadlines when
+called directly. Audio and video output are queued while devices advance, then
+delivered after the boundary finishes. In `System::advance`, that includes SP
+execution/DMA and buffered CPU stores. Direct `Bus::tick` calls deliver after the
+bus devices finish.
 
 EEPROM busy time advances before SI completes at a shared boundary. A newly
 delivered write therefore retains its full interval, while a previous write
@@ -64,7 +65,8 @@ and CPU-driven advances, bulk and single-cycle calls, and PI deadlines in both
 video regions.
 
 The scheduler orders events using each device's existing transfer model. It does
-not yet arbitrate shared RDRAM bandwidth or model every DMA bus beat. SP transfers
-remain row-based, and PI data transfer still occurs separately from its busy
-completion delay. These limits are distinct from the batching errors covered by
-the scheduling regressions.
+not yet arbitrate shared RDRAM bandwidth or model every DMA halfword edge. SP
+transfers remain row-based. PI transfers stop at cartridge page and internal
+buffer progress deadlines so memory, cartridge side effects, address registers,
+and completion state cannot move ahead of the sampled clock. These limits are
+distinct from the batching errors covered by the scheduling regressions.

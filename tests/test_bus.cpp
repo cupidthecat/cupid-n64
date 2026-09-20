@@ -86,14 +86,26 @@ TEST(bus_pi_dma_preserves_odd_transfer_tail_and_address_progress) {
     bus.write(0x04600004U, 4, 0x10000000U);
     bus.write(0x0460000cU, 4, 126U);
 
+    for (u32 index = 0; index < 128; ++index)
+        CHECK_EQ(bus.read_ram_byte(dram + index), 0U);
+    CHECK_EQ(bus.read(0x04600004U, 4), 0x10000000ULL);
+    CHECK_EQ(bus.read(0x04600000U, 4), dram);
+    CHECK((bus.read(0x04600010U, 4) & 1U) != 0);
+
+    // With the reset timing registers, 128 bytes across 4-byte pages retire at RCP cycle 664.
+    bus.tick(663);
+    for (u32 index = 0; index < 128; ++index)
+        CHECK_EQ(bus.read_ram_byte(dram + index), 0U);
+    CHECK_EQ(bus.read(0x04600004U, 4), 0x1000007cULL);
+    CHECK_EQ(bus.read(0x04600000U, 4), dram);
+    CHECK((bus.read(0x04600010U, 4) & 1U) != 0);
+
+    bus.tick(1);
     for (u32 index = 0; index < 128; ++index) {
         CHECK_EQ(bus.read_ram_byte(dram + index), static_cast<u8>(index));
     }
     CHECK_EQ(bus.read(0x04600004U, 4), 0x10000080ULL);
     CHECK_EQ(bus.read(0x04600000U, 4), 0x00001080ULL);
-    CHECK((bus.read(0x04600010U, 4) & 1U) != 0);
-
-    bus.tick(1000);
     CHECK((bus.read(0x04600010U, 4) & 1U) == 0);
     CHECK((bus.read(0x04600010U, 4) & 8U) != 0);
     CHECK((bus.read(0x04300008U, 4) & (1U << 4U)) != 0);

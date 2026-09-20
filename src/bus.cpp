@@ -51,6 +51,7 @@ void Bus::reset() {
     reset_ai_clock();
     ai_address_carry_ = false;
     pi_dma_counter_ = 0;
+    pi_dma_progress_counter_ = 0;
     pi_io_counter_ = 0;
     si_dma_counter_ = 0;
     si_io_counter_ = 0;
@@ -77,6 +78,7 @@ void Bus::reset() {
     si_bus_latch_ = 0;
     si_phase_ = 0;
     pi_bus_latch_ = 0;
+    pi_dma_transfer_ = {};
     cart_device_ = CartDevice::Open;
     cart_offset_ = 0;
     cart_limit_ = 0;
@@ -317,7 +319,7 @@ void Bus::write_pi(u32 offset, u32 value) {
         pi_dma_pending_ = true;
         pi_dma_busy_ = true;
         pi_dma_counter_ = pi_dma_cycles(pi_[2]);
-        perform_pi_dma();
+        start_pi_dma(pi_[2]);
         return;
     case 3:
         pi_[3] = value & 0x00ffffffU;
@@ -325,7 +327,7 @@ void Bus::write_pi(u32 offset, u32 value) {
         pi_dma_pending_ = true;
         pi_dma_busy_ = true;
         pi_dma_counter_ = pi_dma_cycles(pi_[3]);
-        perform_pi_dma();
+        start_pi_dma(pi_[3]);
         return;
     case 4:
         if ((value & 1U) != 0) {
@@ -333,6 +335,8 @@ void Bus::write_pi(u32 offset, u32 value) {
             pi_dma_pending_ = false;
             pi_error_ = false;
             pi_dma_counter_ = 0;
+            pi_dma_progress_counter_ = 0;
+            pi_dma_transfer_ = {};
         }
         if ((value & 2U) != 0) {
             pi_interrupt_ = false;
@@ -378,11 +382,12 @@ void Bus::tick_devices(u64 rcp_cycles) {
             pi_io_counter_ -= rcp_cycles;
     }
     if (pi_dma_pending_) {
-        if (rcp_cycles >= pi_dma_counter_) {
-            pi_dma_counter_ = 0;
+        pi_dma_counter_ -= std::min(pi_dma_counter_, rcp_cycles);
+        pi_dma_progress_counter_ -= std::min(pi_dma_progress_counter_, rcp_cycles);
+        if (pi_dma_progress_counter_ == 0)
+            progress_pi_dma();
+        if (pi_dma_counter_ == 0)
             finish_pi_dma();
-        } else
-            pi_dma_counter_ -= rcp_cycles;
     }
     tick_eeprom(rcp_cycles);
     if (rtc)
@@ -448,72 +453,6 @@ void Bus::emit_isviewer() {
     if (!text.empty())
         debug_output(text);
     write_word_be(isviewer_.data(), isviewer_.size(), 4, 0);
-}
-
-void Bus::perform_pi_dma() {
-    if (!pi_dma_pending_)
-        return;
-    const u32 page_mask = pi_page_mask(pi_[1]);
-    if (pi_dma_cart_to_dram_) {
-        std::array<u8, 128> buffer{};
-        s32 length = static_cast<s32>(pi_[3] + 1U);
-        s32 max_block_size = 128;
-        bool first_block = true;
-        bool selected = false;
-        while (length > 0) {
-            const s32 misalign = static_cast<s32>(pi_[0] & 7U);
-            const s32 distance_to_row = 0x800 - static_cast<s32>(pi_[0] & 0x7ffU);
-            const s32 block_length = std::min(max_block_size - misalign, distance_to_row);
-            const s32 current_length = std::min(length, block_length);
-            for (s32 index = 0; index < current_length; index += 2) {
-                if (!selected || (pi_[1] & page_mask) == 0) {
-                    select_cart(pi_[1]);
-                    selected = true;
-                }
-                const u16 data = cart_read_half();
-                buffer[static_cast<std::size_t>(index)] = static_cast<u8>(data >> 8U);
-                if (index + 1 < static_cast<s32>(buffer.size()))
-                    buffer[static_cast<std::size_t>(index + 1)] = static_cast<u8>(data);
-                pi_[1] += 2U;
-                length -= 2;
-            }
-            const s32 write_length = std::max<s32>(0, current_length - misalign);
-            if (first_block && current_length < 127 - misalign) {
-                for (s32 index = 0; index < write_length; ++index) {
-                    write_ram_byte(pi_[0]++, buffer[static_cast<std::size_t>(index)]);
-                }
-            } else {
-                for (s32 index = 0; index < write_length; index += 2) {
-                    write_ram_byte(pi_[0]++, buffer[static_cast<std::size_t>(index)]);
-                    write_ram_byte(pi_[0]++, buffer[static_cast<std::size_t>(index + 1)]);
-                }
-            }
-            pi_[0] = (pi_[0] + 7U) & ~7U;
-            pi_[3] = static_cast<u32>(current_length <= 8 ? 127 - misalign : 127);
-            first_block = false;
-            max_block_size = distance_to_row < 8 ? 128 - misalign : 128;
-        }
-    } else {
-        const u32 length = (pi_[2] | 1U) + 1U;
-        pi_[2] = length;
-        select_cart(pi_[1]);
-        for (u32 index = 0; index < length; index += 2U) {
-            if (index != 0 && ((pi_[1] + index) & page_mask) == 0)
-                select_cart(pi_[1] + index);
-            const u16 data = static_cast<u16>((static_cast<u16>(read_ram_byte(pi_[0] + index)) << 8U) |
-                                              read_ram_byte(pi_[0] + index + 1U));
-            cart_write_half(data);
-        }
-    }
-}
-
-void Bus::finish_pi_dma() {
-    if (!pi_dma_pending_)
-        return;
-    pi_dma_pending_ = false;
-    pi_dma_busy_ = false;
-    pi_interrupt_ = true;
-    set_interrupt(4, true);
 }
 
 void Bus::process_pif_control() {
