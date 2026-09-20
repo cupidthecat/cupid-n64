@@ -1,33 +1,35 @@
 #include "cupid/bus.hpp"
+#include "cupid/rdp/noise.hpp"
 
 #include <algorithm>
 #include <bit>
 
 namespace cupid {
-namespace {
-
-constexpr unsigned dither_matrix[2][16] = {
-    {0, 6, 1, 7, 4, 2, 5, 3, 3, 5, 2, 4, 7, 1, 6, 0},
-    {0, 4, 1, 5, 4, 0, 5, 1, 3, 7, 2, 6, 7, 3, 6, 2},
-};
-
-} // namespace
-
-void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
+void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
                             RdpDepth depth) {
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
+    const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
+    const bool first_noise = two_cycles && ((color_state_.combine >> 52U) & 15U) == 7U;
+    const bool last_noise = ((color_state_.combine >> 37U) & 15U) == 7U;
+    const bool random_alpha = (other_modes_ & 3U) == 3U;
+    const bool needs_noise = rgb_mode == 2U || alpha_mode == 2U || random_alpha || first_noise || last_noise;
+    u16 sample = needs_noise ? rdp_pixel_noise(primitive_sequence_, x, y) : 0;
     const unsigned dither_y = scissor_field_enabled_ ? y >> 1U : y;
-    const unsigned threshold = dither_matrix[rgb_mode & 1U][(dither_y & 3U) * 4U + (x & 3U)];
-    unsigned alpha_dither = 0;
-    if (alpha_mode < 2U)
-        alpha_dither = alpha_mode == 0U ? threshold : threshold ^ 7U;
+    const auto dither = rdp_dither_coefficients(other_modes_, x, dither_y, sample);
+    const unsigned alpha_dither = dither[3];
+    inputs.noise.fill(rdp_combiner_noise(sample));
+    if (first_noise && last_noise) {
+        sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
+        inputs.noise[1] = rdp_combiner_noise(sample);
+    }
     const auto combined = rdp_combine(color_state_, other_modes_, inputs,
                                       static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     if (antialias ? combined.coverage == 0U : (coverage_mask & 1U) == 0U)
         return;
-    if ((other_modes_ & 1U) != 0 && combined.test_alpha < (color_state_.blend & 255U))
+    const unsigned alpha_threshold = random_alpha ? sample & 255U : color_state_.blend & 255U;
+    if ((other_modes_ & 1U) != 0 && combined.test_alpha < alpha_threshold)
         return;
 
     const unsigned bytes = color_image_size_ == 2U ? 2U : 4U;
@@ -57,9 +59,9 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
     RdpColor color =
         rdp_blend(color_state_, other_modes_, combined.color, memory, shade_alpha, tested.blend_enabled,
                   tested.coverage_wrap, tested.memory_alpha_shift, tested.pixel_alpha_shift);
-    if (rgb_mode < 2U) {
+    if (rgb_mode < 3U) {
         for (unsigned channel = 0; channel < 3; ++channel) {
-            if ((static_cast<unsigned>(color[channel]) & 7U) > threshold)
+            if ((static_cast<unsigned>(color[channel]) & 7U) > dither[channel])
                 color[channel] = std::min((color[channel] & 248) + 8, 255);
         }
     }

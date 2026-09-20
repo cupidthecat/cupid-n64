@@ -102,6 +102,7 @@ are implementation limits, not verified hardware dispositions. Unusual texture
 load combinations retain the limits described in [texture loads](rdp-texture-loads.md).
 
 Textured primitives use the [depth comparison and update stage](rdp-depth.md).
-Key-generated alpha, noise and random dithering,
+The shared pixel stage supplies [noise and random dithering](rdp-color.md).
+Key-generated alpha, the exact hardware noise sequence,
 other framebuffer formats, and asynchronous DP timing remain unfinished.
 Issues #18 through #22 remain open.

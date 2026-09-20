@@ -139,7 +139,7 @@ TEST(rdp_combiner_noise_input_and_unused_mux_codes) {
     RdpColorState state;
     state.primitive_lod = 128;
     RdpColorInputs inputs;
-    inputs.noise = 97;
+    inputs.noise = {97, 97};
     CHECK_EQ(combine({.a = 7, .c = 14, .d = 7}, state, inputs).color[0], 49);
     CHECK_EQ(combine({.a = 15, .b = 15, .c = 31, .d = 7}, state, inputs).color[0], 0);
 }

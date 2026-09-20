@@ -27,7 +27,7 @@ struct RdpColorInputs {
     RdpColor texel1{};
     RdpColor shade{};
     s32 lod_fraction{};
-    s32 noise{};
+    std::array<s32, 2> noise{};
 };
 
 struct RdpCombinedPixel {

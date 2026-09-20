@@ -49,7 +49,34 @@ framebuffer value. RGBA16 stores the high coverage bit in the pixel and the low
 two bits in hidden memory. RGBA32 stores coverage in the top three bits of its
 low byte. Neither format stores the combiner's alpha as ordinary opacity.
 Magic-square and Bayer dithering apply their four-by-four thresholds before
-framebuffer packing; alpha dithering supports the matrix and inverse matrix.
+framebuffer packing. Random RGB dithering uses separate three-bit thresholds
+for red, green, and blue; rounding saturates at 255. Alpha dithering supports
+the matrix, inverse matrix, random three-bit values, and disabled mode.
+Random alpha comparison uses an eight-bit threshold instead of blend alpha.
+Equality passes. Rejected pixels leave color, coverage, and depth untouched.
+
+## Noise
+
+Combiner noise has three random bits in positions 8:6, bit 5 set, and bits
+4:0 clear. It therefore supplies one of eight values from 32 through 480;
+the combiner's existing nine-bit arithmetic determines their color result.
+When both cycles select noise, they receive separate samples. Alpha comparison
+still uses the first cycle's alpha in two-cycle mode.
+
+The noise source is a reproducible hash of the primitive sequence and pixel
+coordinates. Repeated draws resample it; reset restores the initial sequence.
+Scissor and field filtering retain the same samples at surviving coordinates.
+DP buffer boundaries, partial packets, and sync commands do not restart the
+sequence. Each accepted draw command advances it, including clipped draws and
+fill/copy commands. Matrix dithering uses field-relative Y, while spatial
+noise uses framebuffer Y.
+
+This source models the required value ranges and pixel-pipeline connections,
+not the hardware noise generator's exact sequence or clock phase. The two
+cycle samples and their correlation with alpha comparison are part of the
+current deterministic model. Hardware captures and asynchronous DP timing
+are needed to validate those correlations. Tests do not treat the hash output
+as a measured hardware sequence.
 
 ## Tests and limits
 
@@ -59,13 +86,17 @@ blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
 `tests/rdp/test_color_rectangle.cpp`
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, alpha rejection, blending, and dither thresholds.
+`tests/rdp/test_noise.cpp` and `tests/rdp/test_pixel_noise.cpp` add 18 checks for
+noise quantization, selector combinations, separate cycle inputs, per-channel
+dithering, saturation, alpha rejection, unchanged depth/hidden bits, clipping,
+fields, reset, repeated draws, and partial command packets.
 
 Rectangles and triangles supply [sampled texels and texture LOD](rdp-texture-sampling.md)
 to the combiner. [Triangles](rdp-triangles.md) also supply interpolated shade
-and depth. Rectangle shade inputs and all noise inputs remain zero.
+and depth. Rectangle shade inputs remain zero.
 
-Both primitives support depth comparison and writes. Color-key alpha generation, random noise
-and random dither/alpha thresholds, other framebuffer formats, and asynchronous
+Both primitives support depth comparison and writes. Color-key alpha generation,
+the exact hardware noise sequence, other framebuffer formats, and asynchronous
 rasterizer timing remain unfinished. Key center and scale can be selected by
 the combiner, but key widths do not yet affect alpha. K4 and K5 are available
 to the combiner, while K0 through K3 feed texture conversion. These tests do

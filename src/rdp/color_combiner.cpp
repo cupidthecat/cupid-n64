@@ -67,7 +67,7 @@ RdpColor combine_cycle(const RdpColorState& state, const RdpColorInputs& inputs,
                 } else if (selector == 6U)
                     terms[term] = 256;
                 else if (term == 0U && selector == 7U)
-                    terms[term] = inputs.noise;
+                    terms[term] = inputs.noise[cycle];
             }
         }
         result[channel] =

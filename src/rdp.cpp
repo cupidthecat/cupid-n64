@@ -75,6 +75,7 @@ void Rdp::reset() {
     tiles_.fill({});
     fill_color_ = 0;
     color_state_ = {};
+    primitive_sequence_ = 0;
     primitive_depth_ = 0;
     primitive_delta_depth_ = 0;
     other_modes_ = 0;
@@ -318,6 +319,8 @@ void Rdp::execute(u8 opcode) {
         halt_commands();
         return;
     }
+    if (draw)
+        ++primitive_sequence_;
     switch (opcode & 0x3fU) {
     case 0x00:
     case 0x01:

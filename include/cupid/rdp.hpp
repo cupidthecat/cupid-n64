@@ -83,6 +83,7 @@ class Rdp {
     std::array<RdpTile, 8> tiles_{};
     u32 fill_color_{};
     RdpColorState color_state_{};
+    u32 primitive_sequence_{};
     u16 primitive_depth_{};
     u16 primitive_delta_depth_{};
     u64 other_modes_{};
@@ -109,7 +110,7 @@ class Rdp {
     [[nodiscard]] RdpColorInputs sample_color_textures(const RdpTextureCoordinates& coordinates,
                                                        unsigned tile, unsigned inputs,
                                                        unsigned maximum_level = 0) const;
-    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
+    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
                            RdpDepth depth);
     void fill_span(unsigned y, unsigned left, unsigned right);
     void fill_copy_triangle(bool copy);

@@ -62,7 +62,8 @@ suite; see [the fixture audit](../testing/rdp-triangle-fixtures.md). The default
 cartridge suite passes. These results do not establish complete rendering or
 gameplay correctness.
 
-Noise, key-generated alpha, random dithering, other framebuffer formats,
+[Noise and random dithering](rdp-color.md) now use the shared pixel stage.
+The exact hardware noise sequence, key-generated alpha, other framebuffer formats,
 unusual texture combinations, arbitrary color/depth overlaps, and asynchronous
 DP timing still need work. Drawing remains synchronous and does not model
 per-pixel RDRAM contention. Issues #19, #21, #22, and #37 track these limits and
