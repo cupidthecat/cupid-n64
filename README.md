@@ -50,6 +50,9 @@ This adds the complete ROM run to CTest alongside the local regressions. The ROM
 
 See [the testing guide](docs/testing.md) for the pinned test input, optional test groups, and sanitizer commands.
 
+Use [cartridge output captures](docs/testing/compatibility-captures.md) to record
+repeatable video and audio evidence for compatibility checks.
+
 Before committing or pushing, run `python tools/ci/validate.py` with your ROM and
 PIF paths. This checks clang-format output and runs the strict build and tests
 used by CI. The testing guide lists the compiler and sanitizer options.

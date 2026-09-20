@@ -49,6 +49,11 @@ target_link_libraries(cupid-warm-reset-tests PRIVATE cupid_core)
 
 add_executable(cupid-storage-writer tests/host/storage_writer.cpp)
 target_link_libraries(cupid-storage-writer PRIVATE cupid_host)
+add_executable(cupid-compatibility-capture tests/compatibility/capture.cpp)
+target_link_libraries(cupid-compatibility-capture PRIVATE cupid_host)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_options(cupid-compatibility-capture PRIVATE -municode)
+endif()
 add_test(NAME host_storage_concurrent
     COMMAND "${CMAKE_COMMAND}"
         -DWRITER=$<TARGET_FILE:cupid-storage-writer>
@@ -56,7 +61,7 @@ add_test(NAME host_storage_concurrent
         -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/concurrent_storage.cmake)
 set_tests_properties(host_storage_concurrent PROPERTIES LABELS "host")
 
-foreach(target cupid_core cupid_host cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer)
+foreach(target cupid_core cupid_host cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer cupid-compatibility-capture)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /fp:strict)
         if(CUPID_STRICT)
@@ -87,7 +92,7 @@ if(CUPID_SANITIZERS AND WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if(NOT EXISTS "${CUPID_SANITIZER_DLL}")
         message(FATAL_ERROR "The compiler's sanitizer runtime was not found: ${CUPID_SANITIZER_DLL}")
     endif()
-    foreach(target cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer)
+    foreach(target cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer cupid-compatibility-capture)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CUPID_SANITIZER_DLL}" "$<TARGET_FILE_DIR:${target}>"
             VERBATIM)
@@ -114,6 +119,14 @@ if(CUPID_TEST_ROM)
     add_test(NAME nemu64_warm_reset COMMAND cupid-warm-reset-tests "${CUPID_TEST_ROM}" "${CUPID_PIF_ROM}")
     set_tests_properties(nemu64_warm_reset PROPERTIES TIMEOUT 1800 LABELS "accuracy;boot")
     if(CUPID_PIF_ROM)
+        add_test(NAME compatibility_capture
+            COMMAND "${CMAKE_COMMAND}"
+                -DCAPTURE=$<TARGET_FILE:cupid-compatibility-capture>
+                -DROM=${CUPID_TEST_ROM}
+                -DPIF=${CUPID_PIF_ROM}
+                -DWORK=${CMAKE_CURRENT_BINARY_DIR}/compatibility-capture
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/compatibility/capture.cmake)
+        set_tests_properties(compatibility_capture PROPERTIES TIMEOUT 180 LABELS "compatibility")
         add_test(NAME host_storage_runner
             COMMAND "${CMAKE_COMMAND}"
                 -DRUNNER=$<TARGET_FILE:cupid-n64>
