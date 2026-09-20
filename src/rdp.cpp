@@ -107,6 +107,8 @@ void Rdp::reset() {
     scissor_y0_ = 0;
     scissor_x1_ = 0x0fff;
     scissor_y1_ = 0x0fff;
+    scissor_field_enabled_ = false;
+    scissor_keep_odd_ = false;
     command_buffer_.fill(0);
     command_buffer_size_ = 0;
     command_buffer_address_ = 0;
@@ -375,6 +377,8 @@ void Rdp::execute(u8 opcode) {
         scissor_y0_ = static_cast<u16>((command >> 32) & 0x0fffU);
         scissor_x1_ = static_cast<u16>((command >> 12) & 0x0fffU);
         scissor_y1_ = static_cast<u16>(command & 0x0fffU);
+        scissor_field_enabled_ = (command & (1ULL << 25U)) != 0;
+        scissor_keep_odd_ = (command & (1ULL << 24U)) != 0;
         return;
     case 0x2f:
         other_modes_ = command & 0x00ffffffffffffffULL;
@@ -400,8 +404,8 @@ void Rdp::execute(u8 opcode) {
     case 0x3f:
         color_image_format_ = static_cast<u8>((command >> 53) & 7U);
         color_image_size_ = static_cast<u8>((command >> 51) & 3U);
-        color_image_width_ = static_cast<u16>(((command >> 32) & 0x0fffU) + 1U);
-        color_image_address_ = static_cast<u32>(command & 0x03ffffffU);
+        color_image_width_ = static_cast<u16>(((command >> 32) & 0x03ffU) + 1U);
+        color_image_address_ = static_cast<u32>(command & 0x00ffffffU);
         return;
     default:
         return;
@@ -477,6 +481,8 @@ void Rdp::fill_triangle() {
     const u8 green = static_cast<u8>(blend_color_ >> 8U);
     const u8 blue = static_cast<u8>(blend_color_);
     for (unsigned pixel_y = 0; pixel_y < height; ++pixel_y) {
+        if (scissor_field_enabled_ && (pixel_y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
+            continue;
         for (unsigned pixel_x = 0; pixel_x < width; ++pixel_x) {
             const unsigned count = coverage[static_cast<std::size_t>(pixel_y) * width + pixel_x];
             if (count == 0)
@@ -493,47 +499,6 @@ void Rdp::fill_triangle() {
                 const u32 color = (static_cast<u32>(alpha) << 24U) | (static_cast<u32>(red) << 16U) |
                                   (static_cast<u32>(green) << 8U) | blue;
                 bus_.memory.write(color_image_address_ + pixel * 4U, 4, color);
-            }
-        }
-    }
-}
-
-void Rdp::fill_rectangle(u64 command) {
-    if (((other_modes_ >> 52) & 3U) != 3U)
-        return;
-    if (color_image_format_ != 0U || (color_image_size_ != 2U && color_image_size_ != 3U))
-        return;
-
-    const u16 raw_right = static_cast<u16>((command >> 44) & 0x0fffU);
-    const u16 raw_bottom = static_cast<u16>((command >> 32) & 0x0fffU);
-    const u16 raw_left = static_cast<u16>((command >> 12) & 0x0fffU);
-    const u16 raw_top = static_cast<u16>(command & 0x0fffU);
-    unsigned left = raw_left >> 2U;
-    unsigned top = raw_top >> 2U;
-    unsigned right = raw_right >> 2U;
-    unsigned bottom = raw_bottom >> 2U;
-
-    left = std::max(left, static_cast<unsigned>((scissor_x0_ + 3U) >> 2U));
-    top = std::max(top, static_cast<unsigned>((scissor_y0_ + 3U) >> 2U));
-    const unsigned scissor_right = static_cast<unsigned>((scissor_x1_ + 3U) >> 2U);
-    const unsigned scissor_bottom = static_cast<unsigned>((scissor_y1_ + 3U) >> 2U);
-    if (scissor_right != 0)
-        right = std::min(right, scissor_right - 1U);
-    if (scissor_bottom != 0)
-        bottom = std::min(bottom, scissor_bottom - 1U);
-    if (right < left || bottom < top)
-        return;
-
-    for (unsigned y = top; y <= bottom; ++y) {
-        for (unsigned x = left; x <= right; ++x) {
-            const u32 pixel = static_cast<u32>(y) * color_image_width_ + static_cast<u32>(x);
-            if (color_image_size_ == 2U) {
-                const u32 address = color_image_address_ + pixel * 2U;
-                const u16 color = (address & 2U) == 0 ? static_cast<u16>(fill_color_ >> 16U)
-                                                      : static_cast<u16>(fill_color_);
-                bus_.memory.write(address, 2, color);
-            } else {
-                bus_.memory.write(color_image_address_ + pixel * 4U, 4, fill_color_);
             }
         }
     }

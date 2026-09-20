@@ -75,6 +75,8 @@ class Rdp {
     u16 scissor_y0_{};
     u16 scissor_x1_{0x0fff};
     u16 scissor_y1_{0x0fff};
+    bool scissor_field_enabled_{};
+    bool scissor_keep_odd_{};
 
     std::array<u8, 176> command_buffer_{};
     unsigned command_buffer_size_{};
