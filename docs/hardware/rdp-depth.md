@@ -84,7 +84,12 @@ rejection, and textured draws in both directions and cycle modes.
 
 [Triangle interpolation](rdp-triangles.md) supplies depth and normalized depth
 gradients, or uses the primitive depth override. Arbitrary partial
-overlaps between color and depth buffers, other framebuffer formats, and
+overlaps between color and depth buffers and
 asynchronous rasterizer memory ordering need further validation. These checks
 do not establish complete rendering or gameplay correctness. Issue #22 tracks
 the remaining depth and coverage work.
+
+[Framebuffer format tests](rdp-framebuffers.md) cover narrow color writes with
+independent halfword depth strides, address wrapping, and shared 16-bit
+color/depth addresses. They do not establish every delta encoding or partial
+overlap under aliasing.

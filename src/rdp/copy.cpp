@@ -119,7 +119,7 @@ void Rdp::write_copy_pixel(unsigned x, unsigned y, u16 value) {
     if (color_image_size_ == 2U && (other_modes_ & 1U) != 0 && (value & 1U) == 0)
         return;
     const unsigned bytes = color_image_size_ == 2U ? 2U : 1U;
-    const u32 address = color_image_address_ + (y * color_image_width_ + x) * bytes;
+    const u32 address = framebuffer_address(color_image_address_, bytes, y * color_image_width_ + x);
     const u8 hidden = bus_.memory.hidden_pair(address);
     bus_.memory.write(address, bytes, value);
     if (bytes == 1U)

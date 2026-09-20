@@ -32,22 +32,12 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     if ((other_modes_ & 1U) != 0 && combined.test_alpha < alpha_threshold)
         return;
 
-    const unsigned bytes = color_image_size_ == 2U ? 2U : 4U;
-    const u32 address = color_image_address_ + (y * color_image_width_ + x) * bytes;
-    const u32 stored = static_cast<u32>(bus_.memory.read(address, bytes));
-    RdpColor memory;
-    if (bytes == 2U) {
-        const unsigned coverage = ((stored & 1U) << 2U) | bus_.memory.hidden_pair(address);
-        memory = {static_cast<s32>((stored >> 8U) & 248U), static_cast<s32>((stored >> 3U) & 248U),
-                  static_cast<s32>((stored << 2U) & 248U), static_cast<s32>(coverage << 5U)};
-    } else {
-        memory = rdp_unpack_color(stored);
-        memory[3] &= 224;
-    }
-    if ((other_modes_ & (1ULL << 6U)) == 0)
-        memory[3] = 224;
+    const unsigned bytes = color_image_size_ < 2U ? 1U : 1U << (color_image_size_ - 1U);
+    const u32 pixel = y * color_image_width_ + x;
+    const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
+    const RdpColor memory = read_framebuffer_color(address);
     const unsigned old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
-    const u32 depth_address = depth_image_address_ + (y * color_image_width_ + x) * 2U;
+    const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
     const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
     const u16 stored_depth = compare_depth ? static_cast<u16>(bus_.memory.read(depth_address, 2)) : 0;
     const u8 hidden_depth = compare_depth ? bus_.memory.hidden_pair(depth_address) : 0;
@@ -80,17 +70,7 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     default:
         break;
     }
-    const unsigned red = static_cast<unsigned>(color[0]);
-    const unsigned green = static_cast<unsigned>(color[1]);
-    const unsigned blue = static_cast<unsigned>(color[2]);
-    if (bytes == 2U) {
-        bus_.memory.write(address, 2,
-                          ((red & 248U) << 8U) | ((green & 248U) << 3U) | ((blue & 248U) >> 2U) |
-                              (coverage >> 2U));
-        bus_.memory.set_hidden_pair(address, static_cast<u8>(coverage & 3U));
-    } else {
-        bus_.memory.write(address, 4, (red << 24U) | (green << 16U) | (blue << 8U) | (coverage << 5U));
-    }
+    write_framebuffer_color(address, color, coverage);
     if ((other_modes_ & (1ULL << 5U)) != 0) {
         const unsigned delta = rdp_compress_depth_delta(depth.delta);
         bus_.memory.write(depth_address, 2,

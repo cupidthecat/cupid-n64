@@ -7,8 +7,6 @@
 namespace cupid {
 
 void Rdp::color_triangle() {
-    if (color_image_format_ != 0U || color_image_size_ < 2U)
-        return;
     const u64 command = buffered_word(0);
     const unsigned opcode = static_cast<unsigned>(command >> 56U) & 63U;
     const auto geometry =

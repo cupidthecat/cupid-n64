@@ -43,7 +43,7 @@ void Rdp::fill_span(unsigned y, unsigned left, unsigned right) {
     const unsigned bytes_per_pixel = 1U << (color_image_size_ - 1U);
     for (unsigned x = left; x <= right; ++x) {
         const u32 pixel = y * color_image_width_ + x;
-        const u32 address = color_image_address_ + pixel * bytes_per_pixel;
+        const u32 address = framebuffer_address(color_image_address_, bytes_per_pixel, pixel);
         if (color_image_size_ == 1U) {
             const u8 color = static_cast<u8>(fill_color_ >> ((3U - (address & 3U)) * 8U));
             const u8 hidden = bus_.memory.hidden_pair(address);

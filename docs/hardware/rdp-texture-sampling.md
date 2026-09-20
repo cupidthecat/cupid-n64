@@ -103,6 +103,7 @@ load combinations retain the limits described in [texture loads](rdp-texture-loa
 
 Textured primitives use the [depth comparison and update stage](rdp-depth.md).
 The shared pixel stage supplies [noise and random dithering](rdp-color.md).
+All [color framebuffer formats](rdp-framebuffers.md) use this sampling stage.
 Key-generated alpha, the exact hardware noise sequence,
-other framebuffer formats, and asynchronous DP timing remain unfinished.
+framebuffer/depth overlap ordering, and asynchronous DP timing remain unfinished.
 Issues #18 through #22 remain open.

@@ -1,7 +1,7 @@
 # RDP triangle interpolation
 
 All eight triangle opcodes use the color pipeline in one-cycle and two-cycle
-modes for RGBA16 and RGBA32 framebuffers. Optional shade, texture, and depth
+modes for all [color framebuffer formats](rdp-framebuffers.md). Optional shade, texture, and depth
 blocks are decoded at their command-defined offsets. An incomplete packet
 waits for its remaining words. Edge-only commands use the programmed combiner
 and blender; blend color is not an implicit triangle color.
@@ -63,7 +63,7 @@ cartridge suite passes. These results do not establish complete rendering or
 gameplay correctness.
 
 [Noise and random dithering](rdp-color.md) now use the shared pixel stage.
-The exact hardware noise sequence, key-generated alpha, other framebuffer formats,
+The exact hardware noise sequence, key-generated alpha,
 unusual texture combinations, arbitrary color/depth overlaps, and asynchronous
 DP timing still need work. Drawing remains synchronous and does not model
 per-pixel RDRAM contention. Issues #19, #21, #22, and #37 track these limits and

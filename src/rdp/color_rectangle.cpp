@@ -6,8 +6,6 @@
 namespace cupid {
 
 void Rdp::color_rectangle(u64 command, bool flipped) {
-    if (color_image_format_ != 0U || color_image_size_ < 2U)
-        return;
     const unsigned left = std::max<unsigned>((command >> 12U) & 4095U, scissor_x0_);
     const unsigned right = std::min<unsigned>((command >> 44U) & 4095U, scissor_x1_);
     const unsigned top = std::max<unsigned>(command & 4095U, scissor_y0_);

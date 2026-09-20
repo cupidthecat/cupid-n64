@@ -1,7 +1,7 @@
 # RDP color pipeline
 
 In one-cycle and two-cycle modes, rectangle and triangle commands pass through the color
-combiner and blender for RGBA16 and RGBA32 framebuffers. Primitive, environment,
+combiner and blender for all [color-image sizes and format codes](rdp-framebuffers.md). Primitive, environment,
 fog, and blend colors use RGBA byte order. `SetCombine`, `SetKeyR`, `SetKeyGB`,
 `SetConvert`, and the primitive LOD fraction update the color state used by
 subsequent commands. Reset clears that state.
@@ -96,7 +96,7 @@ to the combiner. [Triangles](rdp-triangles.md) also supply interpolated shade
 and depth. Rectangle shade inputs remain zero.
 
 Both primitives support depth comparison and writes. Color-key alpha generation,
-the exact hardware noise sequence, other framebuffer formats, and asynchronous
+the exact hardware noise sequence, framebuffer/depth overlap ordering, and asynchronous
 rasterizer timing remain unfinished. Key center and scale can be selected by
 the combiner, but key widths do not yet affect alpha. K4 and K5 are available
 to the combiner, while K0 through K3 feed texture conversion. These tests do
