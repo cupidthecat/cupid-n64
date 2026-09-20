@@ -49,6 +49,7 @@ class Cpu {
   public:
     explicit Cpu(System& system);
     void reset();
+    void request_nmi();
     void step();
     // Standalone instruction and memory helpers are untimed; step advances the hardware clocks.
     void execute(u32 instruction);
@@ -102,6 +103,7 @@ class Cpu {
     u64 instruction_cycles_{1};
     u64 synchronized_instruction_cycles_{};
     bool executing_step_{};
+    bool nmi_pending_{};
     bool speculative_fetch_{};
     u64 fetch_wait_cycles_{};
     struct FetchedInstruction {
@@ -148,6 +150,7 @@ class Cpu {
     void prefetch_instruction(u64 address, bool latch);
 
     void execute_special(u32 instruction);
+    void accept_nmi();
     void execute_regimm(u32 instruction);
     void execute_cop0(u32 instruction);
     void write_cop0_instruction(unsigned index, u64 value);

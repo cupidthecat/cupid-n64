@@ -54,11 +54,12 @@ void Cpu::reset() {
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
     executing_step_ = false;
+    nmi_pending_ = false;
     speculative_fetch_ = false;
     fetch_wait_cycles_ = 0;
     write_buffer_.fill({});
     write_buffer_head_ = write_buffer_count_ = 0;
-    cp0[12] = 0x3450ff04U;
+    cp0[12] = 0x3440ff04U;
     cp0[15] = 0x00000b22U;
     cp0[16] = 0x7006e460U;
     gpr[29] = 0xffffffffa4001ff0ULL;
@@ -169,6 +170,11 @@ void Cpu::step() {
     exception_pending = redirected_ = false;
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
+    if (nmi_pending_) {
+        accept_nmi();
+        synchronize();
+        return;
+    }
     if (frozen) {
         synchronize();
         return;

@@ -1,5 +1,9 @@
 # CPU timing
 
+[Non-maskable interrupts](cpu-nmi.md) have a separate entry path that preserves
+the interrupted machine state and records ErrorEPC. That document describes
+the current boundary timing and the remaining console reset work.
+
 `Cpu::step` advances the CPU and connected hardware clocks. Standalone instruction,
 register, and memory helpers support local tests without advancing those clocks.
 
