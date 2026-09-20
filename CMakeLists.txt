@@ -36,7 +36,7 @@ endif()
 
 enable_testing()
 file(GLOB CUPID_TEST_SOURCES CONFIGURE_DEPENDS "tests/test_*.cpp")
-file(GLOB CUPID_RCP_TEST_SOURCES CONFIGURE_DEPENDS "tests/rcp/test_*.cpp" "tests/cpu/test_*.cpp" "tests/rdp/test_*.cpp" "tests/vi/test_*.cpp")
+file(GLOB CUPID_RCP_TEST_SOURCES CONFIGURE_DEPENDS "tests/rcp/test_*.cpp" "tests/cpu/test_*.cpp" "tests/rdp/test_*.cpp" "tests/vi/test_*.cpp" "tests/rsp/test_*.cpp")
 file(GLOB CUPID_CARTRIDGE_TEST_SOURCES CONFIGURE_DEPENDS "tests/cartridge/test_*.cpp" "tests/host/test_*.cpp" "tests/storage/test_*.cpp")
 list(APPEND CUPID_TEST_SOURCES ${CUPID_RCP_TEST_SOURCES} ${CUPID_CARTRIDGE_TEST_SOURCES})
 add_executable(cupid-tests tests/main.cpp ${CUPID_TEST_SOURCES})

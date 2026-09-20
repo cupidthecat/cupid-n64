@@ -58,6 +58,7 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 
 Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [instruction fetch ordering](docs/hardware/instruction-fetch.md),
+[signal processor control flow](docs/hardware/rsp-control-flow.md),
 [video timing](docs/hardware/video-timing.md),
 [video field output](docs/hardware/video-scanout.md),
 [audio timing](docs/hardware/audio-timing.md),

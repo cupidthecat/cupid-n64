@@ -207,7 +207,7 @@ void Bus::write_rcp_word(u32 physical, u32 value) {
     if (physical >= 0x04080000U && physical <= 0x040bffffU) {
         const u32 offset = (physical - 0x04080000U) & 0x1fU;
         if (offset == 0)
-            system_.rsp.pc = value & 0xffcU;
+            system_.rsp.write_pc(value);
         return;
     }
     if (physical >= 0x04100000U && physical <= 0x041fffffU) {

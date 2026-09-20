@@ -21,6 +21,7 @@ class Rsp {
 
     [[nodiscard]] u32 read_register(u32 byte_offset);
     void write_register(u32 byte_offset, u32 value);
+    void write_pc(u32 value);
 
     std::array<u8, 8192> memory{};
     u32 pc{};

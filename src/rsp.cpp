@@ -123,19 +123,21 @@ void Rsp::take_branch(u32 target) {
     next_pc_ = mask_pc(target);
 }
 
+void Rsp::write_pc(u32 value) {
+    pc = mask_pc(value);
+    next_pc_ = mask_pc(pc + 4);
+    pc_shadow_ = pc;
+}
+
 void Rsp::step() {
     if (halted_) {
         return;
     }
 
-    // The SP PC register is public because the bus owns its separate register
-    // mapping. A write while halted must also restart the internal delay-slot
-    // sequencer from that address.
-    if (pc != pc_shadow_) {
-        pc = mask_pc(pc);
-        next_pc_ = mask_pc(pc + 4);
-        pc_shadow_ = pc;
-    }
+    // Keep direct host changes synchronized. Register writes use write_pc()
+    // because even an unchanged address must discard a pending branch.
+    if (pc != pc_shadow_)
+        write_pc(pc);
 
     current_pc_ = mask_pc(pc);
     const u32 instruction = fetch_instruction();
