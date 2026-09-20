@@ -100,6 +100,7 @@ currently supply zero; non-16-bit YUV uses the 16-bit addressing path. Those
 are implementation limits, not verified hardware dispositions. Unusual texture
 load combinations retain the limits described in [texture loads](rdp-texture-loads.md).
 
-Depth testing/writes, key-generated alpha, noise and random dithering, other
-framebuffer formats, and asynchronous DP timing remain unfinished. Issues
-#18 through #21 remain open.
+Textured rectangles use the [depth comparison and update stage](rdp-depth.md).
+Triangle depth integration, key-generated alpha, noise and random dithering,
+other framebuffer formats, and asynchronous DP timing remain unfinished.
+Issues #18 through #22 remain open.

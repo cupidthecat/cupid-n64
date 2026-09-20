@@ -36,8 +36,8 @@ Full-alpha rejection and disabled blending select the first color directly.
 Color-on-coverage selects the second color until accumulated coverage wraps.
 Framebuffer RGB remains available when image reads are disabled; that mode
 replaces the memory coverage with seven. RGBA16 reads retain five-bit channel
-precision without bit replication. Primitive depth delta controls the memory
-alpha shifter when primitive depth is selected.
+precision without bit replication. The [depth stage](rdp-depth.md) controls
+blend enable and the pixel/memory alpha shifts from coverage and depth deltas.
 
 Rectangle coverage uses eight staggered samples in four subpixel rows. Right
 and bottom edges are exclusive, including fractional scissor boundaries.
@@ -65,10 +65,11 @@ to the combiner. Shade and noise inputs remain zero. One-cycle/two-cycle
 triangles retain their earlier implementation limits; the existing unshaded
 triangle shortcut is separate from this pipeline.
 
-Depth comparison and depth writes, color-key alpha generation, random noise
+Rectangles support depth comparison and writes. Triangle depth integration,
+color-key alpha generation, random noise
 and random dither/alpha thresholds, other framebuffer formats, and asynchronous
 rasterizer timing remain unfinished. Key center and scale can be selected by
 the combiner, but key widths do not yet affect alpha. K4 and K5 are available
 to the combiner, while K0 through K3 feed texture conversion. These tests do
 not establish complete rendering or gameplay correctness. Issues #18 through
-#21 track the remaining sampling and rendering work.
+#22 track the remaining sampling and rendering work.

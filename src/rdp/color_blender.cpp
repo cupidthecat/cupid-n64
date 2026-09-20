@@ -20,8 +20,8 @@ u8 rdp_blend_divide(unsigned numerator, unsigned denominator) {
 }
 
 RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel, const RdpColor& memory,
-                   unsigned shade_alpha, bool blend_enabled, bool coverage_wrap,
-                   unsigned memory_alpha_shift) {
+                   unsigned shade_alpha, bool blend_enabled, bool coverage_wrap, unsigned memory_alpha_shift,
+                   unsigned pixel_alpha_shift) {
     const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
     const bool force = (modes & (1ULL << 14U)) != 0;
     const RdpColor fog = rdp_unpack_color(state.fog);
@@ -50,7 +50,7 @@ RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel, const 
         unsigned second = complements[b] >> 3U;
         first >>= 3U;
         if (b == 1U) {
-            first &= 60U;
+            first = (first >> pixel_alpha_shift) & 60U;
             second = (second >> memory_alpha_shift) | 3U;
         }
         for (unsigned channel = 0; channel < 3; ++channel) {

@@ -481,7 +481,7 @@ void Rdp::execute(u8 opcode) {
         texture_image_address_ = static_cast<u32>(command & 0x00ffffffU);
         return;
     case 0x3e:
-        depth_image_address_ = static_cast<u32>(command & 0x03ffffffU);
+        depth_image_address_ = static_cast<u32>(command & 0x00ffffffU);
         return;
     case 0x3f:
         color_image_format_ = static_cast<u8>((command >> 53) & 7U);

@@ -43,6 +43,7 @@ struct RdpCombinedPixel {
 [[nodiscard]] u8 rdp_blend_divide(unsigned numerator, unsigned denominator);
 [[nodiscard]] RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel,
                                  const RdpColor& memory, unsigned shade_alpha, bool blend_enabled,
-                                 bool coverage_wrap, unsigned memory_alpha_shift);
+                                 bool coverage_wrap, unsigned memory_alpha_shift,
+                                 unsigned pixel_alpha_shift = 0);
 
 } // namespace cupid
