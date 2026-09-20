@@ -67,7 +67,9 @@ firmware, or cartridge compatibility.
 [Cartridge timing results](../testing/pif-boot-results.md) record the six changed
 load-miss averages and the diagnostic build that isolates the boot-poll delay.
 
-Initial CIC wire handshakes, region lockout, continuous CIC comparison, unknown
-bootcode policy, reset-button/pre-NMI sequencing, and warm reboot remain under
-issue #35. [CPU NMI](cpu-nmi.md) describes the exception entry itself. A supplied
-PIF boot ROM is still required to execute the CPU's boot program.
+[Reset-button and warm-boot handling](warm-reset.md) restores the private seeds,
+unlocks ROM, and requests NMI after pre-NMI and button release. Initial CIC wire
+handshakes, region lockout, continuous CIC comparison, unknown bootcode policy,
+and physical timing validation remain under issue #35. [CPU NMI](cpu-nmi.md)
+describes exception entry itself. A supplied PIF boot ROM is still required to
+execute the CPU's boot program.

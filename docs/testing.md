@@ -101,3 +101,12 @@ A passing regression should demonstrate the affected behavior, including observa
 The accuracy job reads an NTSC boot ROM from the `N64_PIF_NTSC` repository secret, stored as base64. The preparation script checks its length and writes it into the temporary `.work` directory. The job requires this secret before it can run cartridge tests.
 
 The workflow builds with GCC and Clang on Linux and MSVC on Windows. A separate Clang job runs the local regressions and complete default ROM suite, followed by the same checks with sanitizers.
+
+When a default test ROM is configured, CTest also runs `nemu64_warm_reset`.
+This check completes the entire cartridge suite, presses and releases the reset
+button, and completes the same suite again through the supplied PIF firmware.
+It requires a preserved RAM marker and warm-start flag at NMI entry, a full
+pre-NMI delay, matching test counts, and a reset button that rearms after reboot.
+The pinned cartridge requires the 8 MiB configuration because its heap endpoint
+is fixed at 7 MiB. See [warm-reset behavior](hardware/warm-reset.md) for the
+separate coverage of 4 MiB machines and the remaining hardware timing limits.

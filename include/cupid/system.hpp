@@ -24,6 +24,7 @@ class System {
         return video_standard_ == VideoStandard::Pal ? 49656530U : 48681818U;
     }
     void reset();
+    void set_reset_button(bool pressed);
     void advance(u64 cpu_cycles);
     bool load_rom(const std::filesystem::path& path, std::string& error);
     bool load_pif(const std::filesystem::path& path, std::string& error);

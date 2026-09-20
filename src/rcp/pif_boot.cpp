@@ -38,12 +38,15 @@ bool PifBoot::command_pending() const {
     case State::Error:
         return true;
     case State::Running:
+    case State::Resetting:
         return false;
     }
     return false;
 }
 
 u64 PifBoot::next_event() const {
+    if (state_ == State::Resetting)
+        return timeout_ != 0 ? timeout_ : !reset_button_ ? 1 : std::numeric_limits<u64>::max();
     u64 next = command_pending() ? next_poll() : std::numeric_limits<u64>::max();
     if (timeout_ != 0)
         next = std::min(next, timeout_);
@@ -51,6 +54,14 @@ u64 PifBoot::next_event() const {
 }
 
 void PifBoot::tick(u64 rcp_cycles) {
+    if (state_ == State::Resetting) {
+        if (timeout_ != 0 && rcp_cycles != 0)
+            bus_.pif[0x7ff] |= 0x80U;
+        timeout_ -= std::min(timeout_, rcp_cycles);
+        if (rcp_cycles != 0 && timeout_ == 0 && !reset_button_)
+            warm_boot();
+        return;
+    }
     if (state_ == State::Running)
         return;
     const bool poll_due = rcp_cycles >= next_poll();
@@ -78,15 +89,7 @@ void PifBoot::poll() {
     case State::CaptureChecksum:
         if ((command & 0x20U) == 0)
             return;
-        {
-            const u8 external = bus_.pif[0x7e5];
-            bus_.pif[0x7e5] = static_cast<u8>((external & 0xf0U) | (os_info_[0] & 0x0fU));
-            os_info_[0] = external & 0x0fU;
-        }
-        for (unsigned i = 1; i < os_info_.size(); ++i)
-            std::swap(bus_.pif[0x7e5 + i], os_info_[i]);
-        for (unsigned i = 0; i < checksum_.size(); ++i)
-            std::swap(bus_.pif[0x7f2 + i], checksum_[i]);
+        swap_secrets();
         command |= 0x80U;
         state_ = State::CheckChecksum;
         return;
@@ -116,7 +119,18 @@ void PifBoot::poll() {
         bus_.system_.cpu.request_nmi();
         return;
     case State::Running:
+    case State::Resetting:
         return;
     }
+}
+
+void PifBoot::swap_secrets() {
+    const u8 external = bus_.pif[0x7e5];
+    bus_.pif[0x7e5] = static_cast<u8>((external & 0xf0U) | (os_info_[0] & 0x0fU));
+    os_info_[0] = external & 0x0fU;
+    for (unsigned i = 1; i < os_info_.size(); ++i)
+        std::swap(bus_.pif[0x7e5 + i], os_info_[i]);
+    for (unsigned i = 0; i < checksum_.size(); ++i)
+        std::swap(bus_.pif[0x7f2 + i], checksum_[i]);
 }
 } // namespace cupid

@@ -57,7 +57,7 @@ under bulk/single-cycle CPU/RCP advances, EEPROM's busy deadline, saved bytes,
 and a request made during audio delivery.
 
 The [PIF boot controller](pif-boot.md) uses this event for checksum failures and
-boot timeout. Reset-button input, pre-NMI notification, PIF warm-reset sequencing
-and ROM unlocking, and warm reboot with supplied firmware remain unfinished
-under #35. Exception timing captures remain under #8. These tests establish the
-implemented state and event ordering, not a completed console reset sequence.
+boot timeout. [Reset-button handling](warm-reset.md) also requests NMI after
+pre-NMI, a modeled 0.5-second delay, and button release. Firmware-driven warm
+boot is checked with both RAM sizes. CIC wire behavior and physical reset timing
+remain under #35; exception timing captures remain under #8.

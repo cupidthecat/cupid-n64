@@ -81,7 +81,8 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [mouse input](docs/hardware/mouse.md),
 [cartridge RTC](docs/hardware/cartridge-rtc.md),
 [cartridge SRAM](docs/hardware/sram.md),
-[PIF boot control](docs/hardware/pif-boot.md), and
+[PIF boot control](docs/hardware/pif-boot.md),
+[reset-button and warm-boot behavior](docs/hardware/warm-reset.md), and
 [the serial interface](docs/hardware/serial-interface.md), including current
 timing limits and the regressions that cover each path.
 

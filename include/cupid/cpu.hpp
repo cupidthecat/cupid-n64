@@ -156,6 +156,7 @@ class Cpu {
     void write_cop0_instruction(unsigned index, u64 value);
     void execute_cop2(u32 instruction);
     void update_clocks(u64 elapsed);
+    void update_interrupt_inputs();
     void synchronize();
     [[nodiscard]] u64 rdram_refresh_delay(u32 physical) const;
     void buffer_write(u32 physical, unsigned width, u64 value);

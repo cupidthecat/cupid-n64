@@ -155,7 +155,12 @@ void Cpu::update_clocks(u64 elapsed) {
     cp0[9] = static_cast<u32>(old_count + ticks);
     cycles += elapsed;
     system_.advance(elapsed);
-    cp0[13] = (cp0[13] & ~0x400ULL) | (system_.bus.interrupt_pending() ? 0x400U : 0U);
+    update_interrupt_inputs();
+}
+
+void Cpu::update_interrupt_inputs() {
+    cp0[13] = (cp0[13] & ~0x1400ULL) | (system_.bus.interrupt_pending() ? 0x400U : 0U) |
+              (system_.bus.pif_boot.pre_nmi() ? 0x1000U : 0U);
 }
 
 void Cpu::step() {
@@ -179,7 +184,7 @@ void Cpu::step() {
         synchronize();
         return;
     }
-    cp0[13] = (cp0[13] & ~0x400ULL) | (system_.bus.interrupt_pending() ? 0x400U : 0U);
+    update_interrupt_inputs();
     u32 pending_interrupts = static_cast<u32>(cp0[13]) & status() & 0xff00U;
     if (software_interrupt_delay_ != 0) {
         --software_interrupt_delay_;

@@ -43,6 +43,10 @@ void System::reset() {
     cpu.reset();
 }
 
+void System::set_reset_button(bool pressed) {
+    bus.pif_boot.set_reset_button(pressed);
+}
+
 void System::advance(u64 cpu_cycles) {
     const u64 whole = cpu_cycles / 3;
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
