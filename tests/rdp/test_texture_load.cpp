@@ -529,3 +529,20 @@ TEST(rdp_texture_horizontal_load_count_wraps_at_twelve_bits) {
         commands.word(word * 8U, 2U + word * 8U);
     commands.check();
 }
+
+TEST(rdp_texture_halt_after_fullsync_restores_busy_bits_and_preserves_pending_interrupt) {
+    for (bool palette : {false, true}) {
+        TextureCommands commands;
+        commands.append(0x29);
+        commands.image(palette ? 2U : 0U);
+        commands.tile(0, 0, 0);
+        commands.bounds(palette ? 0x30U : 0x34U, 0, 0, 0, palette ? 4U : 0U);
+        const u32 halt_end = commands.end;
+        commands.append(0x29);
+        commands.run();
+        CHECK_EQ(commands.system->bus.rdp.current(), halt_end);
+        CHECK_EQ(commands.system->bus.rdp.read_register(0x0c) & 0x62U, 0x62U);
+        CHECK_EQ(commands.system->bus.read(0x04300008, 4), 1ULL << 5U);
+        commands.check();
+    }
+}

@@ -92,6 +92,7 @@ class Rdp {
     u32 command_buffer_address_{};
 
     void run_commands();
+    void halt_commands();
     [[nodiscard]] u8 command_byte(u32 address) const;
     [[nodiscard]] u64 command_word(u32 address) const;
     [[nodiscard]] u64 buffered_word(unsigned offset) const;

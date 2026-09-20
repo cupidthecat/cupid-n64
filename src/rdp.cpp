@@ -285,6 +285,12 @@ unsigned Rdp::command_length(u8 opcode) const {
     }
 }
 
+void Rdp::halt_commands() {
+    crashed_ = true;
+    pipe_busy_ = 1;
+    buffer_busy_ = 1;
+}
+
 void Rdp::run_commands() {
     if (freeze_ || crashed_)
         return;
@@ -294,7 +300,7 @@ void Rdp::run_commands() {
 
     while (current_ < end_) {
         if (command_buffer_size_ + 8U > command_buffer_.size()) {
-            crashed_ = true;
+            halt_commands();
             return;
         }
         if (command_buffer_size_ == 0)

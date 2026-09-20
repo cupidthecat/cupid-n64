@@ -35,7 +35,7 @@ void Rdp::load_texture(u64 command, u8 opcode) {
     const unsigned sh = static_cast<unsigned>((command >> 12U) & 0xfffU);
     const unsigned th = static_cast<unsigned>(command & 0xfffU);
     if (palette && (th >> 2U) > (tl >> 2U)) {
-        crashed_ = true;
+        halt_commands();
         return;
     }
     if (!block && (th >> 2U) < (tl >> 2U))
@@ -50,7 +50,7 @@ void Rdp::load_texture(u64 command, u8 opcode) {
     if (yuv && (tile.size != 2 || texture_image_size_ != 2))
         return;
     if (texture_image_size_ == 0) {
-        crashed_ = true;
+        halt_commands();
         return;
     }
     if (tile.size == 3 && (tile.format != 0 || palette))

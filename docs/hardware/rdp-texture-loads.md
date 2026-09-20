@@ -65,7 +65,8 @@ each other. Non-YUV loads with four-bit source images and palette loads spanning
 multiple integer rows halt DP command execution. The pipe and command-buffer
 busy bits remain set, later FullSync commands do not raise an interrupt, and
 clearing freeze or busy counters does not recover the processor. Reset clears
-the halted state.
+the halted state. A halt restores both busy bits even if FullSync cleared them
+earlier in the same command batch. A previously raised DP interrupt stays latched.
 
 ## Ordering and tests
 
