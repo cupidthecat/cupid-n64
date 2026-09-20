@@ -47,7 +47,16 @@ add_test(NAME hardware COMMAND cupid-tests)
 add_executable(cupid-warm-reset-tests tests/boot/warm_reset.cpp)
 target_link_libraries(cupid-warm-reset-tests PRIVATE cupid_core)
 
-foreach(target cupid_core cupid_host cupid-n64 cupid-tests cupid-warm-reset-tests)
+add_executable(cupid-storage-writer tests/host/storage_writer.cpp)
+target_link_libraries(cupid-storage-writer PRIVATE cupid_host)
+add_test(NAME host_storage_concurrent
+    COMMAND "${CMAKE_COMMAND}"
+        -DWRITER=$<TARGET_FILE:cupid-storage-writer>
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/host-storage-concurrent
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/host/concurrent_storage.cmake)
+set_tests_properties(host_storage_concurrent PROPERTIES LABELS "host")
+
+foreach(target cupid_core cupid_host cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer)
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4 /permissive- /fp:strict)
         if(CUPID_STRICT)
@@ -78,7 +87,7 @@ if(CUPID_SANITIZERS AND WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     if(NOT EXISTS "${CUPID_SANITIZER_DLL}")
         message(FATAL_ERROR "The compiler's sanitizer runtime was not found: ${CUPID_SANITIZER_DLL}")
     endif()
-    foreach(target cupid-n64 cupid-tests cupid-warm-reset-tests)
+    foreach(target cupid-n64 cupid-tests cupid-warm-reset-tests cupid-storage-writer)
         add_custom_command(TARGET ${target} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${CUPID_SANITIZER_DLL}" "$<TARGET_FILE_DIR:${target}>"
             VERBATIM)

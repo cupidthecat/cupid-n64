@@ -1,5 +1,7 @@
 #include "cupid/host/storage.hpp"
 
+#include "cupid/storage/file.hpp"
+
 #include <algorithm>
 #include <array>
 #include <fstream>
@@ -7,6 +9,7 @@
 #include <vector>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #endif
 
@@ -110,66 +113,11 @@ bool atomic_replace(const std::filesystem::path& path, std::span<const u8> bytes
                     std::string& error) {
     if (path.empty())
         return true;
-    std::error_code code;
-    if (std::filesystem::exists(path, code) && !code && std::filesystem::is_directory(path, code)) {
-        error = std::string(label) + " path is a directory: " + path_text(path);
-        return false;
-    }
-    auto parent = path.parent_path();
-    if (parent.empty())
-        parent = ".";
-    if (!std::filesystem::is_directory(parent, code) || code) {
-        error = std::string(label) + " directory is unavailable: " + path_text(parent);
-        return false;
-    }
-
-    std::filesystem::path temporary;
-    for (unsigned attempt = 0; attempt < 100; ++attempt) {
-        temporary = path;
-        temporary += ".tmp." + std::to_string(attempt);
-        if (!std::filesystem::exists(temporary, code) && !code)
-            break;
-        temporary.clear();
-    }
-    if (temporary.empty()) {
-        error = "Unable to reserve a temporary file beside " + path_text(path);
-        return false;
-    }
-
-    {
-        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-        if (!output) {
-            error = "Unable to create temporary " + std::string(label) + " file beside " + path_text(path);
-            return false;
-        }
-        output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-        output.flush();
-        if (!output) {
-            output.close();
-            std::filesystem::remove(temporary, code);
-            error = "Unable to write complete " + std::string(label) + " file: " + path_text(temporary);
-            return false;
-        }
-    }
-
-    bool replaced = false;
-#ifdef _WIN32
-    replaced =
-        MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
-    if (!replaced)
-        code = std::error_code(static_cast<int>(GetLastError()), std::system_category());
-#else
-    std::filesystem::rename(temporary, path, code);
-    replaced = !code;
-#endif
-    if (!replaced) {
-        std::error_code cleanup;
-        std::filesystem::remove(temporary, cleanup);
-        error =
-            "Unable to replace " + std::string(label) + " file " + path_text(path) + ": " + code.message();
-        return false;
-    }
-    return true;
+    std::string storage_error;
+    if (cupid::storage::replace_file(path, bytes, storage_error))
+        return true;
+    error = std::string(label) + " file " + path_text(path) + ": " + storage_error;
+    return false;
 }
 
 std::span<u8> cartridge_save(System& system) {

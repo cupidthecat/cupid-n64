@@ -279,6 +279,39 @@ TEST(host_storage_atomic_failure_keeps_the_previous_valid_image) {
     CHECK_EQ(directory.read(options.save_file), original);
 }
 
+TEST(host_storage_dangling_temporary_symlink_is_never_followed_or_replaced) {
+    test::host::TempDirectory directory;
+    auto options = test::host::base_options(directory);
+    options.save = SaveType::Sram;
+    options.sram_bytes = 32U * 1024U;
+    const std::vector<u8> original(options.sram_bytes, 0x5a);
+    options.save_file = directory.write("protected.sra", original);
+
+    auto dangling = options.save_file;
+    dangling += ".tmp.0";
+    const auto victim = directory.path() / "must-not-be-created.bin";
+    auto occupied = options.save_file;
+    occupied += ".tmp.1";
+    const std::vector<u8> occupied_contents{0x44, 0x55, 0x66};
+    directory.write("protected.sra.tmp.1", occupied_contents);
+    std::error_code code;
+    std::filesystem::create_symlink(victim, dangling, code);
+    CHECK(!code);
+    CHECK(std::filesystem::is_symlink(std::filesystem::symlink_status(dangling)));
+    CHECK(!std::filesystem::exists(victim));
+
+    std::string error;
+    auto system = create_system(options, error);
+    CHECK(system != nullptr);
+    system->bus.sram.assign(options.sram_bytes, 0xa5);
+    CHECK(flush_persistent_storage(*system, options, error));
+
+    CHECK(!std::filesystem::exists(victim));
+    CHECK(std::filesystem::is_symlink(std::filesystem::symlink_status(dangling)));
+    CHECK_EQ(directory.read(occupied), occupied_contents);
+    CHECK_EQ(directory.read(options.save_file), std::vector<u8>(options.sram_bytes, 0xa5));
+}
+
 TEST(host_storage_reports_unavailable_output_directories) {
     test::host::TempDirectory directory;
     auto options = test::host::base_options(directory);
