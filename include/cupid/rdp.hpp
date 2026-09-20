@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/rdp/tile.hpp"
 #include "cupid/types.hpp"
 
 #include <array>
@@ -30,6 +31,12 @@ class Rdp {
     }
     [[nodiscard]] bool frozen() const {
         return freeze_;
+    }
+    [[nodiscard]] const std::array<u8, 4096>& texture_memory() const {
+        return texture_memory_;
+    }
+    [[nodiscard]] const RdpTile& tile(unsigned index) const {
+        return tiles_[index & 7U];
     }
 
   private:
@@ -68,6 +75,8 @@ class Rdp {
     u16 texture_image_width_{1};
     u8 texture_image_format_{};
     u8 texture_image_size_{};
+    std::array<u8, 4096> texture_memory_{};
+    std::array<RdpTile, 8> tiles_{};
     u32 fill_color_{};
     u32 blend_color_{};
     u64 other_modes_{};
@@ -90,6 +99,9 @@ class Rdp {
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
     void fill_triangle();
+    void set_tile(u64 command);
+    void set_tile_size(u64 command);
+    void load_texture(u64 command, u8 opcode);
 };
 
 } // namespace cupid

@@ -60,6 +60,7 @@ Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
 [RCP event scheduling](docs/hardware/rcp-scheduling.md),
 [RDRAM interface state](docs/hardware/rdram-interface.md),
 [RDP fill rectangles](docs/hardware/rdp-fill.md),
+[RDP texture loads](docs/hardware/rdp-texture-loads.md),
 [PI transfer timing](docs/hardware/peripheral-interface.md),
 [cartridge bus transactions](docs/hardware/cartridge-bus.md),
 [FlashRAM](docs/hardware/flash-memory.md), and

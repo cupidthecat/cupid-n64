@@ -100,6 +100,8 @@ void Rdp::reset() {
     texture_image_width_ = 1;
     texture_image_format_ = 0;
     texture_image_size_ = 0;
+    texture_memory_.fill(0);
+    tiles_.fill({});
     fill_color_ = 0;
     blend_color_ = 0;
     other_modes_ = 0;
@@ -386,6 +388,17 @@ void Rdp::execute(u8 opcode) {
     case 0x36:
         fill_rectangle(command);
         return;
+    case 0x30:
+    case 0x33:
+    case 0x34:
+        load_texture(command, opcode);
+        return;
+    case 0x32:
+        set_tile_size(command);
+        return;
+    case 0x35:
+        set_tile(command);
+        return;
     case 0x37:
         fill_color_ = static_cast<u32>(command);
         return;
@@ -395,8 +408,8 @@ void Rdp::execute(u8 opcode) {
     case 0x3d:
         texture_image_format_ = static_cast<u8>((command >> 53) & 7U);
         texture_image_size_ = static_cast<u8>((command >> 51) & 3U);
-        texture_image_width_ = static_cast<u16>(((command >> 32) & 0x0fffU) + 1U);
-        texture_image_address_ = static_cast<u32>(command & 0x03ffffffU);
+        texture_image_width_ = static_cast<u16>(((command >> 32) & 0x03ffU) + 1U);
+        texture_image_address_ = static_cast<u32>(command & 0x00ffffffU);
         return;
     case 0x3e:
         depth_image_address_ = static_cast<u32>(command & 0x03ffffffU);
