@@ -369,7 +369,7 @@ void Rsp::execute_cop0(u32 instruction) {
     const unsigned rt = (instruction >> 16) & 31;
     const unsigned rd = (instruction >> 11) & 31;
 
-    if (rd >= 8) {
+    if ((rd & 8U) != 0) {
         if (rs == 0) {
             write_gpr(rt, system_.bus.rdp.read_register((rd & 7) << 2));
         } else if (rs == 4) {

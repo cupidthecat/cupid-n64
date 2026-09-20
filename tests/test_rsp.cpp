@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstddef>
+#include <memory>
 
 using namespace cupid;
 
@@ -28,6 +29,10 @@ constexpr u32 break_instruction() {
 
 constexpr u32 cop2_control(bool write, unsigned rt, unsigned rd) {
     return (0x12u << 26) | ((write ? 0x06u : 0x02u) << 21) | (rt << 16) | (rd << 11);
+}
+
+constexpr u32 cop0_move(bool write, unsigned rt, unsigned rd) {
+    return (0x10u << 26) | ((write ? 0x04u : 0x00u) << 21) | (rt << 16) | (rd << 11);
 }
 
 constexpr u32 vector_op(unsigned function, unsigned vd, unsigned vs, unsigned vt, unsigned element) {
@@ -113,6 +118,53 @@ TEST(rsp_status_pairs_and_semaphore) {
     CHECK((system.rsp.read_register(0x10) & 1u) != 0);
     system.rsp.write_register(0x10, (1u << 0) | (1u << 1));
     CHECK((system.rsp.read_register(0x10) & 1u) != 0);
+}
+
+TEST(rsp_cop0_register_aliases_decode_rd_bit_three) {
+    {
+        auto system = std::make_unique<System>();
+        put_instruction(system->rsp, 0x0000, cop0_move(false, 1, 23));
+        put_instruction(system->rsp, 0x0004, break_instruction());
+        run_rsp(*system);
+        CHECK_EQ(system->rsp.read_register(0x1c), 1u);
+    }
+
+    {
+        auto system = std::make_unique<System>();
+        CHECK_EQ(system->rsp.read_register(0x1c), 0u);
+        put_instruction(system->rsp, 0x0000, cop0_move(true, 0, 23));
+        put_instruction(system->rsp, 0x0004, break_instruction());
+        run_rsp(*system);
+        CHECK_EQ(system->rsp.read_register(0x1c), 0u);
+    }
+
+    {
+        auto system = std::make_unique<System>();
+        put_instruction(system->rsp, 0x0000, addiu(1, 0, 1 << 10));
+        put_instruction(system->rsp, 0x0004, cop0_move(true, 1, 20));
+        put_instruction(system->rsp, 0x0008, break_instruction());
+        run_rsp(*system);
+        CHECK((system->rsp.read_register(0x10) & (1u << 7)) != 0);
+    }
+
+    {
+        auto system = std::make_unique<System>();
+        system->bus.rdp.write_register(0x0c, 1u << 3);
+        put_instruction(system->rsp, 0x0000, cop0_move(false, 1, 27));
+        put_instruction(system->rsp, 0x0004, sw(1, 0, 0x100));
+        put_instruction(system->rsp, 0x0008, break_instruction());
+        run_rsp(*system);
+        CHECK((dmem_word(system->rsp, 0x100) & (1u << 1)) != 0);
+    }
+
+    {
+        auto system = std::make_unique<System>();
+        put_instruction(system->rsp, 0x0000, addiu(1, 0, 1 << 3));
+        put_instruction(system->rsp, 0x0004, cop0_move(true, 1, 27));
+        put_instruction(system->rsp, 0x0008, break_instruction());
+        run_rsp(*system);
+        CHECK((system->bus.rdp.read_register(0x0c) & (1u << 1)) != 0);
+    }
 }
 
 TEST(rsp_vector_add_flags_and_saturation) {
