@@ -68,20 +68,20 @@ void Bus::write_ai(u32 offset, u32 value) {
 }
 
 void Bus::sample_ai() {
+    u32 sample = 0;
+    bool consumed = false;
     if (ai_fifo_count_ != 0 && ai_lengths_[0] != 0 && (ai_[2] & 1U) != 0) {
         // The carry from bit 12 is applied to the next sample, including across a FIFO handoff.
         if (ai_address_carry_)
             ai_addresses_[0] = (ai_addresses_[0] + 0x2000U) & 0x00ffffffU;
         const u32 address = ai_addresses_[0];
-        u32 sample = 0;
         for (u32 byte = 0; byte < 4; ++byte)
             sample = (sample << 8U) | read_ram_byte(address + byte);
-        if (audio_output)
-            audio_output(static_cast<s16>(sample >> 16U), static_cast<s16>(sample));
         const u32 low = (address + 4U) & 0x1fffU;
         ai_addresses_[0] = (address & 0x00ffe000U) | low;
         ai_address_carry_ = low == 0;
         ai_lengths_[0] -= 4;
+        consumed = true;
     }
     if (ai_fifo_count_ != 0 && ai_lengths_[0] == 0) {
         if (--ai_fifo_count_ != 0) {
@@ -90,6 +90,8 @@ void Bus::sample_ai() {
             set_interrupt(2, true);
         }
     }
+    if (consumed && audio_output)
+        audio_output(static_cast<s16>(sample >> 16U), static_cast<s16>(sample));
 }
 
 void Bus::tick_ai(u64 rcp_cycles) {

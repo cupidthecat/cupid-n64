@@ -39,9 +39,16 @@ that addition is applied to the upper address bits at the next sample, including
 across a FIFO handoff. A zero-length buffer retires at a DAC boundary even with
 DMA disabled. Reads outside STATUS mirror the active remaining length.
 
-`Bus::audio_output` receives consumed stereo samples. The scheduler stops at
-their deadlines so callbacks observe the corresponding DP clock. While video
-callbacks are registered, idle DAC boundaries also constrain scheduler advances.
+`Bus::audio_output` receives consumed stereo samples after their address and
+length updates, FIFO retirement or handoff, and handoff interrupt. A callback
+therefore sees the remaining length and available FIFO slot for that boundary.
+It can acknowledge the handoff interrupt or enqueue a new buffer immediately;
+those actions are not overwritten by unfinished sample processing. Retiring a
+zero-length buffer alone does not deliver a sample.
+
+The scheduler stops at sample deadlines so callbacks observe the corresponding
+DP clock. While video callbacks are registered, idle DAC boundaries also
+constrain scheduler advances.
 This prevents a video callback that starts audio from assigning its new buffer
 to audio periods that elapsed before the callback. A rate change from that
 callback preserves the pending audio deadline.
@@ -55,6 +62,13 @@ default-clock handoff, reset, idle phase, callback-driven rate changes, and larg
 advances. A mixed-device trace compares bulk and single-cycle CPU advances while
 video callbacks change the rate, SP/SI DMA change sample memory, and RI refresh
 is active.
+
+`test_ai_output.cpp` checks callback-visible lengths and FIFO status, interrupt
+acknowledgement at handoff, refilling a newly freed slot, and restarting an empty
+FIFO. Refill tests compare bulk advances with single-cycle advances and verify
+both channels of all six samples across three buffers.
+The divider-handoff trace expects the interrupt on the outgoing buffer's last
+sample callback, when promotion occurs.
 
 The SDK's [osAiSetFrequency documentation](https://ultra64.ca/files/documentation/online-manuals/man/n64man/os/osAiSetFrequency.html)
 describes selecting internal divisors and returning the resulting frequency.

@@ -183,7 +183,7 @@ TEST(ai_divider_changes_preserve_fifo_handoff_and_sample_values) {
     bus.write(0x04500010, 4, 19);
     fixture.until(fixture.time(240));
     CHECK_EQ(trace, (std::vector<std::array<u64, 3>>{{fixture.time(100), 0x80007fff, 0},
-                                                     {fixture.time(200), 0x1234fedc, 0},
+                                                     {fixture.time(200), 0x1234fedc, 4},
                                                      {fixture.time(220), 0x43211234, 4},
                                                      {fixture.time(240), 0x8765abcd, 4}}));
     CHECK_EQ(bus.read(0x04500004, 4), 0U);
