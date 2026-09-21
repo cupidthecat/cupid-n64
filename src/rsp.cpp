@@ -59,6 +59,8 @@ void Rsp::reset() {
     next_pc_ = 4;
     pc_shadow_ = 0;
     current_pc_ = 0;
+    branch_pending_ = false;
+    pipeline_.reset();
 }
 
 void Rsp::tick(u64 rcp_cycles) {
@@ -103,9 +105,8 @@ void Rsp::dmem_write32(u32 address, u32 value) {
     dmem_write8(address + 3, static_cast<u8>(value));
 }
 
-u32 Rsp::fetch_instruction() const {
-    const u32 address = 0x1000 | (current_pc_ & 0x0fff);
-    return read_be32(&memory[address]);
+u32 Rsp::fetch_instruction(u32 address) const {
+    return read_be32(&memory[0x1000U | mask_pc(address)]);
 }
 
 void Rsp::write_gpr(unsigned index, u32 value) {
@@ -116,12 +117,15 @@ void Rsp::write_gpr(unsigned index, u32 value) {
 
 void Rsp::take_branch(u32 target) {
     next_pc_ = mask_pc(target);
+    branch_pending_ = true;
 }
 
 void Rsp::write_pc(u32 value) {
     pc = mask_pc(value);
     next_pc_ = mask_pc(pc + 4);
     pc_shadow_ = pc;
+    branch_pending_ = false;
+    pipeline_.redirect();
 }
 
 void Rsp::step() {
@@ -134,14 +138,25 @@ void Rsp::step() {
     if (pc != pc_shadow_)
         write_pc(pc);
 
-    current_pc_ = mask_pc(pc);
-    const u32 instruction = fetch_instruction();
+    if (pipeline_.advance_branch_wait())
+        return;
+    pipeline_.fetch(fetch_instruction(pc), fetch_instruction(pc + 4), single_step_);
+    if (pipeline_.advance_operand_wait())
+        return;
 
-    pc = mask_pc(next_pc_);
-    next_pc_ = mask_pc(pc + 4);
-    execute_scalar(instruction);
-    gpr_[0] = 0;
-    pc_shadow_ = pc;
+    bool taken_delay_slot = false;
+    const unsigned count = pipeline_.size();
+    for (unsigned index = 0; index < count; ++index) {
+        taken_delay_slot = taken_delay_slot || branch_pending_;
+        branch_pending_ = false;
+        current_pc_ = mask_pc(pc);
+        pc = mask_pc(next_pc_);
+        next_pc_ = mask_pc(pc + 4);
+        execute_scalar(pipeline_.instruction(index));
+        gpr_[0] = 0;
+        pc_shadow_ = pc;
+    }
+    pipeline_.retire(taken_delay_slot, pc);
 
     if (single_step_ && !halted_) {
         halted_ = true;

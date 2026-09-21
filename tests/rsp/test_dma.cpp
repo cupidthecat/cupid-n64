@@ -162,7 +162,11 @@ TEST(rsp_dma_rsp_cop0_staging_survives_completion) {
             write_register(*system, 0x04, 0x200);
             write_register(*system, length_register, 31);
             write_register(*system, 0x10, 1);
-            advance_cpu(*system, 18, single);
+            advance_cpu(*system, 15, single);
+            CHECK_EQ(system->rsp.pc, 28U);
+            CHECK_EQ(read_register(*system, 0x10) & 3U, 3U);
+            CHECK_EQ(read_register(*system, 0x18), 1U);
+            advance_cpu(*system, 3, single);
             CHECK_EQ(system->bus.read(0x04000080, 4), 0U);
             CHECK_EQ(read_register(*system, 0x18), 0U);
             CHECK_EQ(read_register(*system, 0x00), 0x20U);
@@ -172,6 +176,18 @@ TEST(rsp_dma_rsp_cop0_staging_survives_completion) {
             write_register(*system, 0x10, 5);
             advance_cpu(*system, 12, single);
             CHECK_EQ(system->bus.read(0x04000084, 4), 0x20U);
+            CHECK_EQ(system->rsp.pc, 48U);
+            CHECK_EQ(read_register(*system, 0x10) & 3U, 3U);
+            CHECK_EQ(read_register(*system, 0x18), 1U);
+            CHECK_EQ(read_register(*system, 0x00), 0x40U);
+            CHECK_EQ(read_register(*system, 0x04), 0x240U);
+            for (u32 byte = 0; byte < 8; ++byte) {
+                CHECK_EQ(to_sp ? system->rsp.memory[0x40 + byte] : system->bus.read_ram_byte(0x240 + byte),
+                         0U);
+            }
+            // MFC0's load interlock moves the length write to cycle 18. Its row completes at 21.
+            advance_cpu(*system, 2, single);
+            CHECK_EQ(system->bus.read(0x04100010, 4), 21U);
             check_copy(*system, 0, to_sp, 0x40, 0x240, 0x41);
             CHECK_EQ(read_register(*system, 0x18), 0U);
             CHECK_EQ(read_register(*system, 0x00), 0x48U);

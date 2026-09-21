@@ -6,7 +6,9 @@ of the size of a CPU clock update. See [RDRAM interface state](rdram-interface.m
 for the current CPU and DMA timing limits.
 
 `System::advance` converts CPU cycles to RCP cycles with a persistent fractional
-clock. An active RSP executes at one-cycle boundaries. When it is halted, the
+clock. An active RSP processes an issue group, dependency stall or branch bubble
+at each one-cycle boundary. An eligible scalar/vector pair shares that boundary; see
+[signal processor instruction timing](rsp-pipeline.md). When it is halted, the
 scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
 store, or peripheral event.
 

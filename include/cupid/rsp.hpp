@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/rsp/pipeline.hpp"
 #include "cupid/types.hpp"
 
 #include <array>
@@ -73,6 +74,8 @@ class Rsp {
     u32 next_pc_{4};
     u32 pc_shadow_{};
     u32 current_pc_{};
+    bool branch_pending_{};
+    RspPipeline pipeline_{};
 
     [[nodiscard]] u8 dmem_read8(u32 address) const;
     [[nodiscard]] u16 dmem_read16(u32 address) const;
@@ -81,7 +84,7 @@ class Rsp {
     void dmem_write16(u32 address, u16 value);
     void dmem_write32(u32 address, u32 value);
 
-    [[nodiscard]] u32 fetch_instruction() const;
+    [[nodiscard]] u32 fetch_instruction(u32 address) const;
     void execute_scalar(u32 instruction);
     void execute_special(u32 instruction);
     void execute_regimm(u32 instruction);

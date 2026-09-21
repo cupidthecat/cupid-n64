@@ -25,6 +25,11 @@ TEST(rcp_rsp_reads_dp_clock_at_each_instruction_boundary) {
     const u64 before = system.bus.read(0x04000000, 4);
     const u64 after = system.bus.read(0x04000004, 4);
     CHECK_EQ(after - before, 4U);
+    CHECK_EQ(system.rsp.pc, 28U);
+    CHECK_EQ(system.rsp.read_register(0x10) & 3U, 0U);
+    // The second clock store used one interlock slot. BREAK is the ninth issue cycle.
+    system.advance(2);
+    CHECK_EQ(system.bus.read(0x04100010, 4), 9U);
     CHECK((system.rsp.read_register(0x10) & 3U) == 3U);
 }
 
@@ -156,6 +161,15 @@ TEST(rcp_rsp_dma_does_not_overtake_earlier_rsp_instructions) {
             system.rsp.tick(3);
         }
         CHECK_EQ(system.bus.read(0x04000000, 4), 0x33334444U);
+        CHECK_EQ(system.bus.read(0x04000008, 4), 0U);
+        CHECK_EQ(system.rsp.pc, 4U);
+        CHECK_EQ(system.rsp.read_register(0x18), 0U);
+        // DMA completes during the two load-use stalls; the consumer still stores the old load.
+        system.rsp.tick(1);
         CHECK_EQ(system.bus.read(0x04000008, 4), 0x11112222U);
+        CHECK_EQ(system.rsp.pc, 8U);
+        CHECK_EQ(system.rsp.read_register(0x10) & 3U, 0U);
+        system.rsp.tick(1);
+        CHECK_EQ(system.rsp.read_register(0x10) & 3U, 3U);
     }
 }
