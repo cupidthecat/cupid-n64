@@ -141,7 +141,7 @@ TEST(rdp_raw_triangle_fractional_top_without_aa_rejects_missing_first_sample) {
     }
 }
 
-TEST(rdp_raw_triangle_middle_before_top_uses_lower_edge) {
+TEST(rdp_raw_triangle_middle_before_initial_row_keeps_upper_edge) {
     constexpr std::array<u64, 11> packet{
         set_framebuffer,
         set_combiner,
@@ -158,9 +158,36 @@ TEST(rdp_raw_triangle_middle_before_top_uses_lower_edge) {
 
     RawTriangleFixture fixture;
     fixture.run(packet);
-    CHECK_EQ(fixture.pixel(1, 1), 0U);
-    CHECK_EQ(fixture.pixel(2, 1), 0xff0000e0U);
-    CHECK_EQ(fixture.pixel(3, 3), 0xff0000e0U);
+    for (unsigned y = 0; y < 8; ++y)
+        for (unsigned x = 0; x < 8; ++x)
+            CHECK_EQ(fixture.pixel(x, y), 0U);
+}
+
+TEST(rdp_raw_triangle_middle_switch_observes_whole_row_origin_before_clipping) {
+    struct Case {
+        u64 geometry;
+        u64 scissor;
+        std::array<unsigned, 8> rows;
+    };
+    constexpr std::array cases{
+        Case{0x0880001000030005ULL, set_scissor_8x8, {0, 0, 0x06, 0x06, 0, 0, 0, 0}},
+        Case{0x0880001000040005ULL, set_scissor_8x8, {0, 0, 0x3e, 0x3e, 0, 0, 0, 0}},
+        Case{0x0880001000060007ULL, set_scissor_8x8, {0, 0, 0x3e, 0x3e, 0, 0, 0, 0}},
+        Case{0x0880001000090004ULL, set_scissor_8x8, {0, 0x06, 0x06, 0x3e, 0, 0, 0, 0}},
+        Case{0x0880001000040000ULL, 0x2d00000800020020ULL, {0, 0, 0x3e, 0x3e, 0, 0, 0, 0}},
+    };
+    for (const auto& value : cases) {
+        const std::array<u64, 11> packet{
+            set_framebuffer,       set_combiner,          set_primitive_white, 0x39000000ff0000ffULL,
+            0x2f0000f080000000ULL, value.scissor,         value.geometry,      0x0006000000000000ULL,
+            0x0001000000000000ULL, 0x0003000000000000ULL, sync_full,
+        };
+        RawTriangleFixture fixture;
+        fixture.run(packet);
+        for (unsigned y = 0; y < 8; ++y)
+            for (unsigned x = 0; x < 8; ++x)
+                CHECK_EQ(fixture.pixel(x, y), (value.rows[y] & (1U << x)) != 0 ? 0xff0000e0U : 0U);
+    }
 }
 
 TEST(rdp_raw_triangle_zero_height_packet_is_rejected_without_writes) {

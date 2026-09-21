@@ -49,8 +49,9 @@ RdpTriangleSpan rdp_triangle_span(const RdpTriangleGeometry& geometry, const std
     for (unsigned sub = 0; sub < 4; ++sub) {
         const s32 row = static_cast<s32>(y * 4U + sub);
         const s32 major = sample_edge(geometry.major, row - origin);
-        const s32 minor = row >= geometry.middle ? sample_edge(geometry.lower, row - geometry.middle)
-                                                 : sample_edge(geometry.upper, row - origin);
+        const s32 minor = geometry.middle >= origin && row >= geometry.middle
+                              ? sample_edge(geometry.lower, row - geometry.middle)
+                              : sample_edge(geometry.upper, row - origin);
         const s32 l = geometry.left_major ? major : minor;
         const s32 r = geometry.left_major ? minor : major;
         outside_left = outside_left && std::max(l, r) < clip_left;

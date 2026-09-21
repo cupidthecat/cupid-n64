@@ -8,7 +8,9 @@ geometry inputs, enabled categories, and the clock test's tolerance of 20.
 `triangle-fixtures.patch` converts ARGB host colors to RGBA command words and
 converts RGBA32 framebuffer reads back to the host color type. Its CPU oracle
 uses the eight staggered coverage samples, signed edge arithmetic, and the
-first-sample rule selected by the fixture's disabled antialiasing mode. The
+first-sample rule selected by the fixture's disabled antialiasing mode. Its
+minor edge switches only when the edge walk reaches the middle Y coordinate;
+a middle coordinate before the initial whole row leaves the upper edge active. The
 [triangle fixture guide](rdp-triangle-fixtures.md) describes these rules and
 the literal command tests that check them.
 
@@ -36,6 +38,9 @@ every patch hunk before applying changes. It checks the resulting file digests
 against `manifest.json` and records the unchanged commit and index alongside
 the modified working-source digest. A dirty checkout, an unexpected file, or
 an existing report stops preparation.
+
+The fixture directory retains LF line endings through `.gitattributes`, including
+on Windows with `core.autocrlf=true`, so checkout preserves the patch digests.
 
 The manifest identifies four changed files: `src/graphics/color.rs`,
 `src/rdp/rdp_assembler.rs`, `src/tests/rdp/filled_triangle.rs`, and

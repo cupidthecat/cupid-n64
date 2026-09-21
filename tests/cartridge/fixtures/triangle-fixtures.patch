@@ -128,7 +128,7 @@ diff --git a/src/tests/rdp/filled_triangle.rs b/src/tests/rdp/filled_triangle.rs
 -                let (left, right) = if is_right_major {
 -                    (major_x, minor_x)
 +                let major = sample_edge(base.xh().raw_value(), base.dh().raw_value(), row - origin);
-+                let minor = if row < ym {
++                let minor = if ym < origin || row < ym {
 +                    sample_edge(base.xm().raw_value(), base.dm().raw_value(), row - origin)
                  } else {
 -                    (minor_x, major_x)

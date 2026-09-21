@@ -91,13 +91,21 @@ case uses an edge position of `0x07ff0000` and command slope
 28-bit boundary within one pixel row. Its expected row is two pixels at
 coverage `0x60` followed by six at `0x20`.
 
-The corrected randomized oracle also exposed a production defect when `YM`
-precedes `YH`. The minor edge must use the lower edge whenever the current
-subpixel row reaches `YM`, even if that point lies above the triangle's top.
-Issue #59 adds a literal packet with `YH=1`, `YM=-1`, `YL=4`, a major edge at
-X=2, and a lower edge at X=4. Pixel `(2, 1)` must contain `0xff0000e0`; the
-extra middle-versus-top check previously left it zero. The fill-cycle
-regression checks the same edge rule with its inclusive ending pixel.
+The edge walker starts at the whole row containing `YH`, before top clipping.
+It changes the minor edge only when it reaches `YM`. A middle coordinate before
+that initial row is never reached, so the upper edge remains active. A middle
+coordinate inside the initial row can be reached before the first visible
+sample; comparing `YM` with the unclamped fractional `YH` would also be wrong.
+
+The packet discussed in issue #59 has `YH=1`, `YM=-1`, `YL=4`, a major edge at
+X=2, an upper edge at X=0, and a lower edge at X=4. It retains the upper edge,
+leaving a reversed span and no framebuffer writes. The earlier change selected
+the lower edge immediately, and its cartridge oracle made the same mistake.
+Both now retain the initial-row condition. Literal packets also check a middle
+coordinate equal to that origin, a switch before a fractional top, a later
+fractional switch, and clipping after the switch. The fill-cycle tests check
+the corresponding inclusive spans. Physical captures for malformed coordinate
+orders remain part of issue #37.
 
 For provenance, packet hashes below concatenate each fixture's 64-bit command
 words in command-stream byte order and hash those bytes with SHA-256:
@@ -111,7 +119,7 @@ words in command-stream byte order and hash those bytes with SHA-256:
 | Zero-height rejection | 80 | `8daf873733eea126c3f14196ab02804837c74741f6dc288571cdc6f31dd6dcf3` |
 | Signed edge overflow | 80 | `1542a372c5c4268878531d8712db094c946a2a9a478b6e90f8eac68f883e1dd0` |
 | Interpolated depth | 104 | `ceef17fd8baef6c0822c16a64736512df5d8f90180c8894c0416a8e2bda96916` |
-| Middle Y before top Y | 88 | `57183d2da120056bfa2fa0900546eab0e91c1d8a30103a3cf8b2d7e32dba4aff` |
+| Middle Y before the initial row | 88 | `57183d2da120056bfa2fa0900546eab0e91c1d8a30103a3cf8b2d7e32dba4aff` |
 
 The raw packets isolate rendering rules from the cartridge's command helpers.
 The maintained cartridge retains every triangle case and compares complete

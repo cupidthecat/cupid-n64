@@ -8,7 +8,7 @@
     },
     {
       "path": "triangle-fixtures.patch",
-      "sha256": "cb83481b27cf6c1227246207875003b7b88848b4640396b6e9f45e0a2359a130"
+      "sha256": "a62cc1b82743569699977ad59297b12e685df84586e0bd0d99daabf91b08691d"
     }
   ],
   "files": {
@@ -26,7 +26,7 @@
     },
     "src/tests/rdp/filled_triangle.rs": {
       "before": "c40643bb8a05a005c9b51ebc8ff06f56cf36a025335c1888ff17dd13f7a52544",
-      "after": "0bd28b8a1cdb474d8243b4537691c3194e445951906941d10fcb6b83bb445c9b"
+      "after": "a2542fe2ff16224c28cdfb9993f33711f0925054c8aa2cc362aaf0ef1709b691"
     }
   }
 }

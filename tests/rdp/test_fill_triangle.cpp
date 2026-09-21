@@ -113,11 +113,31 @@ TEST(rdp_fill_triangle_clips_negative_coordinates_and_excludes_bottom) {
     c.rows({7, 7, 0, 0, 0});
 }
 
-TEST(rdp_fill_triangle_middle_before_start_uses_lower_edge) {
+TEST(rdp_fill_triangle_middle_before_start_never_switches_edges) {
     TriangleFill c;
     c.triangle(4, 0, 12, 0x10000, 0x20000, 0x60000, 0, 0);
     c.run();
-    c.rows({0, 0x7e, 0x7e, 0, 0});
+    c.rows({0, 6, 6, 0, 0});
+}
+
+TEST(rdp_fill_triangle_middle_switch_is_relative_to_the_initial_whole_row) {
+    struct Case {
+        s32 top;
+        s32 middle;
+        std::array<unsigned, 5> rows;
+    };
+    constexpr std::array cases{
+        Case{5, 3, {0, 0x06, 0x06, 0x06, 0}},
+        Case{5, 4, {0, 0x7e, 0x7e, 0x7e, 0}},
+        Case{7, 6, {0, 0x7e, 0x7e, 0x7e, 0}},
+        Case{4, 9, {0, 0x06, 0x7e, 0x7e, 0}},
+    };
+    for (const auto& value : cases) {
+        TriangleFill c;
+        c.triangle(value.top, value.middle, 16, 0x10000, 0x20000, 0x60000, 0, 0);
+        c.run();
+        c.rows(value.rows);
+    }
 }
 
 TEST(rdp_fill_triangle_masks_reserved_x_bits) {

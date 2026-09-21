@@ -97,6 +97,9 @@ paths exclude PIF firmware. Uploading before validation preserves these inputs
 even when a later test fails.
 
 Download the cartridge artifact from the same run as the validation report.
+Extraction preserves paths relative to the repository root, including
+`.work/nemu64-test/` and `tests/cartridge/fixtures/`. Keep the leading `.work/`
+directory when locating the ROMs and preparation report.
 Check each ROM's SHA-256 against `inputs` in `report.json` before replaying it.
 Use the matching ELF when disassembling a failed test. Rebuilding the same
 source revision does not by itself establish identical machine code or data

@@ -1,5 +1,68 @@
 # Recorded validation results
 
+## Edge-switch restoration and cache request phase
+
+The September 21, 2026 correction restores the minor-edge switch at the initial
+whole-row origin. A middle Y coordinate before `YH & ~3` is never reached, so
+the upper edge remains active. A switch inside that initial whole row can occur
+before the first visible sample. Vertical clipping preserves this origin.
+The earlier change and its cartridge oracle used the same incorrect immediate
+selection; their passing results did not establish that behavior.
+
+The restored condition and corrected cartridge oracle retain every triangle
+case and geometry input. Literal packets and fill spans cover the missed
+switch, equality at the origin, fractional top and middle positions, and
+clipping after a reachable switch. Four focused checks fail on the preceding
+renderer; all 27 focused triangle checks pass after restoration. Physical
+captures for malformed coordinate orders remain part of broader conformance.
+
+The same validated source includes the cache-miss SClock synchronization and
+deferred instruction-refill timing described in [CPU timing](../hardware/cpu-timing.md).
+Those changes preserve the pending CPU/system-clock phase through the request
+and evaluate refresh after the older instruction has completed.
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each validated the same 297-file snapshot and the same prepared
+cartridges. All 169 tracked cartridge-source files retained their hashes.
+Only this result record was revised after those runs.
+
+| Check | Result in each configuration |
+| --- | --- |
+| Hardware and host regressions | 1,073 passed |
+| Validation-tool regressions | 36 passed |
+| Default cartridge | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot |
+| Extended Base, including all twelve triangle cases | 4,649 passed |
+| Extended Timing | 1 failed of 1,604 |
+| Cycle, CP0-hazards, and Poorly-understood-quirk | 13, five, and two passed |
+| Source and input integrity | Verified |
+
+Formatting, strict builds, storage checks, and capture-runner checks pass.
+All three runs agree on the complete failure blocks and execution counts.
+The sanitizer run reports no AddressSanitizer, UndefinedBehaviorSanitizer, or
+leak diagnostics. Full validation still returns exit 8 for the remaining
+extended timing failure, which stays enabled:
+
+```text
+Test 'Timing: Load from uncached (with VI enabled)' with '(true, 24, 36.3)' failed: Actual: 32 but expected: 36 (+/- 1). Median cycle count
+```
+
+The test source is pinned at `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c` with
+the [maintained corrections](cartridge-fixtures.md). The triangle oracle's
+SHA-256 is `a2542fe2ff16224c28cdfb9993f33711f0925054c8aa2cc362aaf0ef1709b691`.
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Default cartridge | 2,609,128 | `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3` |
+| Extended cartridge | 2,633,384 | `5c490faffc0329ede6ae4a877d5ac2a15a86e42a5af8bfe546e0ff52fb3ce170` |
+| NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
+
+Default execution is 329,396,925 instructions and 822,176,054
+CPU cycles. Extended execution is 363,664,080 instructions and
+896,402,897 CPU cycles. Earlier input hashes and measurements below
+remain historical records. This correction does not establish full accuracy,
+playable-game compatibility, or release readiness.
+
 ## Cache clock phase and refill ordering
 
 The September 21, 2026 runs following
@@ -70,9 +133,9 @@ fixture, or build file changed after the three runs.
 The September 21, 2026 runs following revision
 `e6f2685bbf05712317cf9d7598df86349c384c3d` cover the lower-edge fix in issue #59
 and the maintained [cartridge fixture corrections](cartridge-fixtures.md).
-Triangles now select the lower minor edge when the current row reaches `YM`,
-including commands whose middle coordinate precedes their top coordinate.
-The new literal-packet regression fails before the fix and passes afterward.
+Those runs used a lower-edge selector that ignored whether `YM` could be
+reached from the initial row. The literal-packet regression encoded that same
+assumption and therefore did not establish the malformed-coordinate behavior.
 
 The cartridge retains all twelve experimental triangle cases and the clock
 test's tolerance of 20. The corrections repair command color packing,
