@@ -13,6 +13,10 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
     if (device_changed || accessory_changed ||
         (!previous.connected && state.connected && state.accessory != ControllerAccessory::None))
         controller_pak_changed_[port] = true;
+    if (state.connected && state.device == ControllerDevice::Gamepad &&
+        state.accessory == ControllerAccessory::ControllerPak &&
+        (!previous.connected || device_changed || accessory_changed))
+        controller_pak_bank_[port] = 0;
     if (!state.connected || device_changed ||
         (accessory_changed && state.device != ControllerDevice::GameCube)) {
         controller_rumble_[port] = false;
@@ -123,7 +127,7 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
             for (unsigned index = 0; index < data_length; ++index) {
                 const u32 pos = static_cast<u32>(address) + index;
                 if (controller.accessory == ControllerAccessory::ControllerPak)
-                    output[index] = pos < controller_paks[port].size() ? controller_paks[port][pos] : 0;
+                    output[index] = read_controller_pak(port, static_cast<u16>(pos));
                 else if (controller.accessory == ControllerAccessory::RumblePak)
                     output[index] = pos < 0x8000               ? 0
                                     : pos < 0x9000             ? 0x80
@@ -150,12 +154,8 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
         const bool accessible = (controller.accessory != ControllerAccessory::None) &&
                                 !controller_pak_changed_[port] && (encoded & 0x1fU) == address_crc(address);
         if (accessible) {
-            if (controller.accessory == ControllerAccessory::ControllerPak && address != 0x8000U) {
-                for (unsigned index = 0; index < data_length; ++index) {
-                    const u32 pos = static_cast<u32>(address) + index;
-                    if (pos < controller_paks[port].size())
-                        controller_paks[port][pos] = input[3 + index];
-                }
+            if (controller.accessory == ControllerAccessory::ControllerPak) {
+                write_controller_pak(port, address, {input + 3, data_length});
             } else if (controller.accessory == ControllerAccessory::RumblePak && address >= 0xc000) {
                 controller_rumble_[port] = (input[3] & 1U) != 0;
             } else if (controller.accessory == ControllerAccessory::TransferPak) {

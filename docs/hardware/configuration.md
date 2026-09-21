@@ -27,6 +27,24 @@ Storage file loading and flushing are described in [persistent storage](storage.
 
 Ports start disconnected with no accessory. `--controller PORT:gamepad|mouse|none` selects the device on a port. Gamepad accessories use `--accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak`. Accessories require a connected gamepad.
 
+A Controller Pak uses one 32 KiB bank by default. `--pak-banks PORT:COUNT`
+selects from 1 through 62 banks and requires that port to use a connected
+gamepad with `--accessory PORT:controller-pak`. `--pak-file PORT:FILE` loads and
+flushes the complete configured Pak image. Banked protocol behavior and the
+core configuration API are described in [Controller Pak behavior](controller-pak.md);
+the raw file layout is described in [persistent storage](storage.md).
+
+For example, this configures a four-bank Pak on controller port one and uses a
+raw 128 KiB Pak image:
+
+```sh
+build/cupid-n64 cartridge.z64 --pif pif.ntsc.rom --save none --controller 1:gamepad --accessory 1:controller-pak --pak-banks 1:4 --pak-file 1:controller.pak
+```
+
+Programmatic hosts can set `PortOptions::pak_banks` to the same 1 through 62
+range. `create_system` applies that capacity before it loads the configured Pak
+file, so persistence is checked against the selected size.
+
 A Transfer Pak uses `--transfer-rom PORT:FILE`. Recognized Game Boy headers provide mapper and RAM defaults when their ROM length agrees with the header. Unsupported or ambiguous boards require explicit `--transfer-mapper` and `--transfer-ram`. The runner also accepts `--transfer-rtc PORT:on|off` and `--transfer-rumble PORT:on|off` to override those cartridge features. Mapper choices are `linear`, `mbc1`, `mbc2`, `mbc3`, `mbc30`, and `mbc5`. `--transfer-save PORT:FILE` and `--transfer-rtc-file PORT:FILE` select persistent RAM and clock-state files.
 
 Host paths are stored as filesystem paths and preserve UTF-8 text supplied through the runner option parser. Media tests cover non-ASCII cartridge paths on Windows.

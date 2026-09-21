@@ -210,7 +210,7 @@ TEST(rumble_pak_removal_replacement_and_controller_disconnect_stop_only_that_mot
     RumbleFixture fixture;
     fixture.ready();
     for (auto& pak : fixture.bus.controller_paks)
-        pak.fill(0xa5);
+        std::fill(pak.begin(), pak.end(), u8{0xa5});
     const auto saved = fixture.bus.controller_paks;
     for (unsigned port = 0; port < 4; ++port)
         fixture.motor(port, true);

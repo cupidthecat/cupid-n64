@@ -10,7 +10,7 @@ Each gamepad port has one accessory selection in `ControllerState::accessory`:
 | Selection | Implemented behavior |
 | --- | --- |
 | `ControllerAccessory::None` | Gamepad status/polling; Pak commands return rejected data CRCs. |
-| `ControllerAccessory::ControllerPak` | One 32 KiB save array per port, block reads/writes, address/data CRCs. |
+| `ControllerAccessory::ControllerPak` | One through 62 banks of 32 KiB per port, bank selection, block reads/writes, address/data CRCs. |
 | `ControllerAccessory::RumblePak` | Identification reads, motor commands, motor-state readback, address/data CRCs. |
 | `ControllerAccessory::BioSensor` | Identification reads, externally supplied pulse levels, ignored writes, address/data CRCs. |
 | `ControllerAccessory::TransferPak` | Power/access registers and a banked Game Boy cartridge bus, including supported mapper RAM and clocks. |
@@ -52,8 +52,10 @@ Console reset preserves accessory selection, detection state, saved Pak bytes,
 and motor state. Status, polling, channel-reset/skip requests, malformed commands,
 and the L+R+Start stick-reset combination do not stop a motor. A motor write or
 disconnection is needed to change it. Switching between accessories retains
-the per-port Controller Pak array; there is still no card-identity or persistence
-layer.
+the per-port Controller Pak storage. Card identities are not modeled. The runner
+can persist the complete configured Pak through `--pak-file`; see
+[Controller Pak behavior](controller-pak.md) for banking and
+[persistent storage](storage.md) for the raw file layout.
 
 ## Rumble Pak protocol
 

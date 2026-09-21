@@ -20,6 +20,8 @@ u8 byte_from_value(u64 value, unsigned width, unsigned index) {
 } // namespace
 
 Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system) {
+    for (auto& pak : controller_paks)
+        pak.resize(32U * 1024U);
     reset();
 }
 

@@ -68,7 +68,7 @@ bool port_value(std::string_view name, std::string_view value, unsigned& port, s
 }
 
 bool is_port_option(std::string_view name) {
-    return name == "--controller" || name == "--accessory" || name == "--pak-file" ||
+    return name == "--controller" || name == "--accessory" || name == "--pak-file" || name == "--pak-banks" ||
            name == "--transfer-rom" || name == "--transfer-save" || name == "--transfer-mapper" ||
            name == "--transfer-ram" || name == "--transfer-rtc" || name == "--transfer-rtc-file" ||
            name == "--transfer-rumble";
@@ -97,6 +97,14 @@ bool set_port(std::string_view name, std::string_view value, PortOptions& port, 
         port.accessory_selected = true;
     } else if (name == "--pak-file") {
         port.pak_file = argument_path(value);
+    } else if (name == "--pak-banks") {
+        if (!number(name, value, port.pak_banks, error))
+            return false;
+        if (port.pak_banks < 1 || port.pak_banks > 62) {
+            error = "--pak-banks must select between 1 and 62 banks.";
+            return false;
+        }
+        port.pak_banks_selected = true;
     } else if (name == "--transfer-rom") {
         port.transfer.cartridge = argument_path(value);
     } else if (name == "--transfer-save") {
@@ -241,6 +249,10 @@ bool validate(Options& options, std::string& error) {
             error = "Port " + std::to_string(index + 1) + ": --pak-file requires a Controller Pak.";
             return false;
         }
+        if (port.pak_banks_selected && port.controller.accessory != ControllerAccessory::ControllerPak) {
+            error = "Port " + std::to_string(index + 1) + ": --pak-banks requires a Controller Pak.";
+            return false;
+        }
         if (!port.transfer.cartridge.empty() &&
             port.controller.accessory != ControllerAccessory::TransferPak) {
             error = "Port " + std::to_string(index + 1) + ": --transfer-rom requires a Transfer Pak.";
@@ -343,6 +355,7 @@ std::string_view usage() {
            "  --controller PORT:gamepad|mouse|none\n"
            "  --accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak\n"
            "  --pak-file PORT:FILE        Raw Controller Pak image\n"
+           "  --pak-banks PORT:COUNT      Controller Pak banks, 1 through 62 (default: 1)\n"
            "  --transfer-rom PORT:FILE    Game Boy cartridge in a Transfer Pak\n"
            "  --transfer-mapper PORT:linear|mbc1|mbc2|mbc3|mbc30|mbc5\n"
            "  --transfer-ram PORT:BYTES   Override Game Boy RAM capacity\n"

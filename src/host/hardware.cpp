@@ -54,6 +54,10 @@ bool configure_ports(System& system, const Options& options, std::string& error)
     for (unsigned index = 0; index < options.ports.size(); ++index) {
         const auto& port = options.ports[index];
         system.bus.set_controller_state(index, port.controller);
+        if (!system.bus.configure_controller_pak(index, port.pak_banks)) {
+            error = "Controller Pak capacity must be between 1 and 62 banks.";
+            return false;
+        }
         if (port.transfer.cartridge.empty())
             continue;
         std::vector<u8> data;

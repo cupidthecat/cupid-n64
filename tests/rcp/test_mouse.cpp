@@ -107,7 +107,7 @@ TEST(mouse_poll_prefixes_consume_both_axes_and_long_replies_report_overflow) {
 TEST(mouse_unsupported_commands_preserve_motion_reply_bytes_and_pak_storage) {
     MouseFixture fixture;
     for (auto& pak : fixture.bus.controller_paks)
-        pak.fill(0x3c);
+        std::fill(pak.begin(), pak.end(), u8{0x3c});
     const auto saved = fixture.bus.controller_paks;
     for (unsigned port = 0; port < 4; ++port)
         for (unsigned command = 2; command < 255; ++command) {

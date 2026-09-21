@@ -30,7 +30,7 @@ build/cupid-n64 cartridge.z64 --pif pif.ntsc.rom --save none --max-instructions 
 
 The PIF file must contain 1984 bytes of boot code or a 2048-byte boot image. Cartridge images may use big-endian, byte-swapped, or word-swapped storage. Boot firmware and cartridge images are supplied separately.
 
-The runner requires an explicit cartridge save selection. Use `--save none` when the cartridge has no save device; other choices select the supported SRAM, EEPROM, or FlashRAM hardware. See [hardware configuration](docs/hardware/configuration.md) for region, memory, CIC, RTC, controller, and Transfer Pak options, and [persistent storage](docs/hardware/storage.md) for save/Pak file formats and shutdown behavior.
+The runner requires an explicit cartridge save selection. Use `--save none` when the cartridge has no save device; other choices select the supported SRAM, EEPROM, or FlashRAM hardware. Controller Paks support one through 62 banks of 32 KiB; see [Controller Pak behavior](docs/hardware/controller-pak.md). See [hardware configuration](docs/hardware/configuration.md) for region, memory, CIC, RTC, controller, and Transfer Pak options, and [persistent storage](docs/hardware/storage.md) for save/Pak file formats and shutdown behavior.
 
 For hardware-test ROMs, add `--require-test-success`. The process succeeds only after receiving a complete test summary with no failures. An exception in the host, a stalled CPU bus, or an incomplete test run produces a failure result. An incomplete run includes the CPU registers and recent instruction addresses for diagnosis.
 

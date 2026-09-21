@@ -102,7 +102,8 @@ TEST(controller_pak_short_and_excess_write_data_preserve_block_boundaries) {
             for (unsigned length = 1; length <= 40; ++length)
                 for (bool rejected : {false, true}) {
                     for (unsigned other = 0; other < 4; ++other)
-                        fixture.bus.controller_paks[other].fill(static_cast<u8>(0xa0 + other));
+                        std::fill(fixture.bus.controller_paks[other].begin(),
+                                  fixture.bus.controller_paks[other].end(), static_cast<u8>(0xa0 + other));
                     auto expected = fixture.bus.controller_paks;
                     const auto header = write_packet(address, {});
                     std::vector<u8> input(header.begin(), header.begin() + 3);
@@ -182,7 +183,7 @@ TEST(controller_pak_dma_transfers_last_block_at_completion_on_all_ports) {
                     test::initialize_memory(fixture.system);
                     fixture.ready();
                     for (auto& pak : fixture.bus.controller_paks)
-                        pak.fill(0xa5);
+                        std::fill(pak.begin(), pak.end(), u8{0xa5});
                     std::array<u8, 32> data{};
                     for (unsigned index = 0; index < data.size(); ++index)
                         data[index] = static_cast<u8>(port * 37 + index);

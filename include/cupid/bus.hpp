@@ -64,6 +64,7 @@ class Bus {
         return flash_chip_;
     }
     void set_controller_state(unsigned port, ControllerState state);
+    [[nodiscard]] bool configure_controller_pak(unsigned port, unsigned banks);
     void set_gamecube_state(unsigned port, GameCubeState state);
     void add_mouse_input(unsigned port, MouseInput input);
     void set_bio_sensor_pulse(unsigned port, bool active);
@@ -88,7 +89,7 @@ class Bus {
     std::vector<u8> flashram;
     std::vector<u8> eeprom;
     std::optional<CartridgeRtc> rtc;
-    std::array<std::array<u8, 32 * 1024>, 4> controller_paks{};
+    std::array<std::vector<u8>, 4> controller_paks;
     std::array<TransferPak, 4> transfer_paks;
     Joybus joybus{*this};
 
@@ -105,6 +106,7 @@ class Bus {
     std::array<GameCubeController, 4> gamecube_controllers_{};
     std::array<MouseInput, 4> mouse_inputs_{};
     std::array<bool, 4> controller_pak_changed_{true, true, true, true};
+    std::array<u8, 4> controller_pak_bank_{};
     std::array<bool, 4> controller_rumble_{};
     std::array<bool, 4> bio_sensor_pulse_{};
     [[nodiscard]] u8 read_bio_sensor(unsigned port, u16 address) const;
@@ -272,6 +274,8 @@ class Bus {
     void execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
                             bool& overflow);
     void reset_gamecube_controller(unsigned port);
+    [[nodiscard]] u8 read_controller_pak(unsigned port, u16 address) const;
+    void write_controller_pak(unsigned port, u16 address, std::span<const u8> data);
     void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
     void execute_mouse(unsigned port, u8 recv, u8 command, u8* output, bool& valid, bool& overflow);
     void tick_eeprom(u64 cycles);

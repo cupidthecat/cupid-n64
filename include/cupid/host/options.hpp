@@ -25,7 +25,9 @@ struct PortOptions {
     ControllerState controller{false, 0, 0, 0, ControllerAccessory::None, ControllerDevice::Gamepad};
     bool controller_selected{};
     bool accessory_selected{};
+    bool pak_banks_selected{};
     std::filesystem::path pak_file;
+    unsigned pak_banks{1};
     TransferOptions transfer;
 };
 

@@ -1,21 +1,40 @@
 # Controller Pak behavior
 
-The core provides a separate 32 KiB Controller Pak array for each controller
-port. Update inputs and connection state through `Bus::set_controller_state`.
-`Bus::controllers()` exposes a read-only view; connection changes cannot bypass
-the setter by modifying that view.
+The core provides separate Controller Pak storage for each controller port. A
+Pak contains from one through 62 banks of 32 KiB each, with one bank configured
+by default. Update inputs and connection state through
+`Bus::set_controller_state`. `Bus::controllers()` exposes a read-only view;
+connection changes cannot bypass the setter by modifying that view.
 
 Select `ControllerAccessory::ControllerPak` in `ControllerState::accessory`.
 The old `controller_pak` boolean is replaced by this explicit selection; use
 `ControllerAccessory::None` to remove the Pak. [Controller accessories](controller-accessories.md)
 also describes Rumble Pak selection and the shared attachment rules.
 
+`Bus::configure_controller_pak(port, banks)` changes the capacity for ports zero
+through three. `banks` must be from 1 through 62. An invalid port or capacity
+returns false and leaves the existing storage, selected bank, and detection
+state unchanged. Resizing preserves the bytes shared by the old and new
+capacities. Growing the Pak zero-fills the new banks, while shrinking it
+discards banks beyond the new end. A size change returns the selected bank to
+zero and, when a Controller Pak is attached on that port, marks an attachment
+change for the next status command. Calling the function with the current size
+leaves the selected bank and detection state alone.
+The runner exposes the same capacity setting as `--pak-banks PORT:COUNT`; it
+requires a connected gamepad with a Controller Pak on that port.
+
+`Bus::controller_paks[port]` is a flat byte vector in bank order. Programmatic
+callers should choose the capacity with `configure_controller_pak` before
+loading saved bytes into that vector. Bank zero occupies the first 32 KiB, then
+each higher bank follows consecutively.
+
 ## Attachment and acknowledgement
 
 Each newly constructed controller starts with its configured Pak attached and
 detection pending. Removing or inserting a Pak sets that port's detection latch.
-Reconnecting a controller with a Pak also sets it. Repeated input updates with
-unchanged connection and Pak presence leave the latch alone.
+Reconnecting a controller with a Pak also sets it and returns bank selection to
+zero. Repeated input updates with unchanged connection and Pak presence leave
+the latch and selected bank alone.
 
 Status commands `0x00` and `0xff` return `05 00` followed by:
 
@@ -48,11 +67,14 @@ address CRC in the low five bits. The address polynomial is `0x35`; the data
 polynomial is `0x185`, including the leading term in each notation. Data CRCs
 cover 32 bytes followed by eight zero bits.
 
-The supported Pak has one 32 KiB bank. Addresses `0x0000` through `0x7fe0`
-select its blocks. Reads at `0x8000` and above return zero data with a valid CRC;
-writes to that range acknowledge the supplied data without changing storage.
-The bank-select address `0x8000` cannot select another bank in this configuration.
-Addresses do not wrap back into the array.
+Addresses `0x0000` through `0x7fe0` select blocks in the current 32 KiB bank.
+A write to `0x8000` uses the first payload byte as a bank number. Values below
+the configured bank count select that bank; an unavailable value leaves the
+current selection unchanged. The rest of the write payload does not affect bank
+selection. Reads at `0x8000` and above return zero data with a valid CRC, and
+writes above `0x8000` acknowledge the supplied data without changing storage.
+Addresses do not wrap into another bank. With the default one-bank capacity,
+bank zero is the only available selection.
 
 A read returns up to 32 data bytes and supplies the CRC only when at least
 33 reply bytes were requested. A write stores at most the first 32 supplied
@@ -66,14 +88,17 @@ and set the PIF no-response flag.
 ## Reset and storage lifecycle
 
 Console reset preserves controller inputs, Pak presence, saved bytes, and both
-pending and acknowledged detection state. Joybus channel-reset markers and
-send-length reset flags also preserve this state for the supported controller.
-They are distinct from the `0xff` status command, which acknowledges detection.
+pending and acknowledged detection state. It also preserves the selected bank.
+Joybus channel-reset markers and send-length reset flags preserve this state for
+the supported controller. They are distinct from the `0xff` status command,
+which acknowledges detection.
 
-The per-port array survives removal and reinsertion. The core currently treats
-that as reattaching the same stored Pak; it does not provide card identities or
-save-file persistence. Replacing saved contents is separate from signalling
-attachment through the controller setter.
+The per-port storage survives removal and reinsertion. Reattaching the Pak
+returns selection to bank zero while keeping its saved bytes. The runner can
+load and flush the whole configured capacity through `--pak-file`; the file is
+the banks concatenated in numeric order. Replacing stored bytes is separate from
+signalling attachment through the controller setter. See
+[persistent storage](storage.md) for the exact file-size rules.
 
 ## Validation and limits
 
@@ -92,10 +117,12 @@ all four storage arrays, including after reset. Last-block reads and writes
 also run through SI write/read sequences with bulk/single-cycle CPU and RCP
 advances, checking storage immediately before and at read completion.
 
-Additional accessory types, larger Pak banking, and game-level persistence
-remain separate release work. Hardware transaction timing remains open under
-issue #28. [Retained PIF descriptors](joybus.md) are implemented. These tests establish the supported
-core's packet and storage behavior; they do not substitute for hardware traces
-or a game-save persistence test.
+`tests/rcp/test_controller_pak_banks.cpp` exercises capacities from one through
+62 banks, bank selection, invalid values, resize and reconnect state, high
+addresses, CRC handling, and SI completion boundaries. Host regression files
+exercise raw multi-bank file sizing and the `--pak-banks` option. Dedicated
+physical hardware captures for banked Pak devices are still needed. Hardware
+transaction timing remains open under issue #28.
+[Retained PIF descriptors](joybus.md) are implemented.
 [Joybus packets](joybus.md) describes packet boundaries and replies;
 [serial-interface timing](serial-interface.md) records the current timing limits.

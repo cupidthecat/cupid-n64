@@ -1,8 +1,67 @@
 # Recorded validation results
 
+## Controller Pak banking
+
+The September 21, 2026 runs cover banked Controller Pak storage following
+revision `0e251e66c10681dfa17dbb963dfb0edbf4d691ae`. Each port can use one through
+62 banks of 32 KiB. Joybus writes to `0x8000` select a bank, and the runner's
+`--pak-banks PORT:COUNT` option configures the capacity before loading its raw
+Pak image. The default remains one bank. See [Controller Pak behavior](../hardware/controller-pak.md)
+and [persistent storage](../hardware/storage.md) for packet and file rules.
+
+Fourteen new regressions bring the hardware and host suite to 1,062 cases.
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each ran `tools/ci/validate.py` against the same frozen set of 287
+files. The compiler configurations and exact cartridge/PIF hashes remain those
+listed in [Inputs and commands](#inputs-and-commands). The result record was
+updated after validation; the implementation, tests, and build configuration
+retain their validated bytes.
+
+| Check | Windows Release | Linux Release | Linux sanitizers |
+| --- | --- | --- | --- |
+| Hardware and host regressions | 1,062 passed | 1,062 passed | 1,062 passed |
+| Default cartridge | 4,637 passed | 4,637 passed | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot | 4,637 passed on each boot |
+| Concurrent storage, Unicode paths, and capture checks | Passed | Passed | Passed |
+| Extended cartridge | 15 failed | Same 15 failed | Same 15 failed |
+| Source and input integrity | Verified | Verified | Verified |
+
+Clang formatting, strict builds, and all 23 validation-script tests passed.
+Six of seven CTest cases passed; `nemu64_extended` failed and each full validator
+returned exit 8. The sanitizer run reported no AddressSanitizer,
+UndefinedBehaviorSanitizer, or leak diagnostics.
+
+Every complete extended diagnostic block matches the retained baseline,
+including pixel arrays and timing values. The group counts remain Base 11
+failures of 4,649, Timing four of 1,604, Cycle zero of 13, CP0-hazards zero of
+five, and Poorly-understood-quirk zero of two. Default execution remains
+328,128,181 instructions and 741,446,373 CPU cycles; extended execution remains
+359,483,384 instructions and 793,706,393 CPU cycles.
+
+The eight core banking tests cover all four ports and capacities through 62
+banks, independent data, unavailable selections, packet lengths and CRCs,
+attachment changes, resizing, resets, and bank selection at SI completion.
+Forcing every accepted bank-selection write to bank zero makes six of those
+eight tests fail; restoring the production selection logic passes all eight.
+Six host tests cover option parsing,
+capacity validation, complete file round trips, and rejection of wrong-sized
+images without changing storage or the input file.
+
+A separate Windows runner check completed 36 process invocations for twelve
+port/capacity combinations: all four ports with one, four, and 62 banks. Each
+combination created the expected file size, preserved patterned data on reload,
+and rejected a truncated image without overwriting it. The paths included
+spaces and non-ASCII characters. This used synthetic cartridge and PIF inputs
+to test runner storage behavior, not game compatibility.
+
+The earlier Super Mario 64 capture below was not repeated for this storage
+change. Banked Pak hardware captures and serial timing remain separate
+validation work. The four extended timing failures and eleven experimental
+triangle disagreements remain enabled, and full validation still fails.
+
 ## GameCube controller and VI clipping coverage
 
-The latest September 21, 2026 runs cover the GameCube controller protocol and
+Earlier September 21, 2026 runs cover the GameCube controller protocol and
 two VI clipping regressions, following revision
 `52487af95f90ad7c3a86b4804f2cf4ee64b214fa`. Nine controller tests and two VI tests
 bring the local suite to 1,048 cases. The [GameCube guide](../hardware/gamecube-controller.md)

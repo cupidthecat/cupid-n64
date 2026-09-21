@@ -23,7 +23,8 @@ TEST(controller_pak_reinsertion_gates_access_until_status_acknowledgement) {
     for (unsigned port = 0; port < 4; ++port) {
         PakFixture fixture;
         fixture.ready();
-        fixture.bus.controller_paks[port].fill(0xa5);
+        std::fill(fixture.bus.controller_paks[port].begin(), fixture.bus.controller_paks[port].end(),
+                  u8{0xa5});
         fixture.insert(port);
         fixture.blocked(port);
         CHECK_EQ(fixture.status(port), 3U);
@@ -39,7 +40,8 @@ TEST(controller_pak_removal_retains_storage_and_reports_absence_until_reinserted
     for (unsigned port = 0; port < 4; ++port) {
         PakFixture fixture;
         fixture.ready();
-        fixture.bus.controller_paks[port].fill(0xa5);
+        std::fill(fixture.bus.controller_paks[port].begin(), fixture.bus.controller_paks[port].end(),
+                  u8{0xa5});
         ControllerState state;
         state.accessory = ControllerAccessory::None;
         fixture.bus.set_controller_state(port, state);
