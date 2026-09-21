@@ -147,11 +147,8 @@ void Rdp::write_register(u32 offset, u32 value) {
             freeze_ = true;
         if ((value & (1U << 4)) != 0)
             flush_ = false;
-        if ((value & (1U << 5)) != 0) {
+        if ((value & (1U << 5)) != 0)
             flush_ = true;
-            command_buffer_size_ = 0;
-            command_buffer_address_ = current_;
-        }
         if ((value & (1U << 6)) != 0 && !crashed_)
             tmem_busy_ = 0;
         if ((value & (1U << 7)) != 0 && !crashed_)

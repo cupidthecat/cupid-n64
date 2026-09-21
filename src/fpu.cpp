@@ -84,14 +84,17 @@ int host_rounding(u32 mode) {
     }
 }
 
-class ScopedRounding {
+class ScopedEnvironment {
   public:
-    explicit ScopedRounding(u32 mode)
+    explicit ScopedEnvironment(u32 mode)
         : saved_(std::fegetenv(&environment_) == 0), previous_(std::fegetround()) {
+        // FCSR controls guest flushing and traps independently of the calling thread.
+        if (saved_)
+            std::fesetenv(FE_DFL_ENV);
         std::fesetround(host_rounding(mode));
     }
 
-    ~ScopedRounding() {
+    ~ScopedEnvironment() {
         if (saved_)
             std::fesetenv(&environment_);
         else if (previous_ != -1)
@@ -107,7 +110,7 @@ class ScopedRounding {
 template <class T> T round_integral(T value, u32 mode) {
     switch (mode & 3U) {
     case 0: {
-        ScopedRounding rounding(0);
+        ScopedEnvironment environment(0);
         return std::nearbyint(value);
     }
     case 1:
@@ -518,6 +521,7 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         return;
     }
 
+    ScopedEnvironment environment(control & 3U);
     clear_causes();
 
     if ((format == 0x10U || format == 0x11U) && function >= 0x30U) {
@@ -612,7 +616,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             return;
         }
 
-        ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         if (format == 0x14U) {
             cpu_.add_cycles(zero_integer ? 1 : 4);
@@ -677,7 +680,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
     const bool single = format == 0x10U;
 
     if (function <= 0x03U) {
-        ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         if (single) {
             const u32 left_bits = source_word(fs);
@@ -752,7 +754,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
     }
 
     if (function == 0x04U) {
-        ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         if (single) {
             const u32 input_bits = source_word(fs);
@@ -856,7 +857,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         const u64 input_bits = source_doubleword(fs);
         if (!check_input_doubleword(input_bits))
             return;
-        ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         const volatile double input = value_of<double>(input_bits);
         const volatile float output = static_cast<float>(input);
@@ -878,7 +878,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         const u32 input_bits = source_word(fs);
         if (!check_input_word(input_bits))
             return;
-        ScopedRounding rounding(control & 3U);
         std::feclearexcept(FE_ALL_EXCEPT);
         const volatile float input = value_of<float>(input_bits);
         const volatile double output = static_cast<double>(input);

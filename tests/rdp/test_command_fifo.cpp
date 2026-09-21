@@ -70,3 +70,39 @@ TEST(rdp_command_fifo_reset_discards_an_incomplete_packet) {
     submit(system, 0x2000, 8);
     CHECK(dp_interrupt(system));
 }
+
+TEST(rdp_command_fifo_preserves_packets_across_flush_control_writes) {
+    for (unsigned packet = 0; packet < opcodes.size(); ++packet)
+        for (unsigned split = 8; split < lengths[packet]; split += 8)
+            for (bool head_dmem : {false, true})
+                for (bool tail_dmem : {false, true})
+                    for (u32 flush_write : {0x20U, 0x30U}) {
+                        System system;
+                        test::initialize_memory(system);
+                        system.bus.write(0x1000, 8, 0x2d00000000000000ULL); // Empty scissor.
+                        submit(system, 0x1000, 8);
+
+                        const u32 head = head_dmem ? 0xff8U : 0x2000U;
+                        write_word(system, head, static_cast<u64>(opcodes[packet]) << 56U, head_dmem);
+                        for (unsigned byte = 8; byte < split; byte += 8)
+                            write_word(system, head + byte, full_sync, head_dmem);
+                        submit(system, head, split, head_dmem);
+                        CHECK(!dp_interrupt(system));
+
+                        system.bus.rdp.write_register(12, flush_write);
+                        CHECK_EQ(system.bus.rdp.read_register(12) & 4U, 4U);
+                        system.bus.rdp.write_register(12, 0x10U);
+                        CHECK_EQ(system.bus.rdp.read_register(12) & 4U, 0U);
+                        CHECK(!dp_interrupt(system));
+
+                        const u32 tail = tail_dmem ? 0xff8U : 0x3000U;
+                        for (unsigned byte = 0; byte < lengths[packet] - split; byte += 8)
+                            write_word(system, tail + byte, full_sync, tail_dmem);
+                        submit(system, tail, lengths[packet] - split, tail_dmem);
+                        CHECK(!dp_interrupt(system));
+
+                        system.bus.write(0x4000, 8, full_sync);
+                        submit(system, 0x4000, 8);
+                        CHECK(dp_interrupt(system));
+                    }
+}

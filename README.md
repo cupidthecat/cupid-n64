@@ -60,6 +60,7 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 ## Core layout
 
 Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
+[floating-point execution](docs/hardware/floating-point.md),
 [instruction fetch ordering](docs/hardware/instruction-fetch.md),
 [signal processor control flow](docs/hardware/rsp-control-flow.md),
 [signal processor instruction timing](docs/hardware/rsp-pipeline.md),

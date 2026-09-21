@@ -6,11 +6,10 @@ remain enabled and make the extended validation command fail. No external
 test source, ROM, or expected result has been changed.
 
 The input is `thelemmy/nemu64-test` commit
-`9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`, with the ROM and PIF hashes recorded
-in the [accuracy baseline](accuracy-baseline.md). The default suite still
-passes all 4,637 tests. The extended base category passes 4,638 of 4,649 tests;
-its timing category retains the same 11 failures documented in that baseline.
-Cycle, CP0-hazard, and partially characterized hardware-quirk groups pass.
+`9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. The [validation results](validation-results.md)
+record the current ROM and PIF hashes, platform results, and remaining timing
+failures. The extended base category passes 4,638 of 4,649 tests; the eleven
+failures discussed here are separate from the timing category.
 
 ## Command and framebuffer packing
 

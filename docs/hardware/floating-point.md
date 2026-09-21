@@ -1,0 +1,83 @@
+# Floating-point execution
+
+`Fpu` implements COP1 register transfers, arithmetic, comparisons, conversions,
+and control-register behavior. Instruction dispatch checks CU1 before decoding
+the operation. Memory transfers use the CPU's normal translation and exception
+paths. [CPU timing](cpu-timing.md) describes result interlocks and elapsed cycles.
+
+## Registers and control
+
+The register file contains 32 64-bit entries. With Status.FR set, a word transfer
+uses the low half of its selected entry and preserves the high half on writes.
+With FR clear, even and odd word transfers select the low and high halves of an
+even entry. Doubleword transfers use the even entry in that mode.
+
+Arithmetic source and destination mapping has separate paths from transfers.
+In paired mode, the first source ignores its low register-index bit; the second
+source and arithmetic destination retain their encoded indices. Word results
+clear the destination's upper half. The MOV encoding copies the full selected
+source and preserves the existing cause bits. These distinctions are covered
+by encoded instructions in `tests/test_fpu.cpp`.
+
+FCSR accepts writes through mask `0x0183ffff`:
+
+| Bits | Purpose |
+| --- | --- |
+| 1:0 | Rounding mode: nearest/even, toward zero, toward positive infinity, toward negative infinity |
+| 6:2 | Sticky inexact, underflow, overflow, division-by-zero, and invalid flags |
+| 11:7 | Enables for those five exceptions |
+| 16:12 | Causes for those five exceptions |
+| 17 | Unimplemented-operation cause |
+| 23 | Comparison condition |
+| 24 | Flush-subnormal mode |
+
+A maskable exception sets its cause. When disabled, it also sets the sticky flag;
+when enabled, it raises a CPU floating-point exception and preserves the result
+destination. The unimplemented-operation cause always raises that exception.
+Writing FCSR can raise an exception when a cause and its enable are both set.
+
+## Subnormals, NaNs, and conversions
+
+Arithmetic classifies operands from their encoded bits before using host
+arithmetic. Subnormal arithmetic inputs take the unimplemented path. Comparisons
+accept subnormal inputs and retain their sign and ordering: the smallest positive
+single-precision value, `0x00000001`, compares unequal to zero.
+
+Subnormal arithmetic results require FCSR flush mode with the relevant exception
+enables clear. Result sign and rounding direction determine whether the flushed
+result is zero or the minimum normal value. NaN classification uses the VR4300
+encodings; the canonical arithmetic NaNs are `0x7fbfffff` and
+`0x7ff7ffffffffffff`.
+
+Integer conversions check the input and rounded result before performing a host
+integer cast. Explicit ROUND, TRUNC, CEIL, and FLOOR instructions select their own
+rounding mode; CVT uses FCSR. Long conversions retain the implemented VR4300
+precision boundary. Source exceptions, result exceptions, and successful
+operations have separate timing tests.
+
+## Calling-thread environment
+
+Operations that use host floating-point arithmetic or comparisons save the
+calling thread's environment, install the default environment, and select the
+guest rounding mode. FCSR then controls guest flushing and exception delivery.
+Every return restores the saved host environment, including returns that raise
+a guest exception. Register transfers and MOV copy encoded bits without changing
+the host environment.
+
+This keeps an embedding application's denormal-as-zero setting from changing a
+guest comparison. It also keeps enabled host division traps from terminating the
+process during a guest division. The caller's rounding mode, exception flags,
+trap masks, and denormal controls survive the operation.
+
+The C++ build uses strict floating-point settings. Enabling fast-math would
+invalidate the environment-sensitive arithmetic and exception checks.
+
+`tests/cpu/test_fpu_environment.cpp` exercises comparisons with positive and
+negative subnormals in both operand positions, all comparison predicates, and
+x86 denormal/flush controls. It also checks guest division with host traps enabled
+and host-state restoration across arithmetic, comparisons, conversions, and
+guest exceptions. The x86 control-register cases compile on x86 targets; the
+standard floating-point environment checks run on every supported target.
+
+These regressions complement the cartridge suite. Platform results and remaining
+accuracy failures are recorded in [validation results](../testing/validation-results.md).
