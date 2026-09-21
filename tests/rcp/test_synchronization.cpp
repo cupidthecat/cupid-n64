@@ -148,11 +148,11 @@ TEST(rcp_rsp_dma_does_not_overtake_earlier_rsp_instructions) {
         system.bus.write(0x04000000, 4, 0x11112222);
         system.bus.write(0x2000, 4, 0x33334444);
         system.bus.write(0x04001000, 4, 0x8c010000); // LW at, 0(zero)
-        system.bus.write(0x04001004, 4, 0xac010008); // SW at, 8(zero)
+        system.bus.write(0x04001004, 4, 0xac010010); // SW at, 0x10(zero), outside the DMA row.
         system.bus.write(0x04001008, 4, 0x0000000d);
         system.rsp.write_register(0, 0);
         system.rsp.write_register(4, 0x2000);
-        system.rsp.write_register(8, 7);
+        system.rsp.write_register(8, 15); // Two RCP cycles, after the first load.
         system.rsp.write_register(0x10, 1);
         if (split) {
             for (unsigned cycle = 0; cycle < 3; ++cycle)
@@ -161,12 +161,12 @@ TEST(rcp_rsp_dma_does_not_overtake_earlier_rsp_instructions) {
             system.rsp.tick(3);
         }
         CHECK_EQ(system.bus.read(0x04000000, 4), 0x33334444U);
-        CHECK_EQ(system.bus.read(0x04000008, 4), 0U);
+        CHECK_EQ(system.bus.read(0x04000010, 4), 0U);
         CHECK_EQ(system.rsp.pc, 4U);
         CHECK_EQ(system.rsp.read_register(0x18), 0U);
         // DMA completes during the two load-use stalls; the consumer still stores the old load.
         system.rsp.tick(1);
-        CHECK_EQ(system.bus.read(0x04000008, 4), 0x11112222U);
+        CHECK_EQ(system.bus.read(0x04000010, 4), 0x11112222U);
         CHECK_EQ(system.rsp.pc, 8U);
         CHECK_EQ(system.rsp.read_register(0x10) & 3U, 0U);
         system.rsp.tick(1);

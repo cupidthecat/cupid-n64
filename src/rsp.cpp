@@ -500,7 +500,7 @@ void Rsp::promote_dma() {
     dma_current_ = dma_pending_;
     dma_busy_ = true;
     dma_full_ = false;
-    dma_cycles_until_row_ = ((static_cast<u64>(dma_current_.length) + 8) / 8) * 3;
+    dma_cycles_until_row_ = (static_cast<u64>(dma_current_.length) + 8) / 8;
 }
 
 void Rsp::tick_dma(u64 rcp_cycles) {
@@ -558,7 +558,7 @@ void Rsp::transfer_dma_row() {
     if (dma_current_.count != 0) {
         --dma_current_.count;
         dma_current_.dram_address = (dma_current_.dram_address + dma_current_.skip) & 0x00ff'ffff;
-        dma_cycles_until_row_ = ((static_cast<u64>(dma_current_.length) + 8) / 8) * 3;
+        dma_cycles_until_row_ = (static_cast<u64>(dma_current_.length) + 8) / 8;
         return;
     }
 

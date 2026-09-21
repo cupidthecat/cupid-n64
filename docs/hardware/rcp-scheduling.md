@@ -57,6 +57,12 @@ cannot change an earlier audio sample. The RSP's direct tick path likewise
 interleaves DMA progress with instructions instead of completing a whole DMA
 batch before executing those instructions.
 
+SP DMA row durations use one RCP cycle per eight-byte beat. The current row-level
+model makes an instruction-started eight-byte transfer visible before the next
+RSP instruction. A callback-started transfer retains its full interval after
+that callback's boundary. See [SP DMA registers and transfer clocks](rsp-dma.md)
+for row visibility and the remaining timing limits.
+
 Blocking CPU RDRAM transfers consult the existing VI-line deadline before their
 response completes. A transfer that crosses an enabled refresh boundary includes
 that recovery interval, while the scheduler still processes the boundary and

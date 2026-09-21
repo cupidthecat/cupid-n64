@@ -141,10 +141,10 @@ TEST(output_boundary_preserves_sp_dma_started_by_video_or_audio) {
             } else {
                 fixture.video(start);
             }
-            fixture.until(fixture.time() + 2);
+            fixture.until(fixture.time());
             CHECK_EQ(system.rsp.read_register(0x18), 1U);
             CHECK_EQ(bus.memory.read(0x2000, 4), 0U);
-            fixture.until(fixture.time() + 3);
+            fixture.until(fixture.time() + 1);
             CHECK_EQ(system.rsp.read_register(0x18), 0U);
             CHECK_EQ(bus.memory.read(0x2000, 4), 0x12345678U);
         }
@@ -190,7 +190,7 @@ TEST(output_boundary_observes_pi_and_sp_completions_at_the_same_clock) {
         bus.write(0x04600000, 4, 0x3000);
         bus.write(0x04600004, 4, 0x10000000);
         bus.write(0x0460000c, 4, 7);
-        fixture.until(fixture.time() - 3);
+        fixture.until(fixture.time() - 1);
         system.rsp.write_register(0, 0);
         system.rsp.write_register(4, 0x2000);
         system.rsp.write_register(0x0c, 7);

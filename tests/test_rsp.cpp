@@ -345,7 +345,7 @@ TEST(rsp_dma_alignment_wrap_queue_and_postincrement) {
     system.rsp.write_register(0x08, 0x0000'0007);
     CHECK_EQ(system.rsp.read_register(0x14), 1u);
 
-    system.rsp.tick(12);
+    system.rsp.tick(4);
 
     CHECK_EQ(system.rsp.memory[0x0ff8], 0x01u);
     CHECK_EQ(system.rsp.memory[0x0fff], 0x08u);
@@ -358,7 +358,7 @@ TEST(rsp_dma_alignment_wrap_queue_and_postincrement) {
     CHECK_EQ(system.rsp.read_register(0x00), 0x1000u);
     CHECK_EQ(system.rsp.read_register(0x04), 0x0100u);
 
-    system.rsp.tick(3);
+    system.rsp.tick(1);
 
     for (u32 index = 0; index < 8; ++index) {
         CHECK_EQ(system.rsp.memory[0x1000 + index], static_cast<u8>(0xa0 + index));
@@ -380,7 +380,7 @@ TEST(rsp_dma_sp_to_rdram_wraps_inside_selected_bank) {
     system.rsp.write_register(0x00, 0x1ff8);
     system.rsp.write_register(0x04, 0x0200);
     system.rsp.write_register(0x0c, 0x0000'000f);
-    system.rsp.tick(6);
+    system.rsp.tick(2);
 
     for (u32 index = 0; index < 16; ++index) {
         CHECK_EQ(system.bus.read_ram_byte(0x200 + index), static_cast<u8>(0x40 + index));
