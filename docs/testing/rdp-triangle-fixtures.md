@@ -1,21 +1,21 @@
-# Experimental triangle fixture audit
+# Experimental triangle fixtures
 
-Replacing the legacy triangle shortcut with the shared color pipeline exposes
-11 failures in the pinned `experimental_rdp` cartridge tests. These failures
-remain enabled and make the extended validation command fail. No external
-test source, ROM, or expected result has been changed.
+The pinned `experimental_rdp` cartridge uses ARGB command payloads and a CPU
+oracle with different coverage and edge rules from the RDP. The maintained
+[fixture corrections](cartridge-fixtures.md) repair those definitions while
+retaining all twelve triangle cases and their geometry inputs.
 
 The input is `thelemmy/nemu64-test` commit
 `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. The [validation results](validation-results.md)
-record the current ROM and PIF hashes, platform results, and remaining timing
-failures. The extended base category passes 4,638 of 4,649 tests; the eleven
-failures discussed here are separate from the timing category.
+record ROM and PIF hashes, platform results, and remaining timing failures.
+Earlier unmodified images fail eleven of the twelve triangle cases. Corrected
+images have their own source manifest and hashes.
 
 ## Command and framebuffer packing
 
 The test source defines `ARGB8888` with alpha in bits 31:24, followed by red,
-green, and blue. `RDPAssembler::set_blendcolor` writes that value unchanged to
-the command. The SDK's `DPRGBColor` and `gDPSetBlendColor` macros instead encode
+green, and blue. The original `RDPAssembler::set_blendcolor` writes that value
+unchanged to the command. The SDK's `DPRGBColor` and `gDPSetBlendColor` macros encode
 red in bits 31:24 and alpha in bits 7:0. See the
 [SDK command header](https://ultra64.ca/files/documentation/online-manuals/man/header/gbi.htm).
 
@@ -26,6 +26,10 @@ the resulting RGBA32 framebuffer word is `0xffff00e0`. The fixture expects
 for this case; the disagreement is already visible in a fully covered pixel,
 without fractional-edge or perspective behavior.
 
+The correction converts the blend-color payload to RGBA and converts RGBA32
+framebuffer reads back to ARGB before comparison. The fill-color helper is
+unchanged; these fixtures clear with raw black zero.
+
 The affected files in the pinned checkout are:
 
 - `src/graphics/color.rs`: ARGB storage and color constants.
@@ -33,24 +37,33 @@ The affected files in the pinned checkout are:
 - `src/tests/rdp/filled_triangle.rs`: ARGB framebuffer reads and CPU expectations.
 
 At pinned commit `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`, their
-SHA-256 hashes are:
+SHA-256 hashes with LF line endings, matching the Git blobs, are:
 
 | Source file | SHA-256 |
 | --- | --- |
-| `src/tests/rdp/filled_triangle.rs` | `ee76130e870a6c6b497018b7f875268a5adea23d31af6ef3f37fefef7794dc5f` |
-| `src/rdp/rdp_assembler.rs` | `61d7f462b505bb8a348e6e2bee2265bf12e5ff0ae82e52fb09ffb3420ec71a4b` |
-| `src/graphics/color.rs` | `c112e80b3af19eeb05ca4d04e46ee27cba824768cebd48772ccb2210172c1fc0` |
+| `src/tests/rdp/filled_triangle.rs` | `c40643bb8a05a005c9b51ebc8ff06f56cf36a025335c1888ff17dd13f7a52544` |
+| `src/rdp/rdp_assembler.rs` | `48644e60608b76201c275320fda50ca3bdec95e14e8ba87e172278dd5918108f` |
+| `src/graphics/color.rs` | `8eae1bef4007aa5c368741e44915b0699797a3ba02bad068a9ed0a6dbc3ce1b4` |
 
 ## Coverage expectations
 
-The CPU renderer in `filled_triangle.rs` counts sixteen samples per pixel and
+The original CPU renderer in `filled_triangle.rs` counts sixteen samples per pixel and
 maps selected counts through an incomplete table; unlisted counts are returned
 directly as alpha. The RDP coverage path uses eight staggered samples. The
 fixture's one-cycle mode also leaves antialiasing disabled, while its CPU
 renderer accepts any nonzero partial coverage. Fractional edges therefore
 have additional disagreements beyond the byte order.
 
-The failing cases are degenerate rectangle, flat-top triangle, left/top/right/
+The corrected oracle evaluates eight staggered samples independently for each
+pixel. It uses the whole-row top origin, the lower edge's own middle-Y origin,
+the command's quantized slopes, and signed 28-bit edge arithmetic. With
+antialiasing disabled, a pixel is accepted only when coverage sample zero is
+present. All twelve cartridge cases select `CoverageMode::Zap`, which stores
+coverage `0xe0` in each accepted pixel. They do not exercise the other coverage
+storage modes; the raw-command regressions below provide separate coverage
+checks.
+
+The original failing cases are degenerate rectangle, flat-top triangle, left/top/right/
 bottom scissor, fractional right/bottom scissor, negative Y, negative X, and
 randomized triangles. The experimental case named `right major` passes.
 
@@ -78,6 +91,14 @@ case uses an edge position of `0x07ff0000` and command slope
 28-bit boundary within one pixel row. Its expected row is two pixels at
 coverage `0x60` followed by six at `0x20`.
 
+The corrected randomized oracle also exposed a production defect when `YM`
+precedes `YH`. The minor edge must use the lower edge whenever the current
+subpixel row reaches `YM`, even if that point lies above the triangle's top.
+Issue #59 adds a literal packet with `YH=1`, `YM=-1`, `YL=4`, a major edge at
+X=2, and a lower edge at X=4. Pixel `(2, 1)` must contain `0xff0000e0`; the
+extra middle-versus-top check previously left it zero. The fill-cycle
+regression checks the same edge rule with its inclusive ending pixel.
+
 For provenance, packet hashes below concatenate each fixture's 64-bit command
 words in command-stream byte order and hash those bytes with SHA-256:
 
@@ -90,10 +111,9 @@ words in command-stream byte order and hash those bytes with SHA-256:
 | Zero-height rejection | 80 | `8daf873733eea126c3f14196ab02804837c74741f6dc288571cdc6f31dd6dcf3` |
 | Signed edge overflow | 80 | `1542a372c5c4268878531d8712db094c946a2a9a478b6e90f8eac68f883e1dd0` |
 | Interpolated depth | 104 | `ceef17fd8baef6c0822c16a64736512df5d8f90180c8894c0416a8e2bda96916` |
+| Middle Y before top Y | 88 | `57183d2da120056bfa2fa0900546eab0e91c1d8a30103a3cf8b2d7e32dba4aff` |
 
-The original 11 cartridge assertions remain enabled and unchanged. The raw
-fixtures confirm the current renderer on these corrected packets and do not
-provide evidence for changing edge or coverage behavior to satisfy the ARGB/
-sixteen-sample oracle. Corrected cartridge fixtures and independent hardware
-captures remain necessary for broader randomized conformance; issue #37 tracks
-that validation work.
+The raw packets isolate rendering rules from the cartridge's command helpers.
+The maintained cartridge retains every triangle case and compares complete
+framebuffers against the corrected CPU oracle. Broader rendering modes and
+independent hardware captures remain part of issue #37's conformance work.

@@ -3,8 +3,9 @@
 `tools/ci/validate.py` runs the validation-tool regressions, checks C++ formatting,
 builds with strict warnings, and runs every configured CTest entry. Linux jobs
 use GCC and Clang; the Windows job uses MSVC. The accuracy job builds the
-default and extended cartridges from the pinned test checkout in separate
-target directories, then runs both cartridges in release and sanitizer builds.
+default and extended cartridges from the pinned test checkout and maintained
+[fixture corrections](cartridge-fixtures.md) in separate target directories,
+then runs both cartridges in release and sanitizer builds.
 
 The extended cartridge enables `timing`, `cycle`, `cop0hazard`,
 `poorly_understood_quirk`, and `experimental_rdp` alongside the default features.
@@ -12,7 +13,8 @@ CTest passes `--require-extended-tests` for that image. The runner requires
 all five result categories and all four feature flags printed in the summary.
 A default-only image, missing quirk results, a truncated summary, or a failed
 case makes the run fail. The experimental graphics cases remain in the base
-category, with their original assertions.
+category, using the corrected command packing and CPU oracle described in
+[triangle fixtures](rdp-triangle-fixtures.md).
 
 The sanitizer step runs even when the release tests fail, provided cartridge
 building and formatter installation succeeded. Both outcomes contribute to the
@@ -88,7 +90,9 @@ after a validation failure. Missing report files also fail the artifact step.
 After building the cartridges, `accuracy-test-inputs` retains the default and
 extended ROMs and their ELF executables for 14 days. It includes the test
 license, Cargo manifests and lockfile, target/linker configuration, pinned
-toolchain selection, and compiler/converter versions. The explicit artifact
+toolchain selection, and compiler/converter versions. The correction report,
+patches, manifest, and four modified Rust files identify the effective source
+used to build those images. The explicit artifact
 paths exclude PIF firmware. Uploading before validation preserves these inputs
 even when a later test fails.
 
@@ -104,7 +108,7 @@ firmware as a failed accuracy check. A maintainer must run the reviewed source
 in a trusted context with the supplied firmware to establish cartridge results.
 The independent compiler jobs still exercise the local regressions.
 
-The historical results and outstanding fixture discrepancies are recorded in
+The historical results and fixture definitions are recorded in
 [the accuracy baseline](accuracy-baseline.md) and
-[the experimental triangle audit](rdp-triangle-fixtures.md). A successful local
+[the experimental triangle guide](rdp-triangle-fixtures.md). A successful local
 regression job alone does not resolve an extended-cartridge failure.

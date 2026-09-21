@@ -32,17 +32,27 @@ A failing optional group makes validation fail; the script does not suppress it.
 
 ## Test input
 
-The CI workflow pins `thelemmy/nemu64-test` to commit `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. That checkout selects Rust `nightly-2026-07-16` through its toolchain file. `nust64` version `0.4.1` converts its ELF executable into a cartridge image.
+The CI workflow pins `thelemmy/nemu64-test` to commit `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. Before compiling, it applies the [cartridge fixture corrections](testing/cartridge-fixtures.md) for color packing, coverage, and clock sampling. The preparation report records the base revision and exact source changes. That checkout selects Rust `nightly-2026-07-16` through its toolchain file. `nust64` version `0.4.1` converts its ELF executable into a cartridge image.
+
+Prepare a fresh checkout with LF line endings from the Cupid-N64 root:
+
+```sh
+git clone --no-checkout -c core.autocrlf=false \
+  https://github.com/thelemmy/nemu64-test .work/nemu64-test
+git -C .work/nemu64-test checkout --detach 9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c
+python tools/ci/cartridge.py .work/nemu64-test \
+  --report .work/test-fixture-corrections.json
+```
 
 From the test checkout:
 
 ```sh
-cargo build --release --locked
+cargo build --release --locked --target-dir target-default
 cargo +stable install nust64 --version 0.4.1 --locked
-nust64 --elf target/mips-nintendo64-none/release/n64-systemtest
+nust64 --elf target-default/mips-nintendo64-none/release/n64-systemtest
 ```
 
-The generated ROM is `target/mips-nintendo64-none/release/n64-systemtest.z64`. Keep the original test source and its expected results intact when investigating a failure.
+The generated ROM is `target-default/mips-nintendo64-none/release/n64-systemtest.z64`. Keep an unmodified checkout and the original ROM when investigating a failure from an earlier run. Results from corrected fixtures must include their correction manifest alongside the base revision and ROM hash.
 
 The default build enables the base group. A separate build can include the upstream timing, cycle, CPU-hazard, partially characterized hardware, and experimental rendering tests:
 
@@ -52,7 +62,7 @@ cargo build --release --locked --target-dir target-extended \
 nust64 --elf target-extended/mips-nintendo64-none/release/n64-systemtest
 ```
 
-Record the ROM revision and enabled features with results. A successful default run does not establish that the optional groups passed.
+Record the ROM revision, correction manifest, and enabled features with results. Pass `--test-source .work/nemu64-test` to the validator so it verifies the prepared source throughout the run. A successful default run does not establish that the optional groups passed.
 
 The [validation results](testing/validation-results.md) record the tested inputs,
 platforms, and remaining failures. The [triangle fixture audit](testing/rdp-triangle-fixtures.md)

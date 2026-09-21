@@ -1,5 +1,72 @@
 # Recorded validation results
 
+## Triangle edges and cartridge fixtures
+
+The September 21, 2026 runs following revision
+`e6f2685bbf05712317cf9d7598df86349c384c3d` cover the lower-edge fix in issue #59
+and the maintained [cartridge fixture corrections](cartridge-fixtures.md).
+Triangles now select the lower minor edge when the current row reaches `YM`,
+including commands whose middle coordinate precedes their top coordinate.
+The new literal-packet regression fails before the fix and passes afterward.
+
+The cartridge retains all twelve experimental triangle cases and the clock
+test's tolerance of 20. The corrections repair command color packing,
+framebuffer color conversion, coverage/edge calculations in the CPU oracle,
+and the clock test's sampling sequence. See the [triangle guide](rdp-triangle-fixtures.md)
+and [clock sampling analysis](cartridge-build-layout.md#cpurdp-clock-sampling).
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each ran `tools/ci/validate.py` against the same 294-file source
+snapshot and prepared cartridge inputs. All 169 tracked cartridge-source files
+retained their recorded hashes during compilation and validation. The validator
+also recorded 376 generated files in the cartridge checkout. File bytes match
+across platforms; the aggregate source fingerprints differ because Windows
+and the Linux mount report different executable permission flags.
+
+| Check | Windows Release | Linux Release | Linux sanitizers |
+| --- | --- | --- | --- |
+| Hardware and host regressions | 1,063 passed | 1,063 passed | 1,063 passed |
+| Default cartridge | 4,637 passed | 4,637 passed | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot | 4,637 passed on each boot |
+| Extended base category, including twelve triangle cases | 4,649 passed | 4,649 passed | 4,649 passed |
+| Extended timing category | 11 failed of 1,604 | Same 11 failed | Same 11 failed |
+| Cycle, CP0-hazard, and quirk categories | 20 passed | 20 passed | 20 passed |
+| Concurrent storage, Unicode paths, and capture checks | Passed | Passed | Passed |
+| Source and input integrity | Verified | Verified | Verified |
+
+All 36 validation-tool tests, Clang formatting, and strict builds passed.
+Six of seven CTest cases passed; `nemu64_extended` failed, and each full
+validator returned exit 8. The sanitizer run reported no AddressSanitizer,
+UndefinedBehaviorSanitizer, or leak diagnostics. Complete failure blocks,
+group counts, and emulated execution counts match across the three runs.
+
+The remaining timing failures are the two VI-enabled cache averages
+(41.316 and 41.347 against 43.25 plus or minus 1), eight VI-disabled cache
+averages (41.319 through 41.816 against 42.5 plus or minus 0.5), and the
+VI-enabled same-bank uncached-load median (32 against 36 plus or minus 1).
+The revised clock test passes. Default execution uses 329,397,980 instructions
+and 819,200,814 CPU cycles; extended execution uses 366,093,273 instructions
+and 896,048,096 CPU cycles.
+
+The prepared source starts from cartridge revision
+`9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. Its four changed files and exact
+before/after hashes are recorded in `tests/cartridge/fixtures/manifest.json`.
+Rust `nightly-2026-07-16` and `nust64` 0.4.1 produced these inputs:
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Prepared default cartridge | 2,609,128 | `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3` |
+| Prepared extended cartridge | 2,633,384 | `083e8e93e4e154122ece8b6fdb5d211aa379cb3b9d4113074109f8b82d63cbc8` |
+| NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
+
+The older unmodified cartridge results below retain their original input
+hashes. Rebuilding with the corrected fixtures changes the instruction and
+data layout, exposing additional cache-timing assertions. These runs therefore
+establish the rendering and clock-test corrections while full validation
+remains unsuccessful. This result record and Git attributes for stable fixture
+line endings were added after the runs; no implementation, test, fixture, or
+build file changed after validation.
+
 ## Controller Pak banking
 
 The September 21, 2026 runs cover banked Controller Pak storage following

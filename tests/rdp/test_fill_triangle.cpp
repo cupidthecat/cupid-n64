@@ -113,11 +113,11 @@ TEST(rdp_fill_triangle_clips_negative_coordinates_and_excludes_bottom) {
     c.rows({7, 7, 0, 0, 0});
 }
 
-TEST(rdp_fill_triangle_middle_before_start_never_switches_edges) {
+TEST(rdp_fill_triangle_middle_before_start_uses_lower_edge) {
     TriangleFill c;
     c.triangle(4, 0, 12, 0x10000, 0x20000, 0x60000, 0, 0);
     c.run();
-    c.rows({0, 6, 6, 0, 0});
+    c.rows({0, 0x7e, 0x7e, 0, 0});
 }
 
 TEST(rdp_fill_triangle_masks_reserved_x_bits) {

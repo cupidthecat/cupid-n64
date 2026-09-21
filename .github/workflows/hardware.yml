@@ -80,6 +80,10 @@ jobs:
           ref: 9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c
           path: .work/nemu64-test
           persist-credentials: false
+      - name: Prepare cartridge fixtures
+        run: >-
+          python3 tools/ci/cartridge.py .work/nemu64-test
+          --report .work/test-fixture-corrections.json
       - name: Prepare boot firmware
         env:
           N64_PIF_NTSC: ${{ secrets.N64_PIF_NTSC }}
@@ -104,6 +108,8 @@ jobs:
           include-hidden-files: true
           path: |
             .work/test-build-toolchain.txt
+            .work/test-fixture-corrections.json
+            tests/cartridge/fixtures/
             .work/nemu64-test/LICENSE
             .work/nemu64-test/Cargo.lock
             .work/nemu64-test/Cargo.toml
@@ -111,6 +117,10 @@ jobs:
             .work/nemu64-test/rust-toolchain.toml
             .work/nemu64-test/mips-nintendo64-none.json
             .work/nemu64-test/linker.ld
+            .work/nemu64-test/src/graphics/color.rs
+            .work/nemu64-test/src/rdp/rdp_assembler.rs
+            .work/nemu64-test/src/tests/rdp/filled_triangle.rs
+            .work/nemu64-test/src/tests/rsp_timing/mod.rs
             .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest
             .work/nemu64-test/target-default/mips-nintendo64-none/release/n64-systemtest.z64
             .work/nemu64-test/target-extended/mips-nintendo64-none/release/n64-systemtest

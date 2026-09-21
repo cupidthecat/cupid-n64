@@ -72,8 +72,20 @@ line before the initial Count sample changes the measured difference to
 establish the complete hardware pipeline timing or turn the unmodified
 cartridge run into a pass.
 
-The original failures remain enabled and unresolved. Do not compensate by
-changing the CPU/RCP clock ratio, excluding failed groups, or treating a
-different ROM's result as validation of the failing image. Replay the exact
-hosted input from `accuracy-test-inputs`, with the supplied firmware, when
-investigating the remaining timing differences.
+The maintained [fixture correction](cartridge-fixtures.md) places MFC0 Count
+and the DPC_CLOCK load in one assembly block, aligned to a 32-byte instruction
+cache line. Both endpoints use the same helper. The expected DPC difference
+is calculated from the actual wrapping Count difference, including any
+polling overshoot; the tolerance remains 20.
+
+The diagnostic cartridge with SHA-256
+`f138e19bf660e962d2cc225012f6e246910f056af001c64c2a1de6711867a889`
+contains the pair at `0x80134bc0` and `0x80134bc4`. Its clock test passes with
+the unchanged emulator core. A diagnostic core that doubles DPC_CLOCK
+increments fails the corrected test with 266,680 clocks against 133,340
+plus or minus 20, over 100,005 Count ticks.
+
+These original-image failure records remain useful when reproducing earlier
+results. Replay the exact hosted input from `accuracy-test-inputs`, with the
+supplied firmware, when investigating a report tied to that image. Results
+from the prepared fixtures carry their own source manifest and ROM hashes.

@@ -1,0 +1,2 @@
+tests/cartridge/fixtures/* text eol=lf
+tests/cartridge/fixtures/*.patch whitespace=-blank-at-eol

@@ -12,7 +12,9 @@ CIC, save hardware, controllers, and attached cartridges. [Persistent storage](h
 explains the corresponding files and when they are written.
 
 The [testing guide](testing.md) gives local validation commands and the pinned
-cartridge-test build. [Continuous integration](testing/continuous-integration.md)
+cartridge-test build. The [cartridge fixture guide](testing/cartridge-fixtures.md)
+describes source preparation and the records needed to reproduce its inputs.
+[Continuous integration](testing/continuous-integration.md)
 describes platform jobs and retained reports. Compare changes against the
 [accuracy baseline](testing/accuracy-baseline.md) and
 [recorded validation results](testing/validation-results.md), which identify the
@@ -21,8 +23,8 @@ does not establish that the extended groups passed.
 
 [Compatibility captures](testing/compatibility-captures.md) explains how to
 record repeatable video, audio, and execution evidence. The
-[triangle fixture audit](testing/rdp-triangle-fixtures.md) records the current
-experimental command-packing and coverage disagreements.
+[triangle fixture guide](testing/rdp-triangle-fixtures.md) explains the
+experimental command-packing and coverage corrections.
 [Cartridge build layout](testing/cartridge-build-layout.md) explains why timing
 results from different test binaries need separate records.
 

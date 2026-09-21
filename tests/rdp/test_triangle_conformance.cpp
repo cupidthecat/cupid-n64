@@ -141,6 +141,28 @@ TEST(rdp_raw_triangle_fractional_top_without_aa_rejects_missing_first_sample) {
     }
 }
 
+TEST(rdp_raw_triangle_middle_before_top_uses_lower_edge) {
+    constexpr std::array<u64, 11> packet{
+        set_framebuffer,
+        set_combiner,
+        set_primitive_white,
+        0x39000000ff0000ffULL,
+        0x2f0000f080000000ULL,
+        set_scissor_8x8,
+        0x088000103ffc0004ULL,
+        0x0004000000000000ULL,
+        0x0002000000000000ULL,
+        0x0000000000000000ULL,
+        sync_full,
+    };
+
+    RawTriangleFixture fixture;
+    fixture.run(packet);
+    CHECK_EQ(fixture.pixel(1, 1), 0U);
+    CHECK_EQ(fixture.pixel(2, 1), 0xff0000e0U);
+    CHECK_EQ(fixture.pixel(3, 3), 0xff0000e0U);
+}
+
 TEST(rdp_raw_triangle_zero_height_packet_is_rejected_without_writes) {
     constexpr std::array<u64, 10> packet{
         set_framebuffer,       set_combiner,

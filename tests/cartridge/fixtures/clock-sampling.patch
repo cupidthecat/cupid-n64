@@ -1,0 +1,89 @@
+diff --git a/src/tests/rsp_timing/mod.rs b/src/tests/rsp_timing/mod.rs
+--- a/src/tests/rsp_timing/mod.rs
++++ b/src/tests/rsp_timing/mod.rs
+@@ -6,7 +6,6 @@
+ 
+ use arbitrary_int::prelude::*;
+ 
+-use crate::cop0::count;
+ use crate::rdp::rdp::{DP_SET_STATUS_CLEAR_FREEZE, DP_SET_STATUS_SET_FREEZE, RDP};
+ use crate::rsp::rsp::RSP;
+ use crate::rsp::rsp_assembler::{CP0Register, RSPAssembler, GPR};
+@@ -31,6 +30,29 @@
+ 
+ pub struct ClockCPUvsRSP {}
+ 
++#[inline(never)]
++fn sample_clock_pair() -> (u32, u24) {
++    let cpu_clock: u32;
++    let rdp_clock: u32;
++    unsafe {
++        // A cache refill must happen before both samples, rather than between them.
++        // Reuse the same pair for the initial read and every later poll.
++        core::arch::asm!(
++            ".set push",
++            ".set noreorder",
++            ".balign 32",
++            "mfc0 {cpu_clock}, $9",
++            "lw {rdp_clock}, 0({rdp_address})",
++            ".set pop",
++            cpu_clock = out(reg) cpu_clock,
++            rdp_clock = out(reg) rdp_clock,
++            rdp_address = in(reg) 0xffff_ffff_a410_0010u64,
++            options(nostack),
++        );
++    }
++    (cpu_clock, u24::extract_u32(rdp_clock, 0))
++}
++
+ impl Test for ClockCPUvsRSP {
+     fn name(&self) -> &str {
+         "RSP Timing: Clock CPU vs RDP"
+@@ -46,22 +68,18 @@
+ 
+     fn run(&self, _value: &Box<dyn Any>) -> Result<(), String> {
+         const CPU_CLOCK_CYCLES: u32 = 100000;
+-        const EXPECTED_RDP_CYCLES: u24 = u24::new(CPU_CLOCK_CYCLES * 4 / 3);
+         const RDP_CYCLE_EPSILON: u24 = u24::new(20);
+ 
+         // Freeze doesn't matter. Set it to avoid misconceptions
+         unsafe {
+             RDP::set_status(DP_SET_STATUS_SET_FREEZE);
+         }
+-        let cpu_clock_before = count();
+-        let rdp_clock_before = RDP::clock();
+-        let (cpu_clock_target, cpu_overflow) = cpu_clock_before.overflowing_add(CPU_CLOCK_CYCLES);
+-
+-        let rdp_clock_after = loop {
+-            let cpu_clock = count();
+-            let rdp_clock = RDP::clock();
+-            if (!cpu_overflow || cpu_clock < cpu_clock_before) && cpu_clock >= cpu_clock_target {
+-                break rdp_clock;
++        let (cpu_clock_before, rdp_clock_before) = sample_clock_pair();
++
++        let (cpu_clock_after, rdp_clock_after) = loop {
++            let (cpu_clock, rdp_clock) = sample_clock_pair();
++            if cpu_clock.wrapping_sub(cpu_clock_before) >= CPU_CLOCK_CYCLES {
++                break (cpu_clock, rdp_clock);
+             }
+         };
+ 
+@@ -70,13 +88,15 @@
+             RDP::set_status(DP_SET_STATUS_CLEAR_FREEZE);
+         }
+ 
++        let elapsed_count = cpu_clock_after.wrapping_sub(cpu_clock_before);
++        let expected_rdp_cycles = u24::new(elapsed_count * 4 / 3);
+         soft_assert_eq_with_epsilon(
+             RDP_CYCLE_EPSILON,
+             rdp_clock_after.wrapping_sub(rdp_clock_before),
+-            EXPECTED_RDP_CYCLES,
++            expected_rdp_cycles,
+             format!(
+-                "Expected RDP cycles that pass during {} cpu cycles",
+-                CPU_CLOCK_CYCLES
++                "Expected RDP cycles that pass during {} Count ticks",
++                elapsed_count
+             )
+             .as_str(),
+         )?;
