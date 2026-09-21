@@ -64,9 +64,15 @@ void Rsp::reset() {
 }
 
 void Rsp::tick(u64 rcp_cycles) {
-    while (rcp_cycles != 0 && !halted_) {
-        tick_dma(1);
-        step();
+    while (rcp_cycles != 0) {
+        if (halted_) {
+            if (!pipeline_.advance_branch_wait())
+                break;
+            tick_dma(1);
+        } else {
+            tick_dma(1);
+            step();
+        }
         --rcp_cycles;
     }
     tick_dma(rcp_cycles);

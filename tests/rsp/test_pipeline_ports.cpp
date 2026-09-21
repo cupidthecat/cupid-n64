@@ -154,6 +154,34 @@ TEST(rsp_pipeline_load_store_port_conflict_waits_at_the_memory_stage) {
     CHECK_EQ(measure_scalar_tail(vector_memory_body).clocks, 13U);
 }
 
+TEST(rsp_pipeline_reserved_special_uses_unwired_scalar_fields) {
+    auto system = std::make_unique<System>();
+    system->bus.write(dmem_base, 4, 0xfeedfaceU);
+    system->bus.write(dmem_base + 0x80, 4, 0x80000001U);
+    instruction(system->rsp, 0x00, 0x8c010080U); // LW r1,0x80(zero).
+    instruction(system->rsp, 0x04, 0x00201001U); // Reserved SPECIAL: r2 = r1 >> (r1 & 31).
+    instruction(system->rsp, 0x08, 0x00401825U); // OR r3,r2,zero.
+    instruction(system->rsp, 0x0c, 0xac030000U); // SW r3,0(zero).
+    instruction(system->rsp, 0x10, break_instruction);
+    system->rsp.write_register(0x10, 1);
+
+    system->rsp.tick(1);
+    CHECK_EQ(system->rsp.pc, 0x04U);
+
+    // The reserved operation reads its encoded RS field functionally, but that
+    // field is not connected to the scalar dependency interlock.
+    system->rsp.tick(1);
+    CHECK_EQ(system->rsp.pc, 0x08U);
+
+    // Its encoded RD field is likewise absent from the dependency scoreboard.
+    system->rsp.tick(1);
+    CHECK_EQ(system->rsp.pc, 0x0cU);
+
+    system->rsp.tick(1);
+    CHECK_EQ(system->rsp.pc, 0x10U);
+    CHECK_EQ(system->bus.read(dmem_base, 4), 0x40000000U);
+}
+
 TEST(rsp_pipeline_vnop_and_reciprocal_fake_fields_match_pairing_wires) {
     constexpr u32 mtc2_r1_v2 = 0x48811000U;
     constexpr u32 lbv_v2 = 0xc8020000U;

@@ -1,4 +1,5 @@
 #include "test.hpp"
+#include "test_system.hpp"
 
 #include "cupid/system.hpp"
 
@@ -203,6 +204,139 @@ TEST(rsp_pipeline_mtc0_halt_retires_paired_vector_op_in_both_orders) {
         CHECK_EQ(status(*system) & 3U, 3U);
         CHECK_EQ(dp_clock(*system), 11U);
     }
+}
+
+TEST(rsp_pipeline_taken_break_delay_slot_spends_one_bubble_across_halt_resume) {
+    for (unsigned halt_gap = 0; halt_gap < 3; ++halt_gap) {
+        auto system = std::make_unique<System>();
+        system->bus.write(dmem_base, 4, 0xfeedfaceU);
+        instruction(system->rsp, 0x00, 0x10000005U); // BEQ zero,zero,0x18.
+        instruction(system->rsp, 0x04, 0x0000000dU); // BREAK in the taken delay slot.
+        instruction(system->rsp, 0x18, 0xac000000U); // SW zero,0(zero).
+        system->rsp.write_register(0x10, 0x101U);    // Clear halt and enable interrupt on BREAK.
+
+        advance_rsp_cycle(*system);
+        CHECK_EQ(pc(*system), 0x04U);
+        CHECK_EQ(dp_clock(*system), 1U);
+
+        advance_rsp_cycle(*system);
+        CHECK_EQ(pc(*system), 0x18U);
+        CHECK_EQ(status(*system) & 0x43U, 0x43U);
+        CHECK_EQ(system->bus.read(0x04300008U, 4) & 1U, 1U);
+        CHECK_EQ(dp_clock(*system), 2U);
+
+        if (halt_gap == 1U) {
+            advance_rsp_cycle(*system);
+            CHECK_EQ(pc(*system), 0x18U);
+            CHECK_EQ(status(*system) & 0x43U, 0x43U);
+            CHECK_EQ(system->bus.read(dmem_base, 4), 0xfeedfaceU);
+            CHECK_EQ(dp_clock(*system), 3U);
+        } else if (halt_gap == 2U) {
+            system->advance(3); // Two RCP cycles in one host advance.
+            CHECK_EQ(pc(*system), 0x18U);
+            CHECK_EQ(status(*system) & 0x43U, 0x43U);
+            CHECK_EQ(system->bus.read(dmem_base, 4), 0xfeedfaceU);
+            CHECK_EQ(dp_clock(*system), 4U);
+        }
+
+        system->rsp.write_register(0x10, 13U); // Clear halt, broke, and the SP interrupt.
+        CHECK_EQ(status(*system) & 3U, 0U);
+        CHECK_EQ(system->bus.read(0x04300008U, 4) & 1U, 0U);
+
+        advance_rsp_cycle(*system);
+        if (halt_gap != 0U) {
+            CHECK_EQ(pc(*system), 0x1cU);
+            CHECK_EQ(system->bus.read(dmem_base, 4), 0U);
+        } else {
+            CHECK_EQ(pc(*system), 0x18U);
+            CHECK_EQ(system->bus.read(dmem_base, 4), 0xfeedfaceU);
+
+            advance_rsp_cycle(*system);
+            CHECK_EQ(pc(*system), 0x1cU);
+            CHECK_EQ(system->bus.read(dmem_base, 4), 0U);
+        }
+        CHECK_EQ(dp_clock(*system), halt_gap == 2U ? 5U : 4U);
+    }
+}
+
+TEST(rsp_pipeline_halted_branch_bubble_ages_dependencies_and_dma) {
+    auto system = std::make_unique<System>();
+    test::initialize_memory(*system);
+    instruction(system->rsp, 0x00, 0x24010002U); // ADDIU r1,zero,2; set-halt command.
+    instruction(system->rsp, 0x04, 0x14000000U); // BNE zero,zero,0; not taken, forces next single issue.
+    instruction(system->rsp, 0x08, 0x4a0000acU); // VXOR v2,v0,v0.
+    instruction(system->rsp, 0x0c, 0x10000004U); // BEQ zero,zero,0x20.
+    instruction(system->rsp, 0x10, 0x40812000U); // MTC0 r1,SP_STATUS; halt in the taken delay slot.
+    instruction(system->rsp, 0x20, 0x4a0010eaU); // VOR v3,v2,v0.
+    instruction(system->rsp, 0x24, 0x4a000037U); // VNOP; prevents a same-cycle scalar pair.
+    system->rsp.write_register(0x10, 1);         // Clear halt.
+
+    for (const u32 expected_pc : {0x04U, 0x08U, 0x0cU, 0x10U, 0x20U}) {
+        advance_rsp_cycle(*system);
+        CHECK_EQ(pc(*system), expected_pc);
+    }
+    CHECK_EQ(status(*system) & 3U, 1U);
+    CHECK_EQ(dp_clock(*system), 5U);
+
+    for (u32 byte = 0; byte < 8; ++byte) {
+        system->bus.write_ram_byte(0x200U + byte, static_cast<u8>(0xa0U + byte));
+        system->rsp.memory[0x80U + byte] = 0;
+        CHECK_EQ(system->bus.read_ram_byte(0x200U + byte), static_cast<u8>(0xa0U + byte));
+    }
+    system->rsp.write_register(0x00, 0x80U);
+    system->rsp.write_register(0x04, 0x200U);
+    system->rsp.write_register(0x08, 7U);
+    CHECK_EQ(system->rsp.read_register(0x18), 1U);
+
+    // This halted RCP cycle is still the taken-branch bubble. It must advance
+    // the dependency history and SP DMA without issuing the branch target.
+    advance_rsp_cycle(*system);
+    CHECK_EQ(pc(*system), 0x20U);
+    CHECK_EQ(status(*system) & 3U, 1U);
+    CHECK_EQ(dp_clock(*system), 6U);
+    CHECK_EQ(system->rsp.read_register(0x18), 0U);
+    CHECK_EQ(system->rsp.read_register(0x00), 0x88U);
+    CHECK_EQ(system->rsp.read_register(0x04), 0x208U);
+    for (u32 byte = 0; byte < 8; ++byte)
+        CHECK_EQ(system->rsp.memory[0x80U + byte], static_cast<u8>(0xa0U + byte));
+
+    system->rsp.write_register(0x10, 1U); // Clear halt.
+    advance_rsp_cycle(*system);
+    CHECK_EQ(pc(*system), 0x24U);
+    CHECK_EQ(status(*system) & 3U, 0U);
+    CHECK_EQ(dp_clock(*system), 7U);
+}
+
+TEST(rsp_pipeline_taken_delay_slot_single_step_halt_spends_pending_bubble) {
+    auto system = std::make_unique<System>();
+    system->bus.write(dmem_base, 4, 0xfeedfaceU);
+    instruction(system->rsp, 0x00, 0x10000005U); // BEQ zero,zero,0x18.
+    instruction(system->rsp, 0x04, 0x24010055U); // ADDIU r1,zero,0x55; taken delay slot.
+    instruction(system->rsp, 0x18, 0xac010000U); // SW r1,0(zero).
+    system->rsp.write_register(0x10, 1U);        // Clear halt.
+
+    advance_rsp_cycle(*system);
+    CHECK_EQ(pc(*system), 0x04U);
+    CHECK_EQ(dp_clock(*system), 1U);
+
+    system->rsp.write_register(0x10, 0x40U); // Enable single-step before the delay slot.
+    advance_rsp_cycle(*system);
+    CHECK_EQ(pc(*system), 0x18U);
+    CHECK_EQ(status(*system) & 0x23U, 0x21U);
+    CHECK_EQ(system->bus.read(dmem_base, 4), 0xfeedfaceU);
+    CHECK_EQ(dp_clock(*system), 2U);
+
+    advance_rsp_cycle(*system); // The pending taken-branch bubble elapses while halted.
+    CHECK_EQ(pc(*system), 0x18U);
+    CHECK_EQ(status(*system) & 0x23U, 0x21U);
+    CHECK_EQ(dp_clock(*system), 3U);
+
+    system->rsp.write_register(0x10, 0x21U); // Clear halt and single-step.
+    CHECK_EQ(status(*system) & 0x23U, 0U);
+    advance_rsp_cycle(*system);
+    CHECK_EQ(pc(*system), 0x1cU);
+    CHECK_EQ(system->bus.read(dmem_base, 4), 0x55U);
+    CHECK_EQ(dp_clock(*system), 4U);
 }
 
 TEST(rsp_pipeline_single_step_suppresses_dual_issue_until_resumed) {

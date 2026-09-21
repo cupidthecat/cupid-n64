@@ -9,6 +9,13 @@ A PC write does not change halt, break, or single-step status. Reading the PC
 or resuming execution without writing it preserves a pending branch: the delay
 slot executes before the branch target.
 
+If the delay-slot instruction itself halts, PC already names the branch target.
+The pending branch bubble still occupies one RCP cycle and can elapse while
+halted. It does not change PC or execute the target. After that cycle, resuming
+does not repeat the bubble. Clearing HALT before another RCP cycle elapses
+leaves the bubble for the next running cycle. BREAK, a write that sets HALT,
+and single-step halt follow the same rule.
+
 A PC write also discards instructions latched during an operand wait. The
 register dependency history remains active, so the replacement instruction
 still observes any outstanding interlock. See

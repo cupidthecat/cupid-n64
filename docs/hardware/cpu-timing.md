@@ -81,9 +81,15 @@ shared-memory arbitration remain incomplete. Buffered stores and DMA engines do
 not yet share this transaction timing, and per-chip RAS/minimum-interval effects
 and the RI optimize bit are not modeled.
 
-The recorded Windows-built extended image passes the VI-disabled cache-miss
-timing cases. Linux-built images still expose failures in that group, as
-described in the [cartridge build comparison](../testing/cartridge-build-layout.md).
-Two VI-enabled cache-miss averages and the uncached read that shares VI's bank
-also fail. Refresh timing by itself does not establish the missing arbitration
-behavior.
+VI advances scanline timing and starts RI refresh, but does not submit timed
+framebuffer reads to RDRAM. Scanout reads the stored image separately. The CPU
+wait calculation therefore has no VI request address or bank to compare with
+its own transfer. Refresh alone cannot distinguish a read that shares VI's
+bank from one in an adjacent bank.
+
+At revision `6d8f70b`, the retained hosted extended image passes all eight
+VI-disabled cache-miss cases. The two VI-enabled averages remain below their
+original tolerance, and the uncached read sharing VI's bank still fails. The
+[cartridge build comparison](../testing/cartridge-build-layout.md) records
+the input identity and measurements. Shared arbitration remains open under
+issues #4, #5, and #6.

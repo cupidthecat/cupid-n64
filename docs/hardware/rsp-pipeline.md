@@ -11,6 +11,12 @@ COP0/COP2 reads retain their destination in a two-slot dependency history; zero
 never becomes a pending destination. Vector destinations remain in a three-slot
 history. A dependent group waits for the affected register to become available.
 
+The current issue decoder assigns no scalar dependency inputs or outputs to
+reserved SPECIAL functions. Their execution fallback still computes
+`rd = rs >> (rs & 31)`. An encoded load, reserved instruction, and immediate
+scalar consumer preserve this behavior in the regression suite. This check
+does not supply a new console timing measurement for the reserved encoding.
+
 | Intervening issue slots | Scalar load-result waits | Vector-result waits |
 | --- | --- | --- |
 | 0 | 2 cycles | 3 cycles |
@@ -32,23 +38,39 @@ issue. Nested branches retain the outer target as the inner branch's delay slot.
 Fetched instruction words remain latched during an operand wait. An SP_PC write
 discards that group, the pending branch target and any pending branch bubble,
 including a write of the same address. Register dependency history and a pending
-single-issue restriction remain intact. Halt/resume preserves pipeline state,
-while reset clears it. Single-step mode selects one instruction.
+single-issue restriction remain intact. Halt/resume retains the pending pipeline
+state, while reset clears it. Single-step mode selects one instruction.
 Both members of an already selected pair execute if one writes SP_STATUS to halt
 the processor.
+
+If a taken delay-slot instruction halts, its pending branch bubble consumes the
+next elapsed RCP cycle, including a cycle spent halted. That cycle ages the
+dependency history once and advances SP DMA without issuing an instruction or
+changing PC, HALT, BROKE, or the SP interrupt. Further halted cycles preserve
+the remaining dependency history. Resuming with no elapsed halted cycle leaves
+the bubble for the next running cycle; resuming after it has elapsed can issue
+the target immediately, subject to any remaining operand interlock.
+
+For a branch at PC `0x00`, BREAK at `0x04`, and a store at target `0x18`, the
+branch runs at clock 1 and BREAK leaves PC `0x18` at clock 2. The bubble occupies
+clock 3 whether HALT is cleared immediately or one halted cycle elapses first.
+The target store can execute at clock 4. A longer halted interval cannot make
+the same bubble run again after resume.
 
 Stalls consume normal RCP cycles. DMA and peripheral clocks continue to advance,
 so an intervening SP DMA can finish while a loaded value waits to reach its
 consumer. `Rsp::step()` processes one issue, dependency stall or branch bubble;
-`Rsp::tick()` also advances SP DMA. `System::advance()` orders these cycles with
-the other devices.
+`Rsp::tick()` advances SP DMA and can spend a pending branch bubble while halted.
+`System::advance()` orders these cycles with the other devices.
 
 The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
-DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing and control
-changes. A 4,096-iteration mixed scalar/vector loop checks elapsed clocks and
+DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved
+SPECIAL fields, and control changes. Halt/resume fixtures check BREAK interrupts,
+single-step, vector dependencies, and DMA payload completion across a pending
+branch bubble. A 4,096-iteration mixed scalar/vector loop checks elapsed clocks and
 results with both bulk and single-CPU-cycle scheduling. The synchronization
-regression checks DMA completion during a load
-interlock and the consumer's use of the previously loaded value.
+regression checks DMA completion during a load interlock and the consumer's use
+of the previously loaded value.
 
 These checks establish the implemented issue model. They do not provide new
 physical-console captures for every opcode combination or resolve every

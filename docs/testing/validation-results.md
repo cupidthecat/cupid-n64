@@ -1,56 +1,78 @@
 # Recorded validation results
 
-The September 20, 2026 run tested hardware revision
-`ee9205bcbc25da68e2be881ceeea338c12fae2a0`. This revision includes exclusive
-temporary-file reservation for persistent storage, bus register decoding,
-RSP COP0 aliases, RDP color-key alpha, raw triangle fixtures, and the refresh
-phase correction for CPU memory requests.
+The September 21, 2026 runs cover the RSP halt/resume correction following
+revision `6d8f70b78452a92c05d2942a3d0ee140fb66699e`. A pending taken-branch
+bubble now spends an elapsed RCP cycle while halted, preserving the stall for
+immediate resume. Four encoded regressions bring the local suite to 1,030 cases.
+See [RSP instruction timing](../hardware/rsp-pipeline.md) for the cycle model.
 
 ## Inputs and commands
 
 The test source is `thelemmy/nemu64-test` at
 `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c`. The extended image enables
-`timing,cycle,cop0hazard,poorly_understood_quirk,experimental_rdp`. The images
-and assertions were unchanged during these runs.
+`timing,cycle,cop0hazard,poorly_understood_quirk,experimental_rdp`. Both runs
+use the exact retained hosted images, with their original assertions unchanged.
 
 | Input | Bytes | SHA-256 |
 | --- | ---: | --- |
-| Default cartridge | 2,608,400 | `e9d93dc1f854af7c60b9d576e15615766ce9e693a9ce794140c3736603732769` |
-| Extended cartridge | 2,635,312 | `9a85cf5b8ea89af4170abb0a14fb9b415232b3904e1257f99036485665478c5c` |
+| Default cartridge | 2,608,400 | `c4b6d452355bf89ed8409ef24ea02d3aadb7c6dfeed991f252700ca1f88114c5` |
+| Extended cartridge | 2,635,352 | `441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089` |
 | NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
 
-Each platform used the shared `tools/ci/validate.py` entry point with both
-cartridge paths, the PIF path, the pinned test checkout, strict compiler
-warnings, and clang-format 22.1.0. The Linux builds used Clang 18.1.3 in Release
-and RelWithDebInfo with AddressSanitizer and UndefinedBehaviorSanitizer. The
-Windows Release build used MSVC 19.43 and the Visual Studio 2022 generator.
-The [testing guide](../testing.md) gives the full command forms.
+Both configurations used `tools/ci/validate.py` with both cartridge paths, the
+PIF path, strict compiler warnings, clang-format 22.1.0, and two build jobs.
+The compiler was Clang 18.1.3 with the Unix Makefiles generator: Release for the
+normal run, and RelWithDebInfo with AddressSanitizer, UndefinedBehaviorSanitizer,
+and leak detection for the instrumented run. The
+[testing guide](../testing.md) gives the command forms.
 
 ## Results
 
-| Check | Linux Release | Linux sanitizers | Windows MSVC |
-| --- | --- | --- | --- |
-| Local hardware and host regressions | 994 passed | 994 passed | 994 passed |
-| Concurrent storage replacement | Passed | Passed | Passed |
-| Default cartridge | 4,637 passed | 4,637 passed | 4,637 passed |
-| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot | 4,637 passed on each boot |
-| Unicode runner and storage paths | Passed | Passed | Passed |
-| Extended cartridge | 14 failed | Same 14 failed | Same 14 failed |
+| Check | Linux Release | Linux sanitizers |
+| --- | --- | --- |
+| Hardware and host regressions | 1,030 passed | 1,030 passed |
+| Concurrent storage replacement | Passed | Passed |
+| Default cartridge | 4,637 passed | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot |
+| Unicode runner and storage paths | Passed | Passed |
+| Compatibility capture repeatability and failure handling | Passed | Passed |
+| Extended cartridge | 15 failed | Same 15 failed |
+| Source and input integrity | Verified | Verified |
 
-The strict builds produced no compiler warnings. The sanitizer run produced no
-AddressSanitizer or UndefinedBehaviorSanitizer diagnostics. CTest returned
-failure on every platform because the extended cartridge failed.
+The format, configure, build, and validation-script tests passed. The instrumented
+run reported no AddressSanitizer, UndefinedBehaviorSanitizer, or leak diagnostics.
+CTest and the full validators returned exit 8 because the extended cartridge
+failed; neither full run is a pass.
 
-The extended summary contains 11 failures among 4,649 base cases and three
-failures among 1,604 timing cases. All 13 cycle cases, five CP0-hazard cases,
-and two partially characterized hardware cases pass. The three timing failures
-are the VI-enabled cache-miss averages with both parameter values and the
-uncached load that contends with VI in the same bank. The eleven rendering
-failures are the experimental FilledTriangle cases documented in the
-[fixture audit](rdp-triangle-fixtures.md).
+Windows MSVC Release separately passed the targeted RSP group, 47 of 47 cases,
+including all four new regressions, with clang-format checked. The local Windows
+full-ROM invocation did not start, so this record assigns it no result.
 
-The eight VI-disabled cache-miss cases that failed in the earlier run now pass.
-Shared VI contention and the experimental triangle disagreements remain release
-blockers. These results do not establish desktop gameplay, host audio quality,
-physical gamepad compatibility, or a completed 1.0 release. Those scenarios
-require their own recorded acceptance runs.
+The final BREAK, MTC0 HALT, and single-step regressions fail at their resumed
+target PC on the preceding core. The MTC0 case reaches that mismatch after
+checking DMA source bytes, completion, addresses, and all eight copied bytes.
+The reserved SPECIAL regression passes on the preceding core and retains the
+existing decoder behavior.
+
+## Remaining cartridge failures
+
+All 15 complete diagnostic blocks match the preceding `6d8f70b` run, including
+the rendered pixel arrays. The extended summary contains 11 failures among
+4,649 base cases and four failures among 1,604 timing cases. All 13 cycle cases,
+five CP0-hazard cases, and two partially characterized hardware cases pass.
+
+The VI-enabled cache-miss averages remain 41.274 and 41.668 against
+43.25 +/- 1.0. The VI-enabled same-bank uncached-load case remains 32 against
+36 +/- 1. The CPU/RDP clock measurement remains 133,299 against 133,333 +/- 20.
+All eight VI-disabled cache-miss cases pass. The eleven experimental FilledTriangle
+disagreements are described in the [fixture audit](rdp-triangle-fixtures.md).
+
+Default execution remains 328,128,181 instructions and 741,446,373 CPU cycles.
+Extended execution remains 359,483,384 instructions and 793,706,393 CPU cycles.
+A different cartridge layout can change timing results; see the
+[build comparison](cartridge-build-layout.md) before comparing other images.
+
+Shared VI contention, the CPU/RDP timing discrepancy, and the triangle fixture
+disagreements remain release blockers. These runs do not establish a completed
+1.0 release. [Compatibility captures](compatibility-captures.md) have separate
+acceptance criteria.

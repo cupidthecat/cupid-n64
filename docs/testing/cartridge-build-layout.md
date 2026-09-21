@@ -24,12 +24,35 @@ All four images retain the original assertions. The eleven base failures are
 the [experimental triangle cases](rdp-triangle-fixtures.md). Cycle, CP0-hazard,
 and partially characterized hardware categories pass.
 
-The hosted image fails VI-disabled cache-miss averages at `0x80000000`,
+At those revisions, the hosted image fails VI-disabled cache-miss averages at `0x80000000`,
 `0x80600000`, and `0x80700000`, in addition to the two VI-enabled averages,
 the uncached read sharing VI's bank, and the CPU/RDP clock test. Both local
 Linux images fail the `0x80000000` case and CPU/RDP clock test, alongside the
 three timing failures in the recorded Windows image. Matching the image size
 after remapping paths did not reproduce the CI hash or all its measurements.
+
+## SP DMA clock correction
+
+Revision `6d8f70b` corrects SP DMA row countdowns to use RCP cycles. Replaying
+the same hosted extended image, SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089`,
+now passes all eight VI-disabled cache-miss cases. Windows MSVC, Linux Clang,
+and sanitizer runs agree with the completed push and PR workflows
+`35582647081` and `35582651851`.
+
+The two VI-enabled averages remain outside their unchanged tolerance:
+
+| Parameter | Before the DMA correction | After the DMA correction | Expected |
+| --- | ---: | ---: | --- |
+| `true` | 41.272 | 41.274 | 43.25 +/- 1.0 |
+| `false` | 41.552 | 41.668 | 43.25 +/- 1.0 |
+
+The uncached same-bank VI measurement remains 32, and the CPU/RDP clock
+measurement remains 133,299. The extended summary has 11 base failures and
+four timing failures; the other enabled groups pass. The original assertions
+and cartridge bytes are unchanged. Correcting DMA timing changes when the
+cartridge reaches later measurements, but does not implement VI memory
+requests or shared RDRAM arbitration.
 
 ## CPU/RDP clock sampling
 
