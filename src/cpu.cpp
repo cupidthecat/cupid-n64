@@ -56,7 +56,8 @@ void Cpu::reset() {
     executing_step_ = false;
     nmi_pending_ = false;
     speculative_fetch_ = false;
-    fetch_wait_cycles_ = 0;
+    speculative_refill_bases_.fill(0);
+    speculative_refill_count_ = 0;
     write_buffer_.fill({});
     write_buffer_head_ = write_buffer_count_ = 0;
     cp0[12] = 0x3440ff04U;
@@ -171,7 +172,7 @@ void Cpu::step() {
         }
     } guard{executing_step_};
     executing_step_ = true;
-    fetch_wait_cycles_ = 0;
+    speculative_refill_count_ = 0;
     exception_pending = redirected_ = false;
     instruction_cycles_ = 1;
     synchronized_instruction_cycles_ = 0;
@@ -227,7 +228,7 @@ void Cpu::step() {
         }
     }
     gpr[0] = 0;
-    add_cycles(fetch_wait_cycles_);
+    complete_speculative_refills();
     synchronize();
 }
 

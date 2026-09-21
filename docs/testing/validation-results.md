@@ -1,5 +1,70 @@
 # Recorded validation results
 
+## Cache clock phase and refill ordering
+
+The September 21, 2026 runs following
+`e5087dd178a79eabed5a2a486fc9a6c3f657b4a2` cover shared SClock synchronization
+for instruction and data cache misses. The synchronization uses the current
+CPU/RCP phase, including pending CPU cycles and the two fixed cycles before
+the request reaches the synchronization point. The nominal 40- and 48-cycle
+refill waits remain unchanged.
+
+Speculative instruction refills now calculate their phase and refresh overlap
+after the older instruction commits. Regressions cover both caches, explicit
+instruction-cache fill, dirty replacement, all three carried phases, pending
+cycles, Count visibility, two queued refills, and refresh beginning on the
+optional synchronization cycle. The [CPU timing guide](../hardware/cpu-timing.md)
+describes the timing rule and its limits.
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each ran the full validator against the same 297-file source snapshot
+and prepared cartridge inputs. All 36 validation-tool tests, Clang formatting,
+and strict builds passed. The three runs agree on these results:
+
+| Check | Result in each configuration |
+| --- | --- |
+| Hardware and host regressions | 1,071 passed |
+| Default cartridge | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot |
+| Extended base category | 4,649 passed |
+| Extended timing category | 1 failed of 1,604 |
+| Cycle, CP0-hazard, and quirk categories | 20 passed |
+| Concurrent storage, Unicode paths, and capture checks | Passed |
+| Source and input integrity | Verified |
+
+The remaining assertion is the VI-enabled same-bank uncached-load median:
+32 against 36 plus or minus 1. All ten cache-miss assertions pass. Each full
+validator returns exit 8 because `nemu64_extended` still fails. The sanitizer
+run reports no ASan, UBSan, or leak diagnostics. Default execution uses
+329,396,925 instructions and 822,176,054 CPU cycles; extended execution uses
+363,886,662 instructions and 896,163,285 CPU cycles.
+
+These runs use the locally prepared default and extended images recorded in
+the next section: SHA-256 `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3`
+and `083e8e93e4e154122ece8b6fdb5d211aa379cb3b9d4113074109f8b82d63cbc8`.
+Their 169 tracked source files and the supplied 1,984-byte PIF input retain
+their recorded hashes throughout validation.
+
+A separate Windows Clang replay uses the exact extended image downloaded from
+the completed hosted runs for `e5087dd`: 2,632,872 bytes, SHA-256
+`e1c4bdd741b8adc8c076c0976fe24fc907ffa521a0ddd05339bcbf16ce108b30`.
+The unchanged earlier core reproduces all eleven hosted timing failures and
+869,864,933 CPU cycles on that image. The cache-phase changes clear its ten
+cache-miss failures, leaving the same uncached-load assertion. This replay
+executes 360,309,635 instructions and 870,608,565 CPU cycles.
+
+The original uncorrected extended image, SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089`, remains a
+separate diagnostic. It retains the eleven triangle-fixture failures, the
+original clock-measurement failure, the same-bank uncached-load failure, and
+one VI-disabled cache average at physical `0x00300000` (43.03 against 42.5
+plus or minus 0.5). The prepared-image passes therefore do not establish
+identical timing on every cartridge layout. Shared RDRAM arbitration and
+VI request timing remain under issues #4, #5, #6, and #39.
+
+This result record was added after validation. No implementation, test,
+fixture, or build file changed after the three runs.
+
 ## Triangle edges and cartridge fixtures
 
 The September 21, 2026 runs following revision

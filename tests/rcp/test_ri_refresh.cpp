@@ -131,7 +131,7 @@ TEST(ri_refresh_stalls_blocking_cpu_memory_requests_but_not_cache_hits_or_device
         system.bus.tick(first_line(system));
         CHECK_EQ(system.bus.rdram_refresh_wait(), 54U);
         system.cpu.step();
-        const u64 expected = access == 0 ? 112U : access == 1 ? 121U : access == 2 ? 1U : 5U;
+        const u64 expected = access == 0 ? 112U : access == 1 ? 122U : access == 2 ? 1U : 5U;
         CHECK_EQ(system.cpu.cycles, expected);
         CHECK_EQ(system.cpu.gpr[2], access == 3 ? 0x02020102U : 0x12345678U);
         CHECK_EQ(system.cpu.cp0[9], expected / 2);
@@ -145,11 +145,11 @@ TEST(ri_refresh_delays_an_instruction_cache_miss_once) {
     system.cpu.set_pc(0xffffffff80001000ULL);
     system.bus.tick(first_line(system));
     system.cpu.step();
-    CHECK_EQ(system.cpu.cycles, 129U);
+    CHECK_EQ(system.cpu.cycles, 130U);
     CHECK_EQ(system.cpu.pc, 0xffffffff80001004ULL);
     CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
     system.cpu.step();
-    CHECK_EQ(system.cpu.cycles, 130U);
+    CHECK_EQ(system.cpu.cycles, 131U);
 }
 
 TEST(ri_refresh_speculative_fetch_wait_follows_the_older_device_sample) {
@@ -165,9 +165,9 @@ TEST(ri_refresh_speculative_fetch_wait_follows_the_older_device_sample) {
     system.bus.tick(line);
     system.cpu.step();
     CHECK_EQ(system.cpu.gpr[2], line + 3);
-    CHECK_EQ(system.cpu.cycles, 133U);
+    CHECK_EQ(system.cpu.cycles, 129U);
     system.cpu.step();
-    CHECK_EQ(system.cpu.cycles, 134U);
+    CHECK_EQ(system.cpu.cycles, 130U);
 }
 
 TEST(ri_refresh_delays_a_dirty_cache_writeback) {
@@ -209,7 +209,7 @@ TEST(ri_refresh_delays_explicit_instruction_cache_transfers) {
                 system.bus.tick(first_line(system));
                 CHECK_EQ(system.bus.rdram_refresh_wait(), delay);
                 system.cpu.step();
-                const u64 expected = 49 + (delay * 3 - 1) / 2;
+                const u64 expected = (operation == 0x14 ? 50U : 49U) + (delay * 3 - 1) / 2;
                 CHECK_EQ(system.cpu.cycles, expected);
                 CHECK_EQ(system.cpu.cp0[9], expected / 2);
                 CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
@@ -260,8 +260,8 @@ TEST(ri_refresh_does_not_delay_instruction_cache_transfers_to_chip_registers) {
         }
         system.bus.tick(first_line(system));
         system.cpu.step();
-        CHECK_EQ(system.cpu.cycles, 49U);
-        CHECK_EQ(system.bus.rdram_refresh_wait(), 22U);
+        CHECK_EQ(system.cpu.cycles, operation == 0x14 ? 50U : 49U);
+        CHECK_EQ(system.bus.rdram_refresh_wait(), operation == 0x14 ? 21U : 22U);
         if (operation == 0x14) {
             CHECK(system.cpu.read_memory(system.cpu.gpr[1], 4, ignored, true));
             CHECK_EQ(ignored, register_value);

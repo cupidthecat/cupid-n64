@@ -49,7 +49,7 @@ TEST(cpu_rdram_cached_reads_keep_the_cache_hit_and_refill_paths) {
         }
         system.cpu.step();
         CHECK_EQ(system.cpu.gpr[2], 0x12345678U);
-        CHECK_EQ(system.cpu.cycles, hit ? 1U : 41U);
+        CHECK_EQ(system.cpu.cycles, hit ? 1U : 42U);
     }
 }
 

@@ -40,7 +40,7 @@ TEST(cpu_rdram_transfer_waits_for_refresh_that_begins_before_the_response) {
         CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
         system.cpu.write_cop0(11, 4);
         system.cpu.step();
-        CHECK_EQ(system.cpu.cycles, crosses_refresh ? 56U : 41U);
+        CHECK_EQ(system.cpu.cycles, crosses_refresh ? 57U : 42U);
         CHECK_EQ(system.cpu.cp0[13] & 0x8000U, 0x8000U);
         CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
     }
@@ -54,11 +54,12 @@ TEST(cpu_rdram_refresh_overlap_uses_the_phase_after_the_nominal_response) {
     };
 
     // The instruction's initial cycle is synchronized before the request. These
-    // preambles therefore put the request at RCP fractions 2, 1, and 0. A 40-cycle
-    // cache fill moves those to fractions 1, 0, and 2 before the 10-RCP recovery.
-    // Converting that recovery at the endpoint gives literal totals 56, 56, 55.
+    // preambles therefore put the request at RCP fractions 2, 1, and 0. The first
+    // request needs the second SClock synchronization cycle, so the refill waits are
+    // 41, 40, and 40 cycles and reach fractions 0, 0, and 2. Converting the 10-RCP
+    // recovery at those endpoints gives literal totals 57, 56, 55.
     constexpr PhaseCase cases[] = {
-        {0, 0, 56},
+        {0, 0, 57},
         {1, 0, 56},
         {2, 1, 55},
     };

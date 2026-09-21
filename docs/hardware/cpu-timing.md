@@ -87,6 +87,34 @@ reads, cache behavior, and fault priority. `test_rdram_refresh_overlap.cpp`
 checks refresh beginning inside a transfer, Compare advancement, and
 bulk-versus-single-cycle scheduler advances.
 
+## Cache-miss SClock synchronization
+
+The VR4300 cache-miss sequences synchronize the internal SysAD request to
+SClock after one pipeline-stall cycle and one address/start cycle. That
+synchronization takes one or two PClock cycles depending on the clock phase.
+The 40-cycle data-cache and 48-cycle instruction-cache refill waits remain the
+nominal waits, including the one-cycle synchronization case. A refill adds one
+more PClock only when the carried CPU/system-clock phase requires the second
+synchronization cycle.
+
+The phase calculation includes CPU cycles that are already pending before the
+shared clock update and the two fixed PClock cycles before the synchronization
+point. A speculative instruction refill keeps its wait behind the older
+instruction, so Count reads and device accesses from that instruction commit
+before the refill wait changes the clocks. Refresh overlap is evaluated at that
+completed phase as well, including a refresh that starts on the optional second
+SClock synchronization cycle.
+
+This phase correction applies to data-cache refills, instruction-cache misses,
+and the `CACHE FillI` operation. Uncached transfers use their own bus timing,
+and cache writeback-only operations do not use the refill synchronization
+sequence. The 40- and 48-cycle refill constants still contain an aggregate
+memory component; this change does not derive the manual's `M` term from RDRAM
+register timing.
+
+See the *VR4300, VR4305, VR4310 64-Bit Microprocessor User's Manual*, section
+10.2 and Tables 11-1 and 11-2.
+
 ## Current limits
 
 [RI refresh](rdram-interface.md) is modeled when recovery is already active or

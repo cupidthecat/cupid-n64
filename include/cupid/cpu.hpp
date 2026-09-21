@@ -31,6 +31,10 @@ enum class Exception : unsigned {
 
 enum class Access { Read, Write, Execute };
 
+namespace cpu_timing {
+[[nodiscard]] u64 cache_miss_sclock_extra(u64 pending_cpu_cycles, u64 system_fraction);
+}
+
 struct TlbEntry {
     u64 entry_hi{};
     std::array<u32, 2> entry_lo{};
@@ -105,7 +109,9 @@ class Cpu {
     bool executing_step_{};
     bool nmi_pending_{};
     bool speculative_fetch_{};
-    u64 fetch_wait_cycles_{};
+    // step() can issue the next-PC fetch plus one store-prefetch or exception-decode fetch.
+    std::array<u32, 2> speculative_refill_bases_{};
+    unsigned speculative_refill_count_{};
     struct FetchedInstruction {
         u64 address{};
         u32 instruction{};
@@ -158,6 +164,8 @@ class Cpu {
     void update_clocks(u64 elapsed);
     void update_interrupt_inputs();
     void synchronize();
+    void complete_speculative_refills();
+    [[nodiscard]] u64 cache_miss_sclock_extra() const;
     [[nodiscard]] u64 rdram_refresh_delay(u32 physical) const;
     void buffer_write(u32 physical, unsigned width, u64 value);
     void buffer_writes(std::span<const MemoryWrite> transfers);
