@@ -59,44 +59,13 @@ used by CI. The testing guide lists the compiler and sanitizer options.
 
 ## Core layout
 
-Hardware behavior is documented in [CPU timing](docs/hardware/cpu-timing.md),
-[floating-point execution](docs/hardware/floating-point.md),
-[instruction fetch ordering](docs/hardware/instruction-fetch.md),
-[signal processor control flow](docs/hardware/rsp-control-flow.md),
-[signal processor instruction timing](docs/hardware/rsp-pipeline.md),
-[signal processor DMA registers](docs/hardware/rsp-dma.md),
-[video timing](docs/hardware/video-timing.md),
-[video field output](docs/hardware/video-scanout.md),
-[audio timing](docs/hardware/audio-timing.md),
-[RCP event scheduling](docs/hardware/rcp-scheduling.md),
-[RDRAM interface state](docs/hardware/rdram-interface.md),
-[RDP command streams](docs/hardware/rdp-command-stream.md),
-[RDP fill rectangles and triangles](docs/hardware/rdp-fill.md),
-[RDP copy primitives and draw validation](docs/hardware/rdp-copy.md),
-[RDP texture loads](docs/hardware/rdp-texture-loads.md),
-[RDP color processing](docs/hardware/rdp-color.md),
-[RDP framebuffer formats](docs/hardware/rdp-framebuffers.md),
-[RDP depth and coverage](docs/hardware/rdp-depth.md),
-[RDP triangle interpolation](docs/hardware/rdp-triangles.md),
-[RDP texture sampling and textured rectangles](docs/hardware/rdp-texture-sampling.md),
-[PI transfer timing](docs/hardware/peripheral-interface.md),
-[cartridge bus transactions](docs/hardware/cartridge-bus.md),
-[runner hardware configuration](docs/hardware/configuration.md),
-[persistent host storage](docs/hardware/storage.md),
-[FlashRAM](docs/hardware/flash-memory.md),
-[EEPROM](docs/hardware/eeprom.md),
-[Joybus packets](docs/hardware/joybus.md),
-[Controller Pak behavior](docs/hardware/controller-pak.md),
-[controller accessories and Rumble Pak](docs/hardware/controller-accessories.md),
-[Bio Sensor](docs/hardware/bio-sensor.md),
-[Transfer Pak and Game Boy cartridges](docs/hardware/transfer-pak.md),
-[mouse input](docs/hardware/mouse.md),
-[cartridge RTC](docs/hardware/cartridge-rtc.md),
-[cartridge SRAM](docs/hardware/sram.md),
-[PIF boot control](docs/hardware/pif-boot.md),
-[reset-button and warm-boot behavior](docs/hardware/warm-reset.md), and
-[the serial interface](docs/hardware/serial-interface.md), including current
-timing limits and the regressions that cover each path.
+The [documentation index](docs/README.md) groups hardware guides by subsystem
+and maps them to source and regression-test folders. The guides describe the
+implemented behavior; validation notes record coverage and remaining limits
+where available. Start with
+[RCP event scheduling](docs/hardware/rcp-scheduling.md) for device ordering and
+[the recorded validation results](docs/testing/validation-results.md) for the
+tested inputs and unresolved failures.
 
 `System` connects the VR4300 CPU, signal processor, and physical bus. CPU instructions advance the RCP at its 2:3 clock ratio. CPU caches issue separate bus transactions, and DMA accesses reach the physical memory interface directly.
 

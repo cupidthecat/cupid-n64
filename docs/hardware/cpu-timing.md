@@ -44,6 +44,20 @@ Standalone instruction helpers have no younger decode stage and use zero for CE.
 branch delay slots, stale instruction-cache contents, suppressed younger faults,
 and destination preservation.
 
+## LLD alignment fault priority
+
+For data accesses, the VR4300 gives an address error higher priority than a TLB or
+XTLB miss or invalid exception. `LLD` therefore raises AdEL when its effective
+address is not on an 8-byte boundary even if that address has no usable TLB
+mapping. The failing load records the effective address in BadVAddr and does not
+commit its destination or linked-load state.
+
+`tests/cpu/test_translation.cpp` checks the same word-aligned but doubleword-
+misaligned `LLD` with a missing mapping, an invalid mapping, and a valid mapping.
+The checks also cover EPC and the branch-delay bit. See the *VR4300, VR4305,
+VR4310 64-Bit Microprocessor User's Manual*, section 6.4.3, Table 6-5, and the
+Address Error exception description.
+
 ## Uncached RDRAM reads
 
 The uncached read path distinguishes RDRAM from device registers after address
