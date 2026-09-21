@@ -139,8 +139,9 @@ A different cartridge layout can change timing results; see the
 
 ### Bounded cartridge capture
 
-The validated Windows and Clang Release builds each completed a 240-field capture
-of Super Mario 64 (USA), configured with EEPROM 4 Kbit and a gamepad on port 1.
+The earlier validated Windows and Clang Release builds at `de56bb6` each completed
+a 240-field capture of Super Mario 64 (USA), configured with EEPROM 4 Kbit and a
+gamepad on port 1.
 The supplied 8,388,608-byte cartridge has SHA-256
 `17ce077343c6133f8c9f2d6d6d9a4ab62c8cd2aa57c40aea1f490b4c8bb21d91`;
 the PIF is the input recorded above.
