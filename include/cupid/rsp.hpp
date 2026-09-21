@@ -70,11 +70,6 @@ class Rsp {
     bool dma_full_{};
     u64 dma_cycles_until_row_{};
 
-    u16 sp_address_latch_{};
-    u32 dram_address_latch_{};
-    u32 read_length_latch_{0xff8};
-    u32 write_length_latch_{0xff8};
-
     u32 next_pc_{4};
     u32 pc_shadow_{};
     u32 current_pc_{};

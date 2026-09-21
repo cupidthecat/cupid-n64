@@ -55,11 +55,6 @@ void Rsp::reset() {
     dma_busy_ = false;
     dma_full_ = false;
     dma_cycles_until_row_ = 0;
-    sp_address_latch_ = 0;
-    dram_address_latch_ = 0;
-    read_length_latch_ = 0x0ff8;
-    write_length_latch_ = 0x0ff8;
-
     pc = 0;
     next_pc_ = 4;
     pc_shadow_ = 0;
@@ -427,17 +422,15 @@ u32 Rsp::read_register(u32 byte_offset) {
 void Rsp::write_register(u32 byte_offset, u32 value) {
     switch (byte_offset & 0x1c) {
     case 0x00:
-        sp_address_latch_ = static_cast<u16>(value & 0x1ff8);
+        dma_pending_.sp_address = static_cast<u16>(value & 0x1ff8);
         break;
     case 0x04:
-        dram_address_latch_ = value & 0x00ff'fff8;
+        dma_pending_.dram_address = value & 0x00ff'fff8;
         break;
     case 0x08:
-        read_length_latch_ = value;
         start_dma(true, value);
         break;
     case 0x0c:
-        write_length_latch_ = value;
         start_dma(false, value);
         break;
     case 0x10: {
@@ -476,15 +469,10 @@ void Rsp::write_register(u32 byte_offset, u32 value) {
 }
 
 void Rsp::start_dma(bool to_sp, u32 value) {
-    DmaTransfer transfer{};
-    transfer.sp_address = sp_address_latch_ & 0x1ff8;
-    transfer.dram_address = dram_address_latch_ & 0x00ff'fff8;
-    transfer.length = static_cast<u16>(value & 0x0ff8);
-    transfer.count = static_cast<u8>((value >> 12) & 0xff);
-    transfer.skip = static_cast<u16>((value >> 20) & 0x0ff8);
-    transfer.to_sp = to_sp;
-
-    dma_pending_ = transfer;
+    dma_pending_.length = static_cast<u16>(value & 0x0ff8);
+    dma_pending_.count = static_cast<u8>((value >> 12) & 0xff);
+    dma_pending_.skip = static_cast<u16>((value >> 20) & 0x0ff8);
+    dma_pending_.to_sp = to_sp;
     dma_full_ = true;
     promote_dma();
 }
@@ -559,8 +547,6 @@ void Rsp::transfer_dma_row() {
         return;
     }
 
-    sp_address_latch_ = dma_current_.sp_address;
-    dram_address_latch_ = dma_current_.dram_address;
     dma_current_.length = 0x0ff8;
     dma_busy_ = false;
     promote_dma();
