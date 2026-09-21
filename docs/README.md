@@ -81,7 +81,8 @@ connects CPU and DMA transfers to [Joybus packets](hardware/joybus.md).
 
 Accessory guides cover [Controller Pak](hardware/controller-pak.md),
 [controller accessories and Rumble Pak](hardware/controller-accessories.md),
-[Bio Sensor](hardware/bio-sensor.md), [mouse input](hardware/mouse.md), and
+[Bio Sensor](hardware/bio-sensor.md), [mouse input](hardware/mouse.md),
+[GameCube controllers](hardware/gamecube-controller.md), and
 [Transfer Pak](hardware/transfer-pak.md). The
 [Game Boy cartridge guide](hardware/game-boy-cartridge.md) describes the mapper
 and clock behavior exposed through Transfer Pak.

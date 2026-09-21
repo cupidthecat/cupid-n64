@@ -13,10 +13,13 @@ struct SnapshotFixture {
     System system;
     FilterFixture image;
 
-    explicit SnapshotFixture(unsigned format = 3) : image(format) {
+    explicit SnapshotFixture(unsigned format = 3, VideoStandard standard = VideoStandard::Ntsc)
+        : system(standard), image(format) {
         test::initialize_memory(system);
-        image.registers[9] = (108U << 16) | 124U;
-        image.registers[10] = (34U << 16) | 36U;
+        const unsigned horizontal = standard == VideoStandard::Pal ? 128U : 108U;
+        const unsigned vertical = standard == VideoStandard::Pal ? 44U : 34U;
+        image.registers[9] = (horizontal << 16) | (horizontal + 16U);
+        image.registers[10] = (vertical << 16) | (vertical + 2U);
         image.registers[12] = 1024;
         image.registers[13] = (3072U << 16) | 1024U;
     }
@@ -102,6 +105,51 @@ TEST(vi_scanout_repeated_rows_use_the_alternate_lower_filter_samples) {
     CHECK_EQ(field.pixels[1280 + 8], 0x434343ffU);
     fixture.image.registers[13] = (3584U << 16) | 512U;
     CHECK_EQ(fixture.pixel(), 0x424242ffU);
+}
+
+TEST(vi_scanout_clipped_first_line_uses_normal_dither_neighbors) {
+    for (const auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        const unsigned vertical = standard == VideoStandard::Pal ? 44U : 34U;
+        for (const unsigned format : {2U, 3U}) {
+            for (const unsigned clipped : {0U, 1U, 2U, 3U}) {
+                SnapshotFixture fixture(format, standard);
+                fixture.image.registers[0] = 0x10200U | format;
+                fixture.image.registers[10] = (vertical << 16) | (vertical + (clipped + 2U) * 2U);
+                fixture.image.registers[13] = ((3584U - clipped * 512U) << 16) | 512U;
+                for (s32 y = 2; y <= 5; ++y)
+                    for (s32 x = 0; x < 16; ++x)
+                        fixture.image.gray(x, y, y == 5 ? 128 : 64);
+                const auto full = fixture.scan();
+                const u32 expected = clipped == 0 ? 0x424242ffU : 0x404040ffU;
+                CHECK_EQ(full.pixels[clipped * full.width + 8U], expected);
+                fixture.image.registers[10] = ((vertical - clipped * 2U) << 16) | (vertical + 4U);
+                CHECK_EQ(fixture.pixel(), 0x424242ffU);
+            }
+        }
+    }
+}
+
+TEST(vi_scanout_clipped_first_line_uses_normal_coverage_neighbors) {
+    for (const auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        const unsigned vertical = standard == VideoStandard::Pal ? 44U : 34U;
+        for (const unsigned format : {2U, 3U}) {
+            SnapshotFixture fixture(format, standard);
+            fixture.image.registers[10] = (vertical << 16) | (vertical + 6U);
+            fixture.image.registers[13] = (3072U << 16) | 512U;
+            fixture.image.gray(8, 3, 80);
+            fixture.image.gray(8, 4, 80, 0);
+            fixture.image.gray(7, 3, 8);
+            fixture.image.gray(9, 3, 16);
+            fixture.image.gray(6, 4, 120);
+            fixture.image.gray(10, 4, 176);
+            fixture.image.gray(7, 5, 200);
+            fixture.image.gray(9, 5, 216);
+            const auto full = fixture.scan();
+            CHECK_EQ(full.pixels[full.width + 8U], 0x5e5e5effU);
+            fixture.image.registers[10] = ((vertical - 2U) << 16) | (vertical + 4U);
+            CHECK_EQ(fixture.pixel(), 0x696969ffU);
+        }
+    }
 }
 
 TEST(vi_scanout_gamma_runs_after_resampling_in_both_framebuffer_sizes) {

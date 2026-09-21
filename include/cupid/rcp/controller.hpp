@@ -7,6 +7,7 @@ namespace cupid {
 enum class ControllerDevice {
     Gamepad,
     Mouse,
+    GameCube,
 };
 
 enum class ControllerAccessory {

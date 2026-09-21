@@ -91,7 +91,10 @@ When Y scaling repeats a source row, the final repetition before advancing
 can use different lower samples during interpolation. Coverage reconstruction
 substitutes the same-row samples two pixels away for the lower diagonals.
 Dither restoration replaces the three lower neighbors with the two immediate
-horizontal neighbors. The first visible output row does not use this path.
+horizontal neighbors. The first visible output row does not use this path,
+including when the programmed vertical window begins above the display.
+Clipping still advances the source Y coordinate; it does not carry the
+repeated-row selection into that first visible line.
 
 Gamma follows resampling. Its eight-bit output is twice the integer square
 root of `channel * 64`. Gamma dithering adds a six-bit value before taking the
@@ -129,6 +132,9 @@ negative corrections, divot medians, restoration, repeated rows, gamma-table
 addresses, and noise-channel correlations. `test_filter_scanout.cpp` checks
 register control, filter order, both framebuffer sizes, repeated-row selection,
 field-dependent noise, reset, black borders, and memory-state preservation.
+Clipping cases cover NTSC and PAL with both framebuffer sizes. They compare
+normal lower-neighbor filtering on the first visible line with alternate
+neighbor filtering on an interior line at the same source coordinate.
 
 `test_output.cpp` checks delivery deadlines, ten-field NTSC/PAL traces, leap
 patterns, interlaced parity, odd/even vertical starts, start-register writes,

@@ -50,9 +50,12 @@ SI tests check transport ordering and visibility.
 
 Flagged packets still consume their complete send and receive areas. Their
 response bytes and receive-status flags remain unchanged. Bit 7 takes priority
-when both send flags are set. Reset requests preserve the supported controller
-state, Controller Pak contents, and pending detection latch. A flagged cartridge
-packet cannot start an EEPROM write.
+when both send flags are set. Reset requests preserve N64 gamepad and mouse
+state, Controller Pak contents, and pending detection latches. A
+[GameCube controller](gamecube-controller.md) instead stops its motor and
+requests a new origin read. This occurs when the configured channel executes;
+configuration alone does not reset the device. A flagged cartridge packet
+cannot start an EEPROM write.
 
 ## Replies and error flags
 
@@ -82,7 +85,9 @@ and error-flag handling.
 
 Selecting a [mouse](mouse.md) changes status and polling to the mouse protocol
 and rejects Pak commands. Mouse polls consume pending relative motion while
-retaining button levels.
+retaining button levels. Selecting a [GameCube controller](gamecube-controller.md)
+uses its own identification, polling modes, origins, and motor commands. Its
+eight- and ten-byte poll replies have their own overflow boundaries.
 
 ## Controller polling
 

@@ -1,8 +1,9 @@
 # Controller accessories
 
-`ControllerState::device` selects `Gamepad` or [Mouse](mouse.md) on each port.
-The following accessory selections apply to gamepads. Mouse input uses its
-separate relative-motion API and does not expose a Pak socket.
+`ControllerState::device` selects an N64 `Gamepad`, [Mouse](mouse.md), or
+[GameCube controller](gamecube-controller.md) on each port. The accessory
+selections below apply to N64 gamepads. Mouse and GameCube input use separate
+APIs and do not expose an N64 Pak socket.
 
 Each gamepad port has one accessory selection in `ControllerState::accessory`:
 

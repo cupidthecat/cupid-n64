@@ -54,12 +54,20 @@ void Joybus::execute() {
     for (unsigned remaining = 5; remaining != 0; --remaining) {
         const unsigned channel = remaining - 1;
         const auto descriptor = channels_[channel];
-        if (descriptor.skip || descriptor.reset)
+        if (descriptor.reset) {
+            bus_.reset_gamecube_controller(channel);
+            continue;
+        }
+        if (descriptor.skip)
             continue;
         u32 offset = descriptor.offset;
         const u8 raw_send = pif[0x7c0U + offset++];
-        if ((raw_send & 0xc0U) != 0)
+        if ((raw_send & 0x80U) != 0)
             continue;
+        if ((raw_send & 0x40U) != 0) {
+            bus_.reset_gamecube_controller(channel);
+            continue;
+        }
         const u32 recv_offset = offset;
         const u8 send = raw_send & 0x3fU;
         const u8 recv = pif[0x7c0U + offset++] & 0x3fU;

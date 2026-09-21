@@ -4,6 +4,7 @@
 #include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rcp/controller.hpp"
+#include "cupid/rcp/gamecube.hpp"
 #include "cupid/rcp/joybus.hpp"
 #include "cupid/rcp/pif_boot.hpp"
 #include "cupid/rcp/transfer_pak.hpp"
@@ -63,6 +64,7 @@ class Bus {
         return flash_chip_;
     }
     void set_controller_state(unsigned port, ControllerState state);
+    void set_gamecube_state(unsigned port, GameCubeState state);
     void add_mouse_input(unsigned port, MouseInput input);
     void set_bio_sensor_pulse(unsigned port, bool active);
     [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
@@ -100,6 +102,7 @@ class Bus {
 
     System& system_;
     std::array<ControllerState, 4> controllers_{};
+    std::array<GameCubeController, 4> gamecube_controllers_{};
     std::array<MouseInput, 4> mouse_inputs_{};
     std::array<bool, 4> controller_pak_changed_{true, true, true, true};
     std::array<bool, 4> controller_rumble_{};
@@ -268,6 +271,7 @@ class Bus {
                         bool& overflow);
     void execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
                             bool& overflow);
+    void reset_gamecube_controller(unsigned port);
     void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
     void execute_mouse(unsigned port, u8 recv, u8 command, u8* output, bool& valid, bool& overflow);
     void tick_eeprom(u64 cycles);

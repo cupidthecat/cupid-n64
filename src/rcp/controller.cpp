@@ -9,17 +9,37 @@ void Bus::set_controller_state(unsigned port, ControllerState state) {
         return;
     const auto& previous = controllers_[port];
     const bool device_changed = state.device != previous.device;
-    if (device_changed || state.accessory != previous.accessory ||
+    const bool accessory_changed = state.accessory != previous.accessory;
+    if (device_changed || accessory_changed ||
         (!previous.connected && state.connected && state.accessory != ControllerAccessory::None))
         controller_pak_changed_[port] = true;
-    if (!state.connected || device_changed || state.accessory != previous.accessory) {
+    if (!state.connected || device_changed ||
+        (accessory_changed && state.device != ControllerDevice::GameCube)) {
         controller_rumble_[port] = false;
         bio_sensor_pulse_[port] = false;
         transfer_paks[port].disconnect();
     }
     if (!state.connected || device_changed)
         mouse_inputs_[port] = {};
+    if (state.connected && state.device == ControllerDevice::GameCube &&
+        (device_changed || (!previous.connected && state.connected)))
+        gamecube_controllers_[port].reset();
     controllers_[port] = state;
+}
+
+void Bus::set_gamecube_state(unsigned port, GameCubeState state) {
+    if (port < gamecube_controllers_.size())
+        gamecube_controllers_[port].set_state(state);
+}
+
+void Bus::reset_gamecube_controller(unsigned port) {
+    if (port >= controllers_.size())
+        return;
+    const auto& controller = controllers_[port];
+    if (!controller.connected || controller.device != ControllerDevice::GameCube)
+        return;
+    gamecube_controllers_[port].reset();
+    controller_rumble_[port] = false;
 }
 
 u8 Bus::address_crc(u16 address) {
@@ -53,6 +73,11 @@ void Bus::execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u
     const ControllerState& controller = controllers_[port];
     if (!controller.connected)
         return;
+    if (controller.device == ControllerDevice::GameCube) {
+        gamecube_controllers_[port].execute(std::span<const u8>(input, send), std::span<u8>(output, recv),
+                                            valid, overflow, controller_rumble_[port]);
+        return;
+    }
     if (controller.device == ControllerDevice::Mouse) {
         execute_mouse(port, recv, command, output, valid, overflow);
         return;

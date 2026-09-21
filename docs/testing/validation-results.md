@@ -1,8 +1,59 @@
 # Recorded validation results
 
+## GameCube controller and VI clipping coverage
+
+The latest September 21, 2026 runs cover the GameCube controller protocol and
+two VI clipping regressions, following revision
+`52487af95f90ad7c3a86b4804f2cf4ee64b214fa`. Nine controller tests and two VI tests
+bring the local suite to 1,048 cases. The [GameCube guide](../hardware/gamecube-controller.md)
+describes raw input, packet modes, origins, rumble, and reset behavior. The
+[video guide](../hardware/video-scanout.md) documents first-visible-line filtering;
+the production VI renderer is unchanged.
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each ran `tools/ci/validate.py` against the same frozen set of 283
+files. The compiler configurations and exact cartridge/PIF hashes are listed
+in [Inputs and commands](#inputs-and-commands). Final edits after validation
+affect only this record and the GameCube guide. The intervening parent commit
+`a0f8817` clarifies the earlier Super Mario 64 capture without changing code or
+tests.
+
+| Check | Windows Release | Linux Release | Linux sanitizers |
+| --- | --- | --- | --- |
+| Hardware and host regressions | 1,048 passed | 1,048 passed | 1,048 passed |
+| Default cartridge | 4,637 passed | 4,637 passed | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot | 4,637 passed on each boot |
+| Concurrent storage, Unicode paths, and capture checks | Passed | Passed | Passed |
+| Extended cartridge | 15 failed | Same 15 failed | Same 15 failed |
+| Source and input integrity | Verified | Verified | Verified |
+
+Clang formatting, strict builds, and all 23 validation-script tests passed.
+Six of seven CTest cases passed; only `nemu64_extended` failed. All three full
+validators returned exit 8. The sanitizer run reported no AddressSanitizer,
+UndefinedBehaviorSanitizer, or leak diagnostics.
+
+All 15 complete extended diagnostic blocks match the retained `6d8f70b`
+baseline, including the rendered pixel arrays. The group counts remain Base
+11 failures of 4,649, Timing four of 1,604, Cycle zero of 13, CP0-hazards zero of
+five, and Poorly-understood-quirk zero of two. The timing measurements remain
+41.274, 41.668, 32, and 133,299 against the expectations recorded below.
+Default execution remains 328,128,181 instructions and 741,446,373 CPU cycles;
+extended execution remains 359,483,384 instructions and 793,706,393 CPU cycles.
+
+The controller regressions check literal packets on all four ports, analog
+packing modes, malformed requests, response lengths, origin and motor state,
+hotplug, and changes becoming visible at SI completion. The VI regressions
+cover NTSC and PAL in both framebuffer sizes. They retain normal lower-neighbor
+filtering on the first visible line after vertical clipping; moving the
+repeated-row guard to the unclipped window start makes them fail.
+
+The Super Mario 64 capture below belongs to the earlier `de56bb6` builds and
+was not repeated for this controller change. The complete extended suite still
+fails, so these results do not establish release readiness.
+
 ## LLD fault-priority coverage
 
-The latest September 21, 2026 runs add three encoded CPU regressions to revision
+The earlier September 21, 2026 runs add three encoded CPU regressions to revision
 `de56bb60445937748d4d13b6b87a210da0b151ca`. The cases check a doubleword-misaligned
 `LLD` against missing, invalid, and valid TLB mappings from a branch delay slot.
 They verify AdEL, BadVAddr, EPC and BD, and preservation of the load destination
