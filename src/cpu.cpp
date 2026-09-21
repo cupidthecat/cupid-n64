@@ -596,7 +596,7 @@ void Cpu::execute_special(u32 instruction) {
             op == 0x18 ? a * rhs35 : static_cast<u64>(static_cast<u32>(a)) * static_cast<u32>(b);
         lo = sign_extend32(static_cast<u32>(product));
         hi = sign_extend32(static_cast<u32>(product >> 32));
-        add_cycles(4);
+        complete_multicycle_instruction(4);
         return;
     }
     case 0x1a: {
@@ -605,14 +605,14 @@ void Cpu::execute_special(u32 instruction) {
         lo = divisor != 0 ? sign_extend32(static_cast<u32>(dividend / divisor))
                           : (dividend < 0 ? 1ULL : ~0ULL);
         hi = divisor != 0 ? sign_extend32(static_cast<u32>(dividend % divisor)) : static_cast<u64>(dividend);
-        add_cycles(36);
+        complete_multicycle_instruction(36);
         return;
     }
     case 0x1b: {
         const u32 divisor = static_cast<u32>(b);
         lo = divisor != 0 ? sign_extend32(static_cast<u32>(a) / divisor) : ~0ULL;
         hi = divisor != 0 ? sign_extend32(static_cast<u32>(a) % divisor) : sign_extend32(static_cast<u32>(a));
-        add_cycles(36);
+        complete_multicycle_instruction(36);
         return;
     }
     case 0x1c:
@@ -626,7 +626,7 @@ void Cpu::execute_special(u32 instruction) {
         }
         lo = product.low;
         hi = product.high;
-        add_cycles(7);
+        complete_multicycle_instruction(7);
         return;
     }
     case 0x1e:
@@ -640,12 +640,12 @@ void Cpu::execute_special(u32 instruction) {
             lo = static_cast<u64>(signed64(a) / signed64(b));
             hi = static_cast<u64>(signed64(a) % signed64(b));
         }
-        add_cycles(68);
+        complete_multicycle_instruction(68);
         return;
     case 0x1f:
         lo = b != 0 ? a / b : ~0ULL;
         hi = b != 0 ? a % b : a;
-        add_cycles(68);
+        complete_multicycle_instruction(68);
         return;
     case 0x20:
     case 0x21:

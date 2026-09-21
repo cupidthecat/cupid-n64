@@ -165,6 +165,7 @@ class Cpu {
     void update_interrupt_inputs();
     void synchronize();
     void complete_speculative_refills();
+    void complete_multicycle_instruction(u64 extra_cycles);
     [[nodiscard]] u64 cache_miss_sclock_extra() const;
     [[nodiscard]] u64 rdram_refresh_delay(u32 physical) const;
     void buffer_write(u32 physical, unsigned width, u64 value);

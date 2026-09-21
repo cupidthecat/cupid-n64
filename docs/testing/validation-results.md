@@ -1,5 +1,78 @@
 # Recorded validation results
 
+## Integer execution and instruction-cache overlap
+
+The September 21, 2026 runs following
+`cf283aaaea020dba8c6f7e315a135f9caab9bb5a` cover concurrent integer execution
+and instruction-cache refill. A 69-cycle `DDIV` at the end of a cached line
+previously took 117 cycles when the next line was cold. It now overlaps the
+shorter refill and finishes in 69 cycles. Multiplication and shorter division
+still wait when the refill lasts longer. The
+[CPU timing guide](../hardware/cpu-timing.md#integer-execution-and-instruction-cache-overlap)
+describes the processor-manual basis and the remaining floating-point and
+buffered-store limits.
+
+Five of the six new regressions fail on the preceding core; all six pass with
+the correction. They cover all eight integer multiply/divide instructions,
+three system-clock phases, warm and cold successor lines, delay-slot branch
+targets, Count/Compare, and refresh that either fits within or outlasts division.
+A separate seven-case focused run also checks a dependent cached load before
+the divide, confirming that its issue interlock completes before the concurrent
+waits. The additional probe is outside the maintained regression count.
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each validated the same frozen set of 299 files. All 169 tracked
+cartridge-source files and the ROM/PIF inputs retained their hashes. Only this
+record and clarifications to the CPU guide changed after the full runs.
+
+| Check | Result in each configuration |
+| --- | --- |
+| Hardware and host regressions | 1,079 passed |
+| Validation-tool regressions | 36 passed |
+| Default cartridge | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot |
+| Extended Base, including all twelve triangle cases | 4,649 passed |
+| Extended Timing | One failed of 1,604 |
+| Cycle, CP0-hazards, and Poorly-understood-quirk | 13, five, and two passed |
+| Source and input integrity | Verified |
+
+Formatting, strict builds, storage checks, and capture-runner checks pass.
+All three configurations agree on the complete failure block and execution
+counts. The sanitizer run reports no AddressSanitizer,
+UndefinedBehaviorSanitizer, or leak diagnostics. Each full validator returns
+exit 8 for the same VI-enabled uncached load: median 32 against 36 plus or
+minus one. The test remains enabled.
+
+The test revision remains `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c` with
+the maintained fixture corrections. Input hashes are unchanged from the
+edge-switch restoration runs:
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Prepared default cartridge | 2,609,128 | `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3` |
+| Prepared extended cartridge | 2,633,384 | `5c490faffc0329ede6ae4a877d5ac2a15a86e42a5af8bfe546e0ff52fb3ce170` |
+| NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
+
+Default execution uses 329,396,986 instructions and 822,176,138 CPU cycles.
+Extended execution uses 363,666,509 instructions and 896,399,132 CPU cycles.
+
+### Replay of the original retained image
+
+The original extended image with SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089` was replayed
+on both the preceding core and the corrected Clang build, without changing its
+bytes. Both runs report the same eleven triangle-fixture disagreements and
+three timing failures. The latter are the VI-disabled cache-load average at
+`0x80300000` (43.03 against 42.5 plus or minus 0.5), the VI-enabled uncached
+median (32 against 36 plus or minus one), and the original clock sampler
+(133,300 against 133,333 plus or minus 20).
+
+The ten cache-load cases pass in the prepared image, but the retained original
+still fails that one average. Issue #5 therefore remains open. The integer
+overlap correction does not resolve VI arbitration, floating-point refill
+overlap, or the remaining retained-image timing case. These results do not
+establish a complete accuracy pass or release readiness.
+
 ## Edge-switch restoration and cache request phase
 
 The September 21, 2026 correction restores the minor-edge switch at the initial

@@ -99,11 +99,10 @@ synchronization cycle.
 
 The phase calculation includes CPU cycles that are already pending before the
 shared clock update and the two fixed PClock cycles before the synchronization
-point. A speculative instruction refill keeps its wait behind the older
-instruction, so Count reads and device accesses from that instruction commit
-before the refill wait changes the clocks. Refresh overlap is evaluated at that
-completed phase as well, including a refresh that starts on the optional second
-SClock synchronization cycle.
+point. Count reads and device accesses complete their architectural effects
+before the deferred refill's phase and refresh wait are evaluated. This includes
+refresh that starts on the optional second SClock synchronization cycle.
+Integer multicycle operations use the overlapping sequence described below.
 
 This phase correction applies to data-cache refills, instruction-cache misses,
 and the `CACHE FillI` operation. Uncached transfers use their own bus timing,
@@ -114,6 +113,36 @@ register timing.
 
 See the *VR4300, VR4305, VR4310 64-Bit Microprocessor User's Manual*, section
 10.2 and Tables 11-1 and 11-2.
+
+## Integer execution and instruction-cache overlap
+
+Integer multiplication and division can execute while the following instruction's
+cache line is refilled. The EX-stage multicycle interlock and RF-stage
+instruction-cache interlock progress together; the pipeline waits until both
+finish. A `DDIV` at the end of a cached 32-byte line therefore hides a shorter
+refill of the next line within its 69-cycle execution. A shorter multiply can
+finish first, leaving the cache refill to determine when execution continues.
+
+`src/cpu/multicycle.cpp` starts the waits after pending fetch and issue cycles,
+once the instruction-cache interlock can be serviced.
+It uses the existing refill path, including the SClock phase and any refresh
+recovery, then accounts for execution cycles that remain. It does not execute
+the following instruction or accept an interrupt in the middle of the multiply
+or divide. Count and connected devices advance only for the elapsed processor time.
+
+`tests/cpu/test_multicycle_fetch.cpp` checks all eight integer multiply/divide
+instructions at all three CPU/system-clock phases, warm and cold next lines,
+branch-target fetches from a delay slot, timer-interrupt delivery, and refresh
+that either fits within or extends beyond division. Standalone instruction
+helpers remain untimed.
+
+The processor manual describes the simultaneous ICB/MCI case in section 4.7.3
+(page 115), the instruction-cache interlock in section 4.6.3 (page 108), and
+multicycle execution in section 4.6.4 (page 109). This implementation covers
+integer multiplication and division. Older data-cache and buffered-store ordering
+is preserved; overlap of those waits with execution remains outside this model.
+Floating-point execution and its exception interactions still serialize with
+deferred instruction refills.
 
 ## Current limits
 

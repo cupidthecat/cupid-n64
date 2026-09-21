@@ -32,8 +32,7 @@ void Cpu::complete_speculative_refills() {
     if (speculative_refill_count_ == 0)
         return;
 
-    // Commit the older instruction before timing the younger cache request. Its
-    // Count or device access may have changed the shared clock phase.
+    // Evaluate queued requests from the CPU/system phase reached by the caller.
     synchronize();
     for (unsigned index = 0; index < speculative_refill_count_; ++index) {
         const u32 base = speculative_refill_bases_[index];
