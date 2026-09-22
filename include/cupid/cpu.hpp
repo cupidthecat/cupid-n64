@@ -55,6 +55,10 @@ class Cpu {
     void reset();
     void request_nmi();
     void step();
+    unsigned run_slice(unsigned maximum_steps, u64 maximum_cycles);
+    [[nodiscard]] u64 batched_idle_instructions() const {
+        return batched_idle_instructions_;
+    }
     // Standalone instruction and memory helpers are untimed; step advances the hardware clocks.
     void execute(u32 instruction);
     void set_pc(u64 address);
@@ -108,6 +112,7 @@ class Cpu {
     u64 synchronized_instruction_cycles_{};
     bool executing_step_{};
     bool nmi_pending_{};
+    u64 batched_idle_instructions_{};
     bool speculative_fetch_{};
     // step() can issue the next-PC fetch plus one store-prefetch or exception-decode fetch.
     std::array<u32, 2> speculative_refill_bases_{};
@@ -162,6 +167,7 @@ class Cpu {
     void write_cop0_instruction(unsigned index, u64 value);
     void execute_cop2(u32 instruction);
     void update_clocks(u64 elapsed);
+    unsigned batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles);
     void update_interrupt_inputs();
     void synchronize();
     void complete_speculative_refills();

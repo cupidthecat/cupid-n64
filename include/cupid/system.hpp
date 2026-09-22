@@ -42,6 +42,7 @@ class System {
     u64 event_gap_{};
     bool event_valid_{};
     [[nodiscard]] u64 cpu_cycles_for_rcp(u64 rcp_cycles) const;
+    [[nodiscard]] u64 idle_loop_event_cycles() const;
     bool pif_loaded_{};
 };
 
