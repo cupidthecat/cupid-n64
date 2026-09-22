@@ -1,23 +1,55 @@
 #include "cupid/vi/filter.hpp"
 
 #include <algorithm>
+#include <bit>
 
 namespace cupid {
+namespace {
+
+ViColor divot(const ViPixel& left, const ViPixel& center, const ViPixel& right) {
+    if ((left.coverage & center.coverage & right.coverage) == 7)
+        return center.color;
+    ViColor result{};
+    for (unsigned channel = 0; channel < 3; ++channel) {
+        const auto low = std::min(left.color[channel], right.color[channel]);
+        const auto high = std::max(left.color[channel], right.color[channel]);
+        result[channel] = std::clamp(center.color[channel], low, high);
+    }
+    return result;
+}
+
+} // namespace
 
 ViFilter::ViFilter(std::span<const u8> bytes, std::span<const u8> hidden, std::span<const u32, 14> registers)
     : bytes_(bytes), hidden_(hidden), control_(registers[0]), origin_(registers[1]), stride_(registers[2]),
-      pixel_bytes_((registers[0] & 3U) == 3 ? 4 : 2) {}
+      pixel_bytes_((registers[0] & 3U) == 3 ? 4 : 2), address_mask_(bytes.size() - 1),
+      power_of_two_size_(std::has_single_bit(bytes.size())) {}
 
 ViPixel ViFilter::fetch(s32 x, s32 y) const {
     if (bytes_.empty())
         return {};
     const s64 offset =
         static_cast<s64>(origin_ & ~(pixel_bytes_ - 1U)) + (static_cast<s64>(y) * stride_ + x) * pixel_bytes_;
-    const s64 size = static_cast<s64>(bytes_.size());
-    const auto address = static_cast<std::size_t>((offset % size + size) % size);
+    std::size_t address;
+    if (power_of_two_size_) {
+        address = static_cast<std::size_t>(offset) & address_mask_;
+    } else {
+        const s64 size = static_cast<s64>(bytes_.size());
+        const s64 remainder = offset % size;
+        address = static_cast<std::size_t>(remainder < 0 ? remainder + size : remainder);
+    }
     u32 word = 0;
-    for (unsigned byte = 0; byte < pixel_bytes_; ++byte)
-        word = (word << 8) | bytes_[(address + byte) % bytes_.size()];
+    if (bytes_.size() - address >= pixel_bytes_) {
+        const auto* data = bytes_.data() + address;
+        word = pixel_bytes_ == 2 ? (static_cast<u32>(data[0]) << 8) | data[1] : read_be32(data);
+    } else {
+        auto next = address;
+        for (unsigned byte = 0; byte < pixel_bytes_; ++byte) {
+            word = (word << 8) | bytes_[next];
+            if (++next == bytes_.size())
+                next = 0;
+        }
+    }
     ViPixel pixel;
     if (pixel_bytes_ == 2) {
         pixel.color = {(word >> 8) & 248U, (word >> 3) & 248U, (word << 2) & 248U};
@@ -97,15 +129,26 @@ ViColor ViFilter::sample(s32 x, s32 y, bool repeat_lower) const {
         return center.color;
     const auto left = reconstruct(x - 1, y, repeat_lower);
     const auto right = reconstruct(x + 1, y, repeat_lower);
-    if ((left.coverage & center.coverage & right.coverage) == 7)
-        return center.color;
-    ViColor result{};
-    for (unsigned channel = 0; channel < 3; ++channel) {
-        const auto low = std::min(left.color[channel], right.color[channel]);
-        const auto high = std::max(left.color[channel], right.color[channel]);
-        result[channel] = std::clamp(center.color[channel], low, high);
+    return divot(left, center, right);
+}
+
+void ViFilter::sample_row(s32 x, s32 y, bool repeat_lower, std::span<ViColor> output) const {
+    if (output.empty())
+        return;
+    if ((control_ & 16U) == 0) {
+        for (auto& color : output)
+            color = reconstruct(x++, y, repeat_lower).color;
+        return;
     }
-    return result;
+
+    auto left = reconstruct(x - 1, y, repeat_lower);
+    auto center = reconstruct(x, y, repeat_lower);
+    for (auto& color : output) {
+        const auto right = reconstruct(++x, y, repeat_lower);
+        color = divot(left, center, right);
+        left = center;
+        center = right;
+    }
 }
 
 } // namespace cupid
