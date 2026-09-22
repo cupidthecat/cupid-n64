@@ -57,13 +57,15 @@ RDRAM recovery. Cache hits and device-register reads do not wait either.
 Speculative instruction-fetch waits remain deferred until after the older
 instruction samples its operands and device registers.
 
-A blocking CPU transaction also checks the next horizontal boundary before it
+A cache refill or writeback also checks the next horizontal boundary before it
 starts its nominal response interval. If enabled refresh begins inside that
 interval, the request includes the clean or dirty recovery time selected from
 `RI_REFRESH`. The recovery delay is converted at the CPU/RCP phase after the
 nominal response interval, rather than reusing the request phase. This makes a
 large CPU clock advance produce the same completed request and refresh state as
-one-cycle bus advances.
+one-cycle bus advances. A single-word uncached read that is already in flight
+completes first; see [CPU timing](cpu-timing.md#uncached-rdram-reads) for the
+measurement behind that distinction.
 
 Disabling refresh prevents later requests but does not cancel a recovery already
 in progress. Reset cancels recovery. The [RI hardware notes](https://n64brew.dev/wiki/RDRAM_Interface)

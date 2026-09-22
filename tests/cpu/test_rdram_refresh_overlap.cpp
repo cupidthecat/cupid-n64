@@ -46,6 +46,31 @@ TEST(cpu_rdram_transfer_waits_for_refresh_that_begins_before_the_response) {
     }
 }
 
+// A single-word uncached transfer completes before a refresh that begins during it
+// takes the bus; only the following request waits for the remaining recovery.
+TEST(cpu_rdram_uncached_load_is_not_held_by_a_refresh_that_begins_during_it) {
+    constexpr u32 hsync = 99;
+    constexpr u32 recovery = 64;
+    for (bool crosses_refresh : {false, true}) {
+        System system;
+        prepare_load(system);
+        system.cpu.gpr[1] = 0xffffffffa0100000ULL;
+        system.bus.write(ViHSync, 4, hsync);
+        system.bus.write(RiRefresh, 4, 0x20000U | (recovery << 8U) | recovery);
+        system.bus.write(RiBankStatus, 4, 0);
+        CHECK_EQ(system.bus.read(0x100000, 4), 0U);
+        const u64 line = line_cycles(system, hsync);
+        system.bus.tick(line - (crosses_refresh ? 10U : 30U));
+        CHECK_EQ(system.bus.rdram_refresh_wait(), 0U);
+        system.cpu.step();
+        CHECK_EQ(system.cpu.cycles, 32U);
+        // Ten RCP cycles before the boundary plus a 32-cycle load leaves eleven cycles of the
+        // refresh elapsed when the word completes.
+        CHECK_EQ(system.bus.rdram_refresh_wait(), crosses_refresh ? recovery - 11U : 0U);
+        CHECK_EQ(system.cpu.gpr[2], 0U);
+    }
+}
+
 TEST(cpu_rdram_refresh_overlap_uses_the_phase_after_the_nominal_response) {
     struct PhaseCase {
         u64 preamble_cpu_cycles;

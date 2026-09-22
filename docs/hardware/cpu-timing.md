@@ -96,19 +96,31 @@ fetches in the same and another bank, the VI fetch interval, and tick-size
 independence. `tests/rcp/test_ri_refresh.cpp` includes the reopened row after
 a refresh stall.
 
-Blocking CPU transfers also account for refresh that begins after the request was
-issued but before its nominal response time. The transfer reaches the horizontal
-boundary, RI closes the open rows, and the CPU waits through the selected clean or
-dirty recovery interval before the result becomes visible. The same clock advance
-continues to drive Count, Compare, and connected devices. Recovery that is already
-active is converted from the request's CPU/RCP phase; recovery that starts during
-the nominal transfer is appended from the phase at the nominal response endpoint.
+Cache refills and writebacks also account for refresh that begins after the
+request was issued but before its nominal response time. The transfer reaches
+the horizontal boundary, RI closes the open rows, and the CPU waits through the
+selected clean or dirty recovery interval before the result becomes visible. The
+same clock advance continues to drive Count, Compare, and connected devices.
+Recovery that is already active is converted from the request's CPU/RCP phase;
+recovery that starts during the nominal transfer is appended from the phase at
+the nominal response endpoint.
+
+A single-word uncached read is not held by a refresh that begins while it is in
+flight: the word completes in its nominal time, the refresh proceeds, and the
+next request waits for the remaining recovery. With refresh at every horizontal
+boundary, the cartridge suite measures the uncached load average at 32.54
+cycles. Holding the in-flight word for the whole recovery interval put the model
+at about 33.4 against that figure, and dropping the hold puts it at about 32.6.
+The multi-beat refill paths keep the hold because their measured averages still
+depend on it; whether that difference is real or compensates for another effect
+is not settled.
 
 `tests/cpu/test_memory_timing.cpp` checks all eight 1 MiB banks, translated
 uncached addresses, clock advancement, Compare events during the wait, device
 reads, cache behavior, and fault priority. `test_rdram_refresh_overlap.cpp`
-checks refresh beginning inside a transfer, Compare advancement, and
-bulk-versus-single-cycle scheduler advances.
+checks refresh beginning inside a refill, the uncached word that completes
+ahead of it, Compare advancement, and bulk-versus-single-cycle scheduler
+advances.
 
 ## Cache-miss SClock synchronization
 

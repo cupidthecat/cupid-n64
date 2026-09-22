@@ -200,10 +200,11 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         const u64 row_wait =
             ram && executing_step_ && system_.bus.rdram_row_miss(physical) ? rdram_row_open_cycles : 0;
         const u64 nominal = (ram ? 31 : 4) + row_wait;
-        const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
-            physical, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
-        const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);
-        add_cycles(nominal + rdram_refresh_delay(physical) + overlap);
+        // A refresh that begins while this single-word transfer is in flight does not
+        // hold the response. The measured average for uncached loads under periodic
+        // refresh only fits when the word completes first; multi-beat cache refills
+        // keep their overlap wait.
+        add_cycles(nominal + rdram_refresh_delay(physical));
         synchronize();
         value = system_.bus.read(physical, width);
         return !frozen;
