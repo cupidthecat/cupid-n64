@@ -55,6 +55,7 @@ void Cpu::reset() {
     synchronized_instruction_cycles_ = 0;
     executing_step_ = false;
     nmi_pending_ = false;
+    batched_idle_instructions_ = 0;
     speculative_fetch_ = false;
     speculative_refill_bases_.fill(0);
     speculative_refill_count_ = 0;
