@@ -1,6 +1,6 @@
 # Cupid-N64
 
-Cupid-N64 is a Nintendo 64 hardware emulator written in C++20. Its command-line runner boots a cartridge through a supplied PIF boot ROM and captures hardware-test output through the cartridge debug interface.
+Cupid-N64 is a Nintendo 64 hardware emulator written in C++20. The SDL3 desktop application provides a game window, keyboard and gamepad controls, audio playback, and persistent saves. The command-line runner boots cartridges and captures hardware-test output through the cartridge debug interface.
 
 ## Build
 
@@ -21,6 +21,31 @@ ctest --test-dir build-vs -C Release --output-on-failure
 ```
 
 The local regression suite exercises instruction results, exceptions, address translation, caches, RAM transactions, signal processing, floating point, peripheral registers, and test-result parsing. Tests remain active in release builds.
+
+## Desktop application
+
+Enable the desktop target to build the game window. On Windows with Visual Studio:
+
+```powershell
+cmake -S . -B build-desktop -A x64 -DCUPID_DESKTOP=ON
+cmake --build build-desktop --config Release
+ctest --test-dir build-desktop -C Release --output-on-failure
+.\build-desktop\Release\cupid-desktop.exe
+```
+
+Select the cartridge, matching PIF firmware, and save device on the Hardware
+page, then choose **Load cartridge**. A cartridge can also be started from the
+command line:
+
+```powershell
+.\build-desktop\Release\cupid-desktop.exe "Super Mario 64 (USA).z64" --pif pif.ntsc.rom --save eeprom4k
+```
+
+The default keyboard controls are WASD to move, X for A, Z for B, Enter for
+Start, and Left Shift for the Z trigger. Escape pauses or resumes. The
+[desktop guide](docs/frontend/desktop.md) covers gamepads, audio, settings,
+save files, and validation. Keep `SDL3.dll` beside the Windows executable.
+The `cupid-n64` executable remains the command-line hardware-test runner.
 
 ## Run a cartridge
 

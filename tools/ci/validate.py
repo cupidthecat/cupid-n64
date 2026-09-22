@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--generator", default="Ninja")
     parser.add_argument("--config", default="Release")
     parser.add_argument("--sanitizers", action="store_true")
+    parser.add_argument("--desktop", action="store_true", help="Build and test the SDL desktop application")
+    parser.add_argument("--sdl-source", type=Path, help="Use an existing SDL 3.4.16 source directory")
     parser.add_argument("--rom", type=Path)
     parser.add_argument("--pif", type=Path)
     parser.add_argument("--extended-rom", type=Path)
@@ -28,6 +30,10 @@ def main():
         parser.error("--rom and --extended-rom require --pif")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    if args.sdl_source and not args.desktop:
+        parser.error("--sdl-source requires --desktop")
+    if args.sdl_source and not (args.sdl_source / "include/SDL3/SDL_version.h").is_file():
+        parser.error("--sdl-source must contain the SDL3 source headers")
     for path in (args.rom, args.pif, args.extended_rom):
         if path is not None and not path.is_file():
             parser.error(f"File not found: {path}")
@@ -38,6 +44,7 @@ def main():
         "build_directory": str(build), "generator": args.generator,
         "configuration": args.config, "requested_compiler": args.compiler,
         "strict": True, "sanitizers": args.sanitizers, "jobs": args.jobs,
+        "desktop": args.desktop,
         "asan_options": os.environ.get("ASAN_OPTIONS"),
         "ubsan_options": os.environ.get("UBSAN_OPTIONS"),
         "default_suite": args.rom is not None, "extended_suite": args.extended_rom is not None,
@@ -49,6 +56,8 @@ def main():
         evidence.add_source("source", root, outputs)
         if args.test_source:
             evidence.add_source("test_source", args.test_source.resolve(), outputs)
+        if args.sdl_source:
+            evidence.add_input("sdl_version", args.sdl_source / "include/SDL3/SDL_version.h")
         for name, path in (("default_rom", args.rom), ("extended_rom", args.extended_rom), ("pif", args.pif)):
             if path is not None:
                 evidence.add_input(name, path)
@@ -89,12 +98,15 @@ def validate(args, root, build, evidence):
         "cmake", "-S", root, "-B", build, "-G", args.generator,
         f"-DCMAKE_BUILD_TYPE={args.config}", "-DCUPID_STRICT=ON",
         f"-DCUPID_SANITIZERS={'ON' if args.sanitizers else 'OFF'}",
+        f"-DCUPID_DESKTOP={'ON' if args.desktop else 'OFF'}",
         f"-DCUPID_TEST_ROM={args.rom.resolve() if args.rom else ''}",
         f"-DCUPID_PIF_ROM={args.pif.resolve() if args.pif else ''}",
         f"-DCUPID_EXTENDED_TEST_ROM={args.extended_rom.resolve() if args.extended_rom else ''}",
     ]
     if args.compiler:
         configure.append(f"-DCMAKE_CXX_COMPILER={args.compiler}")
+    if args.sdl_source:
+        configure.append(f"-DFETCHCONTENT_SOURCE_DIR_SDL3={args.sdl_source.resolve()}")
     evidence.run("configure", configure, root)
     evidence.add_build(build)
     evidence.run("build", ["cmake", "--build", build, "--config", args.config,

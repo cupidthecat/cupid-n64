@@ -1,9 +1,17 @@
 # Documentation
 
-The [project README](../README.md) covers building and starting the command-line
-runner. These guides describe the hardware model and its interfaces. Validation
+The [project README](../README.md) covers building and starting the desktop
+application and command-line runner. These guides describe the hardware model and its interfaces. Validation
 notes identify tested behavior and remaining limits where available; some
 implemented paths still lack cartridge coverage or hardware captures.
+
+## Desktop application
+
+The [desktop guide](frontend/desktop.md) covers launching cartridges, controls,
+audio, settings, and save recovery. Separate guides explain
+[input mapping](frontend/input.md), [video composition](frontend/video.md),
+[audio playback](frontend/audio.md), [session ownership](frontend/session.md),
+[preferences](frontend/preferences.md), and [file dialogs](frontend/files.md).
 
 ## Configuration and validation
 
@@ -103,6 +111,7 @@ layout includes both top-level CPU/RSP files and their subsystem directories.
 | Display and video | `src/rdp.cpp`, `src/rdp/`, `src/vi/`, `src/rcp/vi.cpp` | `tests/rdp/`, `tests/vi/` |
 | Cartridge devices | `src/cartridge/` | `tests/cartridge/`, device cases in `tests/rcp/` |
 | Runner and persistent storage | `src/main.cpp`, `src/host/`, `src/storage/` | `tests/host/` |
+| Desktop application | `src/desktop/`, host input/audio/video/session modules | `tests/desktop/`, `tests/host/` |
 
 `tools/ci/validate.py` runs local CI. `tests/compatibility/` contains the capture
 workflow. Check the relevant guide and its regression fixtures before changing
