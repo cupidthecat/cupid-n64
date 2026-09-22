@@ -6,6 +6,10 @@
 namespace cupid {
 namespace {
 
+// Measured difference between an uncached word load that hits the open RDRAM
+// row and one that must open a different row in the same bank.
+constexpr u64 rdram_row_open_cycles = 4;
+
 u64 preview_rcp_cycles(u64 cpu_cycles, u64 rcp_fraction) {
     const u64 whole = cpu_cycles / 3;
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction;
@@ -191,7 +195,11 @@ bool Cpu::read_memory(u64 address, unsigned width, u64& value, bool instruction)
         drain_write_buffer();
         // RDRAM must return a memory response before the load can retire. Device
         // registers use a separate path and do not incur this nominal RAM delay.
-        const u64 nominal = physical < 0x03f00000U ? 31 : 4;
+        // A request whose row is not open in its bank first waits for RI to open it.
+        const bool ram = physical < 0x03f00000U;
+        const u64 row_wait =
+            ram && executing_step_ && system_.bus.rdram_row_miss(physical) ? rdram_row_open_cycles : 0;
+        const u64 nominal = (ram ? 31 : 4) + row_wait;
         const u64 refresh_overlap = system_.bus.rdram_refresh_overlap(
             physical, executing_step_ ? preview_rcp_cycles(nominal, system_.rcp_fraction_) : 0);
         const u64 overlap = appended_rcp_wait_cpu_cycles(refresh_overlap, nominal, system_.rcp_fraction_);

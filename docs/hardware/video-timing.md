@@ -64,9 +64,30 @@ start-register changes, blanking, and counter wrap. Bulk and single-cycle CPU
 advances also produce matching fields while SP/SI DMA, RDP drawing, audio,
 and refresh modify the machine state.
 
-VI framebuffer reads do not yet contend with CPU or other RCP memory requests.
-The extended cartridge suite still reports the RDRAM timing limits described in
-[CPU timing](cpu-timing.md). Updated measurements after line-duration latching
-are recorded in the [VI timing results](../testing/vi-timing-results.md).
-Correct scanline timing alone does not establish
-accurate RDRAM arbitration.
+## Framebuffer fetches and RDRAM rows
+
+While a 16- or 32-bit framebuffer type is selected, VI fills its line buffers
+from RDRAM throughout every line. The model spreads one eight-byte word over
+each `line period * 8 / (WIDTH * bytes per pixel)` RCP cycles. On lines before
+V_START the fill reads the first source line; after the visible window it stays
+on the last one. Within the window the source line follows Y_OFFSET and Y_SCALE
+as in [field output](video-scanout.md), and the word address advances with the
+fraction of the line that has elapsed.
+
+These fetches are not scheduled as separate bus events. `src/vi/fetch.cpp`
+computes the current fetch address and interval; `Bus::rdram_row_miss` applies
+the fetches that fell between a bank's previous access and the current request
+before deciding whether the requested row is open. The result is the same for
+bulk and single-cycle clock advances. The fill leaves the framebuffer row open
+in its 1 MiB bank, so an uncached CPU read of a different row in that bank
+pays the row-open wait described in [CPU timing](cpu-timing.md#uncached-rdram-reads).
+A read in another bank, or of the row VI is reading, does not.
+
+The fetch address reproduces the cartridge suite's same-bank and other-bank
+uncached-load medians. The exact burst length, the fill's line-buffer
+occupancy, and the extra lines fetched in the anti-aliasing modes are not
+measured; the model does not charge VI transfers against CPU or DMA bus time.
+Updated measurements after line-duration latching are recorded in the
+[VI timing results](../testing/vi-timing-results.md). `tests/cpu/test_rdram_rows.cpp`
+covers the same-bank, other-bank, same-row, interval, disabled-type, and
+tick-size cases.

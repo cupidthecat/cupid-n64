@@ -69,4 +69,4 @@ tested inputs and unresolved failures.
 
 `System` connects the VR4300 CPU, signal processor, and physical bus. CPU instructions advance the RCP at its 2:3 clock ratio. CPU caches issue separate bus transactions, and DMA accesses reach the physical memory interface directly.
 
-The memory model tracks individual RAM chips, their initialization registers, current calibration, address mapping, and hidden coverage bits. Cartridge boot uses the security part's seed and checksum, with separate handling for challenge responses. Tests exercise these components through their public interfaces and encoded machine instructions.
+The memory model tracks individual RAM chips, their initialization registers, current calibration, address mapping, hidden coverage bits, and the open row in each bank, including the row that VI's line-buffer fill keeps open. Cartridge boot uses the security part's seed and checksum, with separate handling for challenge responses. Tests exercise these components through their public interfaces and encoded machine instructions.

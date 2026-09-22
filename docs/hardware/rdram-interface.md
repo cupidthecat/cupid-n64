@@ -16,6 +16,23 @@ tracking through the RDRAM access path. A CPU cache hit does not reach RI.
 Modifying a cached line therefore does not dirty the corresponding RDRAM row
 until the line is written back.
 
+## Open rows and request timing
+
+A chip answers a request to its open row directly. A request to a closed or
+different row makes the chip close the current row and load the requested one
+before it can answer. RI knows the tracked row state in advance, so it holds
+the request for that time instead of retrying. `Rdram::row_open` reports whether
+an address matches the bank's open row, and `Bus::rdram_row_miss` combines that
+with the [VI line-buffer fill](video-timing.md#framebuffer-fetches-and-rdram-rows),
+which keeps the framebuffer row open in its bank. The tracking stamps each bank
+with the RCP cycle of its latest access so the fill can be applied lazily.
+
+Uncached CPU reads add the row-open wait described in
+[CPU timing](cpu-timing.md#row-open-wait). Refresh closes every row, so the first
+request to each bank after a refresh opens its row again. Cache refills and
+writebacks, buffered stores, and DMA transfers update the row state but keep
+their existing waits.
+
 ## Automatic refresh
 
 RI refresh-enable bit 17 allows a refresh request at each VI horizontal boundary.
@@ -82,9 +99,13 @@ do not access RDRAM storage. `tests/cpu/test_rdram_refresh_overlap.cpp` adds
 in-flight refresh, Compare, and tick-partition coverage for blocking CPU
 transfers.
 
-Row-change delays and shared-memory arbitration remain incomplete. Buffered
-stores and DMA transfers do not yet wait for refresh. Per-chip refresh-row
-registers, detailed RAS/minimum-interval timing, multibank overlap, and the
+`tests/cpu/test_rdram_rows.cpp` covers the row-open wait, VI fetches, and
+tick-size independence of the lazily applied fill.
+
+Shared-memory arbitration remains incomplete: requesters do not wait for each
+other's bus time. Buffered stores and DMA transfers do not yet wait for refresh
+or for a closed row. Per-chip refresh-row registers, the longer close time of
+a dirty row, detailed RAS/minimum-interval timing, multibank overlap, and the
 optimize bit are not modeled. Coalescing requests under unusually short
 horizontal periods is not hardware-validated. Unexpected negative
 acknowledgements caused by deliberately desynchronizing RI and the chips are also

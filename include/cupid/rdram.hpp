@@ -30,6 +30,20 @@ class Rdram {
     void invalidate_banks();
     [[nodiscard]] bool refresh_banks();
 
+    // Row tracking timestamps count RCP cycles so requesters can tell whether
+    // another device touched a bank since their previous access.
+    void advance_clock(u64 rcp_cycles) {
+        clock_ += rcp_cycles;
+    }
+    [[nodiscard]] u64 clock() const {
+        return clock_;
+    }
+    [[nodiscard]] bool row_open(u32 address) const;
+    [[nodiscard]] u64 bank_access_clock(u32 address) const;
+    void open_row(u32 address) const {
+        track_access(address, false);
+    }
+
     [[nodiscard]] u32 read_register(u32 address) const;
     void write_register(u32 address, u32 value, unsigned repeat_length = 0);
     [[nodiscard]] u64 read(u32 address, unsigned width, bool ebus = false) const;
@@ -42,6 +56,7 @@ class Rdram {
 
   private:
     struct Bank {
+        u64 last_access{};
         u16 row{};
         bool valid{};
         bool dirty{};
@@ -65,6 +80,7 @@ class Rdram {
     std::vector<u8> hidden_;
     std::array<Chip, 4> chips_{};
     mutable std::array<Bank, 8> banks_{};
+    u64 clock_{};
     mutable u64 noise_{0x2360ed051fc65da4ULL};
     mutable u32 errors_{};
     bool active_{};

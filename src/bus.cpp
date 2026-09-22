@@ -375,6 +375,7 @@ void Bus::tick_devices(u64 rcp_cycles) {
     if (rcp_cycles != 0)
         ai_clock_started_ = true;
     rdp.tick(rcp_cycles);
+    memory.advance_clock(rcp_cycles);
     ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
     tick_vi(rcp_cycles);
     if (rcp_cycles == 0)

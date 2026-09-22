@@ -73,6 +73,29 @@ value. Address and translation faults occur before the memory request. Cached
 accesses retain their separate hit and refill paths; device registers do not
 incur the nominal RAM wait.
 
+### Row-open wait
+
+Each 1 MiB RDRAM bank holds one open 2 KiB row, and RI tracks which row that
+is (see [RDRAM interface state](rdram-interface.md)). An uncached read whose row
+is open completes in the 32 cycles above. When the bank has no open row, or a
+different row is open, the read takes four more CPU cycles while RI opens the
+requested row. The cartridge suite measures this as the median of 36 for an
+uncached load in the bank VI is displaying from, against 32 in another bank.
+
+The row can be closed by RI refresh, or replaced by any other RDRAM
+transaction to that bank: a cache refill or writeback, a buffered store, a DMA
+transfer, or the [VI line-buffer fill](video-timing.md#framebuffer-fetches-and-rdram-rows).
+Cached refills keep their nominal 40- and 48-cycle waits. The cartridge suite's
+cache-miss cases pass with those constants whether or not the row is open, so
+the refill path does not add a separate row wait until a measurement separates
+the two. Standalone memory helpers stay untimed and do not evaluate rows.
+
+`tests/cpu/test_rdram_rows.cpp` covers all eight banks, other-bank and
+chip-register requests, the cached refill path, refresh closing the row, VI
+fetches in the same and another bank, the VI fetch interval, and tick-size
+independence. `tests/rcp/test_ri_refresh.cpp` includes the reopened row after
+a refresh stall.
+
 Blocking CPU transfers also account for refresh that begins after the request was
 issued but before its nominal response time. The transfer reaches the horizontal
 boundary, RI closes the open rows, and the CPU waits through the selected clean or
@@ -147,20 +170,17 @@ deferred instruction refills.
 ## Current limits
 
 [RI refresh](rdram-interface.md) is modeled when recovery is already active or
-begins before a blocking CPU request's nominal response. Row-change delays and
-shared-memory arbitration remain incomplete. Buffered stores and DMA engines do
-not yet share this transaction timing, and per-chip RAS/minimum-interval effects
-and the RI optimize bit are not modeled.
+begins before a blocking CPU request's nominal response. The row-open wait
+applies to uncached CPU reads only. Buffered stores and DMA engines change the
+open row but do not yet wait for it, shared-bus arbitration between requesters
+is not modeled, and per-chip RAS/minimum-interval effects, dirty-row close
+time, and the RI optimize bit are not modeled.
 
-VI advances scanline timing and starts RI refresh, but does not submit timed
-framebuffer reads to RDRAM. Scanout reads the stored image separately. The CPU
-wait calculation therefore has no VI request address or bank to compare with
-its own transfer. Refresh alone cannot distinguish a read that shares VI's
-bank from one in an adjacent bank.
+VI's line-buffer fill updates the open row of the framebuffer bank but does not
+consume bus time that other requesters would wait for. Scanout still reads the
+stored image separately when a field is delivered.
 
-At revision `6d8f70b`, the retained hosted extended image passes all eight
-VI-disabled cache-miss cases. The two VI-enabled averages remain below their
-original tolerance, and the uncached read sharing VI's bank still fails. The
-[cartridge build comparison](../testing/cartridge-build-layout.md) records
-the input identity and measurements. Shared arbitration remains open under
-issues #4, #5, and #6.
+With the prepared extended cartridge, all 1,604 timing cases pass, including
+the same-bank uncached load. The [cartridge build comparison](../testing/cartridge-build-layout.md)
+records the input identity and measurements. Shared arbitration remains open
+under issue #4.

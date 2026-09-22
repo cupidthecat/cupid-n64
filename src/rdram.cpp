@@ -20,6 +20,7 @@ void Rdram::reset(bool warm) {
     identity_mapping_ = false;
     errors_ = 0;
     banks_.fill({});
+    clock_ = 0;
     if (warm)
         return;
     std::fill(bytes_.begin(), bytes_.end(), u8{0});

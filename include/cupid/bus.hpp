@@ -51,6 +51,7 @@ class Bus {
         return ri_refresh_counter_;
     }
     [[nodiscard]] u64 rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const;
+    [[nodiscard]] bool rdram_row_miss(u32 physical) const;
 
     [[nodiscard]] u8 read_ram_byte(u32 address) const;
     void write_ram_byte(u32 address, u8 value);
@@ -136,8 +137,13 @@ class Bus {
     bool ri_current_loaded_{};
     u64 ri_refresh_counter_{};
     void start_rdram_refresh();
+    void settle_vi_fetch(u32 physical) const;
     [[nodiscard]] u64 vi_line_cycles() const;
     [[nodiscard]] u64 next_vi_line() const;
+    [[nodiscard]] u64 vi_line_rcp_cycles() const;
+    [[nodiscard]] u32 vi_line_bytes() const;
+    [[nodiscard]] std::optional<u32> vi_fetch_address() const;
+    [[nodiscard]] u64 vi_fetch_interval() const;
 
     u64 vi_counter_{};
     std::optional<u64> vi_line_period_;

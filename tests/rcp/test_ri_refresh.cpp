@@ -131,7 +131,8 @@ TEST(ri_refresh_stalls_blocking_cpu_memory_requests_but_not_cache_hits_or_device
         system.bus.tick(first_line(system));
         CHECK_EQ(system.bus.rdram_refresh_wait(), 54U);
         system.cpu.step();
-        const u64 expected = access == 0 ? 112U : access == 1 ? 122U : access == 2 ? 1U : 5U;
+        // The uncached read also opens its row again because the refresh closed every row.
+        const u64 expected = access == 0 ? 116U : access == 1 ? 122U : access == 2 ? 1U : 5U;
         CHECK_EQ(system.cpu.cycles, expected);
         CHECK_EQ(system.cpu.gpr[2], access == 3 ? 0x02020102U : 0x12345678U);
         CHECK_EQ(system.cpu.cp0[9], expected / 2);

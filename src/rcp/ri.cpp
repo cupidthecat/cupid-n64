@@ -51,6 +51,20 @@ void Rdram::track_access(u32 address, bool write) const {
         bank.dirty = false;
     }
     bank.dirty |= write;
+    bank.last_access = clock_;
+}
+
+bool Rdram::row_open(u32 address) const {
+    if (address >= 0x00800000U || !active_)
+        return true;
+    const auto& bank = banks_[address >> 20];
+    return bank.valid && bank.row == static_cast<u16>((address >> 11) & 0x1ffU);
+}
+
+u64 Rdram::bank_access_clock(u32 address) const {
+    if (address >= 0x00800000U)
+        return clock_;
+    return banks_[address >> 20].last_access;
 }
 
 u32 Bus::read_ri(u32 offset) const {
