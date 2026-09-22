@@ -5,6 +5,7 @@
 namespace cupid {
 
 void Bus::set_video_output(std::function<void(VideoField)> output) {
+    schedule_dirty_ = true;
     video_output_ = output ? std::make_shared<std::function<void(VideoField)>>(std::move(output)) : nullptr;
 }
 
@@ -52,9 +53,18 @@ u64 Bus::next_vi_line() const {
 
 void Bus::tick_vi(u64 rcp_cycles) {
     constexpr u64 rcp_frequency = 62500000;
-    const u64 fraction = (rcp_cycles % rcp_frequency) * system_.video_frequency() + vi_clock_fraction_;
-    const u64 clocks = (rcp_cycles / rcp_frequency) * system_.video_frequency() + fraction / rcp_frequency;
-    vi_clock_fraction_ = fraction % rcp_frequency;
+    u64 clocks = 0;
+    if (rcp_cycles == 1) {
+        vi_clock_fraction_ += system_.video_frequency();
+        if (vi_clock_fraction_ >= rcp_frequency) {
+            vi_clock_fraction_ -= rcp_frequency;
+            clocks = 1;
+        }
+    } else {
+        const u64 fraction = (rcp_cycles % rcp_frequency) * system_.video_frequency() + vi_clock_fraction_;
+        clocks = (rcp_cycles / rcp_frequency) * system_.video_frequency() + fraction / rcp_frequency;
+        vi_clock_fraction_ = fraction % rcp_frequency;
+    }
     if (!vi_line_period_)
         vi_line_period_ = vi_line_cycles();
     vi_counter_ += clocks;

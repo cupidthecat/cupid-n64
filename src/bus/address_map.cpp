@@ -54,18 +54,21 @@ void Bus::write(u32 physical, unsigned width_bytes, u64 value) {
     }
 
     if (physical >= 0x1fc00000U && physical <= 0x1fcfffffU) {
+        schedule_dirty_ = true;
         write_pif(physical, width_bytes, value);
         return;
     }
 
     if ((physical >= 0x05000000U && physical <= 0x1fbfffffU) ||
         (physical >= 0x1fd00000U && physical <= 0x7fffffffU)) {
+        schedule_dirty_ = true;
         write_cart(physical, width_bytes, value);
         return;
     }
 
     if ((physical >= 0x04040000U && physical <= 0x040bffffU) ||
         (physical >= 0x04100000U && physical <= 0x048fffffU)) {
+        schedule_dirty_ = true;
         const u32 word = expand_rcp_write(physical, width_bytes, value);
         write_rcp_word(physical & ~3U, word);
         return;

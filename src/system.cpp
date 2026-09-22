@@ -40,6 +40,8 @@ System::System(VideoStandard video_standard)
 
 void System::reset() {
     rcp_fraction_ = 0;
+    event_gap_ = 0;
+    event_valid_ = false;
     bus.reset();
     rsp.reset();
     cpu.reset();
@@ -54,16 +56,28 @@ void System::advance(u64 cpu_cycles) {
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
     u64 rcp_cycles = whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
+    if (bus.take_schedule_change())
+        event_valid_ = false;
     while (rcp_cycles != 0) {
+        if (!event_valid_) {
+            event_gap_ = bus.next_event();
+            event_valid_ = true;
+        }
         u64 elapsed = rsp.running() ? 1 : rcp_cycles;
-        elapsed = std::min({elapsed, rsp.next_dma_event(), bus.next_event()});
+        elapsed = std::min({elapsed, rsp.next_dma_event(), event_gap_});
         if (const u64 write_event = cpu.next_buffered_write(); write_event != 0)
             elapsed = std::min(elapsed, write_event);
+        if (elapsed == 0)
+            elapsed = 1;
         bus.tick_devices(elapsed);
         rsp.tick(elapsed);
         cpu.tick_write_buffer(elapsed);
         bus.dispatch_outputs();
         rcp_cycles -= elapsed;
+        if (event_gap_ <= elapsed || bus.take_schedule_change())
+            event_valid_ = false;
+        else
+            event_gap_ -= elapsed;
     }
 }
 

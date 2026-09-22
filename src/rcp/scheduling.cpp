@@ -40,9 +40,15 @@ void Bus::tick(u64 rcp_cycles) {
         dispatch_outputs();
         rcp_cycles -= elapsed;
     }
+    // Advance caches the next deadline. A direct tick moves those same clocks.
+    schedule_dirty_ = true;
 }
 
 void Bus::dispatch_outputs() {
+    if (pending_outputs_.empty()) {
+        ai_boundary_pending_ = false;
+        return;
+    }
     struct DeliveryScope {
         bool& active;
         ~DeliveryScope() {

@@ -100,6 +100,20 @@ void Bus::sample_ai() {
 
 void Bus::tick_ai(u64 rcp_cycles) {
     // Keep the oscillator fraction even while DMA is disabled or the FIFO is empty.
+    if (rcp_cycles == 1 && ai_counter_ <= std::numeric_limits<u64>::max() - ai_clock_rate_) {
+        ai_counter_ += ai_clock_rate_;
+        while (ai_counter_ >= ai_clock_period_) {
+            ai_counter_ -= ai_clock_period_;
+            ai_boundary_pending_ = true;
+            sample_ai();
+            latch_ai_period();
+            if (ai_fifo_count_ == 0 || ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)) {
+                ai_counter_ %= ai_clock_period_;
+                break;
+            }
+        }
+        return;
+    }
     while (rcp_cycles != 0) {
         const u64 chunk =
             std::min(rcp_cycles, (std::numeric_limits<u64>::max() - ai_counter_) / ai_clock_rate_);

@@ -114,6 +114,12 @@ class Bus {
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);
     void dispatch_outputs();
+    [[nodiscard]] bool take_schedule_change() {
+        const bool changed = schedule_dirty_;
+        schedule_dirty_ = false;
+        return changed;
+    }
+    bool schedule_dirty_{};
     std::deque<std::function<void()>> pending_outputs_;
     bool output_delivery_active_{};
 

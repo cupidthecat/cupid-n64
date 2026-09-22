@@ -28,6 +28,7 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 void Bus::reset() {
     joybus.reset();
     pending_outputs_.clear();
+    schedule_dirty_ = false;
     memory.reset();
 
     std::fill(pif.begin() + PifRamOffset, pif.end(), u8{0});
