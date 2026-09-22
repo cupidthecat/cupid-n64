@@ -1,5 +1,88 @@
 # Recorded validation results
 
+## RDRAM row opening and the in-flight refresh hold
+
+The September 21, 2026 runs following `6465fd1dd94d6c88ae3da06ea4242376544f36d0`
+cover two changes to uncached CPU reads. An uncached read whose 2 KiB row is not
+open in its 1 MiB bank now takes four more cycles while RI opens it, and the VI
+line-buffer fill keeps the framebuffer row open in its bank, so an uncached load
+in the bank VI is displaying from measures 36 cycles against 32 elsewhere. A
+refresh that begins while a single-word uncached read is in flight no longer
+holds that read for the recovery interval; cache refills and writebacks keep the
+hold. The [CPU timing guide](../hardware/cpu-timing.md#uncached-rdram-reads),
+[RDRAM interface guide](../hardware/rdram-interface.md#open-rows-and-request-timing),
+and [video timing guide](../hardware/video-timing.md#framebuffer-fetches-and-rdram-rows)
+describe the model and its limits.
+
+Eleven regressions were added: ten in `tests/cpu/test_rdram_rows.cpp` for the
+row wait across all eight banks, other-bank and chip-register requests, the
+cached refill path, refresh closing rows, VI fetches in the same and another
+bank, the fetch interval, tick-size independence, and reset; and one in
+`tests/cpu/test_rdram_refresh_overlap.cpp` for the uncached word that completes
+ahead of a refresh. The refresh-stall regression's expectation moved from 112 to
+116 cycles because the first read after a refresh opens its row again.
+
+Windows MSVC Release, Linux Clang Release, and Clang ASan/UBSan with leak
+detection each validated the same clone of that revision, 301 tracked files with
+a clean status. Nothing changed after the runs except this record. The Linux git
+status lists line-ending differences for the Windows checkout; the file bytes
+are the ones both platforms compiled.
+
+| Check | Result in each configuration |
+| --- | --- |
+| Hardware and host regressions | 1,090 passed |
+| Validation-tool regressions | 36 passed |
+| Default cartridge | 4,637 passed |
+| Cold boot followed by warm reset | 4,637 passed on each boot |
+| Extended Base, including all twelve triangle cases | 4,649 passed |
+| Extended Timing | 1,604 passed |
+| Cycle, CP0-hazards, and Poorly-understood-quirk | 13, five, and two passed |
+| Source and input integrity | Verified |
+
+Formatting, strict builds, storage checks, and capture-runner checks pass. All
+seven CTest entries pass and each full validator returns exit 0. This is the
+first record in which the prepared extended cartridge passes every enabled
+case. The sanitizer run reports no AddressSanitizer, UndefinedBehaviorSanitizer,
+or leak diagnostics. Default execution uses 329,399,327 instructions and
+822,037,286 CPU cycles; extended execution uses 363,753,813 instructions and
+896,469,179 CPU cycles in all three configurations.
+
+The test revision remains `9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c` with the
+maintained fixture corrections. Input hashes are unchanged:
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Prepared default cartridge | 2,609,128 | `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3` |
+| Prepared extended cartridge | 2,633,384 | `5c490faffc0329ede6ae4a877d5ac2a15a86e42a5af8bfe546e0ff52fb3ce170` |
+| NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
+
+### How the refresh hold was found
+
+With only the row change, the retained original extended image reported the
+VI-disabled uncached average at `a0100000` as 33.543 against 32.54 plus or
+minus 1.0, while the prepared image passed the same case. A probe of the 3,001
+loads in that test showed the row wait adding 0.14 cycles per load on average,
+loads that began during a refresh adding 0.46, and the hold for a refresh that
+began during the load adding 0.79. The hardware figure leaves 0.54 for all of
+these together. Removing the hold from uncached reads puts the model at about
+32.6 on that image and leaves the prepared image fully passing. Removing the
+hold from cache refills as well would drop the prepared image's VI-enabled
+same-bank cache average to 42.231 against 43.25 plus or minus 1.0, so the
+refill paths keep it.
+
+### Replay of the original retained image
+
+The original extended image with SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089` was replayed
+on the Windows Clang Release build of the same source. It executes 358,173,663
+instructions and 793,786,086 CPU cycles. The VI-enabled uncached median and the
+VI-disabled uncached average both pass. Two timing cases remain: the VI-disabled
+cache-load average at `0x80300000` (43.03 against 42.5 plus or minus 0.5), and
+the original clock sampler (133,300 against 133,333 plus or minus 20), which the
+maintained fixture corrects. The eleven triangle-fixture disagreements remain
+as recorded earlier. Issue #5 stays open for the cache average on that layout.
+Shared-bus arbitration between requesters is still not modeled under #4.
+
 ## Integer execution and instruction-cache overlap
 
 The September 21, 2026 runs following

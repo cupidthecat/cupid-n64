@@ -13,7 +13,11 @@ historical baseline for `be366ff`, not the current extended-suite totals.
 
 Later [VI line-latching results](vi-timing-results.md) record changed cache-miss
 averages after correcting horizontal deadlines. The same timing cases still
-fail; the original expectations remain unchanged.
+fail there; the original expectations remain unchanged. The
+[recorded validation results](validation-results.md) track the current totals;
+as of revision `6465fd1` the prepared extended cartridge passes every enabled
+case, while the original retained image keeps two timing cases and the eleven
+fixture disagreements.
 
 ## Inputs
 
