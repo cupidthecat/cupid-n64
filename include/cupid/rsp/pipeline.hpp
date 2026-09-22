@@ -122,14 +122,20 @@ class RspPipeline {
 
     struct DecodedFetch {
         std::array<u32, 2> words{};
-        Ports ports{};
+        struct Dependencies {
+            u32 scalar_reads{};
+            u32 scalar_result{};
+            u32 vector_reads{};
+            u32 vector_result{};
+        } ports;
         std::array<Operation, 2> operations{};
         u8 count{};
         bool pairing_allowed{};
         bool fresh_local{};
         bool issued_local{};
+        u8 flags{};
     };
-    static_assert(sizeof(DecodedFetch) == 48);
+    static_assert(sizeof(DecodedFetch) == 32);
 
     struct DecodedWord {
         Ports ports{};

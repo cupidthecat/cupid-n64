@@ -339,8 +339,13 @@ RspPipeline::DecodedFetch& RspPipeline::prepare(u32 first, u32 second, bool pair
         }
     }
 
-    cached = {{first, second}, ports, operations, count, pairing_allowed, first_local && second_local,
-              issued_local};
+    // Control and element-field dependencies have already decided pairing. Only
+    // register dependencies and issue flags remain relevant to the live packet.
+    cached = {
+        {first, second}, {ports.scalar_reads, ports.scalar_result, ports.vector_reads, ports.vector_result},
+        operations,      count,
+        pairing_allowed, first_local && second_local,
+        issued_local,    static_cast<u8>(ports.flags)};
     return cached;
 }
 
@@ -453,7 +458,7 @@ bool RspPipeline::advance_operand_wait() {
     const bool vector_wait =
         (current.vector_reads &
          (previous_[0].vector_result | previous_[1].vector_result | previous_[2].vector_result)) != 0U;
-    const bool store_wait = (current.flags & store) != 0U && previous_[1].load;
+    const bool store_wait = (decoded_[current_index_].flags & store) != 0U && previous_[1].load;
     if (!scalar_wait && !vector_wait && !store_wait)
         return false;
     advance({});
@@ -462,8 +467,9 @@ bool RspPipeline::advance_operand_wait() {
 
 void RspPipeline::retire(bool taken_delay_slot, u32 next_pc) {
     const auto& current = decoded_[current_index_].ports;
-    advance({current.scalar_result, current.vector_result, (current.flags & load) != 0U});
-    single_issue_ = (current.flags & branch) != 0U;
+    const u8 flags = decoded_[current_index_].flags;
+    advance({current.scalar_result, current.vector_result, (flags & load) != 0U});
+    single_issue_ = (flags & branch) != 0U;
     count_ = 0;
     if (taken_delay_slot) {
         branch_wait_ = true;

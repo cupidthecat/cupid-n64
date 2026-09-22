@@ -33,8 +33,11 @@ not name a functional operand. MTC2 and LTV retain their special VNOP conflicts.
 ## Decoded packets and vector execution
 
 Instruction decoding is cached as derived metadata at instruction addresses.
-Each entry stores the issue ports, scalar operation, and whether
-the instructions can execute without accessing shared devices. A cached packet
+Each 32-byte entry stores the issued register dependencies, issue flags,
+operations, and whether the instructions can execute without accessing shared
+devices. The 1,024-entry table occupies 32 KiB. Control-register and element-field
+dependencies decide pairing during decode; they are not needed in the cached
+packet once that decision is made. A cached packet
 is reused only when both fetched IMEM words and the current pairing permission
 match the entry. A change to either word, including one made by SP DMA, is
 decoded again on the next packet fetch. Cache-index collisions and wrapped
@@ -117,8 +120,9 @@ bytes as well as the transferred result.
 
 `tests/rsp/test_pipeline_cache.cpp` changes each fetched word independently,
 exercises address collisions, copies a stalled pipeline, and checks redirects
-and reset. It also checks fresh and latched local-execution decisions and the
-ordering of shared-word checks around a branch bubble. A stalled latched packet
+and reset. Reused packets retain every scalar and vector dependency bit and
+the load/store wait flags. It also checks fresh and latched local-execution
+decisions and the ordering of shared-word checks around a branch bubble. A stalled latched packet
 remains intact when IMEM changes. `test_decoded_execution.cpp` checks the source
 alias on taken and untaken link branches. The vector regressions execute encoded
 programs with all element selections, both sources and the destination sharing

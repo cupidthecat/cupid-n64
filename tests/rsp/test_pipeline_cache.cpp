@@ -307,3 +307,44 @@ TEST(rsp_decoded_fetch_local_issue_checks_shared_words_before_branch_bubble) {
     CHECK_EQ(pipeline.local_issue(addiu, vnop, 0x020U), LocalIssue::Ready);
     CHECK_EQ(pipeline.size(), 2U);
 }
+
+TEST(rsp_decoded_fetch_reuses_every_scalar_and_vector_dependency_bit) {
+    for (unsigned reg = 0; reg < 32; ++reg) {
+        RspPipeline pipeline;
+        for (unsigned repeat = 0; repeat < 2; ++repeat) {
+            drain(pipeline);
+            pipeline.fetch(0x8c000000U | (reg << 16U), vnop, false, 0x80U);
+            pipeline.retire(false, 0x88U);
+            pipeline.fetch((reg << 21U) | 0x00001021U, vnop, false, 0x100U);
+            CHECK_EQ(pipeline.size(), 2U);
+            if (reg != 0U) {
+                CHECK(pipeline.advance_operand_wait());
+                CHECK(pipeline.advance_operand_wait());
+            }
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x108U);
+
+            drain(pipeline);
+            pipeline.fetch(0xc8002000U | (reg << 16U), vnop, false, 0x180U);
+            pipeline.retire(false, 0x188U);
+            pipeline.fetch(0x4a000050U | (reg << 16U) | (reg << 11U), addiu, false, 0x200U);
+            CHECK_EQ(pipeline.size(), 2U);
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x208U);
+
+            drain(pipeline);
+            pipeline.fetch(0x8c000000U, vnop, false, 0x280U);
+            pipeline.retire(false, 0x288U);
+            pipeline.fetch(0, vnop, false, 0x300U);
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x308U);
+            pipeline.fetch(0xac000000U, vnop, false, 0x380U);
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x388U);
+        }
+    }
+}
