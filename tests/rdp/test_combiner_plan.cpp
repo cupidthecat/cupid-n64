@@ -345,3 +345,143 @@ TEST(rdp_combiner_plan_rebuilds_from_reset_state_without_setcombine) {
     commands.run();
     CHECK_EQ(commands.pixel(), 0x000000e0U);
 }
+
+TEST(rdp_combiner_plan_direct_d_zero_multiplier_preserves_signed_expansion) {
+    RdpColorState state;
+    const CombineCycle cycle{.a = 1, .b = 2, .c = 16, .d = 2, .aa = 1, .ab = 2, .ac = 7, .ad = 2};
+    state.combine = combine_word({}, cycle);
+    RdpColorInputs inputs;
+    inputs.texel0 = {17, 33, 65, 129};
+    inputs.texel1 = {511, 384, 256, -129};
+
+    const auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::DirectD);
+    const auto prepared = rdp_combine_prepared(state, plan, 0, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 0, inputs, 8, 0));
+    CHECK_EQ(prepared.color, (RdpColor{0, 0, 255, 255}));
+}
+
+TEST(rdp_combiner_plan_direct_d_identical_dynamic_terms_ignore_multiplier) {
+    RdpColorState state;
+    state.environment = 0x12345678U;
+    const CombineCycle cycle{.a = 1, .b = 1, .c = 8, .d = 5, .aa = 1, .ab = 1, .ac = 1, .ad = 5};
+    state.combine = combine_word({}, cycle);
+    RdpColorInputs inputs;
+    inputs.texel0 = {300, -47, 511, 384};
+
+    const auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::DirectD);
+    const auto prepared = rdp_combine_prepared(state, plan, 0, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 0, inputs, 8, 0));
+    CHECK_EQ(prepared.color, rdp_unpack_color(state.environment));
+}
+
+TEST(rdp_combiner_plan_compares_values_of_distinct_constant_selectors) {
+    RdpColorState state;
+    state.primitive = 0x40506080U;
+    state.environment = state.primitive;
+    const CombineCycle cycle{.a = 3, .b = 5, .c = 1, .d = 4, .aa = 3, .ab = 5, .ac = 1, .ad = 4};
+    state.combine = combine_word({}, cycle);
+    RdpColorInputs inputs;
+    inputs.texel0 = {128, 64, 32, 128};
+    inputs.shade = {30, 40, 50, 100};
+
+    auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::DirectD);
+    auto prepared = rdp_combine_prepared(state, plan, 0, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 0, inputs, 8, 0));
+    CHECK_EQ(prepared.color, inputs.shade);
+
+    state.environment = 0x30506070U;
+    plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::Full);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::Full);
+    prepared = rdp_combine_prepared(state, plan, 0, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 0, inputs, 8, 0));
+    CHECK_EQ(prepared.color, (RdpColor{38, 40, 50, 108}));
+}
+
+TEST(rdp_combiner_plan_direct_d_key_retains_a_bypass_and_signed_seventeen_window) {
+    RdpColorState state;
+    state.environment = 0x80808080U;
+    state.key_width = {2057, 2057, 2057};
+    const CombineCycle cycle{.a = 1, .b = 2, .c = 16, .d = 5, .aa = 1, .ab = 2, .ac = 7, .ad = 5};
+    state.combine = combine_word({}, cycle);
+    RdpColorInputs inputs;
+    inputs.texel0 = {20, 40, 60, 90};
+    inputs.texel1 = {210, 220, 230, 240};
+
+    const auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    constexpr u64 key_enable = 1ULL << 40U;
+    const auto prepared = rdp_combine_prepared(state, plan, key_enable, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, key_enable, inputs, 8, 0));
+    CHECK_EQ(prepared.color, (RdpColor{20, 40, 60, 16}));
+}
+
+TEST(rdp_combiner_plan_direct_d_two_cycles_preserve_feedback_and_texel_swap) {
+    RdpColorState state;
+    const CombineCycle pass_texel{.d = 1, .ad = 1};
+    state.combine = combine_word(pass_texel, pass_texel);
+    RdpColorInputs inputs;
+    inputs.texel0 = {10, 20, 30, 40};
+    inputs.texel1 = {50, 60, 70, 80};
+
+    const auto plan = rdp_prepare_combiner(state);
+    for (unsigned cycle = 0; cycle < 2; ++cycle) {
+        CHECK_EQ(plan.rgb_expression[cycle], RdpCombinerExpression::DirectD);
+        CHECK_EQ(plan.alpha_expression[cycle], RdpCombinerExpression::DirectD);
+    }
+    const auto prepared = rdp_combine_prepared(state, plan, 1ULL << 52U, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 1ULL << 52U, inputs, 8, 0));
+    CHECK_EQ(prepared.color, inputs.texel1);
+    CHECK_EQ(prepared.test_alpha, 40U);
+}
+
+TEST(rdp_combiner_plan_direct_d_two_cycles_retain_signed_combined_feedback) {
+    RdpColorState state;
+    state.combine = combine_word({.d = 1, .ad = 1}, {.d = 0, .ad = 0});
+    RdpColorInputs inputs;
+    inputs.texel0 = {511, 384, 256, -129};
+    inputs.texel1 = {50, 60, 70, 80};
+
+    const auto plan = rdp_prepare_combiner(state);
+    for (unsigned cycle = 0; cycle < 2; ++cycle) {
+        CHECK_EQ(plan.rgb_expression[cycle], RdpCombinerExpression::DirectD);
+        CHECK_EQ(plan.alpha_expression[cycle], RdpCombinerExpression::DirectD);
+    }
+    const auto prepared = rdp_combine_prepared(state, plan, 1ULL << 52U, inputs, 8, 0);
+    check_equal(prepared, rdp_combine(state, 1ULL << 52U, inputs, 8, 0));
+    CHECK_EQ(prepared.color, (RdpColor{0, 0, 255, 255}));
+    CHECK_EQ(prepared.test_alpha, 255U);
+}
+
+TEST(rdp_combiner_plan_keeps_live_products_full_and_noise_metadata_conservative) {
+    RdpColorState state;
+    const CombineCycle full{.a = 1, .b = 2, .c = 4, .d = 5, .aa = 1, .ab = 2, .ac = 4, .ad = 5};
+    state.combine = combine_word({}, full);
+    auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::Full);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::Full);
+
+    state.combine = combine_word({}, {.a = 7, .c = 16, .d = 5});
+    plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    CHECK(plan.uses_noise[1]);
+}
+
+TEST(rdp_combiner_plan_direct_d_refreshes_environment_constant_at_each_draw) {
+    ColorCommands commands;
+    commands.append(0x3c, combine_word({}, {.d = 5, .ad = 5}));
+    commands.append(0x3b, 0x123456ffU);
+    commands.rectangle();
+    commands.append(0x3b, 0xabcdef80U);
+    commands.rectangle(4, 0, 8, 4);
+    commands.run();
+
+    CHECK_EQ(commands.pixel(0), 0x123456e0U);
+    CHECK_EQ(commands.pixel(1), 0xabcdefe0U);
+}

@@ -120,7 +120,10 @@ advances, checking storage immediately before and at read completion.
 `tests/rcp/test_controller_pak_banks.cpp` exercises capacities from one through
 62 banks, bank selection, invalid values, resize and reconnect state, high
 addresses, CRC handling, and SI completion boundaries. Host regression files
-exercise raw multi-bank file sizing and the `--pak-banks` option. Dedicated
+exercise raw multi-bank file sizing and the `--pak-banks` option. The persistence
+test loads an independently constructed image at every capacity from one through
+62 banks, changes a byte in each bank, flushes it, and checks the entire image
+after recreating the machine. Dedicated
 physical hardware captures for banked Pak devices are still needed. Hardware
 transaction timing remains open under issue #28.
 [Retained PIF descriptors](joybus.md) are implemented.

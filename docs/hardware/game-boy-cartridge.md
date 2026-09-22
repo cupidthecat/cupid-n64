@@ -5,7 +5,10 @@
 oscillator, and MBC5 rumble wiring. The factory checks these settings against
 the supported capacities. It accepts power-of-two ROM sizes from 32 KiB upward;
 unsupported sizes and incompatible peripheral combinations return an error.
-Header interpretation and release-runner selection remain separate work under #33.
+The release runner reads recognized board and RAM fields from the cartridge
+header. Unknown boards, unsupported RAM declarations, and ROM lengths that do
+not match the header require explicit mapper and RAM settings. See
+[runner hardware configuration](configuration.md) for those options.
 
 | Mapper | Maximum ROM | RAM |
 | --- | --- | --- |
@@ -51,7 +54,10 @@ that command without driving host haptics.
 `ram()` exposes the save bytes for import/export. Mapper power resets disable
 banked RAM, select ROM bank one, clear RAM/mode registers, and stop cartridge
 rumble while preserving save bytes. The core initializes new RAM to zero;
-battery-file persistence and cartridge identity are not implemented here.
+the release runner loads and flushes that RAM with `--transfer-save`. It stores
+supported cartridge clock state separately through `--transfer-rtc-file`.
+[Persistent host storage](storage.md) describes both file formats and replacement
+rules.
 
 ## MBC3 clock
 
@@ -85,5 +91,5 @@ MBC1 multicart wiring, MMM01, HuC1/HuC3, MBC6/MBC7, TAMA5, non-power-of-two ROM
 layouts, and other boards are not selectable. Physical pull-up values, uncommon
 register aliases, timerless board variants, and released-game compatibility also
 remain unverified. Unsupported layouts must not be treated as a supported mapper
-without an explicit configuration decision. These limits remain under #30,
-#33, and #38.
+without an explicit configuration decision. These hardware model and game
+compatibility limits remain under #30 and #38.

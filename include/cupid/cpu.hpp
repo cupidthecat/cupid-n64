@@ -239,8 +239,10 @@ class Cpu {
         u8 load_target{32};
         u8 memory_width : 4 {};
         u8 signed_load : 1 {};
+        u8 floating_memory : 1 {};
         u8 valid : 1 {};
     };
+    static_assert(sizeof(CachedDecode) == 16);
     std::vector<CachedDecode> cached_decode_ = std::vector<CachedDecode>(4096);
     struct CachedLinePlan {
         std::array<u8, 32> image{};

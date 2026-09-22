@@ -126,6 +126,10 @@ RdpColor rdp_sample_texture(const std::array<u8, 4096>& memory, const RdpTile& t
     const bool convert_previous = cycle == 1U && (modes & (1ULL << 41U)) != 0;
     if (convert_previous && !filter)
         return convert_color(previous, convert);
+    if (convert_previous && !quad) {
+        const s32 blue = signed_nine(previous[2]);
+        return {blue, blue, blue, blue};
+    }
     const s32 s =
         coordinate(point[0], tile.s_low, tile.s_high, tile.s_shift, tile.s_clamp || tile.s_mask == 0U);
     const s32 t =
@@ -149,10 +153,28 @@ RdpColor rdp_sample_texture(const std::array<u8, 4096>& memory, const RdpTile& t
     const std::array<s32, 4> ys = {t0, t0, t1, t1};
     const s32 chroma0 = s0 >> 1;
     const s32 chroma1 = (2 * s1 - s0) >> 1;
+    const auto required_taps = [&](s32 fraction) -> unsigned {
+        if (yuv && !quad)
+            return 1U;
+        if (mid_enabled && filter && fraction == 16 && tf == 16)
+            return 15U;
+        const unsigned base = fraction + tf >= 32 ? 8U : 1U;
+        return base | (convert_previous || (filter && (quad || palette)) ? 6U : 0U);
+    };
+    const unsigned needed = required_taps(sf) | (yuv ? required_taps(chroma_fraction) : 0U);
+    const auto fetch = [&](unsigned index) {
+        return texel(memory, tile, xs[index], ys[index], (index & 1U) != 0 ? chroma1 : chroma0, palette,
+                     palette_ia, index ^ bank_xor);
+    };
     std::array<RdpColor, 4> taps{};
-    for (unsigned i = 0; i < 4; ++i)
-        taps[i] = texel(memory, tile, xs[i], ys[i], (i & 1U) != 0 ? chroma1 : chroma0, palette, palette_ia,
-                        i ^ bank_xor);
+    if ((needed & 1U) != 0)
+        taps[0] = fetch(0);
+    if ((needed & 6U) != 0) {
+        taps[1] = fetch(1);
+        taps[2] = fetch(2);
+    }
+    if ((needed & 8U) != 0)
+        taps[3] = fetch(3);
     RdpColor result{};
     for (unsigned channel = 0; channel < 4; ++channel) {
         const s32 fraction = yuv && channel < 2U ? chroma_fraction : sf;
@@ -163,9 +185,7 @@ RdpColor rdp_sample_texture(const std::array<u8, 4096>& memory, const RdpTile& t
             const s32 red = signed_nine(previous[0]);
             const s32 green = signed_nine(previous[1]);
             const s32 blue = signed_nine(previous[2]);
-            if (!quad)
-                result[channel] = blue;
-            else if (mid)
+            if (mid)
                 result[channel] = blue + ((red * (taps[2][channel] - taps[3][channel]) +
                                            green * (taps[1][channel] - taps[3][channel]) +
                                            64 * (taps[0][channel] - taps[3][channel]) + 128) >>

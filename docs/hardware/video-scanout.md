@@ -76,6 +76,13 @@ current scan's samples; each render range owns its own cache, so a later snapsho
 observes framebuffer and register changes without cross-scan invalidation. Larger
 X steps use the scalar sample path directly.
 
+With dither restoration enabled, rows of at least 32 samples reuse decoded
+source pixels in blocks of up to 128 outputs. Three source rows and a three-pixel
+horizontal margin cover reconstruction and divot filtering. Repeated-lower-row
+filtering needs only the first two source rows. The fixed temporary storage
+belongs to that row call; short rows and coordinates without room for the margin
+use scalar sampling. Both paths share the same reconstruction arithmetic.
+
 `VideoScanMode::Parallel` can split a sufficiently large snapshot into disjoint
 output-row ranges. The tasks read the same scan register and framebuffer
 state and write separate rows of the returned `VideoField`; the sequential mode
@@ -152,6 +159,9 @@ neighbor filtering on an interior line at the same source coordinate.
 
 `test_filter_rows.cpp` compares buffered row filtering with scalar neighborhood
 sampling across formats, controls, wrapped addresses, and empty memory.
+`test_filter_cached_rows.cpp` checks both pixel formats across the block and
+row-length boundaries, all filtering controls, repeated lower rows, negative
+coordinates, odd-sized memory, partial hidden-bit storage, and coordinate limits.
 `test_parallel_scanout.cpp` compares sequential and parallel fields across
 formats, filtering controls, scaling, and clipping, and checks that snapshot
 execution leaves framebuffer and hardware state unchanged and keeps concurrent

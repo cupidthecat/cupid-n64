@@ -22,6 +22,12 @@ deadline is serviced on the next RCP clock boundary. Repeated presses cannot
 extend the existing deadline. During the delay, the PIF refreshes its control
 byte's acknowledgement bit.
 
+Changing the reset-button level first settles earlier device time, then
+invalidates the cached scheduler deadline. This matters when a held button is
+released after the timeout: cached CPU execution must see the new one-RCP-cycle
+deadline immediately. Retaining the held-button deadline would let further
+instructions execute before the PIF requests NMI.
+
 Nintendo's [reset requirements](https://jrra.zone/n64/doc/caution/caution/index6.htm)
 guarantee at least 0.5 seconds between pre-NMI and NMI and require the game to
 prepare the RSP, audio, graphics, and VI state. Cupid-N64 uses that minimum as
@@ -62,6 +68,12 @@ seeds with both RAM sizes. Integration cases preserve RAM/hidden bits, device
 registers and saved bytes, an in-flight SI transfer, EEPROM programming, and
 active RSP execution. An audio callback checks an input change during a CPU
 instruction.
+
+`tests/rcp/test_pif_reset_deadline.cpp` releases the button after the timeout
+and executes ordinary cached CPU steps without an intervening scheduler query.
+It checks that NMI stops the next instruction and records its address in
+ErrorEPC. The same regression fails on the previous scheduler, which executes
+one extra instruction before noticing the release.
 
 A supplied NTSC PIF and Super Mario 64 cartridge also reach the game's entry
 point after warm reset with both 4 and 8 MiB RAM. The firmware reports a warm

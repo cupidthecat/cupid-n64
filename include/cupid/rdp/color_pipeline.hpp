@@ -56,8 +56,15 @@ struct RdpCombinerTermPlan {
     RdpColor constant{};
 };
 
+enum class RdpCombinerExpression : u8 {
+    Full,
+    DirectD,
+};
+
 struct RdpCombinerPlan {
     std::array<std::array<RdpCombinerTermPlan, 4>, 2> cycles{};
+    std::array<RdpCombinerExpression, 2> rgb_expression{};
+    std::array<RdpCombinerExpression, 2> alpha_expression{};
     std::array<bool, 2> uses_noise{};
 };
 

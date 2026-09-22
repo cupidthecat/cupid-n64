@@ -8,8 +8,10 @@ initial control, storage, and calendar bytes explicitly. `registers()` provides 
 read-only view. Installing a new instance starts a fresh subsecond interval.
 
 The core advances the clock using emulated time. It does not read the host clock,
-choose a time zone, infer RTC presence from a ROM, or load/save an RTC file.
-Cartridge configuration and persistence remain tracked under #33 and #34.
+choose a time zone, or infer RTC presence from a ROM. The release runner attaches
+the device with `--rtc`; `--rtc-file` loads and flushes its exact 32 retained
+register bytes. See [runner hardware configuration](configuration.md) and
+[persistent host storage](storage.md) for selection and file handling.
 
 ## Commands and registers
 
@@ -79,6 +81,10 @@ busy-state independence. SI tests configure requests by CPU store or write DMA,
 then execute through read DMA. They cover reads at a
 shared tick boundary under bulk and single-cycle CPU/RCP advances. Separate
 tests check the first complete second after an SI run command.
+
+Host storage regressions also flush all 32 retained register bytes, destroy the
+machine, recreate it from the saved image, and compare the restored registers.
+They reject RTC files with the wrong size before cartridge execution.
 
 These tests validate the implemented model. SI deadlines still use the current
 estimates described in [Joybus packets](joybus.md); RTC transaction captures and

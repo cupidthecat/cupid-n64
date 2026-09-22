@@ -6,8 +6,23 @@
 #include <future>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 
 using namespace cupid;
+
+namespace {
+
+struct ThreadExitProbe {
+    std::atomic<unsigned>* exits{};
+    ~ThreadExitProbe() {
+        if (exits)
+            exits->fetch_add(1, std::memory_order_relaxed);
+    }
+};
+
+thread_local ThreadExitProbe thread_exit_probe;
+
+} // namespace
 
 TEST(parallel_ranges_join_repeated_jobs_without_missing_or_repeating_rows) {
     std::array<std::atomic<unsigned>, 257> visits{};
@@ -104,4 +119,43 @@ TEST(parallel_ranges_keep_nested_jobs_and_concurrent_callers_independent) {
     }
     for (auto& caller : callers)
         caller.get();
+}
+
+TEST(parallel_ranges_owner_thread_can_exit_without_waiting_in_tls_teardown) {
+    std::atomic<bool> completed{};
+    std::thread caller([&] {
+        std::atomic<unsigned> rows{};
+        tasks::parallel_ranges(0, 1024, true, [&](s32 first, s32 last, unsigned) {
+            rows.fetch_add(static_cast<unsigned>(last - first), std::memory_order_relaxed);
+        });
+        CHECK_EQ(rows.load(std::memory_order_relaxed), 1024U);
+        completed.store(true, std::memory_order_relaxed);
+    });
+    caller.join();
+    CHECK(completed.load(std::memory_order_relaxed));
+}
+
+TEST(parallel_ranges_explicit_shutdown_joins_workers_and_allows_restart) {
+    std::atomic<unsigned> exits{};
+    std::atomic<unsigned> registered{};
+    std::array<std::atomic<bool>, 3> seen{};
+    const auto owner = std::this_thread::get_id();
+    tasks::parallel_ranges(0, 256, true, [&](s32, s32, unsigned index) {
+        if (std::this_thread::get_id() == owner)
+            return;
+        if (!seen[index].exchange(true, std::memory_order_relaxed)) {
+            thread_exit_probe.exits = &exits;
+            registered.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+    const unsigned worker_count = registered.load(std::memory_order_relaxed);
+    tasks::shutdown_parallel_ranges();
+    CHECK_EQ(exits.load(std::memory_order_relaxed), worker_count);
+
+    std::atomic<unsigned> rows{};
+    tasks::parallel_ranges(0, 256, true, [&](s32 first, s32 last, unsigned) {
+        rows.fetch_add(static_cast<unsigned>(last - first), std::memory_order_relaxed);
+    });
+    CHECK_EQ(rows.load(std::memory_order_relaxed), 256U);
+    tasks::shutdown_parallel_ranges();
 }

@@ -30,6 +30,31 @@ The next instruction computes its address again, including when a load changed
 its own base register. Alignment faults and the external-memory doubleword load
 restriction are checked before a cached access can be accepted.
 
+COP1 register transfers and single- and double-precision comparisons can also
+use the slice. CU1 is checked before an FP data-cache access. FP loads and
+stores use the FPU's transfer register mapping, including paired registers when
+FR is clear; FPR0 remains an ordinary floating-point register. CTC1, FP branches,
+arithmetic, and conversions continue through `Cpu::step`.
+
+A comparison is accepted only when its live operands and FCSR cannot raise an
+invalid-operation trap. Preflight uses the same first- and second-source mapping
+as execution, including their different handling of odd registers with FR clear.
+It runs again after settling device clocks and before each accepted instruction.
+The timing regressions retain one CPU cycle per nontrapping comparison.
+
+A preceding FPU result blocks a dependent comparison when either encoded source
+matches its pending destination. An accepted independent instruction consumes
+that issue boundary and clears the pending interlock. The checks before and after
+settling device clocks preserve the same encoded-source rule as ordinary stepping.
+`tests/cpu/test_cached_cop1.cpp` covers these interlocks, both precisions, NaN trap
+policies, register aliases, cache-hit memory transfers, and callbacks that change
+the operands or FCSR before a comparison can issue.
+
+Before entering a slice, the decoder classifies the already-cached successor.
+An unsupported successor keeps the first instruction on ordinary stepping to
+avoid setting up a one-instruction slice. Supported successors still undergo
+their live register, memory, and trap checks when they reach issue.
+
 The cached decoder is derived from the instruction cache. A line plan records
 the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
 when that image changes. The instruction at `pc` must also match the word already
@@ -39,11 +64,15 @@ read from the live cache before it is latched. These guards preserve an older
 latched word even if software or a test changes the cache line and later restores
 the same byte image.
 
-Before batching, the CPU settles deferred device time. A callback delivered by
-that settle can change machine state, so the entry checks and current-word match
-are evaluated again afterward. The slice stops before the next Bus event, VI line
-boundary, or Count/Compare edge. Instruction and Random state and the deferred
-device clocks are then advanced for exactly the instructions that retired.
+Before batching, the CPU obtains a bound on the remaining device time. An
+existing deferred interval can be reused while the RSP is halted, its deadline
+remains valid, and no peripheral debt, buffered store, or output needs service.
+Otherwise, the query settles device time and recomputes the bound. The entry
+checks and current-word match are evaluated again afterward because settling
+can deliver a callback that changes machine state. The slice stops before the
+next Bus event, VI line boundary, or Count/Compare edge. Instruction and Random
+state and the deferred device clocks advance for exactly the instructions that
+retired.
 
 When the RSP is running, a cached CPU slice can execute local RSP work at the
 same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock

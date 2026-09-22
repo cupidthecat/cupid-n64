@@ -30,26 +30,22 @@ inline void store_bytes(void* destination, __m128i value) {
     std::memcpy(destination, &value, sizeof(value));
 }
 
-inline __m128i swap_u16_bytes(__m128i value) {
-    return _mm_or_si128(_mm_slli_epi16(value, 8), _mm_srli_epi16(value, 8));
+inline __m128i load_vector(const std::array<u16, 8>& lanes) {
+    return load_bytes(lanes.data());
 }
 
-inline __m128i load_vector(const std::array<u8, 16>& bytes) {
-    return swap_u16_bytes(load_bytes(bytes.data()));
-}
-
-inline void store_vector(std::array<u8, 16>& bytes, __m128i value) {
-    store_bytes(bytes.data(), swap_u16_bytes(value));
+inline void store_vector(std::array<u16, 8>& lanes, __m128i value) {
+    store_bytes(lanes.data(), value);
 }
 
 template <int Selection> inline __m128i shuffle_halves(__m128i value) {
     return _mm_shufflehi_epi16(_mm_shufflelo_epi16(value, Selection), Selection);
 }
 
-inline __m128i select_vector(const std::array<u8, 16>& bytes, unsigned element) {
+inline __m128i select_vector(const std::array<u16, 8>& lanes, unsigned element) {
     if (element >= 8U)
-        return _mm_set1_epi16(std::bit_cast<s16>(read_be16(bytes.data() + (element - 8U) * 2U)));
-    const __m128i value = load_vector(bytes);
+        return _mm_set1_epi16(std::bit_cast<s16>(lanes[element - 8U]));
+    const __m128i value = load_vector(lanes);
     switch (element) {
     case 2:
         return shuffle_halves<_MM_SHUFFLE(2, 2, 0, 0)>(value);

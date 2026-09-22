@@ -80,7 +80,10 @@ bool set_port(std::string_view name, std::string_view value, PortOptions& port, 
             port.controller.connected = false;
         } else {
             if (!select(name, value, port.controller.device,
-                        {{"gamepad", ControllerDevice::Gamepad}, {"mouse", ControllerDevice::Mouse}}, error))
+                        {{"gamepad", ControllerDevice::Gamepad},
+                         {"mouse", ControllerDevice::Mouse},
+                         {"gamecube", ControllerDevice::GameCube}},
+                        error))
                 return false;
             port.controller.connected = true;
         }
@@ -352,7 +355,7 @@ std::string_view usage() {
            "  --save-file FILE            Raw cartridge save image\n"
            "  --rtc                       Attach a cartridge real-time clock\n"
            "  --rtc-file FILE             Raw 32-byte cartridge RTC register image\n"
-           "  --controller PORT:gamepad|mouse|none\n"
+           "  --controller PORT:gamepad|mouse|gamecube|none\n"
            "  --accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak\n"
            "  --pak-file PORT:FILE        Raw Controller Pak image\n"
            "  --pak-banks PORT:COUNT      Controller Pak banks, 1 through 62 (default: 1)\n"

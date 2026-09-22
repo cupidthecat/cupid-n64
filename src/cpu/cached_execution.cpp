@@ -157,6 +157,26 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
         return decoded;
     }
 
+    if (op == 0x11) {
+        switch (rs) {
+        case 0x00:
+        case 0x01:
+        case 0x02:
+        case 0x04:
+        case 0x05:
+            direct(CachedDirect::None);
+            break;
+        case 0x10:
+        case 0x11:
+            if ((instruction & 63U) >= 0x30U)
+                direct(CachedDirect::None);
+            break;
+        default:
+            break;
+        }
+        return decoded;
+    }
+
     switch (op) {
     case 0x02:
         direct(CachedDirect::J);
@@ -210,20 +230,30 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
         decoded.kind = CachedKind::Load;
         decoded.load_target = static_cast<u8>(rt);
         break;
+    case 0x31:
+    case 0x35:
+        decoded.kind = CachedKind::Load;
+        decoded.floating_memory = true;
+        break;
     case 0x28:
     case 0x29:
     case 0x2b:
     case 0x3f:
         decoded.kind = CachedKind::Store;
         break;
+    case 0x39:
+    case 0x3d:
+        decoded.kind = CachedKind::Store;
+        decoded.floating_memory = true;
+        break;
     default:
         break;
     }
     if (decoded.kind == CachedKind::Load || decoded.kind == CachedKind::Store) {
-        decoded.memory_width = op == 0x20 || op == 0x24 || op == 0x28   ? 1U
-                               : op == 0x21 || op == 0x25 || op == 0x29 ? 2U
-                               : op == 0x37 || op == 0x3f               ? 8U
-                                                                        : 4U;
+        decoded.memory_width = op == 0x20 || op == 0x24 || op == 0x28                 ? 1U
+                               : op == 0x21 || op == 0x25 || op == 0x29               ? 2U
+                               : op == 0x35 || op == 0x37 || op == 0x3d || op == 0x3f ? 8U
+                                                                                      : 4U;
         decoded.signed_load = decoded.kind == CachedKind::Load && op < 0x24;
     }
     return decoded;
@@ -416,9 +446,9 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const auto clean_state = [&] {
         return !frozen && !nmi_pending_ && !executing_step_ && !exception_pending && !redirected_ &&
                !annul_next_ && gpr[0] == 0 && count_write_hold_ == 0 && software_interrupt_delay_ == 0 &&
-               pending_fpu_register_ == 32 && speculative_refill_count_ == 0 &&
-               wired_writes_[0].instruction == 0 && wired_writes_[1].instruction == 0 && kernel_mode() &&
-               !little_endian() && fetched_instruction_.valid && fetched_instruction_.address == pc;
+               speculative_refill_count_ == 0 && wired_writes_[0].instruction == 0 &&
+               wired_writes_[1].instruction == 0 && kernel_mode() && !little_endian() &&
+               fetched_instruction_.valid && fetched_instruction_.address == pc;
     };
     if (!clean_state())
         return 0;
@@ -479,6 +509,30 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         return true;
     };
 
+    const auto fpu_issue_hazard = [&](const CachedDecode& decoded) {
+        if (pending_fpu_register_ >= 32)
+            return false;
+        const unsigned op = decoded.word >> 26;
+        const unsigned cop1_operation = (decoded.word >> 21) & 31U;
+        if (op != 0x11 || cop1_operation < 16)
+            return false;
+        const unsigned fs = (decoded.word >> 11) & 31U;
+        const unsigned ft = (decoded.word >> 16) & 31U;
+        return fs == pending_fpu_register_ || ft == pending_fpu_register_;
+    };
+
+    const auto cop1_ready = [&](const CachedDecode& decoded) {
+        const unsigned op = decoded.word >> 26;
+        if (op != 0x11 && !decoded.floating_memory)
+            return true;
+        if ((status() & (1U << 29U)) == 0)
+            return false;
+        if (op != 0x11)
+            return true;
+        const unsigned cop1_operation = (decoded.word >> 21) & 31U;
+        return cop1_operation < 16 || fpu.compare_nontrapping(decoded.word);
+    };
+
     u32 current_word = 0;
     u32 prefetched_word = 0;
     if (!cached_word(pc, current_word) || current_word != fetched_instruction_.instruction)
@@ -486,9 +540,14 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const auto& first = decode(pc, current_word);
     if (first.kind == CachedKind::Unsupported ||
         (pending_load_register_ != 0 && (first.integer_reads & (1U << pending_load_register_)) != 0) ||
-        !data_hit(first) || !cached_word(next_pc, prefetched_word))
+        fpu_issue_hazard(first) || !cop1_ready(first) || !data_hit(first) ||
+        !cached_word(next_pc, prefetched_word))
         return 0;
     if (branches_to_self(current_word, pc) && prefetched_word == 0)
+        return 0;
+    // A single accepted instruction cannot amortize the slice setup. Classify the
+    // already cached successor without assuming its future operands or data hit.
+    if (decode(next_pc, prefetched_word).kind == CachedKind::Unsupported)
         return 0;
 
     const u64 device_edge = system_.cached_private_event_cycles();
@@ -509,7 +568,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     if (settled_first.kind == CachedKind::Unsupported ||
         (pending_load_register_ != 0 &&
          (settled_first.integer_reads & (1U << pending_load_register_)) != 0) ||
-        !data_hit(settled_first))
+        fpu_issue_hazard(settled_first) || !cop1_ready(settled_first) || !data_hit(settled_first))
         return 0;
     if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
         prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;
@@ -570,7 +629,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         const auto& decoded = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
         if (decoded.kind == CachedKind::Unsupported ||
             (pending_load_register_ != 0 && (decoded.integer_reads & (1U << pending_load_register_)) != 0) ||
-            !data_hit(decoded))
+            fpu_issue_hazard(decoded) || !cop1_ready(decoded) || !data_hit(decoded))
             break;
         if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
             prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;

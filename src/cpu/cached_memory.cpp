@@ -11,7 +11,10 @@ void Cpu::execute_cached_memory(const CachedDecode& decoded, CacheLine<16>& line
     assert(line.valid && offset + decoded.memory_width <= line.data.size());
     u8* const bytes = line.data.data() + offset;
     if (decoded.kind == CachedKind::Store) {
-        const u64 value = gpr[decoded.rt];
+        const u64 value =
+            decoded.floating_memory
+                ? decoded.memory_width == 4 ? fpu.read_word(decoded.rt) : fpu.read_doubleword(decoded.rt)
+                : gpr[decoded.rt];
         switch (decoded.memory_width) {
         case 1:
             *bytes = static_cast<u8>(value);
@@ -55,8 +58,14 @@ void Cpu::execute_cached_memory(const CachedDecode& decoded, CacheLine<16>& line
         assert(false);
         return;
     }
-    if (decoded.rt != 0)
+    if (decoded.floating_memory) {
+        if (decoded.memory_width == 4)
+            fpu.write_word(decoded.rt, static_cast<u32>(value));
+        else
+            fpu.write_doubleword(decoded.rt, value);
+    } else if (decoded.rt != 0) {
         gpr[decoded.rt] = value;
+    }
 }
 
 } // namespace cupid

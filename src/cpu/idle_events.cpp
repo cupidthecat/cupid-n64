@@ -5,6 +5,10 @@
 namespace cupid {
 
 u64 System::idle_loop_event_cycles() {
+    u64 reusable_cycles = 0;
+    if (reusable_deferred_event_cycles(reusable_cycles))
+        return reusable_cycles;
+
     settle();
     if (cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
         return 0;
@@ -14,6 +18,10 @@ u64 System::idle_loop_event_cycles() {
 }
 
 u64 System::cached_private_event_cycles() {
+    u64 reusable_cycles = 0;
+    if (!rsp.dma_busy_ && !rsp.dma_full_ && reusable_deferred_event_cycles(reusable_cycles))
+        return reusable_cycles;
+
     settle();
     if (rsp.dma_busy_ || rsp.dma_full_ || cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
         return 0;

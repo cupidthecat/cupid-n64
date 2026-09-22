@@ -27,36 +27,10 @@ constexpr u16 bits16(s32 value) {
     return static_cast<u16>(static_cast<u32>(value));
 }
 
-void load_plain_vector(std::array<u8, 16>& target, unsigned element, const std::array<u8, 8192>& memory,
-                       u32 address, unsigned width) {
-    const unsigned count = std::min(width, 16U - element);
-    if (count == 0)
-        return;
-    const unsigned offset = address & 0x0fffU;
-    const unsigned first = std::min(count, 0x1000U - offset);
-    std::memcpy(target.data() + element, memory.data() + offset, first);
-    if (first != count)
-        std::memcpy(target.data() + element + first, memory.data(), count - first);
-}
-
-void store_plain_vector(std::array<u8, 8192>& memory, u32 address, const std::array<u8, 16>& source,
-                        unsigned element, unsigned count) {
-    unsigned destination = address & 0x0fffU;
-    unsigned source_offset = element;
-    while (count != 0) {
-        const unsigned chunk = std::min({count, 16U - source_offset, 0x1000U - destination});
-        std::memcpy(memory.data() + destination, source.data() + source_offset, chunk);
-        count -= chunk;
-        destination = (destination + chunk) & 0x0fffU;
-        source_offset = (source_offset + chunk) & 15U;
-    }
-}
-
 } // namespace
 
 u16 Rsp::vec_u16(const Vector& vector, unsigned lane) {
-    const unsigned offset = (lane & 7) * 2;
-    return static_cast<u16>((static_cast<u16>(vector.byte[offset]) << 8) | vector.byte[offset + 1]);
+    return vector.lane[lane & 7U];
 }
 
 s16 Rsp::vec_s16(const Vector& vector, unsigned lane) {
@@ -64,13 +38,77 @@ s16 Rsp::vec_s16(const Vector& vector, unsigned lane) {
 }
 
 void Rsp::vec_set_u16(Vector& vector, unsigned lane, u16 value) {
-    const unsigned offset = (lane & 7) * 2;
-    vector.byte[offset] = static_cast<u8>(value >> 8);
-    vector.byte[offset + 1] = static_cast<u8>(value);
+    vector.lane[lane & 7U] = value;
 }
 
 void Rsp::vec_set_s16(Vector& vector, unsigned lane, s16 value) {
     vec_set_u16(vector, lane, std::bit_cast<u16>(value));
+}
+
+u8 Rsp::vec_byte(const Vector& vector, unsigned byte) {
+    const unsigned index = byte & 15U;
+    const u16 value = vector.lane[index >> 1U];
+    return (index & 1U) != 0U ? static_cast<u8>(value) : static_cast<u8>(value >> 8U);
+}
+
+void Rsp::vec_set_byte(Vector& vector, unsigned byte, u8 value) {
+    const unsigned index = byte & 15U;
+    u16& lane = vector.lane[index >> 1U];
+    if ((index & 1U) == 0U)
+        lane = static_cast<u16>((lane & 0x00ffU) | (static_cast<u32>(value) << 8U));
+    else
+        lane = static_cast<u16>((lane & 0xff00U) | value);
+}
+
+void Rsp::load_plain_vector(Vector& target, unsigned element, u32 address, unsigned width) {
+    const unsigned count = std::min(width, 16U - element);
+    if (count == 0U)
+        return;
+
+    std::array<u8, 16> packed{};
+    const unsigned offset = address & 0x0fffU;
+    const unsigned first = std::min(count, 0x1000U - offset);
+    std::memcpy(packed.data(), memory.data() + offset, first);
+    if (first != count)
+        std::memcpy(packed.data() + first, memory.data(), count - first);
+
+    unsigned source_byte = 0;
+    unsigned target_byte = element;
+    if ((target_byte & 1U) != 0U) {
+        vec_set_byte(target, target_byte++, packed[source_byte++]);
+    }
+    while (source_byte + 1U < count) {
+        target.lane[target_byte >> 1U] = read_be16(packed.data() + source_byte);
+        source_byte += 2U;
+        target_byte += 2U;
+    }
+    if (source_byte != count)
+        vec_set_byte(target, target_byte, packed[source_byte]);
+}
+
+void Rsp::store_plain_vector(u32 address, const Vector& source, unsigned element, unsigned count) {
+    if (count == 0U)
+        return;
+
+    std::array<u8, 16> packed{};
+    unsigned packed_byte = 0;
+    unsigned source_byte = element & 15U;
+    while (packed_byte < count) {
+        if ((source_byte & 1U) == 0U && packed_byte + 1U < count) {
+            write_be16(packed.data() + packed_byte, source.lane[source_byte >> 1U]);
+            packed_byte += 2U;
+            source_byte = (source_byte + 2U) & 15U;
+        } else {
+            packed[packed_byte++] = vec_byte(source, source_byte++);
+            source_byte &= 15U;
+        }
+    }
+
+    const unsigned destination = address & 0x0fffU;
+    const unsigned first = std::min(count, 0x1000U - destination);
+    std::memcpy(memory.data() + destination, packed.data(), first);
+    if (first != count)
+        std::memcpy(memory.data(), packed.data() + first, count - first);
 }
 
 s16 Rsp::clamp_s16(s64 value) {
@@ -209,8 +247,8 @@ void Rsp::execute_cop2(u32 instruction) {
 
     switch (rs) {
     case 0x00: {
-        const u16 value = static_cast<u16>((static_cast<u16>(vr_[rd].byte[element]) << 8) |
-                                           vr_[rd].byte[(element + 1) & 15]);
+        const u16 value = static_cast<u16>((static_cast<u16>(vec_byte(vr_[rd], element)) << 8) |
+                                           vec_byte(vr_[rd], (element + 1) & 15));
         write_gpr(rt, static_cast<u32>(static_cast<s32>(std::bit_cast<s16>(value))));
         break;
     }
@@ -231,9 +269,9 @@ void Rsp::execute_cop2(u32 instruction) {
         break;
     }
     case 0x04:
-        vr_[rd].byte[element] = static_cast<u8>(gpr_[rt] >> 8);
+        vec_set_byte(vr_[rd], element, static_cast<u8>(gpr_[rt] >> 8));
         if (element != 15) {
-            vr_[rd].byte[element + 1] = static_cast<u8>(gpr_[rt]);
+            vec_set_byte(vr_[rd], element + 1, static_cast<u8>(gpr_[rt]));
         }
         break;
     case 0x06:
@@ -268,21 +306,21 @@ void Rsp::execute_vector_load(u32 instruction) {
 
     switch (kind) {
     case 0x00:
-        vt.byte[element] = dmem_read8(address_for(1));
+        vec_set_byte(vt, element, dmem_read8(address_for(1)));
         break;
     case 0x01:
-        load_plain_vector(vt.byte, element, memory, address_for(2), 2);
+        load_plain_vector(vt, element, address_for(2), 2);
         break;
     case 0x02:
-        load_plain_vector(vt.byte, element, memory, address_for(4), 4);
+        load_plain_vector(vt, element, address_for(4), 4);
         break;
     case 0x03:
-        load_plain_vector(vt.byte, element, memory, address_for(8), 8);
+        load_plain_vector(vt, element, address_for(8), 8);
         break;
     case 0x04: {
         const u32 address = address_for(16);
         const unsigned count = std::min(16U - element, 16U - (address & 15U));
-        std::memcpy(vt.byte.data() + element, memory.data() + (address & 0x0fffU), count);
+        load_plain_vector(vt, element, address, count);
         break;
     }
     case 0x05: {
@@ -290,7 +328,7 @@ void Rsp::execute_vector_load(u32 instruction) {
         const unsigned offset = address & 15U;
         const unsigned count = offset > element ? offset - element : 0U;
         if (count != 0)
-            std::memcpy(vt.byte.data() + 16U - count, memory.data() + ((address & 0x0fffU) & ~15U), count);
+            load_plain_vector(vt, 16U - count, address & ~15U, count);
         break;
     }
     case 0x06: {
@@ -338,7 +376,7 @@ void Rsp::execute_vector_load(u32 instruction) {
                 static_cast<u16>(static_cast<u16>(dmem_read8(address + ((index + lane * 4 + 8) & 15))) << 7));
         }
         for (unsigned byte = element; byte < std::min(element + 8, 16u); ++byte) {
-            vt.byte[byte] = temporary.byte[byte];
+            vec_set_byte(vt, byte, vec_byte(temporary, byte));
         }
         break;
     }
@@ -350,10 +388,10 @@ void Rsp::execute_vector_load(u32 instruction) {
         unsigned register_offset = element >> 1;
         for (unsigned lane = 0; lane < 8; ++lane) {
             Vector& target = vr_[register_base + register_offset];
-            target.byte[lane * 2] = dmem_read8(address++);
+            vec_set_byte(target, lane * 2, dmem_read8(address++));
             if (address == begin + 16)
                 address = begin;
-            target.byte[lane * 2 + 1] = dmem_read8(address++);
+            vec_set_byte(target, lane * 2 + 1, dmem_read8(address++));
             if (address == begin + 16)
                 address = begin;
             register_offset = (register_offset + 1) & 7;
@@ -377,26 +415,26 @@ void Rsp::execute_vector_store(u32 instruction) {
 
     switch (kind) {
     case 0x00:
-        dmem_write8(address_for(1), vt.byte[element]);
+        dmem_write8(address_for(1), vec_byte(vt, element));
         break;
     case 0x01:
-        store_plain_vector(memory, address_for(2), vt.byte, element, 2);
+        store_plain_vector(address_for(2), vt, element, 2);
         break;
     case 0x02:
-        store_plain_vector(memory, address_for(4), vt.byte, element, 4);
+        store_plain_vector(address_for(4), vt, element, 4);
         break;
     case 0x03:
-        store_plain_vector(memory, address_for(8), vt.byte, element, 8);
+        store_plain_vector(address_for(8), vt, element, 8);
         break;
     case 0x04: {
         const u32 address = address_for(16);
-        store_plain_vector(memory, address, vt.byte, element, 16U - (address & 15U));
+        store_plain_vector(address, vt, element, 16U - (address & 15U));
         break;
     }
     case 0x05: {
         const u32 address = address_for(16);
         const unsigned count = address & 15U;
-        store_plain_vector(memory, address & ~15U, vt.byte, (element + 16U - count) & 15U, count);
+        store_plain_vector(address & ~15U, vt, (element + 16U - count) & 15U, count);
         break;
     }
     case 0x06: {
@@ -404,7 +442,7 @@ void Rsp::execute_vector_store(u32 instruction) {
         for (unsigned byte = element; byte < element + 8; ++byte) {
             const unsigned index = byte & 15;
             if (index < 8) {
-                dmem_write8(address++, vt.byte[(index & 7) << 1]);
+                dmem_write8(address++, vec_byte(vt, (index & 7) << 1));
             } else {
                 dmem_write8(address++, static_cast<u8>(vec_u16(vt, index & 7) >> 7));
             }
@@ -418,7 +456,7 @@ void Rsp::execute_vector_store(u32 instruction) {
             if (index < 8) {
                 dmem_write8(address++, static_cast<u8>(vec_u16(vt, index & 7) >> 7));
             } else {
-                dmem_write8(address++, vt.byte[(index & 7) << 1]);
+                dmem_write8(address++, vec_byte(vt, (index & 7) << 1));
             }
         }
         break;
@@ -429,8 +467,8 @@ void Rsp::execute_vector_store(u32 instruction) {
         address &= ~7u;
         for (unsigned lane = 0; lane < 8; ++lane) {
             const unsigned byte = element + lane * 2;
-            const u8 value = static_cast<u8>((static_cast<u16>(vt.byte[byte & 15]) << 1) |
-                                             (vt.byte[(byte + 1) & 15] >> 7));
+            const u8 value = static_cast<u8>((static_cast<u16>(vec_byte(vt, byte & 15)) << 1) |
+                                             (vec_byte(vt, (byte + 1) & 15) >> 7));
             dmem_write8(address + ((index + lane * 2) & 15), value);
         }
         break;
@@ -479,7 +517,7 @@ void Rsp::execute_vector_store(u32 instruction) {
         u32 base = address & 7;
         address &= ~7u;
         for (unsigned byte = element; byte < element + 16; ++byte) {
-            dmem_write8(address + (base & 15), vt.byte[byte & 15]);
+            dmem_write8(address + (base & 15), vec_byte(vt, byte & 15));
             ++base;
         }
         break;
@@ -491,8 +529,8 @@ void Rsp::execute_vector_store(u32 instruction) {
         u32 memory_offset = (address & 7) - (element & ~1u);
         address &= ~7u;
         for (unsigned reg = register_base; reg < register_base + 8; ++reg) {
-            dmem_write8(address + (memory_offset++ & 15), vr_[reg].byte[vector_byte++ & 15]);
-            dmem_write8(address + (memory_offset++ & 15), vr_[reg].byte[vector_byte++ & 15]);
+            dmem_write8(address + (memory_offset++ & 15), vec_byte(vr_[reg], vector_byte++ & 15));
+            dmem_write8(address + (memory_offset++ & 15), vec_byte(vr_[reg], vector_byte++ & 15));
         }
         break;
     }
