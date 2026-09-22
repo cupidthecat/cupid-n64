@@ -5,16 +5,16 @@ namespace cupid {
 bool Cpu::fetch_instruction(u64& instruction) {
     if (fetched_instruction_.valid && fetched_instruction_.address == pc) {
         instruction = fetched_instruction_.instruction;
-        fetched_instruction_ = {};
+        fetched_instruction_.valid = false;
         return true;
     }
-    fetched_instruction_ = {};
+    fetched_instruction_.valid = false;
     return read_memory(pc, 4, instruction, true);
 }
 
 void Cpu::prefetch_instruction(u64 address, bool latch) {
     if (latch)
-        fetched_instruction_ = {};
+        fetched_instruction_.valid = false;
     if ((address & 3U) != 0)
         return;
     struct FetchGuard {
@@ -37,8 +37,11 @@ void Cpu::prefetch_instruction(u64 address, bool latch) {
     const bool hit = line.valid && line.tag == (physical & 0xfffff000U);
     if (hit) {
         // A hit has already reached the register-fetch latch.
-        if (latch)
-            fetched_instruction_ = {address, read_be32(line.data.data() + (physical & 28U)), true};
+        if (latch) {
+            fetched_instruction_.address = address;
+            fetched_instruction_.instruction = read_be32(line.data.data() + (physical & 28U));
+            fetched_instruction_.valid = true;
+        }
         return;
     }
     // A miss refills the cache, but the instruction must still be read after an

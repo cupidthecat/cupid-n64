@@ -68,8 +68,24 @@ void Cpu::reset() {
     set_pc(0xffffffffbfc00000ULL);
 }
 
+bool Cpu::latch_cached_instruction(u64 address) {
+    if (little_endian() || (address & 3U) != 0)
+        return false;
+    const u32 low = static_cast<u32>(address);
+    if (address != sign_extend32(low) || !kernel_mode() || low < 0x80000000U || low >= 0xa0000000U)
+        return false;
+    const u32 physical = low & 0x1fffffffU;
+    const auto& line = instruction_cache[(address >> 5) & 511U];
+    if (!line.valid || line.tag != (physical & 0xfffff000U))
+        return false;
+    fetched_instruction_.address = address;
+    fetched_instruction_.instruction = read_be32(line.data.data() + (physical & 28U));
+    fetched_instruction_.valid = true;
+    return true;
+}
+
 void Cpu::set_pc(u64 address) {
-    fetched_instruction_ = {};
+    fetched_instruction_.valid = false;
     pc = address;
     next_pc = address + 4;
     following_pc_ = address + 8;
@@ -184,7 +200,8 @@ void Cpu::step() {
         following_pc_ = next_pc + 4;
         following_delay_slot_ = annul_next_ = false;
         begin_instruction_timing(static_cast<u32>(instruction));
-        prefetch_instruction(next_pc, true);
+        if (!latch_cached_instruction(next_pc))
+            prefetch_instruction(next_pc, true);
         execute(static_cast<u32>(instruction));
         finish_instruction_timing(static_cast<u32>(instruction));
         ++instruction_count;
