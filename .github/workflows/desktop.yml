@@ -51,7 +51,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends libasound2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libudev-dev
+          sudo apt-get install --no-install-recommends libasound2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev libudev-dev
           python3 -m venv .work/format
           .work/format/bin/python -m pip install clang-format==22.1.0
       - name: Run local validation entry point
