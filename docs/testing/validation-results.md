@@ -1,5 +1,55 @@
 # Recorded validation results
 
+## Deferred RCP device clocks
+
+The September 21, 2026 runs following this change keep device clocks behind the
+CPU while it executes from cache. A device read or write, a scheduled peripheral
+edge, a buffered store, or a running RSP catches those clocks up before anything
+is observed. The RDP clock and the RDRAM row tracker still advance with a running
+RSP. VI, PI, SI, AI, EEPROM, flash, and the RI refresh counter wait until their
+next edge.
+
+Two regressions in `tests/rcp/test_deferred_devices.cpp` compare a machine that
+settles after every instruction with one that lets the devices lag, including
+overlapping PI and SP DMA while VI lines run, and a cartridge-bus write after a
+long cached countdown. A write-buffer entry is queued only after that catch-up.
+
+Windows MSVC Release, Clang 21.1.5 Ninja Release, and Clang ASan/UBSan with leak
+detection each built the same working tree. Hardware regressions are 1,154
+passed, including the two new cases. Instruction and CPU-cycle counts match the
+earlier fully passing extended record at `6465fd1`. Formatting used clang-format
+21.1.5. The Clang Release run used `tools/ci/validate.py` with both prepared
+cartridges, the PIF image, and the prepared test source. The sanitizer run used
+the same script without cartridges. The MSVC CTest set also includes the
+desktop adapter checks from that build. The sanitizer log has no AddressSanitizer,
+UndefinedBehaviorSanitizer, or leak diagnostics.
+
+| Check | MSVC Release | Clang Release | Clang ASan/UBSan |
+| --- | --- | --- | --- |
+| Hardware and host regressions | 1,154 passed | 1,154 passed | 1,154 passed |
+| Validation-tool regressions | CTest only | passed in `validate.py` | passed in `validate.py` |
+| Default cartridge | 4,637 passed | 4,637 passed | not run |
+| Cold boot followed by warm reset | 4,637 passed on each boot | 4,637 passed on each boot | not run |
+| Extended Base, including all twelve triangle cases | 4,649 passed | 4,649 passed | not run |
+| Extended Timing | 1,604 passed | 1,604 passed | not run |
+| Cycle, CP0-hazards, and Poorly-understood-quirk | 13, five, and two passed | 13, five, and two passed | not run |
+| Source and input integrity | Verified on the Clang `validate.py` run | Verified | Verified |
+
+Default execution uses 329,399,327 instructions and 822,037,286 CPU cycles.
+Extended execution uses 363,753,813 instructions and 896,469,179 CPU cycles.
+Those totals match the row-open record. Input hashes are unchanged:
+
+| Input | Bytes | SHA-256 |
+| --- | ---: | --- |
+| Prepared default cartridge | 2,609,128 | `353bb2d2132b8ca6038ecb7dc5f2b71426fd269cf93995e745ebd0be28c1f3f3` |
+| Prepared extended cartridge | 2,633,384 | `5c490faffc0329ede6ae4a877d5ac2a15a86e42a5af8bfe546e0ff52fb3ce170` |
+| NTSC PIF firmware | 1,984 | `fa7b09795ef1e54461e59f6f2d902368133e3f1cd980e34383e6a780d74beffd` |
+
+A 600-field Super Mario 64 (USA) capture on the MSVC Release build, EEPROM 4
+Kbit, completed 676,601,989 steps and 972,094,613 CPU cycles in 36.6 seconds
+and produced 309,814 audio samples. That is about 28 percent of the 93.75 MHz
+CPU clock. Playable speed remains open under #48.
+
 ## RDRAM row opening and the in-flight refresh hold
 
 The September 21, 2026 runs following `6465fd1dd94d6c88ae3da06ea4242376544f36d0`

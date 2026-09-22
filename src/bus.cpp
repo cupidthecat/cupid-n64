@@ -26,6 +26,9 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 }
 
 void Bus::reset() {
+    system_.deferred_rcp_ = 0;
+    system_.peripheral_debt_ = 0;
+    system_.defer_limit_ = 0;
     joybus.reset();
     pending_outputs_.clear();
     schedule_dirty_ = false;
@@ -369,16 +372,36 @@ void Bus::set_interrupt(unsigned source, bool level) {
         mi_interrupt_ &= ~bit;
 }
 
-bool Bus::interrupt_pending() const {
-    return (mi_interrupt_ & mi_mask_) != 0;
+void Bus::settle_system() const {
+    system_.settle();
+}
+
+void Bus::forget_deferral_limit() const {
+    system_.defer_limit_ = 0;
+}
+
+void Bus::set_audio_sample_output(std::function<void(const AudioSample&)> output) {
+    settle_system();
+    schedule_dirty_ = true;
+    audio_sample_output = std::move(output);
 }
 
 void Bus::tick_devices(u64 rcp_cycles) {
+    tick_clocks(rcp_cycles);
+    tick_peripherals(rcp_cycles);
+}
+
+// Clocks the RSP can observe between peripheral edges: the RDP clock register and
+// the RDRAM row timing its DMA engine shares with every other requester.
+void Bus::tick_clocks(u64 rcp_cycles) {
     output_clock_ += rcp_cycles;
     if (rcp_cycles != 0)
         ai_clock_started_ = true;
     rdp.tick(rcp_cycles);
     memory.advance_clock(rcp_cycles);
+}
+
+void Bus::tick_peripherals(u64 rcp_cycles) {
     ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
     tick_vi(rcp_cycles);
     if (rcp_cycles == 0)

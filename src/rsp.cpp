@@ -404,6 +404,7 @@ void Rsp::execute_cop0(u32 instruction) {
 }
 
 u32 Rsp::read_register(u32 byte_offset) {
+    system_.settle();
     switch (byte_offset & 0x1c) {
     case 0x00:
         return dma_current_.sp_address & 0x1fff;
@@ -441,6 +442,9 @@ u32 Rsp::read_register(u32 byte_offset) {
 }
 
 void Rsp::write_register(u32 byte_offset, u32 value) {
+    system_.settle();
+    // A DMA or a running RSP changes how long the devices may lag behind the CPU.
+    system_.defer_limit_ = 0;
     switch (byte_offset & 0x1c) {
     case 0x00:
         dma_pending_.sp_address = static_cast<u16>(value & 0x1ff8);

@@ -48,6 +48,9 @@ void Cpu::buffer_writes(std::span<const MemoryWrite> transfers) {
         add_cycles(system_.cpu_cycles_for_rcp(next_buffered_write()));
         synchronize();
     }
+    // Remaining time starts at this CPU clock. Catch the devices up first so
+    // earlier deferred cycles are not charged against the new entry.
+    system_.settle();
     // SysAD sends one address cycle followed by 32-bit data cycles at the Config.EP rate.
     const u64 data_spacing = ((cp0[16] >> 24) & 15U) == 6 ? 3 : 1;
     unsigned bytes = 0;

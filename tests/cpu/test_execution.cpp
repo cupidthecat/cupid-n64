@@ -153,7 +153,7 @@ TEST(cpu_idle_slice_preserves_count_compare_edges_and_delay_slot_exceptions) {
 }
 
 TEST(cpu_idle_slice_preserves_count_wrap_and_does_not_batch_uncached_or_mutating_loops) {
-    for (const u64 address : {code, 0xffffffffa0001000ULL}) {
+    for (const u64 address : {code, u64{0xffffffffa0001000ULL}}) {
         for (const u32 delay : {0U, 0x24420001U}) { // ADDIU v0,v0,1
             System batched, stepped;
             prepare(batched, address, delay);

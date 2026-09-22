@@ -49,14 +49,13 @@ class Bus {
     [[nodiscard]] VideoField scan_video() const;
     void set_video_output(std::function<void(VideoField)> output);
     // Timed samples change the next AI deadline, so the cached schedule is refreshed.
-    void set_audio_sample_output(std::function<void(const AudioSample&)> output) {
-        schedule_dirty_ = true;
-        audio_sample_output = std::move(output);
-    }
+    void set_audio_sample_output(std::function<void(const AudioSample&)> output);
     [[nodiscard]] u64 output_clock() const {
+        settle_system();
         return output_clock_;
     }
     [[nodiscard]] u64 rdram_refresh_wait() const {
+        settle_system();
         return ri_refresh_counter_;
     }
     [[nodiscard]] u64 rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const;
@@ -65,7 +64,9 @@ class Bus {
     [[nodiscard]] u8 read_ram_byte(u32 address) const;
     void write_ram_byte(u32 address, u8 value);
     void set_interrupt(unsigned source, bool level);
-    [[nodiscard]] bool interrupt_pending() const;
+    [[nodiscard]] bool interrupt_pending() const {
+        return (mi_interrupt_ & mi_mask_) != 0;
+    }
 
     bool load_rom(std::vector<u8> data, std::string& error);
     void set_save_type(SaveType type);
@@ -124,7 +125,11 @@ class Bus {
 
     [[nodiscard]] u64 next_event() const;
     void tick_devices(u64 rcp_cycles);
+    void tick_clocks(u64 rcp_cycles);
+    void tick_peripherals(u64 rcp_cycles);
     void dispatch_outputs();
+    void settle_system() const;
+    void forget_deferral_limit() const;
     [[nodiscard]] bool take_schedule_change() {
         const bool changed = schedule_dirty_;
         schedule_dirty_ = false;

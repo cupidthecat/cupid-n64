@@ -3,6 +3,7 @@
 namespace cupid {
 
 u64 Bus::rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const {
+    settle_system();
     if (physical >= 0x03f00000U || transfer_rcp_cycles == 0 || ri_refresh_counter_ != 0 ||
         (ri_[4] & 0x20000U) == 0 || !memory.bus_active() || next_vi_line() > transfer_rcp_cycles)
         return 0;
@@ -15,6 +16,7 @@ u64 Bus::rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const {
 bool Bus::rdram_row_miss(u32 physical) const {
     if (physical >= 0x00800000U || !memory.bus_active())
         return false;
+    settle_system();
     settle_vi_fetch(physical);
     return !memory.row_open(physical);
 }

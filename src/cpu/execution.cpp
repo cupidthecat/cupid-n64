@@ -36,6 +36,7 @@ unsigned Cpu::run_slice(unsigned maximum_steps, u64 maximum_cycles) {
             ++steps;
         }
     }
+    system_.settle();
     return steps;
 }
 

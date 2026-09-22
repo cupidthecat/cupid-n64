@@ -3,6 +3,7 @@
 #include "cupid/fpu.hpp"
 #include "cupid/types.hpp"
 
+#include <algorithm>
 #include <array>
 #include <span>
 
@@ -66,9 +67,16 @@ class Cpu {
     [[nodiscard]] u32 status() const {
         return static_cast<u32>(cp0[12]);
     }
-    [[nodiscard]] bool kernel_mode() const;
-    [[nodiscard]] bool wide_addressing() const;
-    [[nodiscard]] bool wide_instructions() const;
+    [[nodiscard]] bool kernel_mode() const {
+        return (status() & 6U) != 0 || (status() & 0x18U) == 0;
+    }
+    [[nodiscard]] bool wide_addressing() const {
+        const unsigned mode = kernel_mode() ? 0U : std::min((status() >> 3) & 3U, 2U);
+        return (status() & (0x80U >> mode)) != 0;
+    }
+    [[nodiscard]] bool wide_instructions() const {
+        return kernel_mode() || wide_addressing();
+    }
     bool require_coprocessor(unsigned coprocessor);
     void raise_exception(Exception exception, unsigned coprocessor = 0, bool refill = false,
                          bool instruction_fetch = false);
@@ -179,7 +187,10 @@ class Cpu {
     void drain_write_buffer();
     void tick_write_buffer(u64 rcp_cycles);
     [[nodiscard]] u64 next_buffered_write() const;
-    [[nodiscard]] bool little_endian() const;
+    [[nodiscard]] bool little_endian() const {
+        const bool reverse = !kernel_mode() && (status() & 0x18U) >= 0x10U && (status() & 0x02000000U) != 0;
+        return ((cp0[16] & 0x8000U) == 0) != reverse;
+    }
     void address_exception(u64 address, Access access);
     void tlb_exception(u64 address, Access access, bool refill, bool modification);
     bool writeback(CacheLine<16>& line, unsigned index);

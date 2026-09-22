@@ -96,6 +96,7 @@ void Rdp::tick(u64 rcp_cycles) {
 }
 
 u32 Rdp::read_register(u32 offset) const {
+    bus_.settle_system();
     switch ((offset & 0x1fU) >> 2U) {
     case 0:
         return start_ & 0x00ffffffU;
@@ -120,6 +121,7 @@ u32 Rdp::read_register(u32 offset) const {
 }
 
 void Rdp::write_register(u32 offset, u32 value) {
+    bus_.settle_system();
     switch ((offset & 0x1fU) >> 2U) {
     case 0:
         if (!start_valid_)

@@ -4,8 +4,11 @@
 the interrupted machine state and records ErrorEPC. That document describes
 the current boundary timing and the remaining console reset work.
 
-`Cpu::step` advances the CPU and connected hardware clocks. Standalone instruction,
-register, and memory helpers support local tests without advancing those clocks.
+`Cpu::step` advances the CPU clock. Connected device clocks can lag while the
+CPU executes from its caches; they catch up before a device access, a scheduled
+edge, a buffered store, or RSP execution. See
+[RCP event scheduling](rcp-scheduling.md). Standalone instruction, register, and
+memory helpers support local tests without advancing those clocks.
 
 ## Count and Compare
 

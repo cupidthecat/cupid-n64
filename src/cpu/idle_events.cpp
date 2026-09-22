@@ -4,7 +4,8 @@
 
 namespace cupid {
 
-u64 System::idle_loop_event_cycles() const {
+u64 System::idle_loop_event_cycles() {
+    settle();
     if (rsp.running() || cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
         return 0;
     // VI can interrupt without a presentation callback or enabled RDRAM refresh.

@@ -8,6 +8,7 @@ namespace cupid {
 bool Bus::read_cache(u32 physical, std::span<u8> bytes) {
     if (bytes.size() != 16 && bytes.size() != 32)
         throw std::invalid_argument("Invalid cache line size");
+    settle_system();
     if (physical >= 0x04000000U || (mi_mode_ & 0x100U) != 0) {
         system_.cpu.frozen = true;
         return false;
@@ -27,6 +28,7 @@ bool Bus::read_cache(u32 physical, std::span<u8> bytes) {
 bool Bus::write_cache(u32 physical, std::span<const u8> bytes) {
     if (bytes.size() != 16 && bytes.size() != 32)
         throw std::invalid_argument("Invalid cache line size");
+    settle_system();
     if (physical >= 0x04000000U || (mi_mode_ & 0x100U) != 0) {
         system_.cpu.frozen = true;
         return false;

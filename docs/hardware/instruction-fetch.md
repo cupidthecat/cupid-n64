@@ -1,10 +1,11 @@
 # Instruction fetch ordering
 
 The CPU fetches the following cached instruction before executing the current
-instruction. A cache hit places that word in the register-fetch latch. Invalidating
-the instruction cache does not discard a word already in that latch. A miss fills
-the cache, but the word remains subject to an older instruction's cache operation
-before it reaches the latch.
+instruction. A cache hit reads that word from the instruction cache and places it
+in the register-fetch latch without a bus access. Invalidating the instruction
+cache does not discard a word already in that latch. A miss fills the cache, but
+the word remains subject to an older instruction's cache operation before it
+reaches the latch.
 
 Uncached stores issue after the next instruction reaches register fetch. The CPU
 can start a second following instruction fetch before sending the store's address
