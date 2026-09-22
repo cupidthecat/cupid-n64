@@ -36,7 +36,7 @@ void Rsp::reset() {
     memory.fill(0);
     gpr_.fill(0);
     vr_ = {};
-    accumulator_.fill(0);
+    accumulator_ = {};
     vcol_ = vcoh_ = vccl_ = vcch_ = vce_ = 0;
     div_input_ = 0;
     div_output_ = 0;
@@ -82,15 +82,65 @@ u64 Rsp::next_dma_event() const {
     return dma_busy_ ? dma_cycles_until_row_ : std::numeric_limits<u64>::max();
 }
 
+bool Rsp::local_execution_ready() const {
+    return !halted_ && !single_step_ && !dma_busy_ && !dma_full_ && pc == pc_shadow_;
+}
+
+bool Rsp::step_local() {
+    const auto local = [](u32 instruction) {
+        return (instruction >> 26) != 0x10U && (instruction & 0xfc00003fU) != 0x0000000dU;
+    };
+    const bool fetch = pipeline_.size() == 0U;
+    std::array<u32, 2> words{};
+    if (fetch) {
+        words = {fetch_instruction(pc), fetch_instruction(pc + 4)};
+        // Check both raw slots even when the pairing rules could reject the second.
+        if (!local(words[0]) || !local(words[1]))
+            return false;
+    } else {
+        for (unsigned index = 0; index < pipeline_.size(); ++index) {
+            if (!local(pipeline_.instruction(index)))
+                return false;
+        }
+    }
+
+    // A branch bubble must not latch a packet before its actual fetch cycle.
+    if (pipeline_.advance_branch_wait())
+        return true;
+    if (fetch)
+        pipeline_.fetch(words[0], words[1], false, pc);
+    if (!pipeline_.advance_operand_wait())
+        execute_group();
+    return true;
+}
+
+u64 Rsp::run_local(u64 maximum_cycles) {
+    if (!local_execution_ready())
+        return 0;
+    u64 elapsed = 0;
+    while (elapsed < maximum_cycles && step_local()) {
+        // A branch-wait or operand-wait cycle is still an RSP cycle. Local groups
+        // cannot touch shared registers, start DMA, halt, or raise an SP interrupt.
+        ++elapsed;
+    }
+    return elapsed;
+}
+
 u8 Rsp::dmem_read8(u32 address) const {
     return memory[address & 0x0fff];
 }
 
 u16 Rsp::dmem_read16(u32 address) const {
+    const u32 offset = address & 0x0fffU;
+    if (offset + 2U <= 0x1000U)
+        return read_be16(memory.data() + offset);
     return static_cast<u16>((static_cast<u16>(dmem_read8(address)) << 8) | dmem_read8(address + 1));
 }
 
 u32 Rsp::dmem_read32(u32 address) const {
+    const u32 offset = address & 0x0fffU;
+    if (offset + 4U <= 0x1000U)
+        return read_be32(memory.data() + offset);
     return (static_cast<u32>(dmem_read8(address)) << 24) | (static_cast<u32>(dmem_read8(address + 1)) << 16) |
            (static_cast<u32>(dmem_read8(address + 2)) << 8) | static_cast<u32>(dmem_read8(address + 3));
 }
@@ -100,11 +150,21 @@ void Rsp::dmem_write8(u32 address, u8 value) {
 }
 
 void Rsp::dmem_write16(u32 address, u16 value) {
+    const u32 offset = address & 0x0fffU;
+    if (offset + 2U <= 0x1000U) {
+        write_be16(memory.data() + offset, value);
+        return;
+    }
     dmem_write8(address, static_cast<u8>(value >> 8));
     dmem_write8(address + 1, static_cast<u8>(value));
 }
 
 void Rsp::dmem_write32(u32 address, u32 value) {
+    const u32 offset = address & 0x0fffU;
+    if (offset + 4U <= 0x1000U) {
+        write_be32(memory.data() + offset, value);
+        return;
+    }
     dmem_write8(address, static_cast<u8>(value >> 24));
     dmem_write8(address + 1, static_cast<u8>(value >> 16));
     dmem_write8(address + 2, static_cast<u8>(value >> 8));
@@ -146,10 +206,19 @@ void Rsp::step() {
 
     if (pipeline_.advance_branch_wait())
         return;
-    pipeline_.fetch(fetch_instruction(pc), fetch_instruction(pc + 4), single_step_);
+    if (pipeline_.size() == 0U)
+        pipeline_.fetch(fetch_instruction(pc), fetch_instruction(pc + 4), single_step_, pc);
     if (pipeline_.advance_operand_wait())
         return;
 
+    execute_group();
+
+    if (single_step_ && !halted_) {
+        halted_ = true;
+    }
+}
+
+void Rsp::execute_group() {
     bool taken_delay_slot = false;
     const unsigned count = pipeline_.size();
     for (unsigned index = 0; index < count; ++index) {
@@ -163,10 +232,6 @@ void Rsp::step() {
         pc_shadow_ = pc;
     }
     pipeline_.retire(taken_delay_slot, pc);
-
-    if (single_step_ && !halted_) {
-        halted_ = true;
-    }
 }
 
 void Rsp::execute_scalar(u32 instruction) {

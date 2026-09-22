@@ -46,7 +46,7 @@ class Bus {
     bool read_cache(u32 physical, std::span<u8> bytes);
     bool write_cache(u32 physical, std::span<const u8> bytes);
     void tick(u64 rcp_cycles);
-    [[nodiscard]] VideoField scan_video() const;
+    [[nodiscard]] VideoField scan_video(VideoScanMode mode = VideoScanMode::Parallel) const;
     void set_video_output(std::function<void(VideoField)> output);
     // Timed samples change the next AI deadline, so the cached schedule is refreshed.
     void set_audio_sample_output(std::function<void(const AudioSample&)> output);

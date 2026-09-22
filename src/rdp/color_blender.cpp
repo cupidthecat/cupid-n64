@@ -2,23 +2,6 @@
 
 namespace cupid {
 
-u8 rdp_blend_divide(unsigned numerator, unsigned denominator) {
-    // The divider retains only three remainder bits between quotient stages.
-    numerator &= 2047U;
-    denominator &= 15U;
-    unsigned remainder = (16U - denominator + (numerator >> 8U)) & 7U;
-    unsigned quotient = 0;
-    unsigned previous = 0;
-    for (unsigned stage = 0; stage < 8; ++stage) {
-        const unsigned addend = previous != 0 ? 16U - denominator : denominator;
-        const unsigned sum = remainder * 2U + ((numerator >> (7U - stage)) & 1U) + addend;
-        previous = (sum >> 4U) & 1U;
-        quotient = quotient * 2U + previous;
-        remainder = sum & 7U;
-    }
-    return static_cast<u8>(quotient);
-}
-
 RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel, const RdpColor& memory,
                    unsigned shade_alpha, bool blend_enabled, bool coverage_wrap, unsigned memory_alpha_shift,
                    unsigned pixel_alpha_shift) {

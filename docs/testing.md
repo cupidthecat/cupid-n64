@@ -94,6 +94,29 @@ ctest --test-dir build-sanitize --output-on-failure
 
 On Windows, the Clang configuration copies the compiler's address-sanitizer runtime beside the executables. The MSVC sanitizer option enables its address sanitizer.
 
+## Parallel range tasks
+
+The RDP row path and parallel VI scanout share `src/tasks/parallel_ranges.cpp`.
+Each calling host thread owns a thread-local worker group that is created on
+first use and reused by later jobs. If no worker thread can be created, the
+caller executes the range directly. Nested range work from an existing task
+runs inline with that task's index, while independent calling threads keep
+separate worker groups. Destroying the calling thread signals its workers,
+wakes them, and joins them before the thread-local group is released.
+
+A submitted job publishes its range and callback before waking workers, and a
+new job is not published until every range from the previous job has finished.
+On SSE2 targets, workers briefly spin with a processor pause instruction before
+blocking when a job or completion count has not changed. The spin has a fixed
+limit; longer gaps use the atomic wait. Both paths acquire the same published
+job state and wait for every worker before allowing the next submission.
+If the caller range or a worker range throws, the dispatcher still waits for all
+other ranges before propagating the exception. The worker group remains usable
+for a later job after that propagation. `tests/tasks/test_parallel_ranges.cpp`
+checks complete non-overlapping range coverage, boundary arithmetic, repeated
+worker reuse, finish-before-rethrow behavior, nested calls, and concurrent
+callers.
+
 ## Interpreting failures
 
 The cartridge runner prints the ROM's output unchanged. It checks the aggregate counts, requires a result for each enabled category, and waits for the final summary line. Truncated output, malformed counts, duplicate categories, an empty test run, and a reported panic all fail validation.

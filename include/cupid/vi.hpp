@@ -6,6 +6,8 @@
 
 namespace cupid {
 
+enum class VideoScanMode { Sequential, Parallel };
+
 struct VideoField {
     unsigned width{640};
     unsigned height{};

@@ -10,8 +10,8 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
-    const bool first_noise = two_cycles && ((color_state_.combine >> 52U) & 15U) == 7U;
-    const bool last_noise = ((color_state_.combine >> 37U) & 15U) == 7U;
+    const bool first_noise = two_cycles && combiner_plan_.uses_noise[0];
+    const bool last_noise = combiner_plan_.uses_noise[1];
     const bool random_alpha = (other_modes_ & 3U) == 3U;
     const bool needs_noise = rgb_mode == 2U || alpha_mode == 2U || random_alpha || first_noise || last_noise;
     u16 sample = needs_noise ? rdp_pixel_noise(primitive_sequence_, x, y) : 0;
@@ -23,8 +23,9 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
         sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
         inputs.noise[1] = rdp_combiner_noise(sample);
     }
-    const auto combined = rdp_combine(color_state_, other_modes_, inputs,
-                                      static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+    const auto combined =
+        rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
+                             static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     if (antialias ? combined.coverage == 0U : (coverage_mask & 1U) == 0U)
         return;

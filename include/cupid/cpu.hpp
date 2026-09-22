@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <span>
+#include <vector>
 
 namespace cupid {
 
@@ -59,6 +60,9 @@ class Cpu {
     unsigned run_slice(unsigned maximum_steps, u64 maximum_cycles);
     [[nodiscard]] u64 batched_idle_instructions() const {
         return batched_idle_instructions_;
+    }
+    [[nodiscard]] u64 batched_cached_instructions() const {
+        return batched_cached_instructions_;
     }
     // Standalone instruction and memory helpers are untimed; step advances the hardware clocks.
     void execute(u32 instruction);
@@ -119,6 +123,7 @@ class Cpu {
     u64 count_write_hold_{};
     u64 cop0_latch_{};
     u64 batched_idle_instructions_{};
+    u64 batched_cached_instructions_{};
     struct FetchedInstruction {
         u64 address{};
         u32 instruction{};
@@ -168,6 +173,82 @@ class Cpu {
     };
     std::array<WiredWrite, 2> wired_writes_{};
 
+    enum class CachedKind : u8 { Unsupported, Private, Load, Store };
+    enum class CachedDirect : u8 {
+        None,
+        Sll,
+        Srl,
+        Sra,
+        Sllv,
+        Srlv,
+        Srav,
+        Jr,
+        Jalr,
+        Sync,
+        Mfhi,
+        Mthi,
+        Mflo,
+        Mtlo,
+        Dsllv,
+        Dsrlv,
+        Dsrav,
+        Addu,
+        Subu,
+        And,
+        Or,
+        Xor,
+        Nor,
+        Slt,
+        Sltu,
+        Daddu,
+        Dsubu,
+        Dsll,
+        Dsrl,
+        Dsra,
+        Dsll32,
+        Dsrl32,
+        Dsra32,
+        Bltz,
+        Bgez,
+        Bltzal,
+        Bgezal,
+        J,
+        Jal,
+        Beq,
+        Bne,
+        Blez,
+        Bgtz,
+        Addiu,
+        Slti,
+        Sltiu,
+        Andi,
+        Ori,
+        Xori,
+        Lui,
+        Daddiu,
+    };
+    struct CachedDecode {
+        u32 word{};
+        u32 integer_reads{};
+        CachedKind kind{};
+        CachedDirect direct{};
+        u8 rs{};
+        u8 rt{};
+        u8 rd{};
+        u8 sa{};
+        u8 load_target{32};
+        u8 memory_width : 4 {};
+        u8 signed_load : 1 {};
+        u8 valid : 1 {};
+    };
+    std::vector<CachedDecode> cached_decode_ = std::vector<CachedDecode>(4096);
+    struct CachedLinePlan {
+        std::array<u8, 32> image{};
+        u32 tag{};
+        bool valid{};
+    };
+    std::vector<CachedLinePlan> cached_line_plans_ = std::vector<CachedLinePlan>(512);
+
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);
     unsigned sample_exception_coprocessor();
@@ -182,8 +263,15 @@ class Cpu {
     void execute_cop0(u32 instruction);
     void write_cop0_instruction(unsigned index, u64 value);
     void execute_cop2(u32 instruction);
+    void advance_clock_counters(u64 elapsed);
+    void advance_batched_instruction_counters(unsigned instructions);
     void update_clocks(u64 elapsed);
+    [[nodiscard]] static bool branches_to_self(u32 instruction, u64 address);
     unsigned batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles);
+    unsigned batch_cached_private(unsigned maximum_steps, u64 maximum_cycles);
+    [[nodiscard]] CachedDecode decode_cached_instruction(u32 instruction) const;
+    void execute_cached_direct(const CachedDecode& decoded);
+    void execute_cached_memory(const CachedDecode& decoded, CacheLine<16>& line, unsigned offset);
     void update_interrupt_inputs();
     void synchronize();
     void complete_speculative_refills();

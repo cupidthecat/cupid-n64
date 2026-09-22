@@ -250,7 +250,7 @@ TEST(cpu_idle_slice_preserves_dma_payloads_and_refresh_progress) {
     }
 }
 
-TEST(cpu_idle_slice_steps_active_rsp_and_deferred_cpu_writes) {
+TEST(cpu_idle_slice_preserves_active_rsp_and_deferred_cpu_writes) {
     for (const bool active_rsp : {false, true}) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -266,12 +266,10 @@ TEST(cpu_idle_slice_steps_active_rsp_and_deferred_cpu_writes) {
             }
         }
         compare_slice(batched, stepped, 4096);
-        if (active_rsp)
-            CHECK_EQ(batched.cpu.batched_idle_instructions(), 0U);
-        else {
+        if (!active_rsp) {
             CHECK_EQ(batched.bus.read_ram_byte(0x2000), 0x12U);
-            CHECK(batched.cpu.batched_idle_instructions() != 0);
         }
+        CHECK(batched.cpu.batched_idle_instructions() != 0);
     }
 }
 

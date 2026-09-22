@@ -54,6 +54,40 @@ class Rdram {
     }
     void set_hidden_pair(u32 address, u8 value);
 
+    struct BankAccessSummary {
+        struct Entry {
+            u64 last_access{};
+            u16 first_row{};
+            u16 last_row{};
+            bool visited{};
+            bool changed_row{};
+            bool dirty{};
+        };
+        std::array<Entry, 8> banks{};
+    };
+
+    // A synchronous raster task owns disjoint memory cells. It records row
+    // effects locally so the caller can merge them in the original draw order.
+    class BankAccessScope {
+      public:
+        BankAccessScope(const Rdram& memory, BankAccessSummary& summary);
+        ~BankAccessScope();
+        BankAccessScope(const BankAccessScope&) = delete;
+        BankAccessScope& operator=(const BankAccessScope&) = delete;
+
+      private:
+        friend class Rdram;
+        const Rdram& memory_;
+        BankAccessSummary& summary_;
+        BankAccessScope* previous_;
+        static thread_local BankAccessScope* current_;
+    };
+
+    [[nodiscard]] bool direct_access_ready() const {
+        return identity_mapping_;
+    }
+    void merge_bank_accesses(const BankAccessSummary& summary) const;
+
   private:
     struct Bank {
         u64 last_access{};

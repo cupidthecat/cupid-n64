@@ -16,6 +16,29 @@ tracking through the RDRAM access path. A CPU cache hit does not reach RI.
 Modifying a cached line therefore does not dirty the corresponding RDRAM row
 until the line is written back.
 
+## Packed data transfers
+
+Ordinary one-, two-, four-, and eight-byte transfers align the bus address down
+to the transfer width before row tracking and address translation. Multi-byte
+data is stored in the RDRAM byte array in big-endian order. The endian helpers
+use byte-safe copies and an explicit native-endian conversion, so the packed
+path does not depend on host pointer alignment or type aliasing.
+
+This changes only how the bytes are moved. Row tracking still happens before
+translation, so an unmapped request keeps the same RI error and bank-state
+ordering. Device-ID remapping still selects the physical chip before accessing
+the backing bytes. Reads through a non-identity mapping still pass the assembled
+value through the chip-current reliability model; the direct identity mapping
+is available only when the installed, enabled chips meet its mapping and current
+requirements.
+
+Hidden memory keeps its existing rules. Normal halfword and wider writes copy
+the low data bit of each halfword into its hidden pair, while byte writes retain
+their address-dependent single-bit behavior. EBUS reads and writes continue to
+use the hidden-bit packing path for every supported width. The packed-transfer
+regressions check backing-byte order, align-down behavior, remapping, low-current
+reads, failed translations, and hidden/EBUS results independently.
+
 ## Open rows and request timing
 
 A chip answers a request to its open row directly. A request to a closed or
@@ -90,9 +113,8 @@ describe the address limits and error behavior.
 
 `tests/rcp/test_ri.cpp` covers all eight banks, row boundaries, dirty-state
 transitions, cache hits and writebacks, DMA memory paths, relocated chips,
-absent memory, error clearing, and reset. The older memory-bus regression now
-expects `0xff00` after a bank-status write; its previous `0x00ff` expectation
-reversed the valid and dirty fields. `tests/rcp/test_ri_refresh.cpp` checks refresh
+absent memory, error clearing, reset, and the `0xff00` bank-status result after a
+bank-status write. `tests/rcp/test_ri_refresh.cpp` checks refresh
 boundaries in both regions, clean and dirty delays, video-off behavior, tick-size
 independence, reset, and blocking CPU transactions, including speculative fetches
 and explicit instruction-cache transfers. The cache-operation cases check all

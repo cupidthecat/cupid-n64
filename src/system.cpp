@@ -87,7 +87,8 @@ void System::settle_deferred() {
             event_gap_ = bus.next_event();
             event_valid_ = true;
         }
-        u64 elapsed = std::min({rcp_cycles, rsp.next_dma_event(), event_gap_});
+        u64 elapsed = std::min(rcp_cycles, rsp.next_dma_event());
+        elapsed = std::min(elapsed, event_gap_);
         const u64 write_event = cpu.next_buffered_write();
         if (write_event != 0)
             elapsed = std::min(elapsed, write_event);
@@ -131,7 +132,7 @@ void System::settle_deferred() {
             event_gap_ = bus.next_event();
             event_valid_ = true;
         }
-        defer_limit_ = std::min({event_gap_, bus.next_vi_line(), rsp.next_dma_event()});
+        defer_limit_ = std::min(std::min(event_gap_, bus.next_vi_line()), rsp.next_dma_event());
     }
     settling_ = false;
 }
@@ -145,6 +146,35 @@ void System::settle_peripherals() {
 
 u64 System::cpu_cycles_for_rcp(u64 rcp_cycles) const {
     return rcp::cpu_cycles_for_rcp(rcp_cycles, rcp_fraction_);
+}
+
+void System::advance_after_local_rsp(u64 cpu_cycles) {
+    const u64 whole = cpu_cycles / 3;
+    const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
+    const u64 rcp_cycles = whole * 2 + fraction / 3;
+    rcp_fraction_ = fraction % 3;
+
+    // idle_loop_event_cycles() settled the machine before the RSP ran ahead. The
+    // RSP work was local to IMEM/DMEM/register state and stopped before every
+    // shared event, so clocks can catch up in one span without running the RSP twice.
+    settling_ = true;
+    bus.tick_clocks(rcp_cycles);
+    bus.tick_peripherals(peripheral_debt_ + rcp_cycles);
+    peripheral_debt_ = 0;
+    cpu.tick_write_buffer(rcp_cycles);
+    bus.dispatch_outputs();
+
+    if (event_valid_) {
+        if (event_gap_ <= rcp_cycles)
+            event_valid_ = false;
+        else
+            event_gap_ -= rcp_cycles;
+    }
+    if (bus.take_schedule_change())
+        event_valid_ = false;
+    defer_limit_ =
+        rsp.running() ? 0 : std::min(std::min(bus.next_event(), bus.next_vi_line()), rsp.next_dma_event());
+    settling_ = false;
 }
 
 bool System::load_rom(const std::filesystem::path& path, std::string& error) {

@@ -6,14 +6,6 @@
 namespace cupid {
 namespace {
 
-bool branches_to_self(u32 instruction, u64 address) {
-    if ((instruction & 0xfc00ffffU) == 0x1000ffffU &&
-        ((instruction >> 21) & 31U) == ((instruction >> 16) & 31U))
-        return true;
-    return (instruction >> 26) == 2 &&
-           (((address + 4) & ~0x0fffffffULL) | ((instruction & 0x03ffffffULL) << 2)) == address;
-}
-
 u32 advance_random(u32 current, u32 wired, unsigned instructions) {
     const u32 before_reset = (current - wired) & 63U;
     if (instructions <= before_reset)
@@ -24,6 +16,19 @@ u32 advance_random(u32 current, u32 wired, unsigned instructions) {
 
 } // namespace
 
+bool Cpu::branches_to_self(u32 instruction, u64 address) {
+    if ((instruction & 0xfc00ffffU) == 0x1000ffffU &&
+        ((instruction >> 21) & 31U) == ((instruction >> 16) & 31U))
+        return true;
+    return (instruction >> 26) == 2 &&
+           (((address + 4) & ~0x0fffffffULL) | ((instruction & 0x03ffffffULL) << 2)) == address;
+}
+
+void Cpu::advance_batched_instruction_counters(unsigned instructions) {
+    random_ = advance_random(random_, random_wired_, instructions);
+    instruction_count += instructions;
+}
+
 unsigned Cpu::run_slice(unsigned maximum_steps, u64 maximum_cycles) {
     const u64 start = cycles;
     unsigned steps = 0;
@@ -32,8 +37,14 @@ unsigned Cpu::run_slice(unsigned maximum_steps, u64 maximum_cycles) {
         if (batched != 0) {
             steps += batched;
         } else {
-            step();
-            ++steps;
+            const unsigned cached =
+                batch_cached_private(maximum_steps - steps, maximum_cycles - (cycles - start));
+            if (cached != 0) {
+                steps += cached;
+            } else {
+                step();
+                ++steps;
+            }
         }
     }
     system_.settle();
@@ -77,15 +88,35 @@ unsigned Cpu::batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles) {
     const u64 count_ticks = distance == 0 ? (1ULL << 32) : distance;
     const u64 timer_edge = count_ticks * 2 - static_cast<u64>(count_half_);
     // Leave every event-producing instruction to step(), including odd-cycle boundaries.
-    u64 amount = std::min({static_cast<u64>(maximum_steps), maximum_cycles, device_edge - 1, timer_edge - 1});
+    u64 amount = std::min(static_cast<u64>(maximum_steps), maximum_cycles);
+    amount = std::min(amount, device_edge - 1);
+    amount = std::min(amount, timer_edge - 1);
     amount = std::min(amount, std::numeric_limits<u64>::max() - instruction_count);
     amount = std::min(amount, std::numeric_limits<u64>::max() - cycles);
+    if (system_.rsp.running()) {
+        const auto steps = static_cast<unsigned>(system_.run_local_rsp_for_idle(amount));
+        if (steps == 0)
+            return 0;
+
+        advance_batched_instruction_counters(steps);
+        batched_idle_instructions_ += steps;
+        if ((steps & 1U) != 0) {
+            // One unmatched branch instruction leaves the cached NOP delay slot fetched.
+            next_pc = following_pc_ = pc;
+            pc += 4;
+            in_delay_slot_ = following_delay_slot_ = true;
+            fetched_instruction_ = {pc, 0, true};
+        }
+        advance_clock_counters(steps);
+        system_.advance_after_local_rsp(steps);
+        update_interrupt_inputs();
+        return steps;
+    }
     const auto steps = static_cast<unsigned>(amount & ~1ULL);
     if (steps == 0)
         return 0;
 
-    random_ = advance_random(random_, random_wired_, steps);
-    instruction_count += steps;
+    advance_batched_instruction_counters(steps);
     batched_idle_instructions_ += steps;
     update_clocks(steps);
     return steps;

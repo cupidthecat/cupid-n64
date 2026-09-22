@@ -10,6 +10,66 @@ edge, a buffered store, or RSP execution. See
 [RCP event scheduling](rcp-scheduling.md). Standalone instruction, register, and
 memory helpers support local tests without advancing those clocks.
 
+## Cached execution slices
+
+`Cpu::run_slice` can retire consecutive single-cycle instructions without
+returning through `Cpu::step` for every instruction. Entry is limited to cached
+kseg0 execution in kernel, big-endian state with a clean pipeline. Pending NMI,
+exceptions, redirects, annulment, Count-write holds, software-interrupt delays,
+speculative refills, wired-register writes, buffered stores, pending host output,
+and active or queued SP DMA keep the general cached path on the ordinary step
+path. Loads and stores are accepted only when the aligned kseg0 access already
+hits the data cache. Operations that can fault, synchronize internally, miss a
+cache, or require an unsupported pipeline effect also fall back to `Cpu::step`.
+
+For an accepted memory instruction, the current guard supplies the live cache
+line and byte offset to `src/cpu/cached_memory.cpp`. Loads apply their specified
+width and sign extension; stores update those cached bytes and mark the line
+dirty. These accesses leave backing RDRAM and the linked-load state unchanged.
+The next instruction computes its address again, including when a load changed
+its own base register. Alignment faults and the external-memory doubleword load
+restriction are checked before a cached access can be accepted.
+
+The cached decoder is derived from the instruction cache. A line plan records
+the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
+when that image changes. The instruction at `pc` must also match the word already
+latched by the preceding fetch. That comparison is repeated after device clocks
+are settled and before every retired instruction. The next instruction word is
+read from the live cache before it is latched. These guards preserve an older
+latched word even if software or a test changes the cache line and later restores
+the same byte image.
+
+Before batching, the CPU settles deferred device time. A callback delivered by
+that settle can change machine state, so the entry checks and current-word match
+are evaluated again afterward. The slice stops before the next Bus event, VI line
+boundary, or Count/Compare edge. Instruction and Random state and the deferred
+device clocks are then advanced for exactly the instructions that retired.
+
+When the RSP is running, a cached CPU slice can execute local RSP work at the
+same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock
+phase determines which CPU instructions produce an RSP tick. Before each such
+instruction, the next latched or fetched RSP packet must contain only local
+operations; COP0 and BREAK end the slice before that tick. The CPU operation is
+already checked as nonfaulting and limited to registers and cache hits. Its RSP
+tick can therefore run first: both operations use disjoint state, including when
+the CPU cache contains a copy of SP memory. At exit, the common device clocks
+are advanced once without running the RSP a second time. DMA, single-step, and
+an SP PC changed behind the pipeline prevent this path. The differential tests
+cover all three clock phases, cached SP memory, and IMEM changes during a latched
+operand stall. They continue ordinary stepping after each slice to check the
+retained pipeline state.
+
+The idle-loop path is narrower. It recognizes a cached self-branch with a NOP
+delay slot, verifies both live instruction-cache words, and stops before the same
+timer and device-visible boundaries. When the RSP is running, the idle path may
+advance RSP issue, operand-stall, and branch-wait cycles within that bound. It
+does so only while SP DMA is idle, single-step is off, the SP PC has not been
+changed behind the pipeline, and the next RSP packet contains no COP0 operation
+or BREAK. An already latched packet is checked by its latched words, so an
+operand stall cannot hide a shared-register operation. If the CPU slice ends
+after the branch but before its delay slot, the branch/delay-slot state is
+materialized before normal stepping resumes.
+
 ## Count and Compare
 
 Count increments once every two CPU cycles and wraps at 32 bits. MFC0 and DMFC0
@@ -195,7 +255,7 @@ VI's line-buffer fill updates the open row of the framebuffer bank but does not
 consume bus time that other requesters would wait for. Scanout still reads the
 stored image separately when a field is delivered.
 
-With the prepared extended cartridge, all 1,604 timing cases pass, including
-the same-bank uncached load. The [cartridge build comparison](../testing/cartridge-build-layout.md)
-records the input identity and measurements. Shared arbitration remains open
-under issue #4.
+The [cartridge build comparison](../testing/cartridge-build-layout.md) records
+the prepared input identity and the measurements used for these timing checks,
+including the same-bank uncached load. Shared arbitration remains open under
+issue #4.

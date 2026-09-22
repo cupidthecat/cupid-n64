@@ -30,9 +30,19 @@ class Rsp {
   private:
     friend class System;
     [[nodiscard]] u64 next_dma_event() const;
+    [[nodiscard]] bool local_execution_ready() const;
+    [[nodiscard]] u64 run_local(u64 maximum_cycles);
+    [[nodiscard]] bool step_local();
+    void execute_group();
 
     struct Vector {
         std::array<u8, 16> byte{};
+    };
+
+    struct Accumulator {
+        std::array<u16, 8> low{};
+        std::array<u16, 8> middle{};
+        std::array<u16, 8> high{};
     };
 
     struct DmaTransfer {
@@ -47,7 +57,7 @@ class Rsp {
     System& system_;
     std::array<u32, 32> gpr_{};
     std::array<Vector, 32> vr_{};
-    std::array<s64, 8> accumulator_{};
+    Accumulator accumulator_{};
 
     u8 vcol_{};
     u8 vcoh_{};
@@ -91,6 +101,7 @@ class Rsp {
     void execute_cop0(u32 instruction);
     void execute_cop2(u32 instruction);
     void execute_vector_op(u32 instruction);
+    [[nodiscard]] bool execute_vector_op_sse2(u32 instruction);
     void execute_vector_load(u32 instruction);
     void execute_vector_store(u32 instruction);
 
@@ -106,12 +117,10 @@ class Rsp {
     [[nodiscard]] static s16 vec_s16(const Vector& vector, unsigned lane);
     static void vec_set_u16(Vector& vector, unsigned lane, u16 value);
     static void vec_set_s16(Vector& vector, unsigned lane, s16 value);
-    [[nodiscard]] static unsigned element_lane(unsigned element, unsigned lane);
-    [[nodiscard]] u16 selected_u16(const Vector& vector, unsigned element, unsigned lane) const;
-    [[nodiscard]] s16 selected_s16(const Vector& vector, unsigned element, unsigned lane) const;
 
     [[nodiscard]] static s16 clamp_s16(s64 value);
     [[nodiscard]] static s64 wrap_accumulator(s64 value);
+    [[nodiscard]] s64 read_accumulator(unsigned lane) const;
     void set_accumulator(unsigned lane, s64 value);
     [[nodiscard]] u16 acc_low(unsigned lane) const;
     [[nodiscard]] u16 acc_mid(unsigned lane) const;

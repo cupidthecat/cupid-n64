@@ -47,6 +47,9 @@ using five-bit alpha factors. Two-cycle mode feeds the first blend's RGB into
 the second blend. Force-blend uses a fixed shift; ordinary blending uses the
 hardware divider's truncated remainder stages. The divider differs from
 ordinary integer division for overflowing numerators and large denominators.
+`src/rdp/blender_divider.cpp` evaluates the 32,768 possible inputs at compile
+time. Pixel blending indexes this read-only table, retaining the same input
+masking and quotient bits without repeating the eight divider stages.
 
 Full-alpha rejection and disabled blending select the first color directly.
 Color-on-coverage selects the second color until accumulated coverage wraps.
@@ -59,6 +62,32 @@ Rectangle coverage uses eight staggered samples in four subpixel rows. Right
 and bottom edges are exclusive, including fractional scissor boundaries.
 Without antialiasing, the first sample determines whether a pixel is written.
 Field selection skips the other field's rows.
+
+## Synchronous row execution
+
+Color rectangles and color triangles can split their raster rows across the
+shared range workers when the draw has independent memory cells. The parallel
+path is limited to 16- or 32-bit color images with an identity-mapped RDRAM
+layout, a horizontal output range inside the programmed color stride, and a
+color address interval that does not wrap beyond installed memory. When depth
+access is enabled, its interval must also stay in RDRAM and must not overlap the
+color interval. Small draws and machines without spare worker capacity stay on
+the serial path.
+
+Each row task owns complete color pixels and their hidden-bit cells. RDRAM row
+tracking is recorded in a task-local `BankAccessSummary` while the pixels are
+drawn. Workers claim small contiguous ranges so uneven triangle widths do not
+leave all remaining work on one worker. After every task has completed, the
+summaries are merged in row-range
+order so the final RI open row, dirty state, and access timestamp match serial
+drawing. The raster command remains synchronous: command execution does not
+continue while a row task is outstanding.
+
+`tests/rdp/test_parallel_rows.cpp` compares serial and parallel color bytes,
+hidden bits, depth, RDP registers, and RI bank state. It also checks that color
+wrapping, color/depth aliases, small framebuffer formats, stride overruns, and
+non-identity RDRAM mappings remain serial, and that separate machines do not
+share task-local bank state.
 
 Coverage destination modes clamp, wrap, replace with seven, or preserve the
 framebuffer value. RGBA16 stores the high coverage bit in the pixel and the low
@@ -104,7 +133,7 @@ blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, keyed alpha rejection/depth ordering, keyed blending,
 two-cycle key comparison, and dither thresholds.
-`tests/rdp/test_noise.cpp` and `tests/rdp/test_pixel_noise.cpp` add 18 checks for
+`tests/rdp/test_noise.cpp` and `tests/rdp/test_pixel_noise.cpp` check
 noise quantization, selector combinations, separate cycle inputs, per-channel
 dithering, saturation, alpha rejection, unchanged depth/hidden bits, clipping,
 fields, reset, repeated draws, and partial command packets.

@@ -55,6 +55,7 @@ void Rdp::reset() {
     start_gclk_ = false;
     ready_ = true;
     crashed_ = false;
+    parallel_draws_ = 0;
     test_check_ = false;
     test_go_ = false;
     test_done_ = false;
@@ -75,6 +76,7 @@ void Rdp::reset() {
     tiles_.fill({});
     fill_color_ = 0;
     color_state_ = {};
+    combiner_plan_ = {};
     primitive_sequence_ = 0;
     primitive_depth_ = 0;
     primitive_delta_depth_ = 0;
@@ -363,17 +365,20 @@ void Rdp::execute(u8 opcode) {
     case 0x0f:
         if (cycle == 3U || cycle == 2U)
             fill_copy_triangle(cycle == 2U);
-        else
+        else {
+            combiner_plan_ = rdp_prepare_combiner(color_state_);
             color_triangle();
+        }
         return;
     case 0x24:
     case 0x25:
     case 0x36:
         if (((other_modes_ >> 52U) & 3U) == 3U)
             fill_rectangle(command);
-        else if (cycle < 2U)
+        else if (cycle < 2U) {
+            combiner_plan_ = rdp_prepare_combiner(color_state_);
             color_rectangle(command, opcode == 0x25);
-        else
+        } else
             copy_rectangle(command, opcode == 0x25);
         return;
     case 0x29:

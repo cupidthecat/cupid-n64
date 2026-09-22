@@ -1,5 +1,6 @@
 #include "cupid/bus.hpp"
 #include "cupid/rdp/triangle.hpp"
+#include "raster_tasks.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -51,71 +52,76 @@ void Rdp::color_triangle() {
     const unsigned maximum_level = static_cast<unsigned>(command >> 51U) & 7U;
     const s32 direction = geometry.left_major ? 1 : -1;
 
-    for (unsigned y = static_cast<unsigned>(first_y / 4); y <= static_cast<unsigned>((last_y - 1) / 4); ++y) {
-        if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
-            continue;
-        const auto span = rdp_triangle_span(geometry, scissor, y);
-        if (!span.valid)
-            continue;
-        const auto origin = rdp_triangle_origin(geometry, y);
-        std::array<u32, 8> base{};
-        for (unsigned i = 0; i < base.size(); ++i)
-            base[i] = rdp_varying_base(attributes[i], origin);
-        const auto divide = [&](const std::array<s16, 3>& stw, bool& overflow) {
-            return perspective ? RdpTexturePoint{rdp_perspective_coordinate_wide(stw[0], stw[2], overflow),
-                                                 rdp_perspective_coordinate_wide(stw[1], stw[2], overflow)}
-                               : RdpTexturePoint{stw[0], stw[1]};
-        };
-        const auto texture_point = [&](s32 dx, bool next_y, bool& overflow) {
-            std::array<s16, 3> stw{};
-            for (unsigned i = 0; i < 3; ++i) {
-                const auto varying = attributes[4U + i];
-                const u32 value = base[4U + i] + (varying.dx & ~31U) * static_cast<u32>(dx) +
-                                  (next_y ? varying.dy & ~32767U : 0U);
-                stw[i] = std::bit_cast<s16>(static_cast<u16>(value >> 16U));
-            }
-            return divide(stw, overflow);
-        };
-        const s32 lod_length = geometry.left_major ? static_cast<s32>(span.end) - origin.x
-                                                   : origin.x - static_cast<s32>(span.start);
-        const bool lookahead_row = !two_cycles && (texture_inputs & 2U) != 0 && lod_length >= 8 &&
-                                   !scissor_field_enabled_ &&
-                                   rdp_triangle_span(geometry, scissor, y + 1U).valid;
-        RdpTexturePoint next_row_point{};
-        if (lookahead_row) {
-            const auto next_origin = rdp_triangle_origin(geometry, y + 1U);
-            std::array<s16, 3> stw{};
-            for (unsigned i = 0; i < 3; ++i)
-                stw[i] = std::bit_cast<s16>(
-                    static_cast<u16>(rdp_varying_base(attributes[4U + i], next_origin) >> 16U));
-            bool ignored = false;
-            next_row_point = divide(stw, ignored);
-        }
-        for (unsigned step = 0; step <= span.end - span.start; ++step) {
-            const unsigned x = geometry.left_major ? span.start + step : span.end - step;
-            const unsigned coverage = rdp_triangle_coverage(span, x);
-            if (coverage == 0 || ((other_modes_ & 8U) == 0 && (coverage & 1U) == 0))
+    const auto render = [&](unsigned first, unsigned last) {
+        for (unsigned y = first; y < last; ++y) {
+            if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
                 continue;
-            const s32 dx = static_cast<s32>(x) - origin.x;
-            RdpColorInputs inputs;
-            if (texture_inputs != 0) {
-                bool overflow = false;
-                const auto point = texture_point(dx, false, overflow);
-                const auto next_x = texture_point(dx + direction, false, overflow);
-                const auto next_y = texture_point(dx, true, overflow);
+            const auto span = rdp_triangle_span(geometry, scissor, y);
+            if (!span.valid)
+                continue;
+            const auto origin = rdp_triangle_origin(geometry, y);
+            std::array<u32, 8> base{};
+            for (unsigned i = 0; i < base.size(); ++i)
+                base[i] = rdp_varying_base(attributes[i], origin);
+            const auto divide = [&](const std::array<s16, 3>& stw, bool& overflow) {
+                return perspective
+                           ? RdpTexturePoint{rdp_perspective_coordinate_wide(stw[0], stw[2], overflow),
+                                             rdp_perspective_coordinate_wide(stw[1], stw[2], overflow)}
+                           : RdpTexturePoint{stw[0], stw[1]};
+            };
+            const auto texture_point = [&](s32 dx, bool next_y, bool& overflow) {
+                std::array<s16, 3> stw{};
+                for (unsigned i = 0; i < 3; ++i) {
+                    const auto varying = attributes[4U + i];
+                    const u32 value = base[4U + i] + (varying.dx & ~31U) * static_cast<u32>(dx) +
+                                      (next_y ? varying.dy & ~32767U : 0U);
+                    stw[i] = std::bit_cast<s16>(static_cast<u16>(value >> 16U));
+                }
+                return divide(stw, overflow);
+            };
+            const s32 lod_length = geometry.left_major ? static_cast<s32>(span.end) - origin.x
+                                                       : origin.x - static_cast<s32>(span.start);
+            const bool lookahead_row = !two_cycles && (texture_inputs & 2U) != 0 && lod_length >= 8 &&
+                                       !scissor_field_enabled_ &&
+                                       rdp_triangle_span(geometry, scissor, y + 1U).valid;
+            RdpTexturePoint next_row_point{};
+            if (lookahead_row) {
+                const auto next_origin = rdp_triangle_origin(geometry, y + 1U);
+                std::array<s16, 3> stw{};
+                for (unsigned i = 0; i < 3; ++i)
+                    stw[i] = std::bit_cast<s16>(
+                        static_cast<u16>(rdp_varying_base(attributes[4U + i], next_origin) >> 16U));
                 bool ignored = false;
-                const auto next_pixel = lookahead_row && step == span.end - span.start
-                                            ? next_row_point
-                                            : texture_point(dx + direction, false, ignored);
-                inputs = sample_color_textures({point, next_x, next_y, next_pixel, overflow}, tile,
-                                               texture_inputs, maximum_level);
+                next_row_point = divide(stw, ignored);
             }
-            for (unsigned i = 0; i < inputs.shade.size(); ++i)
-                inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
-            const RdpDepth depth{rdp_interpolate_depth(base[7], attributes[7], dx, coverage), delta};
-            write_color_pixel(x, y, coverage, inputs, depth);
+            for (unsigned step = 0; step <= span.end - span.start; ++step) {
+                const unsigned x = geometry.left_major ? span.start + step : span.end - step;
+                const unsigned coverage = rdp_triangle_coverage(span, x);
+                if (coverage == 0 || ((other_modes_ & 8U) == 0 && (coverage & 1U) == 0))
+                    continue;
+                const s32 dx = static_cast<s32>(x) - origin.x;
+                RdpColorInputs inputs;
+                if (texture_inputs != 0) {
+                    bool overflow = false;
+                    const auto point = texture_point(dx, false, overflow);
+                    const auto next_x = texture_point(dx + direction, false, overflow);
+                    const auto next_y = texture_point(dx, true, overflow);
+                    const auto next_pixel =
+                        lookahead_row && step == span.end - span.start ? next_row_point : next_x;
+                    inputs = sample_color_textures({point, next_x, next_y, next_pixel, overflow}, tile,
+                                                   texture_inputs, maximum_level);
+                }
+                for (unsigned i = 0; i < inputs.shade.size(); ++i)
+                    inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
+                const RdpDepth depth{rdp_interpolate_depth(base[7], attributes[7], dx, coverage), delta};
+                write_color_pixel(x, y, coverage, inputs, depth);
+            }
         }
-    }
+    };
+    const unsigned first = static_cast<unsigned>(first_y / 4);
+    const unsigned last = static_cast<unsigned>((last_y + 3) / 4);
+    rdp::raster_rows(bus_.memory, first, last,
+                     parallel_rows(first, last, scissor_x0_ / 4U, (scissor_x1_ + 3U) / 4U), render);
 }
 
 } // namespace cupid

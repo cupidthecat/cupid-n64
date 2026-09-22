@@ -1,5 +1,73 @@
 # Recorded validation results
 
+## CPU, RSP, and raster execution optimizations (2026-09-22)
+
+The optimized core passed the shared validator on Windows with Clang 21.1.5 and
+MSVC, and on Linux with Clang 18 plus AddressSanitizer and
+UndefinedBehaviorSanitizer. The Windows Release builds include the SDL3 frontend
+and use interprocedural optimization. All three builds retained strict warnings.
+The Linux run checked formatting with clang-format 22.1.0.
+
+| Check | Windows Clang | Windows MSVC | Linux ASan/UBSan |
+|---|---:|---:|---:|
+| Hardware and host regressions | 1,243/1,243 | 1,243/1,243 | 1,243/1,243 |
+| Prepared default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Default cold and warm boot | 4,637 each | 4,637 each | 4,637 each |
+| Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 14/14 | 14/14 | 9/9 |
+
+Extended results were Base 4,649/4,649, Timing 1,604/1,604, Cycle 13/13,
+CP0 hazards 5/5, and quirks 2/2. Default execution took 329,399,327 instructions
+and 822,037,286 CPU cycles; extended execution took 363,753,813 instructions and
+896,469,179 CPU cycles. These totals matched across all three configurations.
+The full stepped-versus-batched cartridge comparisons also matched: 3,673
+report observations for the default image and 3,876 for the extended image,
+including registers, program counters, cycles, and instruction counts.
+
+The runs checked the same 394 source files and matching cartridge and firmware
+bytes. Their source and input fingerprints remained unchanged through each
+validator, and the sanitizer run reported no diagnostic. A separate Windows
+build with the packed RSP dispatch disabled passed all 1,243 hardware and host
+regressions through the scalar fallback.
+
+New coverage includes cached CPU memory widths and signedness, a load changing
+its own base register, rejected alignment and external-doubleword accesses,
+cached SP memory during local RSP execution, and IMEM edits during a latched
+operand stall. Vector checks cover every element selection, all three operands
+sharing a register, carry propagation through both accumulator boundaries, and
+48-bit wrap. The blender-divider regression checks all 32,768 table inputs.
+
+### Super Mario 64 replay
+
+The final Windows builds replayed 6,000 fields with the same scripted input,
+cartridge, firmware, and EEPROM configuration. The run reaches the outdoor
+scene and covers 100.631 seconds of emulated CPU time. These measurements used
+an Intel Core i7-13700H, high process QoS, and the performance-core affinity mask
+`0xfff`. The runs were sequential, with profiling disabled and no concurrent
+build or validation process.
+
+| Compiler | Wall time | Emulated time / wall time |
+|---|---:|---:|
+| Windows Clang Release | 173.462 seconds | 58.0% |
+| Windows MSVC Release | 220.829 seconds | 45.6% |
+
+Both runs match all 6,000 field records and 52 retained video, audio, and save
+files against the preceding checked replay. Each executes 6,201,555,337
+instructions in 9,434,118,569 CPU cycles, produces 3,225,577 DAC samples and
+4,830,263 resampled playback frames, and records zero audio-timeline
+discontinuities. Neither run freezes or reports a PIF failure.
+
+The fastest final result remains below real time. A matching audio timeline does
+not establish uninterrupted audible playback on a slow host, and this bounded
+replay does not complete the physical-input, save/reload gameplay, or 30-minute
+acceptance checks. Issue #48 remains open.
+
+The shared reports and comparisons are retained under
+`.work/validation/fullspeed-review-20260922/`. These results establish regression
+coverage for the tested execution paths. The independent conformance, sustained
+gameplay, physical-controller, and release checks in issues #37, #38, #40, and
+#48 remain separate requirements.
+
 ## Deferred RCP device clocks
 
 The September 21, 2026 runs following this change keep device clocks behind the
