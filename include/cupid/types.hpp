@@ -2,6 +2,8 @@
 
 #include <bit>
 #include <cstdint>
+#include <cstring>
+#include <type_traits>
 
 namespace cupid {
 
@@ -33,16 +35,30 @@ constexpr s32 signed32(u32 value) noexcept {
     return std::bit_cast<s32>(value);
 }
 
+constexpr u32 byteswap32(u32 value) noexcept {
+    return (value << 24) | ((value << 8) & 0x00ff0000U) | ((value >> 8) & 0x0000ff00U) | (value >> 24);
+}
+
 constexpr u32 read_be32(const u8* data) noexcept {
-    return (static_cast<u32>(data[0]) << 24) | (static_cast<u32>(data[1]) << 16) |
-           (static_cast<u32>(data[2]) << 8) | static_cast<u32>(data[3]);
+    if (std::is_constant_evaluated()) {
+        return (static_cast<u32>(data[0]) << 24) | (static_cast<u32>(data[1]) << 16) |
+               (static_cast<u32>(data[2]) << 8) | static_cast<u32>(data[3]);
+    }
+    u32 value = 0;
+    std::memcpy(&value, data, sizeof(value));
+    return byteswap32(value);
 }
 
 constexpr void write_be32(u8* data, u32 value) noexcept {
-    data[0] = static_cast<u8>(value >> 24);
-    data[1] = static_cast<u8>(value >> 16);
-    data[2] = static_cast<u8>(value >> 8);
-    data[3] = static_cast<u8>(value);
+    if (std::is_constant_evaluated()) {
+        data[0] = static_cast<u8>(value >> 24);
+        data[1] = static_cast<u8>(value >> 16);
+        data[2] = static_cast<u8>(value >> 8);
+        data[3] = static_cast<u8>(value);
+        return;
+    }
+    const u32 stored = byteswap32(value);
+    std::memcpy(data, &stored, sizeof(stored));
 }
 
 } // namespace cupid

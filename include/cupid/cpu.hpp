@@ -97,10 +97,6 @@ class Cpu {
 
     std::array<u64, 32> gpr{};
     std::array<u64, 32> cp0{};
-    std::array<TlbEntry, 32> tlb{};
-    std::array<CacheLine<16>, 512> data_cache{};
-    std::array<CacheLine<32>, 512> instruction_cache{};
-    Fpu fpu;
     u64 pc{};
     u64 next_pc{};
     u64 hi{};
@@ -114,23 +110,42 @@ class Cpu {
 
   private:
     friend class System;
+    // Registers and pipeline state stay together so dispatch does not reload them
+    // from behind the instruction and data caches.
     System& system_;
-    u64 cop0_latch_{};
     u64 instruction_cycles_{1};
     u64 synchronized_instruction_cycles_{};
-    bool executing_step_{};
-    bool nmi_pending_{};
+    u64 following_pc_{};
+    u64 count_write_hold_{};
+    u64 cop0_latch_{};
     u64 batched_idle_instructions_{};
-    bool speculative_fetch_{};
-    // step() can issue the next-PC fetch plus one store-prefetch or exception-decode fetch.
-    std::array<u32, 2> speculative_refill_bases_{};
-    unsigned speculative_refill_count_{};
     struct FetchedInstruction {
         u64 address{};
         u32 instruction{};
         bool valid{};
     };
     FetchedInstruction fetched_instruction_{};
+    u32 random_{31};
+    u32 random_wired_{};
+    unsigned software_interrupt_delay_{};
+    unsigned pending_load_register_{};
+    unsigned pending_fpu_register_{32};
+    bool executing_step_{};
+    bool nmi_pending_{};
+    bool in_delay_slot_{};
+    bool following_delay_slot_{};
+    bool annul_next_{};
+    bool redirected_{};
+    bool count_half_{};
+    bool speculative_fetch_{};
+
+  public:
+    std::array<TlbEntry, 32> tlb{};
+    std::array<CacheLine<16>, 512> data_cache{};
+    std::array<CacheLine<32>, 512> instruction_cache{};
+    Fpu fpu;
+
+  private:
     struct MemoryWrite {
         u64 address{};
         unsigned width{};
@@ -144,29 +159,22 @@ class Cpu {
     std::array<BufferedWrite, 4> write_buffer_{};
     unsigned write_buffer_head_{};
     unsigned write_buffer_count_{};
-    u64 following_pc_{};
-    bool in_delay_slot_{};
-    bool following_delay_slot_{};
-    bool annul_next_{};
-    bool redirected_{};
-    bool count_half_{};
-    u64 count_write_hold_{};
-    u32 random_{31};
-    u32 random_wired_{};
+    // step() can issue the next-PC fetch plus one store-prefetch or exception-decode fetch.
+    std::array<u32, 2> speculative_refill_bases_{};
+    unsigned speculative_refill_count_{};
     struct WiredWrite {
         u32 value{};
         u64 instruction{};
     };
     std::array<WiredWrite, 2> wired_writes_{};
-    unsigned software_interrupt_delay_{};
-    unsigned pending_load_register_{};
-    unsigned pending_fpu_register_{32};
 
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);
     unsigned sample_exception_coprocessor();
     bool fetch_instruction(u64& instruction);
     void prefetch_instruction(u64 address, bool latch);
+    // A kseg0 instruction-cache hit can be latched without the miss-path guard.
+    bool latch_cached_instruction(u64 address);
 
     void execute_special(u32 instruction);
     void accept_nmi();

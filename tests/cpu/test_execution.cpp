@@ -274,3 +274,25 @@ TEST(cpu_idle_slice_steps_active_rsp_and_deferred_cpu_writes) {
         }
     }
 }
+
+TEST(cpu_alu_slice_matches_stepped_clocks) {
+    constexpr u32 addiu = (9U << 26) | (1U << 21) | (1U << 16) | 1U;
+    constexpr u32 daddiu = (0x19U << 26) | (1U << 21) | (1U << 16) | 1U;
+    auto program = [&](System& system) {
+        test::initialize_memory(system);
+        system.cpu.write_cop0(12, 0x34000000U);
+        system.cpu.write_cop0(11, 50);
+        for (unsigned index = 0; index < 20; ++index)
+            system.bus.write(0x1000 + index * 4, 4, addiu);
+        for (unsigned index = 20; index < 40; ++index)
+            system.bus.write(0x1000 + index * 4, 4, daddiu);
+        system.cpu.gpr[1] = 0;
+        system.cpu.set_pc(code);
+    };
+    System batched;
+    System stepped;
+    program(batched);
+    program(stepped);
+    compare_slice(batched, stepped, 64);
+    CHECK_EQ(batched.cpu.gpr[1], 40U);
+}
