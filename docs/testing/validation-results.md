@@ -1,5 +1,38 @@
 # Recorded validation results
 
+## Packed vector carry arithmetic (2026-09-22)
+
+The VADD/VSUB packed arithmetic change passed strict Windows Clang and MSVC
+Release validation with the desktop enabled, and Linux Clang ASan/UBSan
+validation. All three runs passed 1,331 core regressions, the 4,637-case default
+cartridge, both cold and warm boots, and the 6,273-case extended cartridge.
+Windows passed all 14 CTest groups; Linux passed all nine core groups. Both
+cartridge execution-mode comparisons matched, including registers and report
+timestamps. Formatting, validation-tool tests, and source/input integrity checks
+passed. The sanitizer run reported no diagnostic.
+
+The added encoded tests cover all pairs of eight values at and near the signed
+endpoints and zero, with carry clear and set. They observe the saturated result,
+all accumulator slices, and control flags, including destinations that overwrite
+either input.
+
+The 6,000-field Mario replay matches all field observations and all 52 retained
+video, audio, and EEPROM files. It took 173.606 seconds for 100.631 seconds of
+emulated time, or 58.0% of real time. The preceding baseline run took 175.482
+seconds; this single pair does not establish a whole-game speedup.
+
+A separate encoded VADD/VSUB loop ran 600 million RSP clocks per measurement.
+Six runs of each build, alternating their order, produced median times of
+3.401 seconds for a freshly built baseline and 3.320 seconds for the packed
+change. Final PC and stored lanes matched in every run. Both benchmarks used
+high process QoS and performance-core affinity. The focused result does not
+establish full-speed gameplay or uninterrupted audible playback.
+
+Evidence is retained under `.work/validation/vector-carry-20260922/`. All 411
+checked source files matched the Linux validation copy before this result
+record was added. Executable source and tests were unchanged after validation.
+The acceptance work in #48 and #47 remains open.
+
 ## Cached execution and reset deadline follow-up (2026-09-22)
 
 The next 411-file source snapshot passed strict Windows Clang and MSVC Release

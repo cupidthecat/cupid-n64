@@ -128,6 +128,14 @@ instructions and memory stores. `test_vector_compare_sse2.cpp` adds fixed
 expectations for saturation, compare ties, merges, and accumulator reads, plus a
 scalar model across element selections and source aliases.
 
+VADD and VSUB keep the wrapped 16-bit result in the accumulator's low slice
+and saturate the destination only after including the incoming carry or borrow.
+Both clear VCO and preserve VCC, VCE, and the upper accumulator slices. The
+packed path uses signed 16-bit saturation, with an endpoint correction for
+VSUB when its right operand plus borrow is 32768. Encoded tests cover every
+pair of signed endpoint values with carry clear and set, including destinations
+that overwrite either source.
+
 `test_native_vector_representation.cpp` checks architectural byte order through
 MFC2/MTC2, partial and packed transfers, transpose register groups, and wrapped
 DMEM addresses. It observes arithmetic through stored bytes and checks VMOV's
