@@ -3,10 +3,13 @@
 #include "cupid/host/options.hpp"
 #include "test.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,12 +20,19 @@ using namespace cupid;
 class TempDirectory {
   public:
     explicit TempDirectory(std::string_view suffix = {}) {
-        static unsigned next = 0;
-        path_ = std::filesystem::temp_directory_path() /
-                ("cupid-n64-host-" + std::to_string(++next) + std::string(suffix));
-        std::error_code code;
-        std::filesystem::remove_all(path_, code);
-        std::filesystem::create_directories(path_);
+        static std::atomic<unsigned> next = 0;
+        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        for (unsigned attempt = 0; attempt < 100; ++attempt) {
+            path_ =
+                std::filesystem::temp_directory_path() / ("cupid-n64-host-" + std::to_string(stamp) + '-' +
+                                                          std::to_string(++next) + std::string(suffix));
+            std::error_code code;
+            if (std::filesystem::create_directory(path_, code))
+                return;
+            if (code && code != std::errc::file_exists)
+                throw std::filesystem::filesystem_error("Cannot create test directory", path_, code);
+        }
+        throw std::runtime_error("Cannot reserve a unique test directory.");
     }
 
     ~TempDirectory() {

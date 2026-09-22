@@ -39,6 +39,9 @@ class GameBoyCartridge {
     [[nodiscard]] std::span<const u8> ram() const {
         return ram_;
     }
+    [[nodiscard]] std::span<const u8> rom() const {
+        return rom_;
+    }
     [[nodiscard]] bool rumble_active() const {
         return rumble_active_;
     }
