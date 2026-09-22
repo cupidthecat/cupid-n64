@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "revision": "9a8b9f7d94ee2f6f57d7feed70c98c22cdc30e6c",
+  "patches": [
+    {
+      "path": "clock-sampling.patch",
+      "sha256": "897ce0b792fdcd732aa883fb2d4e57db1298717c113d3ac2ec3d3e97ff594833"
+    },
+    {
+      "path": "triangle-fixtures.patch",
+      "sha256": "a62cc1b82743569699977ad59297b12e685df84586e0bd0d99daabf91b08691d"
+    }
+  ],
+  "files": {
+    "src/tests/rsp_timing/mod.rs": {
+      "before": "bd1b2c073a1550fbac21439d45d73d7330796ef1eef601c34e012a841a7efc37",
+      "after": "a5898c471b0d8f0c53cd396e49ac5069049c583ad370404581d7f9e5f2b86f3e"
+    },
+    "src/graphics/color.rs": {
+      "before": "8eae1bef4007aa5c368741e44915b0699797a3ba02bad068a9ed0a6dbc3ce1b4",
+      "after": "f33a935bbb3c34203f779848649db7e62514bcf09af330b99c1eb00daa38f7f2"
+    },
+    "src/rdp/rdp_assembler.rs": {
+      "before": "48644e60608b76201c275320fda50ca3bdec95e14e8ba87e172278dd5918108f",
+      "after": "3a227df2dfdfef04787363df282fa1230e6bcb8d3ea1fd217aead8cd12929b8c"
+    },
+    "src/tests/rdp/filled_triangle.rs": {
+      "before": "c40643bb8a05a005c9b51ebc8ff06f56cf36a025335c1888ff17dd13f7a52544",
+      "after": "a2542fe2ff16224c28cdfb9993f33711f0925054c8aa2cc362aaf0ef1709b691"
+    }
+  }
+}

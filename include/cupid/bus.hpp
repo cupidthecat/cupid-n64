@@ -1,0 +1,323 @@
+#pragma once
+
+#include "cupid/cartridge/flash.hpp"
+#include "cupid/cartridge/rtc.hpp"
+#include "cupid/cic.hpp"
+#include "cupid/rcp/audio.hpp"
+#include "cupid/rcp/controller.hpp"
+#include "cupid/rcp/gamecube.hpp"
+#include "cupid/rcp/joybus.hpp"
+#include "cupid/rcp/pif_boot.hpp"
+#include "cupid/rcp/transfer_pak.hpp"
+#include "cupid/rdp.hpp"
+#include "cupid/rdram.hpp"
+#include "cupid/types.hpp"
+#include "cupid/vi.hpp"
+
+#include <array>
+#include <deque>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace cupid {
+
+class System;
+
+enum class SaveType {
+    None,
+    Sram,
+    FlashRam,
+    Eeprom4K,
+    Eeprom16K,
+};
+
+class Bus {
+  public:
+    explicit Bus(System& system);
+
+    void reset();
+    [[nodiscard]] u64 read(u32 physical, unsigned width_bytes);
+    void write(u32 physical, unsigned width_bytes, u64 value);
+    bool read_cache(u32 physical, std::span<u8> bytes);
+    bool write_cache(u32 physical, std::span<const u8> bytes);
+    void tick(u64 rcp_cycles);
+    [[nodiscard]] VideoField scan_video(VideoScanMode mode = VideoScanMode::Parallel) const;
+    void set_video_output(std::function<void(VideoField)> output);
+    // Timed samples change the next AI deadline, so the cached schedule is refreshed.
+    void set_audio_sample_output(std::function<void(const AudioSample&)> output);
+    [[nodiscard]] u64 output_clock() const {
+        settle_system();
+        return output_clock_;
+    }
+    [[nodiscard]] u64 rdram_refresh_wait() const {
+        settle_system();
+        return ri_refresh_counter_;
+    }
+    [[nodiscard]] u64 rdram_refresh_overlap(u32 physical, u64 transfer_rcp_cycles) const;
+    [[nodiscard]] bool rdram_row_miss(u32 physical) const;
+
+    [[nodiscard]] u8 read_ram_byte(u32 address) const;
+    void write_ram_byte(u32 address, u8 value);
+    void set_interrupt(unsigned source, bool level);
+    [[nodiscard]] bool interrupt_pending() const {
+        return (mi_interrupt_ & mi_mask_) != 0;
+    }
+
+    bool load_rom(std::vector<u8> data, std::string& error);
+    void set_save_type(SaveType type);
+    void set_flash_chip(FlashChip chip);
+    [[nodiscard]] FlashChip flash_chip() const {
+        return flash_chip_;
+    }
+    void set_controller_state(unsigned port, ControllerState state);
+    [[nodiscard]] bool configure_controller_pak(unsigned port, unsigned banks);
+    void set_gamecube_state(unsigned port, GameCubeState state);
+    void add_mouse_input(unsigned port, MouseInput input);
+    void set_bio_sensor_pulse(unsigned port, bool active);
+    [[nodiscard]] const std::array<ControllerState, 4>& controllers() const {
+        return controllers_;
+    }
+    [[nodiscard]] bool rumble_active(unsigned port) const {
+        return port < controller_rumble_.size() && controller_rumble_[port];
+    }
+
+    std::vector<u8> rdram;
+    Rdram memory{rdram};
+    Cic cic;
+    PifBoot pif_boot{*this};
+    std::vector<u8> rom;
+    std::array<u8, 2048> pif{};
+    std::function<void(std::string_view)> debug_output;
+    std::function<void(s16, s16)> audio_output;
+    std::function<void(const AudioSample&)> audio_sample_output;
+
+    SaveType save_type{SaveType::None};
+    std::vector<u8> sram;
+    std::vector<u8> flashram;
+    std::vector<u8> eeprom;
+    std::optional<CartridgeRtc> rtc;
+    std::array<std::vector<u8>, 4> controller_paks;
+    std::array<TransferPak, 4> transfer_paks;
+    Joybus joybus{*this};
+
+    Rdp rdp;
+
+  private:
+    friend class Rdp;
+    friend class Joybus;
+    friend class PifBoot;
+    friend class System;
+
+    System& system_;
+    std::array<ControllerState, 4> controllers_{};
+    std::array<GameCubeController, 4> gamecube_controllers_{};
+    std::array<MouseInput, 4> mouse_inputs_{};
+    std::array<bool, 4> controller_pak_changed_{true, true, true, true};
+    std::array<u8, 4> controller_pak_bank_{};
+    std::array<bool, 4> controller_rumble_{};
+    std::array<bool, 4> bio_sensor_pulse_{};
+    [[nodiscard]] u8 read_bio_sensor(unsigned port, u16 address) const;
+
+    [[nodiscard]] u64 next_event() const;
+    void tick_devices(u64 rcp_cycles);
+    void tick_clocks(u64 rcp_cycles);
+    void tick_peripherals(u64 rcp_cycles);
+    void dispatch_outputs();
+    void settle_system() const;
+    void forget_deferral_limit() const;
+    [[nodiscard]] bool take_schedule_change() {
+        const bool changed = schedule_dirty_;
+        schedule_dirty_ = false;
+        return changed;
+    }
+    bool schedule_dirty_{};
+    std::deque<std::function<void()>> pending_outputs_;
+    bool output_delivery_active_{};
+    u64 output_clock_{};
+    u64 output_generation_{};
+
+    u32 open_bus_{};
+    u32 mi_mode_{};
+    u32 mi_interrupt_{};
+    u32 mi_mask_{};
+    std::array<u32, 8> ri_{};
+    std::array<u32, 14> vi_{};
+    std::array<u32, 6> ai_{};
+    std::array<u32, 15> pi_{};
+    std::array<u32, 7> si_{};
+    std::array<u8, 64 * 1024> isviewer_{};
+    bool ri_current_loaded_{};
+    u64 ri_refresh_counter_{};
+    void start_rdram_refresh();
+    void settle_vi_fetch(u32 physical) const;
+    [[nodiscard]] u64 vi_line_cycles() const;
+    [[nodiscard]] u64 next_vi_line() const;
+    [[nodiscard]] u64 vi_line_rcp_cycles() const;
+    [[nodiscard]] u32 vi_line_bytes() const;
+    [[nodiscard]] std::optional<u32> vi_fetch_address() const;
+    [[nodiscard]] u64 vi_fetch_interval() const;
+
+    u64 vi_counter_{};
+    std::optional<u64> vi_line_period_;
+    u64 vi_clock_fraction_{};
+    u64 ai_counter_{};
+    u64 ai_clock_rate_{};
+    u64 ai_clock_period_{};
+    u32 ai_rate_numerator_{44100};
+    u32 ai_rate_denominator_{1};
+    bool ai_clock_started_{};
+    bool ai_boundary_pending_{};
+    bool ai_dac_rate_written_{};
+    bool ai_address_carry_{};
+    u64 pi_dma_counter_{};
+    u64 pi_dma_progress_counter_{};
+    u64 pi_io_counter_{};
+    u64 si_dma_counter_{};
+    u64 si_io_counter_{};
+    u64 eeprom_busy_counter_{};
+    u64 flash_busy_counter_{};
+    u32 vi_current_{};
+    unsigned vi_leap_counter_{};
+    u32 vi_field_sequence_{};
+    std::shared_ptr<std::function<void(VideoField)>> video_output_;
+    u32 ai_fifo_count_{};
+    std::array<u32, 2> ai_addresses_{};
+    std::array<u32, 2> ai_lengths_{};
+    bool pi_dma_cart_to_dram_{};
+    bool pi_dma_pending_{};
+    bool si_dma_pif_to_dram_{};
+    bool si_dma_pending_{};
+    bool pi_io_busy_{};
+    bool pi_dma_busy_{};
+    bool pi_error_{};
+    bool pi_interrupt_{};
+    bool si_interrupt_{};
+    bool si_dma_busy_{};
+    bool si_io_busy_{};
+    u32 si_bus_latch_{};
+    u32 si_phase_{};
+    u32 pi_bus_latch_{};
+    struct PiDmaTransfer {
+        std::array<u8, 128> buffer{};
+        u32 start_dram{};
+        u32 start_cart{};
+        u32 total_bytes{};
+        u32 bus_bytes{};
+        u32 page_size{};
+        u32 page_cycles{};
+        u32 halfword_cycles{};
+        u32 block_length{};
+        u32 block_bus_bytes{};
+        u32 block_filled{};
+        u32 block_misalign{};
+        u32 block_row_distance{};
+        u32 max_block_size{128};
+        s32 remaining{};
+        u64 buffer_cycles{};
+        u64 progress_cycles{};
+        u64 next_progress_cycle{};
+        bool block_ready{};
+        bool first_block{true};
+        bool cart_selected{};
+    } pi_dma_transfer_{};
+    enum class CartDevice { Open, Rom, Sram, Flash, IsViewer };
+    CartDevice cart_device_{CartDevice::Open};
+    u32 cart_offset_{};
+    u32 cart_limit_{};
+
+    enum class FlashMode { ReadArray, Status, LoadPage, SiliconId };
+    FlashChip flash_chip_{FlashChip::Mx29L1100};
+    void reset_flash();
+    enum class FlashErase { None, Chip, Sector };
+    FlashMode flash_mode_{FlashMode::ReadArray};
+    FlashErase flash_erase_{FlashErase::None};
+    u32 flash_sector_{};
+    std::array<u8, 128> flash_page_{};
+    u8 flash_status_{0x8c};
+    u8 flash_status_commands_{};
+    u16 flash_command_high_{};
+    u16 flash_previous_read_{};
+    u32 flash_burst_index_{};
+    bool flash_command_high_valid_{};
+    bool flash_status_stale_{};
+    bool flash_open_bus_{};
+
+    [[nodiscard]] static u64 extract_word_lane(u32 word, u32 address, unsigned width);
+    [[nodiscard]] static u32 expand_rcp_write(u32 address, unsigned width, u64 value);
+    [[nodiscard]] u64 read_bytes(const u8* data, std::size_t size, u32 offset, unsigned width) const;
+    void write_bytes(u8* data, std::size_t size, u32 offset, unsigned width, u64 value);
+    [[nodiscard]] u32 read_word_be(const u8* data, std::size_t size, u32 offset) const;
+    void write_word_be(u8* data, std::size_t size, u32 offset, u32 value);
+
+    [[nodiscard]] u32 read_rcp_word(u32 physical);
+    void write_rcp_word(u32 physical, u32 value);
+    [[nodiscard]] u64 read_rdram(u32 physical, unsigned width) const;
+    void write_rdram(u32 physical, unsigned width, u64 value);
+    [[nodiscard]] u32 read_mi(u32 offset) const;
+    void write_mi(u32 offset, u32 value);
+    [[nodiscard]] u32 read_vi(u32 offset) const;
+    void write_vi(u32 offset, u32 value);
+    void tick_vi(u64 rcp_cycles);
+    [[nodiscard]] u32 read_ai(u32 offset) const;
+    void write_ai(u32 offset, u32 value);
+    void tick_ai(u64 rcp_cycles);
+    void sample_ai();
+    void reset_ai_clock();
+    void latch_ai_period();
+    [[nodiscard]] u32 read_pi(u32 offset) const;
+    void write_pi(u32 offset, u32 value);
+    [[nodiscard]] u32 read_ri(u32 offset) const;
+    void write_ri(u32 offset, u32 value);
+    [[nodiscard]] u32 read_si(u32 offset) const;
+    void write_si(u32 offset, u32 value);
+    void tick_si(u64 rcp_cycles);
+
+    [[nodiscard]] u64 read_sp_memory(u32 physical, unsigned width);
+    void write_sp_memory(u32 physical, unsigned width, u64 value);
+    [[nodiscard]] u64 read_pif(u32 physical, unsigned width);
+    void write_pif(u32 physical, unsigned width, u64 value);
+    [[nodiscard]] u32 read_pif_word(u32 address) const;
+    void write_pif_word(u32 address, u32 value);
+    [[nodiscard]] u64 read_cart(u32 physical, unsigned width);
+    void write_cart(u32 physical, unsigned width, u64 value);
+    void select_cart(u32 physical);
+    [[nodiscard]] u16 cart_read_half();
+    void cart_write_half(u16 value);
+    [[nodiscard]] static unsigned pi_domain(u32 address);
+    [[nodiscard]] u32 pi_page_mask(u32 address) const;
+    [[nodiscard]] u64 pi_dma_cycles(u32 length) const;
+    [[nodiscard]] u64 pi_dma_progress_deadline(u32 bytes) const;
+    void start_pi_dma(u32 length);
+    void prepare_pi_dma_block();
+    void schedule_pi_dma_progress();
+    void progress_pi_dma();
+    void finish_pi_dma();
+    void finish_si_dma();
+    void process_pif();
+    void process_pif_control();
+    void execute_joybus(unsigned channel, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
+                        bool& overflow);
+    void execute_controller(unsigned port, u8 send, u8 recv, const u8* input, u8* output, bool& valid,
+                            bool& overflow);
+    void reset_gamecube_controller(unsigned port);
+    [[nodiscard]] u8 read_controller_pak(unsigned port, u16 address) const;
+    void write_controller_pak(unsigned port, u16 address, std::span<const u8> data);
+    void execute_eeprom(u8 send, u8 recv, const u8* input, u8* output, bool& valid);
+    void execute_mouse(unsigned port, u8 recv, u8 command, u8* output, bool& valid, bool& overflow);
+    void tick_eeprom(u64 cycles);
+    [[nodiscard]] static u8 pak_crc(const u8* data);
+    [[nodiscard]] static u8 address_crc(u16 address);
+    void flash_command(u32 value);
+    [[nodiscard]] std::optional<u16> read_flash_half();
+    void write_flash_half(u16 value);
+    void tick_flash(u64 cycles);
+    void emit_isviewer();
+    [[nodiscard]] u8 rdp_source_byte(u32 address, bool dmem) const;
+};
+
+} // namespace cupid

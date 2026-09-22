@@ -1,0 +1,8 @@
+foreach(attempt RANGE 1 1000)
+    if(EXISTS "${READY_ONE}" AND EXISTS "${READY_TWO}")
+        file(WRITE "${START}" "go")
+        return()
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E sleep 0.01)
+endforeach()
+message(FATAL_ERROR "Concurrent storage writers did not reach the start gate")

@@ -1,0 +1,377 @@
+diff --git a/src/graphics/color.rs b/src/graphics/color.rs
+--- a/src/graphics/color.rs
++++ b/src/graphics/color.rs
+@@ -123,6 +123,22 @@
+             .with_blue(blue)
+             .with_alpha(alpha)
+     }
++
++    pub fn to_rdp_rgba8888(&self) -> u32 {
++        ((self.red() as u32) << 24)
++            | ((self.green() as u32) << 16)
++            | ((self.blue() as u32) << 8)
++            | self.alpha() as u32
++    }
++
++    pub fn from_rdp_rgba8888(value: u32) -> Self {
++        Self::new(
++            (value >> 24) as u8,
++            (value >> 16) as u8,
++            (value >> 8) as u8,
++            value as u8,
++        )
++    }
+ }
+ 
+ impl Debug for ARGB8888 {
+diff --git a/src/rdp/rdp_assembler.rs b/src/rdp/rdp_assembler.rs
+--- a/src/rdp/rdp_assembler.rs
++++ b/src/rdp/rdp_assembler.rs
+@@ -251,7 +251,7 @@
+     }
+ 
+     pub fn set_blendcolor(&mut self, color: ARGB8888) {
+-        self.write_command(RDPCommand::SetBlendColor, color.raw_value() as u64);
++        self.write_command(RDPCommand::SetBlendColor, color.to_rdp_rgba8888() as u64);
+     }
+ 
+     pub fn set_fillcolor32(&mut self, color: ARGB8888) {
+diff --git a/src/tests/rdp/filled_triangle.rs b/src/tests/rdp/filled_triangle.rs
+--- a/src/tests/rdp/filled_triangle.rs
++++ b/src/tests/rdp/filled_triangle.rs
+@@ -3,7 +3,6 @@
+ use alloc::string::String;
+ use alloc::vec::Vec;
+ use core::any::Any;
+-use core::mem::size_of;
+ 
+ use arbitrary_int::prelude::*;
+ use oorandom::Rand32;
+@@ -17,106 +16,71 @@
+ use crate::tests::{Level, Test};
+ use crate::uncached_memory::UncachedHeapMemory;
+ 
+-fn render_on_cpu<
+-    T: Color + Copy + Clone + From<ARGB8888>,
+-    const WIDTH: usize,
+-    const HEIGHT: usize,
+->(
++fn sign_extend_28(value: u32) -> i32 {
++    let value = value & 0x0fff_ffff;
++    ((value ^ 0x0800_0000) as i32).wrapping_sub(0x0800_0000)
++}
++
++fn sample_edge(position: i32, slope: i32, rows: i32) -> i32 {
++    let position = (position as u32) & 0x0fff_fffe;
++    let slope = ((slope as u32) >> 2) & 0x0fff_fffe;
++    let value = position.wrapping_add(slope.wrapping_mul(rows as u32)) & 0x0fff_ffff;
++    (sign_extend_28(value) >> 13) | i32::from((value & 0x1fff) != 0)
++}
++
++fn render_on_cpu<const WIDTH: usize, const HEIGHT: usize>(
+     base: &TriangleBase,
+     scissor: &RDPRectangle,
+     color32: ARGB8888,
+     coverage_mode: CoverageMode,
+-) -> [[T; WIDTH]; HEIGHT] {
+-    let color: T = color32.into();
+-    let mut result: [[T; WIDTH]; HEIGHT] = [[T::BLACK; WIDTH]; HEIGHT];
+-    let mut subpixel_coverage: [[u8; WIDTH]; HEIGHT] = [[0; WIDTH]; HEIGHT];
+-
+-    let is_right_major = base.is_right_major();
+-
+-    let yl: i32 = base.yl().raw_value();
+-    let ym: i32 = base.ym().raw_value();
+-    let yh: i32 = base.yh().raw_value();
+-
+-    // TODO: Is 64 bit precision correct here or should it be i32 only?
+-    let xl: i64 = (base.xl().raw_value() as i64) << 2;
+-    let xm: i64 = (base.xm().raw_value() as i64) << 2;
+-    let xh: i64 = (base.xh().raw_value() as i64) << 2;
+-
+-    let dl: i64 = base.dl().raw_value() as i64;
+-    let dm: i64 = base.dm().raw_value() as i64;
+-    let dh: i64 = base.dh().raw_value() as i64;
+-
+-    let mut major_x = xh;
+-    let major_inc = dh;
+-    let mut y = yh;
+-
+-    let sections = [(ym, xm, dm), (yl, xl, dl)];
+-    for (y_target, mut minor_x, minor_inc) in sections {
+-        while y < y_target {
+-            // Top scissor is "just" pixel accurate
+-            if (y >> 2) >= (((scissor.top().raw_value() as i32) + 3) >> 2) {
+-                if y >= scissor.bottom().raw_value() as i32 {
+-                    break;
++) -> [[ARGB8888; WIDTH]; HEIGHT] {
++    debug_assert!(matches!(coverage_mode, CoverageMode::Zap));
++    let mut result = [[ARGB8888::BLACK; WIDTH]; HEIGHT];
++    let yh = base.yh().raw_value();
++    let ym = base.ym().raw_value();
++    let yl = base.yl().raw_value();
++    let origin = yh & !3;
++    let ylo = yh.max(scissor.top().raw_value() as i32);
++    let yhi = yl.min(scissor.bottom().raw_value() as i32);
++    let xlo = (scissor.left().raw_value() as i32) << 1;
++    let xhi = (scissor.right().raw_value() as i32) << 1;
++
++    for y in 0..HEIGHT {
++        for x in 0..WIDTH {
++            let mut coverage = 0u8;
++            for sub in 0..4 {
++                let row = (y * 4 + sub) as i32;
++                if row < ylo || row >= yhi {
++                    continue;
+                 }
+-
+-                let (left, right) = if is_right_major {
+-                    (major_x, minor_x)
++                let major = sample_edge(base.xh().raw_value(), base.dh().raw_value(), row - origin);
++                let minor = if ym < origin || row < ym {
++                    sample_edge(base.xm().raw_value(), base.dm().raw_value(), row - origin)
+                 } else {
+-                    (minor_x, major_x)
++                    sample_edge(base.xl().raw_value(), base.dl().raw_value(), row - ym)
+                 };
+-
+-                if right >= left {
+-                    let subpixel_left = left >> 16;
+-                    let subpixel_right = (right - (2 << 2)) >> 16;
+-                    for x in subpixel_left..=subpixel_right {
+-                        // Left scissor is "just" pixel accurate
+-                        if (x >> 2) < (((scissor.left().raw_value() as i64) + 3) >> 2) {
+-                            continue;
+-                        }
+-
+-                        // Right scissor is subpixel accurate
+-                        if x >= scissor.right().raw_value() as i64 {
+-                            break;
+-                        }
+-                        let y_pixel = y as usize >> 2;
+-                        let x_pixel = x as usize >> 2;
+-                        if y_pixel < HEIGHT && x_pixel < WIDTH {
+-                            subpixel_coverage[y_pixel][x_pixel] += 1;
+-                        }
++                let (mut left, mut right) = if base.is_right_major() {
++                    (major, minor)
++                } else {
++                    (minor, major)
++                };
++                if (left >> 1) > (right >> 1) {
++                    continue;
++                }
++                left = left.clamp(xlo, xhi);
++                right = right.clamp(xlo, xhi);
++                for sample in 0..2usize {
++                    let position = (x as i32) * 8 + ((sub as i32) & 1) * 2 + (sample as i32) * 4;
++                    if position >= left && position < right {
++                        coverage |= 1 << (sub * 2 + sample);
+                     }
+                 }
+             }
+ 
+-            let next_y = y + 1;
+-            let next_major_x = major_x + major_inc;
+-            let next_minor_x = minor_x + minor_inc;
+-
+-            minor_x = next_minor_x;
+-            major_x = next_major_x;
+-            y = next_y;
+-        }
+-    }
+-
+-    for y in 0..HEIGHT {
+-        for x in 0..WIDTH {
+-            let coverage = subpixel_coverage[y][x];
+-            if coverage != 0 {
+-                let alpha = match coverage_mode {
+-                    CoverageMode::Clamp => match coverage {
+-                        4 => 0x20,
+-                        7 => 0x40,
+-                        8 => 0x60,
+-                        9 => 0x60,
+-                        10 => 0x60,
+-                        12 => 0xA0,
+-                        16 => 0xE0,
+-                        _ => coverage, // placeholder until all are filled out
+-                    },
+-                    CoverageMode::Zap => 0xE0,
+-                    CoverageMode::Wrap => 0xE0,
+-                    CoverageMode::Save => subpixel_coverage[y][x],
+-                };
+-                result[y as usize][x as usize] = color.with_alpha(alpha);
++            // Othermode::DEFAULT leaves antialiasing disabled. In that mode the
++            // RDP accepts only coverage sample zero, even if later samples hit.
++            if (coverage & 1) != 0 {
++                result[y][x] = Color::with_alpha(&color32, 0xe0);
+             }
+         }
+     }
+@@ -124,25 +88,19 @@
+     result
+ }
+ 
+-fn render_on_rdp<T: Color + Copy + Clone, const WIDTH: usize, const HEIGHT: usize>(
++fn render_on_rdp<const WIDTH: usize, const HEIGHT: usize>(
+     triangle: &TriangleBase,
+     scissor: &RDPRectangle,
+     color: ARGB8888,
+     coverage_mode: CoverageMode,
+-) -> [[T; WIDTH]; HEIGHT] {
++) -> [[ARGB8888; WIDTH]; HEIGHT] {
+     let mut framebuffer =
+-        UncachedHeapMemory::<T>::new_with_init_value(WIDTH * HEIGHT, 32, T::BLACK);
++        UncachedHeapMemory::<ARGB8888>::new_with_init_value(WIDTH * HEIGHT, 32, ARGB8888::BLACK);
+ 
+     let mut assembler = RDPAssembler::new();
+-
+-    let image_size = match size_of::<T>() {
+-        2 => PixelSize::Bits16,
+-        4 => PixelSize::Bits32,
+-        _ => panic!("Unhandled color format"),
+-    };
+     assembler.set_framebuffer_image(
+         Format::RGBA,
+-        image_size,
++        PixelSize::Bits32,
+         u12::new((WIDTH - 1).try_into().unwrap()),
+         &mut framebuffer,
+     );
+@@ -163,7 +121,7 @@
+     // Draw triangle
+     assembler.set_framebuffer_image(
+         Format::RGBA,
+-        image_size,
++        PixelSize::Bits32,
+         u12::new((WIDTH - 1).try_into().unwrap()),
+         &mut framebuffer,
+     );
+@@ -186,10 +144,11 @@
+     RDP::run_and_wait(&mut assembler);
+ 
+     // Copy into non-uncached array.
+-    let mut result: [[T; WIDTH]; HEIGHT] = [[T::BLACK; WIDTH]; HEIGHT];
++    let mut result = [[ARGB8888::BLACK; WIDTH]; HEIGHT];
+     for y in 0..HEIGHT {
+         for x in 0..WIDTH {
+-            result[y][x] = framebuffer.read((y * WIDTH + x) as usize);
++            result[y][x] =
++                ARGB8888::from_rdp_rgba8888(framebuffer.read((y * WIDTH + x) as usize).raw_value());
+         }
+     }
+ 
+@@ -235,8 +194,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || format!("Rendered pixels"))?;
+ 
+@@ -284,8 +243,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || format!("Rendered pixels"))?;
+ 
+@@ -334,8 +293,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || format!("Rendered pixels"))?;
+ 
+@@ -386,9 +345,8 @@
+                 I16_16::from_i32(0),
+             );
+ 
+-            let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-            let expected =
+-                render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++            let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++            let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+             soft_assert_eq_2d_array(actual, expected, || {
+                 format!("Rendered pixels with left scissor={:?}", left_scissor)
+@@ -441,9 +399,8 @@
+                 I16_16::from_i32(0),
+             );
+ 
+-            let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-            let expected =
+-                render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++            let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++            let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+             soft_assert_eq_2d_array(actual, expected, || {
+                 format!("Rendered pixels with top scissor={:?}", top_scissor)
+@@ -480,8 +437,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || {
+             format!("Rendered pixels with right scissor={:?}", right_scissor)
+@@ -558,8 +515,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || {
+             format!("Rendered pixels with bottom scissor={:?}", bottom_scissor)
+@@ -649,8 +606,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected = render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || format!("Rendered pixels"))?;
+ 
+@@ -697,9 +654,8 @@
+             I16_16::from_i32(0),
+         );
+ 
+-        let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-        let expected =
+-            render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, ARGB8888::BLUE, coverage_mode);
++        let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++        let expected = render_on_cpu::<8, 8>(&triangle, &scissor, ARGB8888::BLUE, coverage_mode);
+ 
+         soft_assert_eq_2d_array(actual, expected, || format!("Rendered pixels"))?;
+ 
+@@ -764,9 +720,8 @@
+                 I16_16::from_i32(0),
+             );
+ 
+-            let actual = render_on_rdp::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
+-            let expected =
+-                render_on_cpu::<ARGB8888, 8, 8>(&triangle, &scissor, color, coverage_mode);
++            let actual = render_on_rdp::<8, 8>(&triangle, &scissor, color, coverage_mode);
++            let expected = render_on_cpu::<8, 8>(&triangle, &scissor, color, coverage_mode);
+ 
+             soft_assert_eq_2d_array(actual, expected, || {
+                 format!("Rendered pixels for {:?}", triangle)
