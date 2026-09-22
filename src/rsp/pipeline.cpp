@@ -170,7 +170,7 @@ void RspPipeline::fetch(u32 first, u32 second, bool single_step, u32 address) {
     if (count_ != 0U)
         return;
     const bool pairing_allowed = !single_step && !single_issue_;
-    const unsigned decoded_index = (address >> 2U) & (decoded_.size() - 1U);
+    const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
     auto& decoded = decoded_[decoded_index];
     // This is derived instruction metadata. Checking both words also covers IMEM
     // writes and DMA without adding another hardware invalidation mechanism.
