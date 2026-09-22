@@ -10,14 +10,19 @@ void Bus::reset_ai_clock() {
     ai_counter_ = 0;
     ai_clock_rate_ = static_cast<u64>(system_.video_frequency()) * 44100;
     ai_clock_period_ = 62500000ULL * system_.video_frequency();
+    ai_rate_numerator_ = 44100;
+    ai_rate_denominator_ = 1;
     ai_clock_started_ = false;
     ai_boundary_pending_ = false;
     ai_dac_rate_written_ = false;
 }
 
 void Bus::latch_ai_period() {
-    if (ai_dac_rate_written_)
+    if (ai_dac_rate_written_) {
         ai_clock_period_ = 62500000ULL * 44100 * (ai_[4] + 1U);
+        ai_rate_numerator_ = system_.video_frequency();
+        ai_rate_denominator_ = ai_[4] + 1U;
+    }
 }
 
 u32 Bus::read_ai(u32 offset) const {
@@ -91,11 +96,21 @@ void Bus::sample_ai() {
             set_interrupt(2, true);
         }
     }
-    if (consumed && audio_output)
-        pending_outputs_.emplace_back([this, sample] {
-            if (audio_output)
-                audio_output(static_cast<s16>(sample >> 16U), static_cast<s16>(sample));
+    if ((consumed && audio_output) || audio_sample_output) {
+        const AudioSample output{static_cast<s16>(sample >> 16U),
+                                 static_cast<s16>(sample),
+                                 output_clock_,
+                                 ai_rate_numerator_,
+                                 ai_rate_denominator_,
+                                 consumed};
+        const auto generation = output_generation_;
+        pending_outputs_.emplace_back([this, output, generation] {
+            if (output.from_dma && audio_output)
+                audio_output(output.left, output.right);
+            if (generation == output_generation_ && audio_sample_output)
+                audio_sample_output(output);
         });
+    }
 }
 
 void Bus::tick_ai(u64 rcp_cycles) {

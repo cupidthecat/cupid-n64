@@ -29,6 +29,8 @@ void Bus::reset() {
     joybus.reset();
     pending_outputs_.clear();
     schedule_dirty_ = false;
+    output_clock_ = 0;
+    ++output_generation_;
     memory.reset();
 
     std::fill(pif.begin() + PifRamOffset, pif.end(), u8{0});
@@ -372,6 +374,7 @@ bool Bus::interrupt_pending() const {
 }
 
 void Bus::tick_devices(u64 rcp_cycles) {
+    output_clock_ += rcp_cycles;
     if (rcp_cycles != 0)
         ai_clock_started_ = true;
     rdp.tick(rcp_cycles);
