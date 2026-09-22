@@ -16,6 +16,11 @@ The Linux run checked formatting with clang-format 22.1.0.
 | Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
 | CTest groups | 14/14 | 14/14 | 9/9 |
 
+A subsequent strict Linux GCC 13.3.0 build passed all nine CTest groups after
+making the masked RSP decode-cache index conversion explicit. It also passed
+1,243 core regressions, both default boot paths, and both complete cartridge
+suites with the same instruction and cycle totals below.
+
 Extended results were Base 4,649/4,649, Timing 1,604/1,604, Cycle 13/13,
 CP0 hazards 5/5, and quirks 2/2. Default execution took 329,399,327 instructions
 and 822,037,286 CPU cycles; extended execution took 363,753,813 instructions and
