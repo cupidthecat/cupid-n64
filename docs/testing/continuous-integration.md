@@ -84,6 +84,10 @@ files are not copied into the report directory.
 
 ## Hosted checks
 
+The desktop workflow builds the SDL application on Windows and on Linux with
+sanitizers. The Linux job installs ALSA and X11 development packages, including
+XTEST, so SDL can configure its X11 video backend.
+
 The workflow retains these report directories as artifacts for 14 days, even
 after a validation failure. Missing report files also fail the artifact step.
 
