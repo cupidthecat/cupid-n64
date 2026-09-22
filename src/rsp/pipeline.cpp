@@ -166,33 +166,46 @@ bool RspPipeline::advance_branch_wait() {
     return true;
 }
 
-void RspPipeline::fetch(u32 first, u32 second, bool single_step) {
+void RspPipeline::fetch(u32 first, u32 second, bool single_step, u32 address) {
     if (count_ != 0U)
         return;
-    words_[0] = first;
-    count_ = 1;
-    current_ = decode(first);
-    if (single_step || single_issue_ || (current_.flags & branch) != 0U)
+    const bool pairing_allowed = !single_step && !single_issue_;
+    const unsigned decoded_index = (address >> 2U) & (decoded_.size() - 1U);
+    auto& decoded = decoded_[decoded_index];
+    // This is derived instruction metadata. Checking both words also covers IMEM
+    // writes and DMA without adding another hardware invalidation mechanism.
+    if (decoded.count != 0 && decoded.words[0] == first && decoded.words[1] == second &&
+        decoded.pairing_allowed == pairing_allowed) {
+        current_index_ = decoded_index;
+        count_ = decoded.count;
         return;
-    const auto next = decode(second);
-    if (!can_pair(current_, next))
-        return;
-    words_[1] = second;
-    count_ = 2;
-    current_.scalar_reads |= next.scalar_reads;
-    current_.scalar_result |= next.scalar_result;
-    current_.vector_reads |= next.vector_reads;
-    current_.vector_result |= next.vector_result;
-    current_.flags |= next.flags;
+    }
+    Ports ports = decode(first);
+    unsigned count = 1;
+    if (pairing_allowed && (ports.flags & branch) == 0U) {
+        const auto next = decode(second);
+        if (can_pair(ports, next)) {
+            count = 2;
+            ports.scalar_reads |= next.scalar_reads;
+            ports.scalar_result |= next.scalar_result;
+            ports.vector_reads |= next.vector_reads;
+            ports.vector_result |= next.vector_result;
+            ports.flags |= next.flags;
+        }
+    }
+    decoded = {{first, second}, ports, count, pairing_allowed};
+    current_index_ = decoded_index;
+    count_ = count;
 }
 
 bool RspPipeline::advance_operand_wait() {
+    const auto& current = decoded_[current_index_].ports;
     const bool scalar_wait =
-        (current_.scalar_reads & (previous_[0].scalar_result | previous_[1].scalar_result)) != 0U;
+        (current.scalar_reads & (previous_[0].scalar_result | previous_[1].scalar_result)) != 0U;
     const bool vector_wait =
-        (current_.vector_reads &
+        (current.vector_reads &
          (previous_[0].vector_result | previous_[1].vector_result | previous_[2].vector_result)) != 0U;
-    const bool store_wait = (current_.flags & store) != 0U && previous_[1].load;
+    const bool store_wait = (current.flags & store) != 0U && previous_[1].load;
     if (!scalar_wait && !vector_wait && !store_wait)
         return false;
     advance({});
@@ -200,8 +213,9 @@ bool RspPipeline::advance_operand_wait() {
 }
 
 void RspPipeline::retire(bool taken_delay_slot, u32 next_pc) {
-    advance({current_.scalar_result, current_.vector_result, (current_.flags & load) != 0U});
-    single_issue_ = (current_.flags & branch) != 0U;
+    const auto& current = decoded_[current_index_].ports;
+    advance({current.scalar_result, current.vector_result, (current.flags & load) != 0U});
+    single_issue_ = (current.flags & branch) != 0U;
     count_ = 0;
     if (taken_delay_slot) {
         branch_wait_ = true;

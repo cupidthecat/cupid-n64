@@ -42,6 +42,12 @@ class Rdp {
     [[nodiscard]] const RdpTile& tile(unsigned index) const {
         return tiles_[index & 7U];
     }
+    void set_parallel_rasterization(bool enabled) {
+        parallel_rasterization_ = enabled;
+    }
+    [[nodiscard]] u64 parallel_draws() const {
+        return parallel_draws_;
+    }
 
   private:
     Bus& bus_;
@@ -61,6 +67,8 @@ class Rdp {
     bool start_gclk_{};
     bool ready_{true};
     bool crashed_{};
+    bool parallel_rasterization_{true};
+    u64 parallel_draws_{};
 
     bool test_check_{};
     bool test_go_{};
@@ -83,6 +91,7 @@ class Rdp {
     std::array<RdpTile, 8> tiles_{};
     u32 fill_color_{};
     RdpColorState color_state_{};
+    RdpCombinerPlan combiner_plan_{};
     u32 primitive_sequence_{};
     u16 primitive_depth_{};
     u16 primitive_delta_depth_{};
@@ -124,6 +133,7 @@ class Rdp {
     void write_copy_pixel(unsigned x, unsigned y, u16 value);
     [[nodiscard]] u16 copy_texel(const RdpTile& tile, s32 s, s32 t, unsigned lane) const;
     void color_triangle();
+    [[nodiscard]] bool parallel_rows(unsigned first, unsigned last, unsigned left, unsigned right);
     void set_tile(u64 command);
     void set_tile_size(u64 command);
     void load_texture(u64 command, u8 opcode);

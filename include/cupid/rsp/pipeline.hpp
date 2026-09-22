@@ -11,13 +11,13 @@ class RspPipeline {
     void reset();
     void redirect();
     [[nodiscard]] bool advance_branch_wait();
-    void fetch(u32 first, u32 second, bool single_step);
+    void fetch(u32 first, u32 second, bool single_step, u32 address = 0);
     [[nodiscard]] bool advance_operand_wait();
     [[nodiscard]] unsigned size() const {
         return count_;
     }
     [[nodiscard]] u32 instruction(unsigned index) const {
-        return words_[index];
+        return decoded_[current_index_].words[index];
     }
     void retire(bool taken_delay_slot, u32 next_pc);
 
@@ -48,16 +48,23 @@ class RspPipeline {
         bool load{};
     };
 
+    struct DecodedFetch {
+        std::array<u32, 2> words{};
+        Ports ports{};
+        unsigned count{};
+        bool pairing_allowed{};
+    };
+
     [[nodiscard]] static Ports decode(u32 word);
     [[nodiscard]] static bool can_pair(const Ports& first, const Ports& second);
     void advance(Stage stage);
 
     std::array<Stage, 3> previous_{};
-    std::array<u32, 2> words_{};
-    Ports current_{};
+    unsigned current_index_{};
     unsigned count_{};
     bool single_issue_{};
     bool branch_wait_{};
+    std::array<DecodedFetch, 1024> decoded_{};
 };
 
 } // namespace cupid

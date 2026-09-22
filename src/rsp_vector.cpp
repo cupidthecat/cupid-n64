@@ -1,7 +1,11 @@
 #include "cupid/rsp.hpp"
 
+#include "rsp/divider_tables.hpp"
+
 #include <algorithm>
+#include <array>
 #include <bit>
+#include <cstring>
 #include <limits>
 
 namespace cupid {
@@ -21,6 +25,31 @@ constexpr s8 immediate7(u32 instruction) {
 
 constexpr u16 bits16(s32 value) {
     return static_cast<u16>(static_cast<u32>(value));
+}
+
+void load_plain_vector(std::array<u8, 16>& target, unsigned element, const std::array<u8, 8192>& memory,
+                       u32 address, unsigned width) {
+    const unsigned count = std::min(width, 16U - element);
+    if (count == 0)
+        return;
+    const unsigned offset = address & 0x0fffU;
+    const unsigned first = std::min(count, 0x1000U - offset);
+    std::memcpy(target.data() + element, memory.data() + offset, first);
+    if (first != count)
+        std::memcpy(target.data() + element + first, memory.data(), count - first);
+}
+
+void store_plain_vector(std::array<u8, 8192>& memory, u32 address, const std::array<u8, 16>& source,
+                        unsigned element, unsigned count) {
+    unsigned destination = address & 0x0fffU;
+    unsigned source_offset = element;
+    while (count != 0) {
+        const unsigned chunk = std::min({count, 16U - source_offset, 0x1000U - destination});
+        std::memcpy(memory.data() + destination, source.data() + source_offset, chunk);
+        count -= chunk;
+        destination = (destination + chunk) & 0x0fffU;
+        source_offset = (source_offset + chunk) & 15U;
+    }
 }
 
 } // namespace
@@ -44,37 +73,6 @@ void Rsp::vec_set_s16(Vector& vector, unsigned lane, s16 value) {
     vec_set_u16(vector, lane, std::bit_cast<u16>(value));
 }
 
-unsigned Rsp::element_lane(unsigned element, unsigned lane) {
-    lane &= 7;
-    switch (element & 15) {
-    case 0:
-    case 1:
-        return lane;
-    case 2:
-        return lane & ~1u;
-    case 3:
-        return lane | 1u;
-    case 4:
-        return lane < 4 ? 0 : 4;
-    case 5:
-        return lane < 4 ? 1 : 5;
-    case 6:
-        return lane < 4 ? 2 : 6;
-    case 7:
-        return lane < 4 ? 3 : 7;
-    default:
-        return (element & 15) - 8;
-    }
-}
-
-u16 Rsp::selected_u16(const Vector& vector, unsigned element, unsigned lane) const {
-    return vec_u16(vector, element_lane(element, lane));
-}
-
-s16 Rsp::selected_s16(const Vector& vector, unsigned element, unsigned lane) const {
-    return std::bit_cast<s16>(selected_u16(vector, element, lane));
-}
-
 s16 Rsp::clamp_s16(s64 value) {
     if (value > std::numeric_limits<s16>::max()) {
         return std::numeric_limits<s16>::max();
@@ -93,20 +91,29 @@ s64 Rsp::wrap_accumulator(s64 value) {
     return std::bit_cast<s64>(bits);
 }
 
+s64 Rsp::read_accumulator(unsigned lane) const {
+    const u64 bits = static_cast<u64>(acc_low(lane)) | (static_cast<u64>(acc_mid(lane)) << 16U) |
+                     (static_cast<u64>(acc_high(lane)) << 32U);
+    return wrap_accumulator(static_cast<s64>(bits));
+}
+
 void Rsp::set_accumulator(unsigned lane, s64 value) {
-    accumulator_[lane & 7] = wrap_accumulator(value);
+    const u64 bits = static_cast<u64>(value);
+    accumulator_.low[lane & 7U] = static_cast<u16>(bits);
+    accumulator_.middle[lane & 7U] = static_cast<u16>(bits >> 16U);
+    accumulator_.high[lane & 7U] = static_cast<u16>(bits >> 32U);
 }
 
 u16 Rsp::acc_low(unsigned lane) const {
-    return static_cast<u16>(static_cast<u64>(accumulator_[lane & 7]));
+    return accumulator_.low[lane & 7U];
 }
 
 u16 Rsp::acc_mid(unsigned lane) const {
-    return static_cast<u16>(static_cast<u64>(accumulator_[lane & 7]) >> 16);
+    return accumulator_.middle[lane & 7U];
 }
 
 u16 Rsp::acc_high(unsigned lane) const {
-    return static_cast<u16>(static_cast<u64>(accumulator_[lane & 7]) >> 32);
+    return accumulator_.high[lane & 7U];
 }
 
 s16 Rsp::acc_mid_s(unsigned lane) const {
@@ -118,20 +125,15 @@ s16 Rsp::acc_high_s(unsigned lane) const {
 }
 
 void Rsp::set_acc_low(unsigned lane, u16 value) {
-    const u64 old = static_cast<u64>(accumulator_[lane & 7]) & acc_mask;
-    set_accumulator(lane, static_cast<s64>((old & ~u64{0xffff}) | value));
+    accumulator_.low[lane & 7U] = value;
 }
 
 void Rsp::set_acc_mid(unsigned lane, u16 value) {
-    const u64 old = static_cast<u64>(accumulator_[lane & 7]) & acc_mask;
-    const u64 updated = (old & ~(u64{0xffff} << 16)) | (static_cast<u64>(value) << 16);
-    set_accumulator(lane, static_cast<s64>(updated));
+    accumulator_.middle[lane & 7U] = value;
 }
 
 void Rsp::set_acc_high(unsigned lane, u16 value) {
-    const u64 old = static_cast<u64>(accumulator_[lane & 7]) & acc_mask;
-    const u64 updated = (old & ~(u64{0xffff} << 32)) | (static_cast<u64>(value) << 32);
-    set_accumulator(lane, static_cast<s64>(updated));
+    accumulator_.high[lane & 7U] = value;
 }
 
 u16 Rsp::saturate_accumulator(unsigned lane, bool middle_slice, u16 negative, u16 positive) const {
@@ -170,13 +172,7 @@ u32 Rsp::reciprocal(u32 value) {
     const unsigned shift = static_cast<unsigned>(std::countl_zero(positive)) + 1u;
     const u32 normalized = positive << (shift & 31);
     const unsigned index = normalized >> 23;
-
-    u16 table = 0xffff;
-    if (index != 0) {
-        const u64 quotient = (u64{1} << 34) / (index + 512);
-        table = static_cast<u16>((quotient + 1) >> 8);
-    }
-
+    const u16 table = rsp::reciprocal_table[index];
     const u32 magnitude = (0x4000'0000u | (static_cast<u32>(table) << 14)) >> (32 - shift);
     return negative ? ~magnitude : magnitude;
 }
@@ -195,17 +191,7 @@ u32 Rsp::reciprocal_sqrt(u32 value) {
     const unsigned shift = static_cast<unsigned>(std::countl_zero(positive)) + 1u;
     const u32 normalized = positive << (shift & 31);
     const unsigned index = (normalized >> 24) | ((shift & 1) << 8);
-    const u64 a = index < 256 ? index + 256 : ((index - 256) << 1) + 512;
-
-    u64 b = u64{1} << 17;
-    u64 increment = 512;
-    while (increment != 0) {
-        while (a * (b + increment) * (b + increment) < (u64{1} << 44)) {
-            b += increment;
-        }
-        increment >>= 1;
-    }
-    const u16 table = static_cast<u16>(b >> 1);
+    const u16 table = rsp::reciprocal_sqrt_table[index];
     const u32 magnitude = (0x4000'0000u | (static_cast<u32>(table) << 14)) >> ((32 - shift) >> 1);
     return negative ? ~magnitude : magnitude;
 }
@@ -284,45 +270,27 @@ void Rsp::execute_vector_load(u32 instruction) {
     case 0x00:
         vt.byte[element] = dmem_read8(address_for(1));
         break;
-    case 0x01: {
-        u32 address = address_for(2);
-        for (unsigned byte = element; byte < std::min(element + 2, 16u); ++byte) {
-            vt.byte[byte] = dmem_read8(address++);
-        }
+    case 0x01:
+        load_plain_vector(vt.byte, element, memory, address_for(2), 2);
         break;
-    }
-    case 0x02: {
-        u32 address = address_for(4);
-        for (unsigned byte = element; byte < std::min(element + 4, 16u); ++byte) {
-            vt.byte[byte] = dmem_read8(address++);
-        }
+    case 0x02:
+        load_plain_vector(vt.byte, element, memory, address_for(4), 4);
         break;
-    }
-    case 0x03: {
-        u32 address = address_for(8);
-        for (unsigned byte = element; byte < std::min(element + 8, 16u); ++byte) {
-            vt.byte[byte] = dmem_read8(address++);
-        }
+    case 0x03:
+        load_plain_vector(vt.byte, element, memory, address_for(8), 8);
         break;
-    }
     case 0x04: {
-        u32 address = address_for(16);
-        const unsigned end = std::min(16u + element - (address & 15), 16u);
-        for (unsigned byte = element; byte < end; ++byte) {
-            vt.byte[byte] = dmem_read8(address++);
-        }
+        const u32 address = address_for(16);
+        const unsigned count = std::min(16U - element, 16U - (address & 15U));
+        std::memcpy(vt.byte.data() + element, memory.data() + (address & 0x0fffU), count);
         break;
     }
     case 0x05: {
-        u32 address = address_for(16);
-        const unsigned base = address & 15;
-        const int start = 16 - (static_cast<int>(base) - static_cast<int>(element));
-        address &= ~15u;
-        for (int byte = start; byte < 16; ++byte) {
-            if (byte >= 0) {
-                vt.byte[static_cast<unsigned>(byte) & 15] = dmem_read8(address++);
-            }
-        }
+        const u32 address = address_for(16);
+        const unsigned offset = address & 15U;
+        const unsigned count = offset > element ? offset - element : 0U;
+        if (count != 0)
+            std::memcpy(vt.byte.data() + 16U - count, memory.data() + ((address & 0x0fffU) & ~15U), count);
         break;
     }
     case 0x06: {
@@ -411,43 +379,24 @@ void Rsp::execute_vector_store(u32 instruction) {
     case 0x00:
         dmem_write8(address_for(1), vt.byte[element]);
         break;
-    case 0x01: {
-        u32 address = address_for(2);
-        for (unsigned byte = element; byte < element + 2; ++byte) {
-            dmem_write8(address++, vt.byte[byte & 15]);
-        }
+    case 0x01:
+        store_plain_vector(memory, address_for(2), vt.byte, element, 2);
         break;
-    }
-    case 0x02: {
-        u32 address = address_for(4);
-        for (unsigned byte = element; byte < element + 4; ++byte) {
-            dmem_write8(address++, vt.byte[byte & 15]);
-        }
+    case 0x02:
+        store_plain_vector(memory, address_for(4), vt.byte, element, 4);
         break;
-    }
-    case 0x03: {
-        u32 address = address_for(8);
-        for (unsigned byte = element; byte < element + 8; ++byte) {
-            dmem_write8(address++, vt.byte[byte & 15]);
-        }
+    case 0x03:
+        store_plain_vector(memory, address_for(8), vt.byte, element, 8);
         break;
-    }
     case 0x04: {
-        u32 address = address_for(16);
-        const unsigned end = element + (16 - (address & 15));
-        for (unsigned byte = element; byte < end; ++byte) {
-            dmem_write8(address++, vt.byte[byte & 15]);
-        }
+        const u32 address = address_for(16);
+        store_plain_vector(memory, address, vt.byte, element, 16U - (address & 15U));
         break;
     }
     case 0x05: {
-        u32 address = address_for(16);
-        const unsigned end = element + (address & 15);
-        const unsigned source_base = 16 - (address & 15);
-        address &= ~15u;
-        for (unsigned byte = element; byte < end; ++byte) {
-            dmem_write8(address++, vt.byte[(byte + source_base) & 15]);
-        }
+        const u32 address = address_for(16);
+        const unsigned count = address & 15U;
+        store_plain_vector(memory, address & ~15U, vt.byte, (element + 16U - count) & 15U, count);
         break;
     }
     case 0x06: {
@@ -553,6 +502,8 @@ void Rsp::execute_vector_store(u32 instruction) {
 }
 
 void Rsp::execute_vector_op(u32 instruction) {
+    if (execute_vector_op_sse2(instruction))
+        return;
     const unsigned element = (instruction >> 21) & 15;
     const unsigned vt_index = (instruction >> 16) & 31;
     const unsigned vs_index = (instruction >> 11) & 31;
@@ -563,9 +514,35 @@ void Rsp::execute_vector_op(u32 instruction) {
     const Vector vt = vr_[vt_index];
     Vector& vd = vr_[vd_index];
 
+    std::array<u16, 8> selected{};
+    if (function != 0x0b && function != 0x1d && function != 0x37 && function != 0x3f) {
+        if (element < 2) {
+            for (unsigned lane = 0; lane < selected.size(); ++lane)
+                selected[lane] = vec_u16(vt, lane);
+        } else if (element < 4) {
+            const unsigned first = element & 1U;
+            for (unsigned lane = 0; lane < selected.size(); lane += 2) {
+                const u16 value = vec_u16(vt, lane | first);
+                selected[lane] = value;
+                selected[lane + 1] = value;
+            }
+        } else if (element < 8) {
+            const unsigned first = element - 4U;
+            const u16 low = vec_u16(vt, first);
+            const u16 high = vec_u16(vt, first + 4U);
+            for (unsigned lane = 0; lane < 4; ++lane) {
+                selected[lane] = low;
+                selected[lane + 4] = high;
+            }
+        } else {
+            selected.fill(vec_u16(vt, element - 8U));
+        }
+    }
+    const auto selected_signed = [&](unsigned lane) { return std::bit_cast<s16>(selected[lane]); };
+
     const auto copy_selected_to_acc_low = [&] {
         for (unsigned lane = 0; lane < 8; ++lane) {
-            set_acc_low(lane, selected_u16(vt, element, lane));
+            set_acc_low(lane, selected[lane]);
         }
     };
 
@@ -574,7 +551,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x01: {
         const bool unsigned_result = function == 0x01;
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_s16(vt, element, lane);
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_signed(lane);
             set_accumulator(lane, product * 2 + 0x8000);
             if (!unsigned_result) {
                 vec_set_u16(vd, lane, saturate_accumulator(lane, true, 0x8000, 0x7fff));
@@ -592,22 +569,21 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x0a: {
         const bool positive = function == 0x02;
         for (unsigned lane = 0; lane < 8; ++lane) {
-            s64 product = selected_s16(vt, element, lane);
+            s64 product = selected_signed(lane);
             if (vs_index & 1)
                 product *= 0x1'0000;
-            s64 acc = accumulator_[lane];
+            s64 acc = read_accumulator(lane);
             if ((!positive && acc < 0) || (positive && acc >= 0)) {
                 acc = wrap_accumulator(acc + product);
                 set_accumulator(lane, acc);
             }
-            vec_set_s16(vd, lane, clamp_s16(accumulator_[lane] >> 16));
+            vec_set_s16(vd, lane, clamp_s16(read_accumulator(lane) >> 16));
         }
         break;
     }
     case 0x03:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            s32 product =
-                static_cast<s32>(vec_s16(vs, lane)) * static_cast<s32>(selected_s16(vt, element, lane));
+            s32 product = static_cast<s32>(vec_s16(vs, lane)) * static_cast<s32>(selected_signed(lane));
             if (product < 0)
                 product += 31;
             set_acc_high(lane, static_cast<u16>(static_cast<u32>(product) >> 16));
@@ -620,28 +596,28 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x04:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const u32 product = static_cast<u32>(vec_u16(vs, lane)) * selected_u16(vt, element, lane);
+            const u32 product = static_cast<u32>(vec_u16(vs, lane)) * selected[lane];
             set_accumulator(lane, static_cast<s64>(product >> 16));
             vec_set_u16(vd, lane, acc_low(lane));
         }
         break;
     case 0x05:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_u16(vt, element, lane);
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected[lane];
             set_accumulator(lane, product);
             vec_set_u16(vd, lane, acc_mid(lane));
         }
         break;
     case 0x06:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_u16(vs, lane)) * selected_s16(vt, element, lane);
+            const s64 product = static_cast<s64>(vec_u16(vs, lane)) * selected_signed(lane);
             set_accumulator(lane, product);
             vec_set_u16(vd, lane, acc_low(lane));
         }
         break;
     case 0x07:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_s16(vt, element, lane);
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_signed(lane);
             set_accumulator(lane, product * 0x1'0000);
             vec_set_u16(vd, lane, saturate_accumulator(lane, true, 0x8000, 0x7fff));
         }
@@ -650,8 +626,8 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x09: {
         const bool unsigned_result = function == 0x09;
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_s16(vt, element, lane) * 2;
-            set_accumulator(lane, accumulator_[lane] + product);
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_signed(lane) * 2;
+            set_accumulator(lane, read_accumulator(lane) + product);
             if (!unsigned_result) {
                 vec_set_u16(vd, lane, saturate_accumulator(lane, true, 0x8000, 0x7fff));
             } else if (acc_high_s(lane) < 0) {
@@ -682,29 +658,29 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x0c:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const u32 product = static_cast<u32>(vec_u16(vs, lane)) * selected_u16(vt, element, lane);
-            set_accumulator(lane, accumulator_[lane] + (product >> 16));
+            const u32 product = static_cast<u32>(vec_u16(vs, lane)) * selected[lane];
+            set_accumulator(lane, read_accumulator(lane) + (product >> 16));
             vec_set_u16(vd, lane, saturate_accumulator(lane, false, 0, 0xffff));
         }
         break;
     case 0x0d:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_u16(vt, element, lane);
-            set_accumulator(lane, accumulator_[lane] + product);
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected[lane];
+            set_accumulator(lane, read_accumulator(lane) + product);
             vec_set_u16(vd, lane, saturate_accumulator(lane, true, 0x8000, 0x7fff));
         }
         break;
     case 0x0e:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 product = static_cast<s64>(vec_u16(vs, lane)) * selected_s16(vt, element, lane);
-            set_accumulator(lane, accumulator_[lane] + product);
+            const s64 product = static_cast<s64>(vec_u16(vs, lane)) * selected_signed(lane);
+            set_accumulator(lane, read_accumulator(lane) + product);
             vec_set_u16(vd, lane, saturate_accumulator(lane, false, 0, 0xffff));
         }
         break;
     case 0x0f:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s64 upper = accumulator_[lane] >> 16;
-            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_s16(vt, element, lane);
+            const s64 upper = read_accumulator(lane) >> 16;
+            const s64 product = static_cast<s64>(vec_s16(vs, lane)) * selected_signed(lane);
             const s64 result = upper + product;
             set_acc_high(lane, static_cast<u16>(static_cast<u64>(result) >> 16));
             set_acc_mid(lane, static_cast<u16>(result));
@@ -713,8 +689,8 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x10:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s32 result = static_cast<s32>(vec_s16(vs, lane)) + selected_s16(vt, element, lane) +
-                               (flag(vcol_, lane) ? 1 : 0);
+            const s32 result =
+                static_cast<s32>(vec_s16(vs, lane)) + selected_signed(lane) + (flag(vcol_, lane) ? 1 : 0);
             set_acc_low(lane, bits16(result));
             vec_set_s16(vd, lane, clamp_s16(result));
         }
@@ -722,8 +698,8 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x11:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s32 result = static_cast<s32>(vec_s16(vs, lane)) - selected_s16(vt, element, lane) -
-                               (flag(vcol_, lane) ? 1 : 0);
+            const s32 result =
+                static_cast<s32>(vec_s16(vs, lane)) - selected_signed(lane) - (flag(vcol_, lane) ? 1 : 0);
             set_acc_low(lane, bits16(result));
             vec_set_s16(vd, lane, clamp_s16(result));
         }
@@ -749,7 +725,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x3d:
     case 0x3e:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const s32 result = static_cast<s32>(vec_s16(vs, lane)) + selected_s16(vt, element, lane);
+            const s32 result = static_cast<s32>(vec_s16(vs, lane)) + selected_signed(lane);
             set_acc_low(lane, bits16(result));
             vec_set_u16(vd, lane, 0);
         }
@@ -757,7 +733,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x13:
         for (unsigned lane = 0; lane < 8; ++lane) {
             const s16 control = vec_s16(vs, lane);
-            const s16 input = selected_s16(vt, element, lane);
+            const s16 input = selected_signed(lane);
             if (control < 0) {
                 if (input == std::numeric_limits<s16>::min()) {
                     set_acc_low(lane, 0x8000);
@@ -779,7 +755,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x14:
         vcoh_ = 0;
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const u32 result = static_cast<u32>(vec_u16(vs, lane)) + selected_u16(vt, element, lane);
+            const u32 result = static_cast<u32>(vec_u16(vs, lane)) + selected[lane];
             set_acc_low(lane, static_cast<u16>(result));
             set_flag(vcol_, lane, result > 0xffff);
             vec_set_u16(vd, lane, static_cast<u16>(result));
@@ -788,7 +764,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x15:
         for (unsigned lane = 0; lane < 8; ++lane) {
             const u16 left = vec_u16(vs, lane);
-            const u16 right = selected_u16(vt, element, lane);
+            const u16 right = selected[lane];
             const u16 result = static_cast<u16>(left - right);
             set_acc_low(lane, result);
             set_flag(vcol_, lane, left < right);
@@ -817,7 +793,7 @@ void Rsp::execute_vector_op(u32 instruction) {
         const u8 old_vcoh = vcoh_;
         for (unsigned lane = 0; lane < 8; ++lane) {
             const s16 left = vec_s16(vs, lane);
-            const s16 right = selected_s16(vt, element, lane);
+            const s16 right = selected_signed(lane);
             bool choose_left = false;
             if (function == 0x20) {
                 choose_left = left < right || (left == right && flag(old_vcol, lane) && flag(old_vcoh, lane));
@@ -830,7 +806,7 @@ void Rsp::execute_vector_op(u32 instruction) {
                     left > right || (left == right && (!flag(old_vcol, lane) || !flag(old_vcoh, lane)));
             }
             set_flag(vccl_, lane, choose_left);
-            const u16 result = choose_left ? vec_u16(vs, lane) : selected_u16(vt, element, lane);
+            const u16 result = choose_left ? std::bit_cast<u16>(left) : selected[lane];
             set_acc_low(lane, result);
             vec_set_u16(vd, lane, result);
         }
@@ -842,7 +818,7 @@ void Rsp::execute_vector_op(u32 instruction) {
         const u8 old_vcoh = vcoh_;
         for (unsigned lane = 0; lane < 8; ++lane) {
             const u16 left = vec_u16(vs, lane);
-            const u16 right = selected_u16(vt, element, lane);
+            const u16 right = selected[lane];
             u16 result = left;
             if (flag(old_vcol, lane)) {
                 if (!flag(old_vcoh, lane)) {
@@ -868,7 +844,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x25:
         for (unsigned lane = 0; lane < 8; ++lane) {
             const s16 left = vec_s16(vs, lane);
-            const s16 right = selected_s16(vt, element, lane);
+            const s16 right = selected_signed(lane);
             u16 result = 0;
             const bool opposite = (left < 0) != (right < 0);
             set_flag(vcol_, lane, opposite);
@@ -898,7 +874,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x26:
         for (unsigned lane = 0; lane < 8; ++lane) {
             const s16 left = vec_s16(vs, lane);
-            const s16 right = selected_s16(vt, element, lane);
+            const s16 right = selected_signed(lane);
             const bool opposite = (left < 0) != (right < 0);
             u16 result = 0;
             if (opposite) {
@@ -918,7 +894,7 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x27:
         for (unsigned lane = 0; lane < 8; ++lane) {
-            const u16 result = flag(vccl_, lane) ? vec_u16(vs, lane) : selected_u16(vt, element, lane);
+            const u16 result = flag(vccl_, lane) ? vec_u16(vs, lane) : selected[lane];
             set_acc_low(lane, result);
             vec_set_u16(vd, lane, result);
         }
@@ -932,7 +908,7 @@ void Rsp::execute_vector_op(u32 instruction) {
     case 0x2d:
         for (unsigned lane = 0; lane < 8; ++lane) {
             const u16 left = vec_u16(vs, lane);
-            const u16 right = selected_u16(vt, element, lane);
+            const u16 right = selected[lane];
             u16 result = 0;
             switch (function) {
             case 0x28:
@@ -985,7 +961,7 @@ void Rsp::execute_vector_op(u32 instruction) {
         break;
     case 0x33:
         copy_selected_to_acc_low();
-        vec_set_u16(vd, de, selected_u16(vt, element, de));
+        vec_set_u16(vd, de, selected[de]);
         break;
     case 0x37:
     case 0x3f:

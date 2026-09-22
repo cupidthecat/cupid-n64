@@ -35,7 +35,7 @@ Product multiply64(u64 a, u64 b) {
 
 } // namespace
 
-Cpu::Cpu(System& system) : fpu(*this), system_(system) {}
+Cpu::Cpu(System& system) : system_(system), fpu(*this) {}
 
 void Cpu::reset() {
     gpr.fill(0);
@@ -56,6 +56,9 @@ void Cpu::reset() {
     executing_step_ = false;
     nmi_pending_ = false;
     batched_idle_instructions_ = 0;
+    batched_cached_instructions_ = 0;
+    std::fill(cached_decode_.begin(), cached_decode_.end(), CachedDecode{});
+    std::fill(cached_line_plans_.begin(), cached_line_plans_.end(), CachedLinePlan{});
     speculative_fetch_ = false;
     speculative_refill_bases_.fill(0);
     speculative_refill_count_ = 0;
@@ -142,7 +145,7 @@ void Cpu::branch(bool condition, u64 target, bool likely) {
     }
 }
 
-void Cpu::update_clocks(u64 elapsed) {
+void Cpu::advance_clock_counters(u64 elapsed) {
     const u64 held = std::min(elapsed, count_write_hold_);
     count_write_hold_ -= held;
     const u64 count_cycles = elapsed - held;
@@ -154,6 +157,10 @@ void Cpu::update_clocks(u64 elapsed) {
         cp0[13] |= 0x8000U;
     cp0[9] = static_cast<u32>(old_count + ticks);
     cycles += elapsed;
+}
+
+void Cpu::update_clocks(u64 elapsed) {
+    advance_clock_counters(elapsed);
     system_.advance_deferred(elapsed);
     update_interrupt_inputs();
 }

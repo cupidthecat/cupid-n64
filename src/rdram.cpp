@@ -235,9 +235,24 @@ u64 Rdram::read(u32 address, unsigned width, bool ebus) const {
         const unsigned shift = (4 - width - (physical & (4 - width))) * 8;
         return (word >> shift) & (width == 1 ? 255U : 65535U);
     }
+    const u8* data = bytes_.data() + physical;
     u64 value = 0;
-    for (unsigned byte = 0; byte < width; ++byte)
-        value = (value << 8) | bytes_[physical + byte];
+    switch (width) {
+    case 1:
+        value = data[0];
+        break;
+    case 2:
+        value = read_be16(data);
+        break;
+    case 4:
+        value = read_be32(data);
+        break;
+    case 8:
+        value = read_be64(data);
+        break;
+    default:
+        break;
+    }
     return identity_mapping_ ? value : read_reliability(value, physical / chip_size);
 }
 
@@ -256,8 +271,22 @@ void Rdram::write(u32 address, unsigned width, u64 value, bool ebus) {
     if (!mapped || static_cast<u64>(*mapped) + width > bytes_.size())
         return;
     const u32 physical = *mapped;
-    for (unsigned byte = 0; byte < width; ++byte) {
-        bytes_[physical + byte] = static_cast<u8>(value >> ((width - byte - 1) * 8));
+    u8* data = bytes_.data() + physical;
+    switch (width) {
+    case 1:
+        data[0] = static_cast<u8>(value);
+        break;
+    case 2:
+        write_be16(data, static_cast<u16>(value));
+        break;
+    case 4:
+        write_be32(data, static_cast<u32>(value));
+        break;
+    case 8:
+        write_be64(data, value);
+        break;
+    default:
+        break;
     }
     if (ebus) {
         if (width <= 4) {

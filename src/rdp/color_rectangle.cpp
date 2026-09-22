@@ -1,4 +1,5 @@
 #include "cupid/bus.hpp"
+#include "raster_tasks.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -47,32 +48,38 @@ void Rdp::color_rectangle(u64 command, bool flipped) {
         }
         return result;
     };
-    for (unsigned y = top / 4U; y <= (bottom - 1U) / 4U; ++y) {
-        if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
-            continue;
-        for (unsigned x = left / 4U; x <= (right - 1U) / 4U; ++x) {
-            unsigned coverage = 0;
-            for (unsigned row = 0; row < 4; ++row) {
-                if (y * 4U + row < top || y * 4U + row >= bottom)
-                    continue;
-                for (unsigned sample = 0; sample < 2; ++sample) {
-                    const unsigned position = x * 8U + (row & 1U) * 2U + sample * 4U;
-                    if (position >= left * 2U && position < right * 2U)
-                        coverage |= 1U << (row * 2U + sample);
+    const auto render = [&](unsigned first, unsigned last) {
+        for (unsigned y = first; y < last; ++y) {
+            if (scissor_field_enabled_ && (y & 1U) != static_cast<unsigned>(scissor_keep_odd_))
+                continue;
+            for (unsigned x = left / 4U; x <= (right - 1U) / 4U; ++x) {
+                unsigned coverage = 0;
+                for (unsigned row = 0; row < 4; ++row) {
+                    if (y * 4U + row < top || y * 4U + row >= bottom)
+                        continue;
+                    for (unsigned sample = 0; sample < 2; ++sample) {
+                        const unsigned position = x * 8U + (row & 1U) * 2U + sample * 4U;
+                        if (position >= left * 2U && position < right * 2U)
+                            coverage |= 1U << (row * 2U + sample);
+                    }
                 }
+                RdpColorInputs inputs;
+                if (texture_inputs != 0) {
+                    const bool next_row = x == right / 4U && right / 4U - raw_left / 4U >= 8U &&
+                                          (y + 1U) * 4U < bottom && !scissor_field_enabled_;
+                    const RdpTextureCoordinates coordinates{
+                        point_at(x, y), point_at(x + 1U, y), point_at(x, y, true),
+                        next_row ? point_at(raw_left / 4U, y + 1U) : point_at(x + 1U, y), perspective};
+                    inputs = sample_color_textures(coordinates, tile, texture_inputs);
+                }
+                write_color_pixel(x, y, coverage, inputs, depth);
             }
-            RdpColorInputs inputs;
-            if (texture_inputs != 0) {
-                const bool next_row = x == right / 4U && right / 4U - raw_left / 4U >= 8U &&
-                                      (y + 1U) * 4U < bottom && !scissor_field_enabled_;
-                const RdpTextureCoordinates coordinates{
-                    point_at(x, y), point_at(x + 1U, y), point_at(x, y, true),
-                    next_row ? point_at(raw_left / 4U, y + 1U) : point_at(x + 1U, y), perspective};
-                inputs = sample_color_textures(coordinates, tile, texture_inputs);
-            }
-            write_color_pixel(x, y, coverage, inputs, depth);
         }
-    }
+    };
+    const unsigned first = top / 4U;
+    const unsigned last = (bottom + 3U) / 4U;
+    rdp::raster_rows(bus_.memory, first, last, parallel_rows(first, last, left / 4U, (right + 3U) / 4U),
+                     render);
 }
 
 } // namespace cupid

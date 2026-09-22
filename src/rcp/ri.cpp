@@ -43,8 +43,23 @@ void Rdram::track_access(u32 address, bool write) const {
     }
     if (!active_)
         return;
-    auto& bank = banks_[address >> 20];
     const u16 row = static_cast<u16>((address >> 11) & 0x1ffU);
+    if (auto* scope = BankAccessScope::current_; scope != nullptr && &scope->memory_ == this) {
+        auto& bank = scope->summary_.banks[address >> 20];
+        if (!bank.visited) {
+            bank.visited = true;
+            bank.first_row = row;
+            bank.last_row = row;
+        } else if (bank.last_row != row) {
+            bank.last_row = row;
+            bank.changed_row = true;
+            bank.dirty = false;
+        }
+        bank.dirty |= write;
+        bank.last_access = clock_;
+        return;
+    }
+    auto& bank = banks_[address >> 20];
     if (!bank.valid || bank.row != row) {
         bank.row = row;
         bank.valid = true;

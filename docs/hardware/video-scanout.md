@@ -68,6 +68,20 @@ Resampling takes the high five fractional bits of each coordinate. It rounds
 the vertical interpolation of both source columns first, then rounds their
 horizontal interpolation. Replication discards the fractional parts.
 
+For X steps up to one source pixel per output pixel, scanout filters each needed
+source row into a temporary row buffer and reuses it across output pixels and
+repeated output rows. The row cache is keyed by source Y and the alternate
+`repeat_lower` neighborhood used by repeated-row filtering. It holds only the
+current scan's samples; each render range owns its own cache, so a later snapshot
+observes framebuffer and register changes without cross-scan invalidation. Larger
+X steps use the scalar sample path directly.
+
+`VideoScanMode::Parallel` can split a sufficiently large snapshot into disjoint
+output-row ranges. The tasks read the same scan register and framebuffer
+state and write separate rows of the returned `VideoField`; the sequential mode
+uses the same render loop on one range. This host-side scanout work does not add
+VI fetch traffic or RDRAM arbitration to the hardware model.
+
 ## Filter order
 
 Partial-coverage pixels use six neighboring samples: the upper and lower
@@ -135,6 +149,13 @@ field-dependent noise, reset, black borders, and memory-state preservation.
 Clipping cases cover NTSC and PAL with both framebuffer sizes. They compare
 normal lower-neighbor filtering on the first visible line with alternate
 neighbor filtering on an interior line at the same source coordinate.
+
+`test_filter_rows.cpp` compares buffered row filtering with scalar neighborhood
+sampling across formats, controls, wrapped addresses, and empty memory.
+`test_parallel_scanout.cpp` compares sequential and parallel fields across
+formats, filtering controls, scaling, and clipping, and checks that snapshot
+execution leaves framebuffer and hardware state unchanged and keeps concurrent
+machines independent.
 
 `test_output.cpp` checks delivery deadlines, ten-field NTSC/PAL traces, leap
 patterns, interlaced parity, odd/even vertical starts, start-register writes,

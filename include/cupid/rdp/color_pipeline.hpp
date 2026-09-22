@@ -36,10 +36,39 @@ struct RdpCombinedPixel {
     unsigned test_alpha{};
 };
 
+enum class RdpCombinerSource : u8 {
+    Constant,
+    CombinedRgb,
+    Texel0Rgb,
+    Texel1Rgb,
+    ShadeRgb,
+    CombinedAlpha,
+    Texel0Alpha,
+    Texel1Alpha,
+    ShadeAlpha,
+    LodFraction,
+    Noise,
+};
+
+struct RdpCombinerTermPlan {
+    RdpCombinerSource rgb{RdpCombinerSource::Constant};
+    RdpCombinerSource alpha{RdpCombinerSource::Constant};
+    RdpColor constant{};
+};
+
+struct RdpCombinerPlan {
+    std::array<std::array<RdpCombinerTermPlan, 4>, 2> cycles{};
+    std::array<bool, 2> uses_noise{};
+};
+
 [[nodiscard]] RdpColor rdp_unpack_color(u32 value);
+[[nodiscard]] RdpCombinerPlan rdp_prepare_combiner(const RdpColorState& state);
 [[nodiscard]] unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles);
 [[nodiscard]] RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs,
                                            unsigned coverage, unsigned alpha_dither);
+[[nodiscard]] RdpCombinedPixel rdp_combine_prepared(const RdpColorState& state, const RdpCombinerPlan& plan,
+                                                    u64 modes, RdpColorInputs inputs, unsigned coverage,
+                                                    unsigned alpha_dither);
 [[nodiscard]] u8 rdp_blend_divide(unsigned numerator, unsigned denominator);
 [[nodiscard]] RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel,
                                  const RdpColor& memory, unsigned shade_alpha, bool blend_enabled,

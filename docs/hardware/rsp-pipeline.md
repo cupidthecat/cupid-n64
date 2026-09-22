@@ -30,6 +30,63 @@ both load and store scheduling. The reciprocal/move element fields and VNOP's
 unused destination field have additional pairing conflicts even where they do
 not name a functional operand. MTC2 and LTV retain their special VNOP conflicts.
 
+## Decoded packets and vector execution
+
+Issue-port decoding is cached as derived metadata at instruction addresses. A
+cached packet is reused only when both fetched IMEM words and the current
+pairing permission match the cached entry. A change to either word, including
+one made by SP DMA, is decoded again on the next packet fetch. Cache-index
+collisions and wrapped instruction addresses use the same word checks. Once a
+packet has been selected, its words stay latched through operand stalls until it
+retires or an SP_PC redirect discards it.
+
+The active packet retains an index into the decoding table. Fetch cannot replace
+an entry while a packet is latched, and copying the pipeline keeps an index into
+the copy's own table. Local CPU slices reuse the IMEM words checked for locality
+when filling an empty packet. A branch-wait cycle ages the dependencies without
+latching those words before their actual fetch cycle.
+
+Vector arithmetic snapshots VS and VT before writing VD, then expands the VT
+element selection into eight lanes once for the instruction. This preserves VD
+aliasing with either source. On compile targets with SSE2, the supported add,
+subtract, carry, logic, multiply, and multiply-accumulate operations can use the
+packed path in `src/rsp/vector_sse2.cpp`; other functions use the scalar opcode
+path. Packed host-vector loads and stores use byte-safe copies and convert the
+vector's big-endian 16-bit lane representation explicitly. Element selection
+uses lane shuffles or a broadcast before either source can be overwritten.
+
+The accumulator is stored as three arrays of eight 16-bit slices. Packed
+multiplication and accumulation propagate carries between the low, middle, and
+high arrays and wrap at 48 bits. Scalar instructions read and write those same
+slices. A scalar operation that changes only the low slice preserves both upper
+slices. VADD and VSUB widen their arithmetic to 32 bits, include the incoming
+carry, and then saturate; their low accumulator slices retain the wrapped sum or
+difference. Mixed signed/unsigned products preserve their raw 32-bit product and
+its required sign extension.
+
+Reciprocal and reciprocal-square-root estimates use fixed 512-entry tables built
+at compile time. Input normalization, exponent selection, negative-input
+adjustments, zero and minimum-halfword results, and the shared high-input latch
+are handled by the instruction path. The divider tests compare every table
+entry with an independent runtime calculation and execute the high/low opcode
+sequences across all table indices and special inputs.
+
+Scalar halfword and word DMEM accesses use packed big-endian transfers when the
+bytes are contiguous, with byte transfers retained at the 4 KiB wrap. Ordinary
+vector loads and stores also copy contiguous spans while preserving each
+opcode's vector-end truncation, modulo-16 source wrapping, and DMEM wrapping.
+Packed, fractional, and transpose memory opcodes retain their lane-specific
+paths. The memory tests execute every element selection and check untouched
+bytes as well as the transferred result.
+
+`tests/rsp/test_pipeline_cache.cpp` changes each fetched word independently,
+exercises address collisions, copies a stalled pipeline, and checks redirects
+and reset. A stalled latched packet remains intact when IMEM changes. The vector
+regressions execute encoded programs with all element selections, both sources
+and the destination sharing a register, and carries through both accumulator
+boundaries. They check destination lanes, flags, and all three accumulator
+slices through scalar VSAR instructions and memory stores.
+
 Branches issue alone when they are first in a group. The following delay-slot
 group also issues one instruction. A taken delay slot adds a bubble before the
 target; a target in the upper word of an eight-byte pair starts with a single
@@ -67,10 +124,10 @@ The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
 DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved
 SPECIAL fields, and control changes. Halt/resume fixtures check BREAK interrupts,
 single-step, vector dependencies, and DMA payload completion across a pending
-branch bubble. A 4,096-iteration mixed scalar/vector loop checks elapsed clocks and
-results with both bulk and single-CPU-cycle scheduling. The synchronization
-regression checks DMA completion during a load interlock and the consumer's use
-of the previously loaded value.
+branch bubble. A long mixed scalar/vector loop checks elapsed clocks and results
+with both bulk and single-CPU-cycle scheduling. The synchronization regression
+checks DMA completion during a load interlock and the consumer's use of the
+previously loaded value.
 
 These checks establish the implemented issue model. They do not provide new
 physical-console captures for every opcode combination or resolve every
