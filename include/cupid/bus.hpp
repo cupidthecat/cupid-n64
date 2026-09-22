@@ -3,6 +3,7 @@
 #include "cupid/cartridge/flash.hpp"
 #include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
+#include "cupid/rcp/audio.hpp"
 #include "cupid/rcp/controller.hpp"
 #include "cupid/rcp/gamecube.hpp"
 #include "cupid/rcp/joybus.hpp"
@@ -47,6 +48,14 @@ class Bus {
     void tick(u64 rcp_cycles);
     [[nodiscard]] VideoField scan_video() const;
     void set_video_output(std::function<void(VideoField)> output);
+    // Timed samples change the next AI deadline, so the cached schedule is refreshed.
+    void set_audio_sample_output(std::function<void(const AudioSample&)> output) {
+        schedule_dirty_ = true;
+        audio_sample_output = std::move(output);
+    }
+    [[nodiscard]] u64 output_clock() const {
+        return output_clock_;
+    }
     [[nodiscard]] u64 rdram_refresh_wait() const {
         return ri_refresh_counter_;
     }
@@ -84,6 +93,7 @@ class Bus {
     std::array<u8, 2048> pif{};
     std::function<void(std::string_view)> debug_output;
     std::function<void(s16, s16)> audio_output;
+    std::function<void(const AudioSample&)> audio_sample_output;
 
     SaveType save_type{SaveType::None};
     std::vector<u8> sram;
@@ -123,6 +133,8 @@ class Bus {
     bool schedule_dirty_{};
     std::deque<std::function<void()>> pending_outputs_;
     bool output_delivery_active_{};
+    u64 output_clock_{};
+    u64 output_generation_{};
 
     u32 open_bus_{};
     u32 mi_mode_{};
@@ -151,6 +163,8 @@ class Bus {
     u64 ai_counter_{};
     u64 ai_clock_rate_{};
     u64 ai_clock_period_{};
+    u32 ai_rate_numerator_{44100};
+    u32 ai_rate_denominator_{1};
     bool ai_clock_started_{};
     bool ai_boundary_pending_{};
     bool ai_dac_rate_written_{};
