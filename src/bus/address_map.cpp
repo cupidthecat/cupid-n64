@@ -6,12 +6,16 @@ u64 Bus::read(u32 physical, unsigned width_bytes) {
     if (width_bytes != 1 && width_bytes != 2 && width_bytes != 4 && width_bytes != 8)
         return 0;
 
+    settle_system();
     if (physical < 0x04000000U) {
         const u64 value = read_rdram(physical, width_bytes);
         open_bus_ = static_cast<u32>(value);
         return value;
     }
 
+    // Register and cartridge reads may start busy periods the schedule does not know
+    // about yet. The next CPU cycle re-evaluates how far the devices can lag.
+    forget_deferral_limit();
     if (width_bytes == 8) {
         system_.cpu.frozen = true;
         return 0;
@@ -43,12 +47,14 @@ void Bus::write(u32 physical, unsigned width_bytes, u64 value) {
     if (width_bytes != 1 && width_bytes != 2 && width_bytes != 4 && width_bytes != 8)
         return;
 
+    settle_system();
     if (physical < 0x04000000U) {
         write_rdram(physical, width_bytes, value);
         return;
     }
 
     if (physical >= 0x04000000U && physical <= 0x0403ffffU) {
+        forget_deferral_limit();
         write_sp_memory(physical, width_bytes, value);
         return;
     }

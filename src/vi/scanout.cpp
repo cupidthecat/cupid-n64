@@ -19,6 +19,7 @@ Color interpolate(const Color& first, const Color& second, u32 fraction) {
 } // namespace
 
 VideoField Bus::scan_video() const {
+    settle_system();
     const bool pal = system_.video_standard() == VideoStandard::Pal;
     VideoField output;
     output.height = pal ? 288 : 240;

@@ -5,6 +5,7 @@
 namespace cupid {
 
 void Bus::set_video_output(std::function<void(VideoField)> output) {
+    settle_system();
     schedule_dirty_ = true;
     video_output_ = output ? std::make_shared<std::function<void(VideoField)>>(std::move(output)) : nullptr;
 }

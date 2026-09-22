@@ -35,6 +35,7 @@ u64 Bus::next_event() const {
 }
 
 void Bus::tick(u64 rcp_cycles) {
+    settle_system();
     while (rcp_cycles != 0) {
         const u64 elapsed = std::min(rcp_cycles, next_event());
         tick_devices(elapsed);

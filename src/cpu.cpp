@@ -78,24 +78,6 @@ void Cpu::set_pc(u64 address) {
     pending_fpu_register_ = 32;
 }
 
-bool Cpu::kernel_mode() const {
-    return (status() & 6U) != 0 || (status() & 0x18U) == 0;
-}
-
-bool Cpu::wide_addressing() const {
-    const unsigned mode = kernel_mode() ? 0U : std::min((status() >> 3) & 3U, 2U);
-    return (status() & (0x80U >> mode)) != 0;
-}
-
-bool Cpu::wide_instructions() const {
-    return kernel_mode() || wide_addressing();
-}
-
-bool Cpu::little_endian() const {
-    const bool reverse = !kernel_mode() && (status() & 0x18U) >= 0x10U && (status() & 0x02000000U) != 0;
-    return ((cp0[16] & 0x8000U) == 0) != reverse;
-}
-
 bool Cpu::require_coprocessor(unsigned coprocessor) {
     if ((coprocessor == 0 && kernel_mode()) || (status() & (1U << (28 + coprocessor))) != 0) {
         return true;
@@ -156,7 +138,7 @@ void Cpu::update_clocks(u64 elapsed) {
         cp0[13] |= 0x8000U;
     cp0[9] = static_cast<u32>(old_count + ticks);
     cycles += elapsed;
-    system_.advance(elapsed);
+    system_.advance_deferred(elapsed);
     update_interrupt_inputs();
 }
 

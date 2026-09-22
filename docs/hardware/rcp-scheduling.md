@@ -6,7 +6,20 @@ of the size of a CPU clock update. See [RDRAM interface state](rdram-interface.m
 for the current CPU and DMA timing limits.
 
 `System::advance` converts CPU cycles to RCP cycles with a persistent fractional
-clock. An active RSP processes an issue group, dependency stall or branch bubble
+clock. While the CPU runs from its caches and does not touch device state, those
+RCP cycles can be recorded instead of ticking every device after every instruction.
+The next device access, scheduled peripheral edge, buffered store, or running RSP
+catches the devices up before anything is observed. `System::advance` still settles
+immediately, so callers that step the public clock see current device state.
+
+The owed time is split. The RDP clock and the RDRAM row tracker keep pace with a
+running RSP, because DP_CLOCK and SP DMA can see them between peripheral edges.
+VI, PI, SI, AI, EEPROM, flash, and the RI refresh counter stay deferred until
+their next scheduled edge, a CPU access, or a buffered write that reaches them.
+A write-buffer entry is only queued after that catch-up, so earlier deferred
+time is not subtracted from its remaining delay.
+
+An active RSP processes an issue group, dependency stall or branch bubble
 at each one-cycle boundary. An eligible scalar/vector pair shares that boundary; see
 [signal processor instruction timing](rsp-pipeline.md). When it is halted, the
 scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
@@ -68,6 +81,11 @@ response completes. A transfer that crosses an enabled refresh boundary includes
 that recovery interval, while the scheduler still processes the boundary and
 device clocks in normal event order. The overlap check does not add a separate
 scheduler event.
+
+`tests/rcp/test_deferred_devices.cpp` compares a machine that settles after every
+instruction with one that lets the devices lag, including overlapping PI and SP
+DMA while VI lines run. A second case writes the cartridge bus after a long
+cached countdown and still reads the latched word while PI is busy.
 
 `tests/rcp/test_synchronization.cpp` compares large and one-cycle advances,
 checks SP/SI/audio ordering, and samples the DP clock at audio and RSP events.

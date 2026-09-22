@@ -6,10 +6,12 @@
 namespace cupid {
 
 u8 Bus::read_ram_byte(u32 address) const {
+    settle_system();
     return static_cast<u8>(memory.read(address, 1));
 }
 
 void Bus::write_ram_byte(u32 address, u8 value) {
+    settle_system();
     memory.write(address, 1, value);
 }
 

@@ -79,10 +79,16 @@ void Cpu::tlb_exception(u64 address, Access access, bool refill, bool modificati
 
 bool Cpu::translate(u64 address, Access access, u32& physical, bool& cached) {
     const bool kernel = kernel_mode();
-    const bool supervisor = !kernel && (status() & 0x18U) == 8U;
-    const bool wide = wide_addressing();
     const u32 low = static_cast<u32>(address);
     const bool compatible = address == sign_extend32(low);
+    // Kernel-mode kseg0/kseg1 addresses are the common case for games.
+    if (compatible && kernel && low >= 0x80000000U && low < 0xc0000000U) {
+        physical = low & 0x1fffffffU;
+        cached = low < 0xa0000000U;
+        return true;
+    }
+    const bool supervisor = !kernel && (status() & 0x18U) == 8U;
+    const bool wide = wide_addressing();
     bool mapped = false;
 
     if (!wide && !compatible) {
@@ -92,11 +98,7 @@ bool Cpu::translate(u64 address, Access access, u32& physical, bool& cached) {
     if (compatible) {
         if (low < 0x80000000U)
             mapped = true;
-        else if (kernel && low < 0xc0000000U) {
-            physical = low & 0x1fffffffU;
-            cached = low < 0xa0000000U;
-            return true;
-        } else if ((kernel || supervisor) && low >= 0xc0000000U && low < 0xe0000000U)
+        else if ((kernel || supervisor) && low >= 0xc0000000U && low < 0xe0000000U)
             mapped = true;
         else if (kernel && low >= 0xe0000000U)
             mapped = true;

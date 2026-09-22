@@ -35,13 +35,16 @@ void Cpu::prefetch_instruction(u64 address, bool latch) {
         physical ^= 4U;
     const auto& line = instruction_cache[(address >> 5) & 511U];
     const bool hit = line.valid && line.tag == (physical & 0xfffff000U);
-    u64 instruction = 0;
-    if (!read_memory(address, 4, instruction, true))
+    if (hit) {
+        // A hit has already reached the register-fetch latch.
+        if (latch)
+            fetched_instruction_ = {address, read_be32(line.data.data() + (physical & 28U)), true};
         return;
-    // A hit has already reached the register-fetch latch. A miss refills the cache,
-    // but the instruction must still be read after an older cache operation finishes.
-    if (hit && latch)
-        fetched_instruction_ = {address, static_cast<u32>(instruction), true};
+    }
+    // A miss refills the cache, but the instruction must still be read after an
+    // older cache operation finishes.
+    u64 instruction = 0;
+    static_cast<void>(read_memory(address, 4, instruction, true));
 }
 
 } // namespace cupid
