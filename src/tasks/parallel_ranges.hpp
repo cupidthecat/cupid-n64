@@ -16,6 +16,17 @@ inline unsigned parallel_capacity() {
 using RangeTask = void (*)(const void*, s32, s32, unsigned);
 
 void execute_parallel_ranges(s32 first, s32 last, const void* context, RangeTask render);
+void shutdown_parallel_ranges() noexcept;
+
+class ParallelRangesScope {
+  public:
+    ParallelRangesScope() = default;
+    ~ParallelRangesScope() {
+        shutdown_parallel_ranges();
+    }
+    ParallelRangesScope(const ParallelRangesScope&) = delete;
+    ParallelRangesScope& operator=(const ParallelRangesScope&) = delete;
+};
 
 template <typename Render> void parallel_ranges(s32 first, s32 last, bool parallel, const Render& render) {
     if (!parallel || parallel_capacity() == 1U || first >= last) {

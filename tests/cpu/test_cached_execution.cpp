@@ -324,22 +324,25 @@ TEST(cpu_cached_private_leaves_cache_misses_and_faulting_ops_to_step) {
 }
 
 TEST(cpu_cached_private_preserves_unsupported_delay_slot_exceptions_and_pending_nmi) {
-    const auto delay_program = {
-        0U,
-        immediate(0x04, 0, 0, 1), // BEQ zero,zero,code+12.
-        0x0000000cU,              // SYSCALL in the delay slot.
-        0U,
-    };
-    System delay_batched, delay_stepped;
-    prepare(delay_batched, delay_program);
-    prepare(delay_stepped, delay_program);
-    delay_batched.cpu.step();
-    delay_stepped.cpu.step();
-    compare_slice(delay_batched, delay_stepped, 2);
-    CHECK_EQ(delay_batched.cpu.batched_cached_instructions(), 1U);
-    CHECK_EQ(delay_batched.cpu.cp0[14], code + 4);
-    CHECK_EQ(delay_batched.cpu.cp0[13] & 0x8000007cU,
-             0x80000000U | (static_cast<u32>(Exception::Syscall) << 2));
+    for (bool prefix : {false, true}) {
+        System delay_batched, delay_stepped;
+        for (auto* system : {&delay_batched, &delay_stepped}) {
+            // Taken BEQ followed by SYSCALL in its delay slot.
+            if (prefix)
+                prepare(*system, {0U, immediate(0x09, 8, 8, 1), immediate(0x04, 0, 0, 1), 0x0000000cU, 0U});
+            else
+                prepare(*system, {0U, immediate(0x04, 0, 0, 1), 0x0000000cU, 0U});
+            system->cpu.step();
+        }
+        compare_slice(delay_batched, delay_stepped, prefix ? 3U : 2U);
+        // A branch alone uses ordinary stepping. With a preceding private
+        // instruction it retires in the slice before the faulting delay slot.
+        CHECK_EQ(delay_batched.cpu.batched_cached_instructions(), prefix ? 2U : 0U);
+        CHECK_EQ(delay_batched.cpu.gpr[8], prefix ? 1U : 0U);
+        CHECK_EQ(delay_batched.cpu.cp0[14], code + (prefix ? 8U : 4U));
+        CHECK_EQ(delay_batched.cpu.cp0[13] & 0x8000007cU,
+                 0x80000000U | (static_cast<u32>(Exception::Syscall) << 2));
+    }
 
     const auto nmi_program = {
         0U,

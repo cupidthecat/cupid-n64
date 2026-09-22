@@ -54,6 +54,8 @@ void System::reset() {
 void System::set_reset_button(bool pressed) {
     settle();
     bus.pif_boot.set_reset_button(pressed);
+    defer_limit_ = 0;
+    event_valid_ = false;
 }
 
 void System::advance(u64 cpu_cycles) {
@@ -146,6 +148,15 @@ void System::settle_peripherals() {
 
 u64 System::cpu_cycles_for_rcp(u64 rcp_cycles) const {
     return rcp::cpu_cycles_for_rcp(rcp_cycles, rcp_fraction_);
+}
+
+bool System::reusable_deferred_event_cycles(u64& cpu_cycles) const {
+    if (deferred_rcp_ == 0 || deferred_rcp_ >= defer_limit_ || peripheral_debt_ != 0 || bus.schedule_dirty_ ||
+        rsp.running() || !bus.pending_outputs_.empty() || cpu.next_buffered_write() != 0)
+        return false;
+
+    cpu_cycles = cpu_cycles_for_rcp(defer_limit_ - deferred_rcp_);
+    return true;
 }
 
 void System::advance_after_local_rsp(u64 cpu_cycles) {

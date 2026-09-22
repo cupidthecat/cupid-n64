@@ -3,7 +3,6 @@
 #include "cupid/system.hpp"
 
 #include <algorithm>
-#include <bit>
 #include <limits>
 
 namespace cupid {
@@ -12,18 +11,6 @@ namespace {
 
 constexpr u32 mask_pc(u32 value) {
     return value & 0x0ffc;
-}
-
-constexpr s32 as_s32(u32 value) {
-    return std::bit_cast<s32>(value);
-}
-
-constexpr u32 as_u32(s32 value) {
-    return std::bit_cast<u32>(value);
-}
-
-constexpr s16 immediate16(u32 instruction) {
-    return std::bit_cast<s16>(static_cast<u16>(instruction));
 }
 
 } // namespace
@@ -87,29 +74,17 @@ bool Rsp::local_execution_ready() const {
 }
 
 bool Rsp::step_local() {
-    const auto local = [](u32 instruction) {
-        return (instruction >> 26) != 0x10U && (instruction & 0xfc00003fU) != 0x0000000dU;
-    };
-    const bool fetch = pipeline_.size() == 0U;
-    std::array<u32, 2> words{};
-    if (fetch) {
-        words = {fetch_instruction(pc), fetch_instruction(pc + 4)};
-        // Check both raw slots even when the pairing rules could reject the second.
-        if (!local(words[0]) || !local(words[1]))
-            return false;
+    RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
+    if (pipeline_.size() == 0U) {
+        const std::array<u32, 2> words{fetch_instruction(pc), fetch_instruction(pc + 4)};
+        issue = pipeline_.local_issue(words[0], words[1], pc);
     } else {
-        for (unsigned index = 0; index < pipeline_.size(); ++index) {
-            if (!local(pipeline_.instruction(index)))
-                return false;
-        }
+        issue = pipeline_.local_issue();
     }
 
-    // A branch bubble must not latch a packet before its actual fetch cycle.
-    if (pipeline_.advance_branch_wait())
-        return true;
-    if (fetch)
-        pipeline_.fetch(words[0], words[1], false, pc);
-    if (!pipeline_.advance_operand_wait())
+    if (issue == RspPipeline::LocalIssue::Blocked)
+        return false;
+    if (issue == RspPipeline::LocalIssue::Ready)
         execute_group();
     return true;
 }
@@ -117,8 +92,32 @@ bool Rsp::step_local() {
 u64 Rsp::run_local(u64 maximum_cycles) {
     if (!local_execution_ready())
         return 0;
+
+    if (maximum_cycles < 8) {
+        u64 elapsed = 0;
+        while (elapsed < maximum_cycles && step_local())
+            ++elapsed;
+        return elapsed;
+    }
+
+    RspPipeline::LocalWindow window;
+    const std::span<const u8, 4096> imem(memory.data() + 0x1000U, 4096U);
+    const auto step_window = [&] {
+        RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
+        if (pipeline_.size() == 0U)
+            issue = pipeline_.local_issue(imem, window, pc);
+        else
+            issue = pipeline_.local_issue();
+
+        if (issue == RspPipeline::LocalIssue::Blocked)
+            return false;
+        if (issue == RspPipeline::LocalIssue::Ready)
+            execute_group();
+        return true;
+    };
+
     u64 elapsed = 0;
-    while (elapsed < maximum_cycles && step_local()) {
+    while (elapsed < maximum_cycles && step_window()) {
         // A branch-wait or operand-wait cycle is still an RSP cycle. Local groups
         // cannot touch shared registers, start DMA, halt, or raise an SP interrupt.
         ++elapsed;
@@ -227,224 +226,11 @@ void Rsp::execute_group() {
         current_pc_ = mask_pc(pc);
         pc = mask_pc(next_pc_);
         next_pc_ = mask_pc(pc + 4);
-        execute_scalar(pipeline_.instruction(index));
+        execute_decoded(pipeline_.instruction(index), pipeline_.operation(index));
         gpr_[0] = 0;
         pc_shadow_ = pc;
     }
     pipeline_.retire(taken_delay_slot, pc);
-}
-
-void Rsp::execute_scalar(u32 instruction) {
-    const unsigned op = instruction >> 26;
-    const unsigned rs = (instruction >> 21) & 31;
-    const unsigned rt = (instruction >> 16) & 31;
-    const s16 imm = immediate16(instruction);
-
-    switch (op) {
-    case 0x00:
-        execute_special(instruction);
-        break;
-    case 0x01:
-        execute_regimm(instruction);
-        break;
-    case 0x02:
-        take_branch((instruction & 0x03ff'ffff) << 2);
-        break;
-    case 0x03:
-        write_gpr(31, mask_pc(current_pc_ + 8));
-        take_branch((instruction & 0x03ff'ffff) << 2);
-        break;
-    case 0x04:
-        if (gpr_[rs] == gpr_[rt]) {
-            take_branch(current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4));
-        }
-        break;
-    case 0x05:
-        if (gpr_[rs] != gpr_[rt]) {
-            take_branch(current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4));
-        }
-        break;
-    case 0x06:
-        if (as_s32(gpr_[rs]) <= 0) {
-            take_branch(current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4));
-        }
-        break;
-    case 0x07:
-        if (as_s32(gpr_[rs]) > 0) {
-            take_branch(current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4));
-        }
-        break;
-    case 0x08:
-    case 0x09:
-        write_gpr(rt, gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)));
-        break;
-    case 0x0a:
-        write_gpr(rt, as_s32(gpr_[rs]) < static_cast<s32>(imm));
-        break;
-    case 0x0b:
-        write_gpr(rt, gpr_[rs] < static_cast<u32>(static_cast<s32>(imm)));
-        break;
-    case 0x0c:
-        write_gpr(rt, gpr_[rs] & static_cast<u16>(instruction));
-        break;
-    case 0x0d:
-        write_gpr(rt, gpr_[rs] | static_cast<u16>(instruction));
-        break;
-    case 0x0e:
-        write_gpr(rt, gpr_[rs] ^ static_cast<u16>(instruction));
-        break;
-    case 0x0f:
-        write_gpr(rt, static_cast<u32>(static_cast<u16>(instruction)) << 16);
-        break;
-    case 0x10:
-        execute_cop0(instruction);
-        break;
-    case 0x12:
-        execute_cop2(instruction);
-        break;
-    case 0x20:
-        write_gpr(rt, as_u32(static_cast<s32>(
-                          static_cast<s8>(dmem_read8(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)))))));
-        break;
-    case 0x21:
-        write_gpr(rt, as_u32(static_cast<s32>(static_cast<s16>(
-                          dmem_read16(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)))))));
-        break;
-    case 0x23:
-    case 0x27:
-        write_gpr(rt, dmem_read32(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm))));
-        break;
-    case 0x24:
-        write_gpr(rt, dmem_read8(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm))));
-        break;
-    case 0x25:
-        write_gpr(rt, dmem_read16(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm))));
-        break;
-    case 0x28:
-        dmem_write8(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)), static_cast<u8>(gpr_[rt]));
-        break;
-    case 0x29:
-        dmem_write16(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)), static_cast<u16>(gpr_[rt]));
-        break;
-    case 0x2b:
-        dmem_write32(gpr_[rs] + static_cast<u32>(static_cast<s32>(imm)), gpr_[rt]);
-        break;
-    case 0x32:
-        execute_vector_load(instruction);
-        break;
-    case 0x3a:
-        execute_vector_store(instruction);
-        break;
-    default:
-        break;
-    }
-}
-
-void Rsp::execute_special(u32 instruction) {
-    const unsigned rs = (instruction >> 21) & 31;
-    const unsigned rt = (instruction >> 16) & 31;
-    const unsigned rd = (instruction >> 11) & 31;
-    const unsigned sa = (instruction >> 6) & 31;
-    const unsigned function = instruction & 63;
-
-    switch (function) {
-    case 0x00:
-        write_gpr(rd, gpr_[rt] << sa);
-        break;
-    case 0x02:
-        write_gpr(rd, gpr_[rt] >> sa);
-        break;
-    case 0x03:
-        write_gpr(rd, as_u32(as_s32(gpr_[rt]) >> sa));
-        break;
-    case 0x04:
-        write_gpr(rd, gpr_[rt] << (gpr_[rs] & 31));
-        break;
-    case 0x06:
-        write_gpr(rd, gpr_[rt] >> (gpr_[rs] & 31));
-        break;
-    case 0x07:
-        write_gpr(rd, as_u32(as_s32(gpr_[rt]) >> (gpr_[rs] & 31)));
-        break;
-    case 0x08:
-        take_branch(gpr_[rs]);
-        break;
-    case 0x09: {
-        const u32 target = gpr_[rs];
-        write_gpr(rd, mask_pc(current_pc_ + 8));
-        take_branch(target);
-        break;
-    }
-    case 0x0d:
-        halted_ = true;
-        broke_ = true;
-        if (interrupt_on_break_) {
-            system_.bus.set_interrupt(0, true);
-        }
-        break;
-    case 0x20:
-    case 0x21:
-        write_gpr(rd, gpr_[rs] + gpr_[rt]);
-        break;
-    case 0x22:
-    case 0x23:
-        write_gpr(rd, gpr_[rs] - gpr_[rt]);
-        break;
-    case 0x24:
-        write_gpr(rd, gpr_[rs] & gpr_[rt]);
-        break;
-    case 0x25:
-        write_gpr(rd, gpr_[rs] | gpr_[rt]);
-        break;
-    case 0x26:
-        write_gpr(rd, gpr_[rs] ^ gpr_[rt]);
-        break;
-    case 0x27:
-        write_gpr(rd, ~(gpr_[rs] | gpr_[rt]));
-        break;
-    case 0x2a:
-        write_gpr(rd, as_s32(gpr_[rs]) < as_s32(gpr_[rt]));
-        break;
-    case 0x2b:
-        write_gpr(rd, gpr_[rs] < gpr_[rt]);
-        break;
-    default:
-        // Undefined SPECIAL encodings have observable shift behavior on the
-        // signal processor instead of raising a CPU-style exception.
-        write_gpr(rd, gpr_[rs] >> (gpr_[rs] & 31));
-        break;
-    }
-}
-
-void Rsp::execute_regimm(u32 instruction) {
-    const unsigned rs = (instruction >> 21) & 31;
-    const unsigned kind = (instruction >> 16) & 31;
-    const s16 imm = immediate16(instruction);
-    const bool negative = as_s32(gpr_[rs]) < 0;
-    const u32 target = current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4);
-
-    switch (kind) {
-    case 0x00:
-        if (negative)
-            take_branch(target);
-        break;
-    case 0x01:
-        if (!negative)
-            take_branch(target);
-        break;
-    case 0x10:
-        write_gpr(31, mask_pc(current_pc_ + 8));
-        if (negative)
-            take_branch(target);
-        break;
-    case 0x11:
-        write_gpr(31, mask_pc(current_pc_ + 8));
-        if (!negative)
-            take_branch(target);
-        break;
-    default:
-        break;
-    }
 }
 
 void Rsp::execute_cop0(u32 instruction) {

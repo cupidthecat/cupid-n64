@@ -36,6 +36,12 @@ Nonpositive W and divider overflow force a distant LOD result. Horizontal and
 vertical derivatives, the packet's tile and maximum level, and detail/sharpen
 state select the sampling tiles and LOD fraction.
 
+The divider normalizes W and prepares its reciprocal once for each S/T pair.
+Triangle drawing computes horizontal and vertical neighbors when LOD consumes
+them. One-cycle texel-1 also requires the horizontal neighbor and, where
+applicable, next-row lookahead. These choices depend on the draw's active texture
+inputs and retain the same overflow accumulation for LOD.
+
 One-cycle texel-1 reads ahead in the major-edge direction. At the end of a
 long span with a valid next row, it uses that row's initial texture attributes.
 Field filtering prevents this row transition. Two-cycle sampling uses the
@@ -53,18 +59,22 @@ opcode in both cycle modes, shade and texture modulation, perspective/LOD,
 lookahead and direction, shared edges, fractional centroids, clipped origins,
 RGBA packing, hidden coverage, depth overlap, primitive depth, and partial
 packets. `tests/rdp/test_triangle_interpolation.cpp` checks fixed-point rounding,
-overflow regions, gradient normalization, and divider saturation. Together
-these files add 36 regressions.
+overflow regions, gradient normalization, and divider saturation.
+`test_perspective_point.cpp` checks literal reciprocal results, overflow from
+either axis, and paired-versus-separate division for every positive W value.
+`test_triangle_texture_needs.cpp` checks which neighbors reach LOD and texel-1,
+the next-row boundary, and RI bank state and clocks through real commands.
 
-The pinned experimental cartridge fixtures have conflicting color packing
-and coverage expectations. Their 11 failures remain visible in the extended
-suite; see [the fixture audit](../testing/rdp-triangle-fixtures.md). The default
-cartridge suite passes. These results do not establish complete rendering or
-gameplay correctness.
+The unmodified experimental triangle fixtures have conflicting color packing
+and coverage expectations. The documented preparation corrects those fixtures
+while retaining their assertions; see [the fixture audit](../testing/rdp-triangle-fixtures.md)
+and [recorded validation results](../testing/validation-results.md) for the
+original and prepared suite outcomes. These checks do not establish complete
+rendering or gameplay correctness.
 
 [Noise and random dithering](rdp-color.md) now use the shared pixel stage.
-The exact hardware noise sequence, key-generated alpha,
-unusual texture combinations, arbitrary color/depth overlaps, and asynchronous
+The exact hardware noise sequence, unusual texture combinations, arbitrary
+color/depth overlaps, and asynchronous
 DP timing still need work. Drawing remains synchronous and does not model
 per-pixel RDRAM contention. Issues #19, #21, #22, and #37 track these limits and
 additional conformance testing.

@@ -63,6 +63,7 @@ class System {
     void settle_deferred();
     void settle_peripherals();
     [[nodiscard]] u64 cpu_cycles_for_rcp(u64 rcp_cycles) const;
+    [[nodiscard]] bool reusable_deferred_event_cycles(u64& cpu_cycles) const;
     [[nodiscard]] u64 idle_loop_event_cycles();
     [[nodiscard]] u64 cached_private_event_cycles();
     [[nodiscard]] bool rsp_local_execution_ready() const;

@@ -57,11 +57,19 @@ rounding. The mid-texel mode averages all four taps at the exact center.
 YUV chroma uses half the horizontal sampling rate of luma, so the two channel
 pairs can select different triangles.
 
+The sampler fetches the union of taps consumed by those channel pairs. Their
+triangles or mid-texel decisions can require all four samples; with filtering
+disabled, they can select two different base samples. Each retained tap keeps
+its original logical palette-bank index, including the bank exchange on an
+upper-triangle TLUT lookup.
+
 The per-cycle filter-enable bits also select texture conversion. Clearing a
 filter bit applies the programmed conversion factors, including for non-YUV
 formats. `convert_one` can convert the preceding texture sample directly, or
 use its signed channels as interpolation coefficients when filtering is enabled.
 The combiner receives the intermediate signed values before its final clamp.
+With filtering enabled and quad sampling disabled, `convert_one` returns the
+preceding sample's signed nine-bit blue value in all four channels.
 
 ## Rectangles and LOD
 
@@ -91,7 +99,9 @@ signed fractions, detail/sharpen selection, overflow, and tile-index wrap.
 `tests/rdp/test_texture_rectangle.cpp` checks encoded loads and draws, both
 rectangle directions, interpolation, clipping, fields, alpha comparison,
 two-cycle sampling, lookahead, and incomplete commands. Together they add
-59 regressions.
+59 regressions. `test_texture_tap_selection.cpp` adds literal YUV cases where
+chroma and luma select different triangles, base samples, or mid-texel paths,
+including `convert_one` and negative intermediate channels.
 
 [Triangles](rdp-triangles.md) interpolate S/T/W, retain 17-bit perspective
 coordinates for LOD, and supply the packet's maximum mip level. Their command

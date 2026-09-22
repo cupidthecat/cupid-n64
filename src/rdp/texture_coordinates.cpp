@@ -14,6 +14,34 @@ constexpr std::array<s32, 65> reciprocals{
     0x27c4, 0x2762, 0x2702, 0x26a4, 0x2648, 0x25ed, 0x2594, 0x253d, 0x24e7, 0x2492, 0x243f, 0x23ee, 0x239e,
     0x234f, 0x2302, 0x22b6, 0x226c, 0x2222, 0x21da, 0x2193, 0x214d, 0x2108, 0x20c5, 0x2082, 0x2041, 0x2000};
 
+struct Divider {
+    s32 reciprocal;
+    unsigned shift;
+    u32 mask;
+};
+
+Divider prepare_divider(s16 w) {
+    const unsigned shift = 15U - static_cast<unsigned>(std::bit_width(static_cast<u32>(w)));
+    const unsigned normalized = (static_cast<u32>(w) << shift) & 0x3fffU;
+    const unsigned index = normalized >> 8U;
+    const s32 fraction = static_cast<s32>(normalized & 0xffU);
+    const s32 reciprocal =
+        reciprocals[index] + (((reciprocals[index + 1] - reciprocals[index]) * fraction) >> 8);
+    const u32 mask = 0x3fffffffU & (0U - (1U << (29U - shift)));
+    return {reciprocal, shift, mask};
+}
+
+s32 divide_coordinate(s16 coordinate, const Divider& divider, bool& overflow) {
+    const s32 product = static_cast<s32>(coordinate) * divider.reciprocal;
+    const s32 divided = divider.shift == 14U ? product * 2 : product >> (13U - divider.shift);
+    const u32 outside = static_cast<u32>(product) & divider.mask;
+    if (outside != 0 && outside != divider.mask) {
+        overflow = true;
+        return ((divider.shift == 14U ? product : divided) & (1 << 29)) != 0 ? -0x8000 : 0x7fff;
+    }
+    return std::clamp(divided, -0x10000, 0xffff);
+}
+
 } // namespace
 
 s16 rdp_perspective_coordinate(s16 coordinate, s16 w) {
@@ -27,21 +55,16 @@ s32 rdp_perspective_coordinate_wide(s16 coordinate, s16 w, bool& overflow) {
         overflow = true;
         return 0x7fff;
     }
-    const unsigned shift = 15U - static_cast<unsigned>(std::bit_width(static_cast<u32>(w)));
-    const unsigned normalized = (static_cast<u32>(w) << shift) & 0x3fffU;
-    const unsigned index = normalized >> 8U;
-    const s32 fraction = static_cast<s32>(normalized & 0xffU);
-    const s32 reciprocal =
-        reciprocals[index] + (((reciprocals[index + 1] - reciprocals[index]) * fraction) >> 8);
-    const s32 product = static_cast<s32>(coordinate) * reciprocal;
-    const s32 divided = shift == 14U ? product * 2 : product >> (13U - shift);
-    const u32 mask = 0x3fffffffU & (0U - (1U << (29U - shift)));
-    const u32 outside = static_cast<u32>(product) & mask;
-    if (outside != 0 && outside != mask) {
+    return divide_coordinate(coordinate, prepare_divider(w), overflow);
+}
+
+std::array<s32, 2> rdp_perspective_point(s16 s, s16 t, s16 w, bool& overflow) {
+    if (w <= 0) {
         overflow = true;
-        return ((shift == 14U ? product : divided) & (1 << 29)) != 0 ? -0x8000 : 0x7fff;
+        return {0x7fff, 0x7fff};
     }
-    return std::clamp(divided, -0x10000, 0xffff);
+    const auto divider = prepare_divider(w);
+    return {divide_coordinate(s, divider, overflow), divide_coordinate(t, divider, overflow)};
 }
 
 } // namespace cupid

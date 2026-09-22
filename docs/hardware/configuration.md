@@ -25,7 +25,12 @@ Storage file loading and flushing are described in [persistent storage](storage.
 
 ## Controllers and accessories
 
-Ports start disconnected with no accessory. `--controller PORT:gamepad|mouse|none` selects the device on a port. Gamepad accessories use `--accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak`. Accessories require a connected gamepad.
+Ports start disconnected with no accessory. `--controller PORT:gamepad|mouse|gamecube|none` selects the device on a port. Gamepad accessories use `--accessory PORT:none|controller-pak|rumble-pak|bio-sensor|transfer-pak`. Accessories require a connected N64 gamepad.
+
+The GameCube selection exposes the [GameCube Joybus protocol](gamecube-controller.md)
+with neutral input for homebrew and hardware probes. Raw input is available to
+embedding applications through `Bus::set_gamecube_state`; the desktop input
+mapper does not yet drive that state.
 
 A Controller Pak uses one 32 KiB bank by default. `--pak-banks PORT:COUNT`
 selects from 1 through 62 banks and requires that port to use a connected

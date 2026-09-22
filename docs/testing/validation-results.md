@@ -1,5 +1,39 @@
 # Recorded validation results
 
+## Cached execution and reset deadline follow-up (2026-09-22)
+
+The next 411-file source snapshot passed strict Windows Clang and MSVC Release
+validation with the desktop enabled, and Linux Clang ASan/UBSan validation.
+All three runs passed 1,330 hardware and host regressions, the 4,637-case default
+cartridge, both cold and warm boots, and the 6,273-case extended cartridge.
+Windows passed all 14 CTest groups; Linux passed all nine core groups. The
+stepped and batched cartridge runs matched their register state and report
+timestamps. Formatting and all 39 validation-tool tests passed. Source and
+input checks passed, and the sanitizer log contains no diagnostic.
+
+Coverage includes COP1 transfers and comparisons during cached execution,
+host floating-point state restoration, local RSP execution windows, decoded
+scalar operations, packed vector comparisons and clipping, shared texture
+division, texture-tap selection, combiner dependencies, and cached VI rows.
+The reset-release regression checks that a one-RCP-clock PIF deadline interrupts
+ordinary CPU stepping before the third instruction retires. Worker tests cover
+native-thread exit and explicit shutdown before thread-local teardown.
+
+The retained 6,000-field Mario replay took 133.636 seconds for about 100.63
+seconds of emulated time, or 75.3% of real time. It matches all field records
+and retained video, audio, and EEPROM files from the preceding replay. A
+separate profile-guided build took 135.969 seconds and produced the same
+outputs. These are bounded replay measurements with high process QoS and
+performance-core affinity, not a claim of sustained full-speed desktop play.
+The ordinary Clang desktop completed a timed launch, capture, save, and exit;
+the profile-guided desktop also completed a 30-second run without hanging.
+
+Evidence is retained locally under
+`.work/validation/continuation-20260922/`. The checked source matches the Linux
+copy byte for byte. This result record was updated after validation; executable
+source and tests were unchanged. Full-speed gameplay and uninterrupted audible
+playback remain open acceptance work in #48 and #47.
+
 ## CPU, RSP, and raster execution optimizations (2026-09-22)
 
 The optimized core passed the shared validator on Windows with Clang 21.1.5 and

@@ -19,6 +19,13 @@ their next scheduled edge, a CPU access, or a buffered write that reaches them.
 A write-buffer entry is only queued after that catch-up, so earlier deferred
 time is not subtracted from its remaining delay.
 
+Cached and idle CPU slices can reuse the remaining part of an already deferred
+interval. Reuse requires a halted RSP, a clean device schedule, no peripheral
+debt, no pending output, and no buffered CPU store. The remaining RCP deadline
+is converted with the current CPU-to-RCP fractional phase, and each slice stops
+one CPU cycle before that boundary. Cached execution also excludes active or
+queued SP DMA. Every other case settles and queries the devices again.
+
 An active RSP processes an issue group, dependency stall or branch bubble
 at each one-cycle boundary. An eligible scalar/vector pair shares that boundary; see
 [signal processor instruction timing](rsp-pipeline.md). When it is halted, the
@@ -86,6 +93,10 @@ scheduler event.
 instruction with one that lets the devices lag, including overlapping PI and SP
 DMA while VI lines run. A second case writes the cartridge bus after a long
 cached countdown and still reads the latched word while PI is busy.
+`tests/rcp/test_deferred_event_window.cpp` compares cached and idle slices with
+eager stepping at all three clock phases. It checks short budgets, callback
+mutation at a video boundary, and a reset-button release that shortens the PIF
+deadline.
 
 `tests/rcp/test_synchronization.cpp` compares large and one-cycle advances,
 checks SP/SI/audio ordering, and samples the DP clock at audio and RSP events.

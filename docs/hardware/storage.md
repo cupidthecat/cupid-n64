@@ -35,9 +35,15 @@ The reusable file-publication primitive is `cupid::storage::replace_file(path, b
 The runner flushes configured storage on ordinary exit, test-ROM success or failure, CPU-stall exit, instruction-limit exit, and handled execution exceptions after system creation. A flush error changes the process result to failure. Paths with missing or unusable parent directories are reported instead of silently dropping data.
 
 The storage regressions include create/write/destroy/recreate readback for SRAM
-and EEPROM capacities, all seven Flash parts, single- and multi-bank Controller
-Pak images, MBC1 and MBC2 RAM, cartridge RTC registers, and Game Boy RTC state.
+and EEPROM capacities, all seven Flash parts, every Controller Pak capacity from
+one through 62 banks, MBC1 and MBC2 RAM, cartridge RTC registers, and Game Boy
+RTC state.
 They also exercise wrong sizes, malformed RTC records, input/storage collisions,
 replacement failure with preservation of the previous valid image, occupied and
 dangling temporary paths, concurrent same-destination replacement, and a native
 Windows runner invocation using non-ASCII ROM, PIF, and save paths with spaces.
+The release-runner restart checks load an externally seeded image twice for
+each SRAM and EEPROM size, all seven Flash chip selections, and every Controller
+Pak capacity from one through 62 banks. The Pak cases cycle through all four
+ports. Each process must exit within its test timeout, and the checks verify the
+image's size and complete hash after both exits.

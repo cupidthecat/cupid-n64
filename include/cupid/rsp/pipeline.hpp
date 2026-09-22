@@ -3,14 +3,77 @@
 #include "cupid/types.hpp"
 
 #include <array>
+#include <bitset>
+#include <span>
 
 namespace cupid {
 
+class Rsp;
+
 class RspPipeline {
   public:
+    enum class Operation : u8 {
+        None,
+        Sll,
+        Srl,
+        Sra,
+        Sllv,
+        Srlv,
+        Srav,
+        Jr,
+        Jalr,
+        Break,
+        Addu,
+        Subu,
+        And,
+        Or,
+        Xor,
+        Nor,
+        Slt,
+        Sltu,
+        Bltz,
+        Bgez,
+        Bltzal,
+        Bgezal,
+        J,
+        Jal,
+        Beq,
+        Bne,
+        Blez,
+        Bgtz,
+        Addiu,
+        Slti,
+        Sltiu,
+        Andi,
+        Ori,
+        Xori,
+        Lui,
+        Cop0,
+        Cop2,
+        Lb,
+        Lh,
+        Lw,
+        Lbu,
+        Lhu,
+        Sb,
+        Sh,
+        Sw,
+        VectorLoad,
+        VectorStore,
+        ReservedSpecial,
+    };
+
+    enum class LocalIssue : u8 {
+        Blocked,
+        Advanced,
+        Ready,
+    };
+
     void reset();
     void redirect();
     [[nodiscard]] bool advance_branch_wait();
+    [[nodiscard]] LocalIssue local_issue(u32 first, u32 second, u32 address = 0);
+    [[nodiscard]] LocalIssue local_issue();
     void fetch(u32 first, u32 second, bool single_step, u32 address = 0);
     [[nodiscard]] bool advance_operand_wait();
     [[nodiscard]] unsigned size() const {
@@ -19,9 +82,18 @@ class RspPipeline {
     [[nodiscard]] u32 instruction(unsigned index) const {
         return decoded_[current_index_].words[index];
     }
+    [[nodiscard]] Operation operation(unsigned index) const {
+        return decoded_[current_index_].operations[index];
+    }
     void retire(bool taken_delay_slot, u32 next_pc);
 
   private:
+    friend class Rsp;
+
+    struct LocalWindow {
+        std::bitset<1024> validated{};
+    };
+
     enum : unsigned {
         vector_alu = 1U,
         load = 2U,
@@ -51,12 +123,24 @@ class RspPipeline {
     struct DecodedFetch {
         std::array<u32, 2> words{};
         Ports ports{};
-        unsigned count{};
+        std::array<Operation, 2> operations{};
+        u8 count{};
         bool pairing_allowed{};
+        bool fresh_local{};
+        bool issued_local{};
+    };
+    static_assert(sizeof(DecodedFetch) == 48);
+
+    struct DecodedWord {
+        Ports ports{};
+        Operation operation{};
     };
 
-    [[nodiscard]] static Ports decode(u32 word);
+    [[nodiscard]] static DecodedWord decode(u32 word);
     [[nodiscard]] static bool can_pair(const Ports& first, const Ports& second);
+    [[nodiscard]] static bool instruction_is_local(u32 word);
+    [[nodiscard]] DecodedFetch& prepare(u32 first, u32 second, bool pairing_allowed, u32 address);
+    [[nodiscard]] LocalIssue local_issue(std::span<const u8, 4096> imem, LocalWindow& window, u32 address);
     void advance(Stage stage);
 
     std::array<Stage, 3> previous_{};

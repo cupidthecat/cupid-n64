@@ -1,9 +1,12 @@
 #include "cupid/system.hpp"
 
+#include "fpu/host_environment.hpp"
+
 #include <bit>
 #include <cfenv>
 #include <cmath>
 #include <limits>
+#include <optional>
 #include <type_traits>
 
 namespace cupid {
@@ -51,6 +54,27 @@ template <class T> bool nan_raises_invalid(typename FloatBits<T>::UInt bits) {
     return (bits & FloatBits<T>::nan_invalid_bit) != 0;
 }
 
+template <class T>
+bool ordered_equal_bits(typename FloatBits<T>::UInt left, typename FloatBits<T>::UInt right) {
+    using UInt = typename FloatBits<T>::UInt;
+    const UInt magnitude_mask = ~FloatBits<T>::sign_mask;
+    return left == right || (((left | right) & magnitude_mask) == 0);
+}
+
+template <class T>
+bool ordered_less_bits(typename FloatBits<T>::UInt left, typename FloatBits<T>::UInt right) {
+    using UInt = typename FloatBits<T>::UInt;
+    const UInt magnitude_mask = ~FloatBits<T>::sign_mask;
+    if (((left | right) & magnitude_mask) == 0)
+        return false;
+
+    const bool left_negative = (left & FloatBits<T>::sign_mask) != 0;
+    const bool right_negative = (right & FloatBits<T>::sign_mask) != 0;
+    if (left_negative != right_negative)
+        return left_negative;
+    return left_negative ? left > right : left < right;
+}
+
 template <class T> bool arithmetic_shortcut(typename FloatBits<T>::UInt bits) {
     return (bits & ~FloatBits<T>::sign_mask) == 0 ||
            (bits & FloatBits<T>::exponent_mask) == FloatBits<T>::exponent_mask;
@@ -84,33 +108,10 @@ int host_rounding(u32 mode) {
     }
 }
 
-class ScopedEnvironment {
-  public:
-    explicit ScopedEnvironment(u32 mode)
-        : saved_(std::fegetenv(&environment_) == 0), previous_(std::fegetround()) {
-        // FCSR controls guest flushing and traps independently of the calling thread.
-        if (saved_)
-            std::fesetenv(FE_DFL_ENV);
-        std::fesetround(host_rounding(mode));
-    }
-
-    ~ScopedEnvironment() {
-        if (saved_)
-            std::fesetenv(&environment_);
-        else if (previous_ != -1)
-            std::fesetround(previous_);
-    }
-
-  private:
-    fenv_t environment_{};
-    bool saved_{};
-    int previous_;
-};
-
 template <class T> T round_integral(T value, u32 mode) {
     switch (mode & 3U) {
     case 0: {
-        ScopedEnvironment environment(0);
+        fpu_host::ScopedEnvironment environment(host_rounding(0));
         return std::nearbyint(value);
     }
     case 1:
@@ -172,6 +173,30 @@ void Fpu::write_word(unsigned index, u32 value) {
 void Fpu::write_doubleword(unsigned index, u64 value) {
     index &= 31U;
     registers[full_register_mode() ? index : (index & ~1U)] = value;
+}
+
+bool Fpu::compare_nontrapping(u32 instruction) const {
+    const unsigned format = (instruction >> 21) & 31U;
+    const unsigned function = instruction & 63U;
+    if ((format != 0x10U && format != 0x11U) || function < 0x30U)
+        return false;
+    if ((control & (1U << 11U)) == 0)
+        return true;
+
+    const unsigned ft = (instruction >> 16) & 31U;
+    const unsigned fs = (instruction >> 11) & 31U;
+    const bool signaling = (function & 8U) != 0;
+    if (format == 0x10U) {
+        const u32 left = source_word(fs);
+        const u32 right = second_source_word(ft);
+        return !(is_nan_bits<float>(left) && (signaling || nan_raises_invalid<float>(left))) &&
+               !(is_nan_bits<float>(right) && (signaling || nan_raises_invalid<float>(right)));
+    }
+
+    const u64 left = source_doubleword(fs);
+    const u64 right = second_source_doubleword(ft);
+    return !(is_nan_bits<double>(left) && (signaling || nan_raises_invalid<double>(left))) &&
+           !(is_nan_bits<double>(right) && (signaling || nan_raises_invalid<double>(right)));
 }
 
 u32 Fpu::source_word(unsigned index) const {
@@ -477,10 +502,8 @@ void Fpu::execute_compare(u32 instruction, unsigned format) {
         if (right_nan && (signaling || nan_raises_invalid<float>(right_bits)))
             trap |= signal_maskable(4);
         if (!unordered) {
-            const float left = value_of<float>(left_bits);
-            const float right = value_of<float>(right_bits);
-            less = left < right;
-            equal = left == right;
+            less = ordered_less_bits<float>(left_bits, right_bits);
+            equal = ordered_equal_bits<float>(left_bits, right_bits);
         }
     } else {
         const u64 left_bits = source_doubleword(fs);
@@ -493,14 +516,13 @@ void Fpu::execute_compare(u32 instruction, unsigned format) {
         if (right_nan && (signaling || nan_raises_invalid<double>(right_bits)))
             trap |= signal_maskable(4);
         if (!unordered) {
-            const double left = value_of<double>(left_bits);
-            const double right = value_of<double>(right_bits);
-            less = left < right;
-            equal = left == right;
+            less = ordered_less_bits<double>(left_bits, right_bits);
+            equal = ordered_equal_bits<double>(left_bits, right_bits);
         }
     }
 
     if (trap) {
+        fpu_host::ScopedEnvironment environment(host_rounding(control & 3U));
         cpu_.raise_exception(Exception::FloatingPoint);
         return;
     }
@@ -521,13 +543,49 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         return;
     }
 
-    ScopedEnvironment environment(control & 3U);
-    clear_causes();
+    if ((format == 0x10U || format == 0x11U) && (function == 0x05U || function == 0x07U)) {
+        clear_causes();
+        const bool single = format == 0x10U;
+        if (single) {
+            u32 result = source_word(fs);
+            std::optional<fpu_host::ScopedEnvironment<>> environment;
+            if (is_subnormal_bits<float>(result) || is_nan_bits<float>(result))
+                environment.emplace(host_rounding(control & 3U));
+            if (!check_input_word(result))
+                return;
+            if (function == 0x05U)
+                result &= ~FloatBits<float>::sign_mask;
+            else
+                result ^= FloatBits<float>::sign_mask;
+            if (!finish_word(result))
+                return;
+            write_result_word(fd, result);
+        } else {
+            u64 result = source_doubleword(fs);
+            std::optional<fpu_host::ScopedEnvironment<>> environment;
+            if (is_subnormal_bits<double>(result) || is_nan_bits<double>(result))
+                environment.emplace(host_rounding(control & 3U));
+            if (!check_input_doubleword(result))
+                return;
+            if (function == 0x05U)
+                result &= ~FloatBits<double>::sign_mask;
+            else
+                result ^= FloatBits<double>::sign_mask;
+            if (!finish_doubleword(result))
+                return;
+            write_result_doubleword(fd, result);
+        }
+        return;
+    }
 
     if ((format == 0x10U || format == 0x11U) && function >= 0x30U) {
+        clear_causes();
         execute_compare(instruction, format);
         return;
     }
+
+    fpu_host::ScopedEnvironment environment(host_rounding(control & 3U));
+    clear_causes();
 
     auto raise_unimplemented = [this] { signal_unimplemented(); };
 
@@ -791,33 +849,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
                 return;
             u64 result = bits_of<double>(output);
             if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
-                return;
-            write_result_doubleword(fd, result);
-        }
-        return;
-    }
-
-    if (function == 0x05U || function == 0x07U) {
-        if (single) {
-            u32 result = source_word(fs);
-            if (!check_input_word(result))
-                return;
-            if (function == 0x05U)
-                result &= ~FloatBits<float>::sign_mask;
-            else
-                result ^= FloatBits<float>::sign_mask;
-            if (!finish_word(result))
-                return;
-            write_result_word(fd, result);
-        } else {
-            u64 result = source_doubleword(fs);
-            if (!check_input_doubleword(result))
-                return;
-            if (function == 0x05U)
-                result &= ~FloatBits<double>::sign_mask;
-            else
-                result ^= FloatBits<double>::sign_mask;
-            if (!finish_doubleword(result))
                 return;
             write_result_doubleword(fd, result);
         }

@@ -12,6 +12,8 @@ audio, settings, and save recovery. Separate guides explain
 [input mapping](frontend/input.md), [video composition](frontend/video.md),
 [audio playback](frontend/audio.md), [session ownership](frontend/session.md),
 [preferences](frontend/preferences.md), and [file dialogs](frontend/files.md).
+The [render-worker guide](frontend/render-workers.md) covers parallel drawing
+and scanout lifetime, including Windows thread shutdown.
 
 ## Configuration and validation
 
@@ -112,6 +114,7 @@ layout includes both top-level CPU/RSP files and their subsystem directories.
 | Cartridge devices | `src/cartridge/` | `tests/cartridge/`, device cases in `tests/rcp/` |
 | Runner and persistent storage | `src/main.cpp`, `src/host/`, `src/storage/` | `tests/host/` |
 | Desktop application | `src/desktop/`, host input/audio/video/session modules | `tests/desktop/`, `tests/host/` |
+| Shared render workers | `src/tasks/` | `tests/tasks/`, parallel RDP and VI cases |
 
 `tools/ci/validate.py` runs local CI. `tests/compatibility/` contains the capture
 workflow. Check the relevant guide and its regression fixtures before changing

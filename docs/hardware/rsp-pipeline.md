@@ -32,28 +32,49 @@ not name a functional operand. MTC2 and LTV retain their special VNOP conflicts.
 
 ## Decoded packets and vector execution
 
-Issue-port decoding is cached as derived metadata at instruction addresses. A
-cached packet is reused only when both fetched IMEM words and the current
-pairing permission match the cached entry. A change to either word, including
-one made by SP DMA, is decoded again on the next packet fetch. Cache-index
-collisions and wrapped instruction addresses use the same word checks. Once a
-packet has been selected, its words stay latched through operand stalls until it
+Instruction decoding is cached as derived metadata at instruction addresses.
+Each entry stores the issue ports, scalar operation, and whether
+the instructions can execute without accessing shared devices. A cached packet
+is reused only when both fetched IMEM words and the current pairing permission
+match the entry. A change to either word, including one made by SP DMA, is
+decoded again on the next packet fetch. Cache-index collisions and wrapped
+instruction addresses use the same word checks. Once a packet has been selected,
+its words and execution metadata stay latched through operand stalls until it
 retires or an SP_PC redirect discards it.
 
 The active packet retains an index into the decoding table. Fetch cannot replace
 an entry while a packet is latched, and copying the pipeline keeps an index into
-the copy's own table. Local CPU slices reuse the IMEM words checked for locality
-when filling an empty packet. A branch-wait cycle ages the dependencies without
-latching those words before their actual fetch cycle.
+the copy's own table. Local CPU slices prepare and check a fresh packet once.
+Both raw words must be local, even when the second would not issue in that
+group. An already-latched packet checks only its issued words. The fresh-word
+check precedes a pending branch bubble; an accepted bubble ages dependencies
+without latching those words before their actual fetch cycle.
+
+An idle slice of at least eight RCP cycles can reuse the validated words within
+one `Rsp::run_local` call. A local bitmap records fresh addresses already read
+in that call. Pairing changes still rebuild the entry from those words. The
+slice excludes DMA, shared instructions, and callbacks, and local stores can
+write only DMEM. The bitmap is discarded when the call returns, so the next
+call rereads both IMEM words even when PC has not changed.
+
+`src/rsp/execution.cpp` executes the decoded scalar operation without repeating
+the primary, SPECIAL, and REGIMM decoders. Link branches still test the original
+source value before writing register 31, including when register 31 is the
+source. COP0, COP2, and vector memory instructions retain their existing handlers.
 
 Vector arithmetic snapshots VS and VT before writing VD, then expands the VT
 element selection into eight lanes once for the instruction. This preserves VD
 aliasing with either source. On compile targets with SSE2, the supported add,
-subtract, carry, logic, multiply, and multiply-accumulate operations can use the
-packed path in `src/rsp/vector_sse2.cpp`; other functions use the scalar opcode
-path. Packed host-vector loads and stores use byte-safe copies and convert the
-vector's big-endian 16-bit lane representation explicitly. Element selection
-uses lane shuffles or a broadcast before either source can be overwritten.
+subtract, carry, logic, multiply, multiply-accumulate, absolute-value, compare, clip,
+merge, and accumulator-read operations use the packed path in
+`src/rsp/vector_sse2.cpp`; other functions use the scalar opcode path. Vector
+registers store eight numeric 16-bit lanes in host byte order. SSE2 reads and
+writes those lanes with byte-safe copies. Architectural byte accesses and DMEM
+transfers convert the big-endian byte order at their boundaries. Element
+selection uses lane shuffles or a broadcast before either source can be
+overwritten. The packed dispatcher selects the opcode once; multiplication
+handlers specialize their signedness, accumulator placement, and output slice
+at compile time.
 
 The accumulator is stored as three arrays of eight 16-bit slices. Packed
 multiplication and accumulation propagate carries between the low, middle, and
@@ -63,6 +84,21 @@ slices. VADD and VSUB widen their arithmetic to 32 bits, include the incoming
 carry, and then saturate; their low accumulator slices retain the wrapped sum or
 difference. Mixed signed/unsigned products preserve their raw 32-bit product and
 its required sign extension.
+
+VABS retains the wrapped negation in the low accumulator even when its vector
+result saturates at `0x7fff`. VLT, VEQ, VNE, and VGE use the incoming VCO flags for equality
+ties, write VCCL, clear VCCH and VCO, and preserve VCE. VMRG reads VCCL without
+changing VCC or VCE. VSAW reads the high, middle, or low accumulator for elements
+8, 9, or 10 and returns zero for the remaining element values; it does not change
+the accumulator or flags.
+
+VCH distinguishes a zero sum from a sum of minus one when producing VCO and
+VCE. VCL consumes those flags and preserves the VCC bits that its selected path
+does not update. VCR uses the one's complement of VT for an opposite-sign
+selection. These operations update VD and the low accumulator slice while
+preserving both upper slices. The clip regressions include every element and
+source/destination alias, fixed flag boundaries, and VCH/VCL/VMRG instruction
+chains that consume the resulting VCC.
 
 Reciprocal and reciprocal-square-root estimates use fixed 512-entry tables built
 at compile time. Input normalization, exponent selection, negative-input
@@ -81,11 +117,25 @@ bytes as well as the transferred result.
 
 `tests/rsp/test_pipeline_cache.cpp` changes each fetched word independently,
 exercises address collisions, copies a stalled pipeline, and checks redirects
-and reset. A stalled latched packet remains intact when IMEM changes. The vector
-regressions execute encoded programs with all element selections, both sources
-and the destination sharing a register, and carries through both accumulator
-boundaries. They check destination lanes, flags, and all three accumulator
-slices through scalar VSAR instructions and memory stores.
+and reset. It also checks fresh and latched local-execution decisions and the
+ordering of shared-word checks around a branch bubble. A stalled latched packet
+remains intact when IMEM changes. `test_decoded_execution.cpp` checks the source
+alias on taken and untaken link branches. The vector regressions execute encoded
+programs with all element selections, both sources and the destination sharing
+a register, and carries through both accumulator boundaries. They check
+destination lanes, flags, and all three accumulator slices through VSAW
+instructions and memory stores. `test_vector_compare_sse2.cpp` adds fixed
+expectations for saturation, compare ties, merges, and accumulator reads, plus a
+scalar model across element selections and source aliases.
+
+`test_native_vector_representation.cpp` checks architectural byte order through
+MFC2/MTC2, partial and packed transfers, transpose register groups, and wrapped
+DMEM addresses. It observes arithmetic through stored bytes and checks VMOV's
+scalar path separately from SSE2 across every element and destination lane.
+`tests/cpu/test_rsp_local_window.cpp` compares idle batching with ordinary
+stepping across repeated targets, pairing changes, the short-slice boundary,
+wrapped IMEM pairs, stalled packets, and host edits between calls with and
+without an SP_PC write.
 
 Branches issue alone when they are first in a group. The following delay-slot
 group also issues one instruction. A taken delay slot adds a bubble before the

@@ -36,7 +36,7 @@ class Rsp {
     void execute_group();
 
     struct Vector {
-        std::array<u8, 16> byte{};
+        std::array<u16, 8> lane{};
     };
 
     struct Accumulator {
@@ -95,9 +95,7 @@ class Rsp {
     void dmem_write32(u32 address, u32 value);
 
     [[nodiscard]] u32 fetch_instruction(u32 address) const;
-    void execute_scalar(u32 instruction);
-    void execute_special(u32 instruction);
-    void execute_regimm(u32 instruction);
+    void execute_decoded(u32 instruction, RspPipeline::Operation operation);
     void execute_cop0(u32 instruction);
     void execute_cop2(u32 instruction);
     void execute_vector_op(u32 instruction);
@@ -117,6 +115,10 @@ class Rsp {
     [[nodiscard]] static s16 vec_s16(const Vector& vector, unsigned lane);
     static void vec_set_u16(Vector& vector, unsigned lane, u16 value);
     static void vec_set_s16(Vector& vector, unsigned lane, s16 value);
+    [[nodiscard]] static u8 vec_byte(const Vector& vector, unsigned byte);
+    static void vec_set_byte(Vector& vector, unsigned byte, u8 value);
+    void load_plain_vector(Vector& target, unsigned element, u32 address, unsigned width);
+    void store_plain_vector(u32 address, const Vector& source, unsigned element, unsigned count);
 
     [[nodiscard]] static s16 clamp_s16(s64 value);
     [[nodiscard]] static s64 wrap_accumulator(s64 value);

@@ -1,5 +1,7 @@
 #include "session_internal.hpp"
 
+#include "../tasks/parallel_ranges.hpp"
+
 #include <iostream>
 #include <stdexcept>
 
@@ -14,6 +16,7 @@ Session::Impl::~Impl() {
 }
 
 void Session::Impl::work(std::stop_token stop) {
+    const tasks::ParallelRangesScope render_workers;
     audio_scratch.reserve(1024);
     while (!stop.stop_requested()) {
         std::optional<Command> command;

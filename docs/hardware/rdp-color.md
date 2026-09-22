@@ -20,6 +20,15 @@ uses the first cycle's alpha for comparison. The combiner supports separate
 RGB and alpha selectors, key center/scale, K4/K5 conversion constants, primitive
 LOD fraction, and supplied shade, texel, LOD, and noise inputs.
 
+Each draw prepares its selectors and constant values once. RGB and alpha are
+classified independently. When the multiplier is a constant signed nine-bit
+zero, or A and B resolve to the same input or expanded constant, the equation
+reduces to expanded D. The pixel path then skips the unused terms. Color keying
+still reads A for its RGB bypass and retains the signed 17-bit key result.
+Draw preparation runs again after state changes, so changing a constant does
+not require another `SetCombine` command. Texture and noise input selection
+retains the programmed selectors even when an equation simplifies.
+
 When color keying is enabled, the RGB combiner still evaluates the programmed
 `(A - CENTER) * SCALE` expression at its normal fixed-point precision. Alpha
 fixup interprets each RGB result as signed 17-bit data, subtracts its absolute
@@ -89,6 +98,9 @@ wrapping, color/depth aliases, small framebuffer formats, stride overruns, and
 non-identity RDRAM mappings remain serial, and that separate machines do not
 share task-local bank state.
 
+The [render-worker guide](../frontend/render-workers.md) describes job ownership,
+exception handling, and thread shutdown.
+
 Coverage destination modes clamp, wrap, replace with seven, or preserve the
 framebuffer value. RGBA16 stores the high coverage bit in the pixel and the low
 two bits in hidden memory. RGBA32 stores coverage in the top three bits of its
@@ -129,6 +141,10 @@ as a measured hardware sequence.
 signed intermediates, overflow clamps, cycle feedback, key-window boundaries,
 key RGB bypass, two-cycle key alpha comparison, alpha/coverage behavior,
 blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
+`tests/rdp/test_combiner_plan.cpp` compares prepared execution with the scalar
+equation for every raw selector and randomized states. It also checks equal
+and unequal constants, signed D expansion, key bypass, two-cycle feedback,
+texture swapping, and constants changed between draws.
 `tests/rdp/test_color_rectangle.cpp`
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, keyed alpha rejection/depth ordering, keyed blending,

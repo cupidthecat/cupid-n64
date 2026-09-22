@@ -2,9 +2,11 @@
 
 `Bus::set_save_type(SaveType::Sram)` creates a zero-filled 32 KiB save image if
 the SRAM array is empty. Existing contents and capacity are retained. The
-current host interface exposes the image as `Bus::sram`; banked configurations
-are supplied by resizing or loading that array before accessing the cartridge.
-There is no separate SRAM chip selector or command-line capacity option yet.
+host interface exposes the image as `Bus::sram`. The release runner selects the
+supported capacities with `--save sram32`, `sram96`, or `sram128`, sizes the
+array before loading persistent bytes, and rejects files whose size does not
+match the selected capacity. See [runner hardware configuration](configuration.md)
+and [persistent host storage](storage.md).
 
 ## Address selection
 
@@ -66,9 +68,10 @@ bank aliasing, missing mirrors, and transfers spilling into the next bank.
 Those checks use temporary altered builds; the production decoder already
 passes this coverage and was not changed to satisfy it.
 
-The complete cartridge suite remains part of validation, but it does not supply
-SRAM-specific save/readback tests. Game-level persistence across fresh machine
-instances is still unimplemented under #34. Cartridge configuration (#33),
-shared-memory arbitration, and timed PI payload progress remain unfinished;
-these tests do not establish those behaviors. Issue #31 stays open for the
-remaining save-hardware and persistence requirements.
+Host storage regressions create, flush, destroy, and recreate machines for all
+three SRAM capacities, checking the first and last saved bytes after reload.
+The release runner storage test also starts the runner twice for each capacity
+with a seeded image and verifies its exact size and complete hash after both
+exits. Shared-memory arbitration and timed PI payload progress remain outside
+this SRAM storage coverage; see [PI timing](peripheral-interface.md) for the
+current transfer model.

@@ -2,8 +2,10 @@
 
 The N64 controller bus can carry the GameCube controller protocol used by N64
 homebrew. The core exposes this device as `ControllerDevice::GameCube` and takes
-its inputs through `Bus::set_gamecube_state`. There is no frontend or command-line
-mapping for it yet.
+its inputs through `Bus::set_gamecube_state`. The runner selects it with
+`--controller PORT:gamecube`, using ports 1 through 4. It starts with neutral
+input and no N64 accessory. The desktop input mapper does not yet supply its
+raw button, stick, or trigger state.
 
 The public homebrew interfaces are documented by libdragon's
 [joypad API](https://libdragon.dev/ref/group__joypad.html) and
@@ -83,3 +85,6 @@ needed for that timing and for electrical edge cases.
 analog mode values, exact status/origin/long-read payloads, overflow and NAK
 boundaries, raw button masking, origin reset paths, rumble isolation, hotplug
 and type changes, and SI completion timing in both CPU and RCP clock domains.
+`tests/host/test_gamecube_options.cpp` checks each runner port, rejects incompatible
+N64 accessories and Pak settings, and verifies neutral protocol replies from a
+machine created through the parsed configuration.

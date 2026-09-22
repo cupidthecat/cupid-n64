@@ -57,12 +57,26 @@ operations have separate timing tests.
 
 ## Calling-thread environment
 
-Operations that use host floating-point arithmetic or comparisons save the
-calling thread's environment, install the default environment, and select the
-guest rounding mode. FCSR then controls guest flushing and exception delivery.
-Every return restores the saved host environment, including returns that raise
-a guest exception. Register transfers and MOV copy encoded bits without changing
-the host environment.
+Operations that use host floating-point arithmetic save the calling thread's
+environment, install the default environment, and select the guest rounding
+mode. FCSR then controls guest flushing and exception delivery. Every return
+restores the saved host environment, including returns that raise a guest
+exception. Register transfers and MOV copy encoded bits without changing the
+host environment.
+
+The helper in `src/fpu/host_environment.hpp` skips a separate rounding-mode query
+after saving the full environment. It also skips setting nearest rounding when
+the default environment was installed successfully. A failed default install
+still attempts to set the requested rounding. If saving the full environment
+fails, the fallback saves and restores the rounding mode alone.
+
+Comparisons use integer ordering of the encoded IEEE values after checking for
+NaNs. Both signed zeros compare equal; negative values reverse the unsigned
+ordering of their encodings. Subnormal operands retain their magnitude. Normal
+and infinite ABS/NEG inputs also use only bit operations. These paths leave the
+host environment untouched. Trapping comparisons and exceptional ABS/NEG
+inputs retain an environment scope because exception handling can fetch a
+younger instruction and deliver a host callback while synchronizing that fetch.
 
 This keeps an embedding application's denormal-as-zero setting from changing a
 guest comparison. It also keeps enabled host division traps from terminating the
@@ -78,6 +92,9 @@ x86 denormal/flush controls. It also checks guest division with host traps enabl
 and host-state restoration across arithmetic, comparisons, conversions, and
 guest exceptions. The x86 control-register cases compile on x86 targets; the
 standard floating-point environment checks run on every supported target.
+`test_fpu_host_environment.cpp` checks the helper's failure paths, integer
+comparison predicates and register aliases, and restoration when an exception
+fetch delivers a callback that changes the host environment.
 
 These regressions complement the cartridge suite. Platform results and remaining
 accuracy failures are recorded in [validation results](../testing/validation-results.md).

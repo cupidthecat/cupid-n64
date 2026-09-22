@@ -3,6 +3,8 @@
 #include "cupid/host/storage.hpp"
 #include "cupid/test_report.hpp"
 
+#include "tasks/parallel_ranges.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -47,6 +49,7 @@ void dump_state(const cupid::System& system, const std::array<cupid::u64, 32>& h
 }
 
 int run(std::span<const std::string_view> arguments) {
+    const cupid::tasks::ParallelRangesScope render_workers;
     std::optional<cupid::host::Options> config;
     std::unique_ptr<cupid::System> system;
     try {

@@ -314,15 +314,102 @@ void resolve_alpha(RdpColor& value, RdpCombinerSource source, const RdpColorInpu
     }
 }
 
-ResolvedTerms resolve_prepared_terms(const RdpCombinerPlan& plan, const RdpColorInputs& inputs,
-                                     const RdpColor& combined, unsigned cycle) {
-    ResolvedTerms terms{};
-    for (unsigned term = 0; term < terms.size(); ++term) {
-        terms[term] = plan.cycles[cycle][term].constant;
-        resolve_rgb(terms[term], plan.cycles[cycle][term].rgb, inputs, combined, cycle);
-        resolve_alpha(terms[term], plan.cycles[cycle][term].alpha, inputs, combined);
+bool same_rgb_term(const RdpCombinerTermPlan& first, const RdpCombinerTermPlan& second) {
+    if (first.rgb != second.rgb)
+        return false;
+    if (first.rgb != RdpCombinerSource::Constant)
+        return true;
+    for (unsigned channel = 0; channel < 3; ++channel)
+        if (expand(first.constant[channel]) != expand(second.constant[channel]))
+            return false;
+    return true;
+}
+
+bool same_alpha_term(const RdpCombinerTermPlan& first, const RdpCombinerTermPlan& second) {
+    if (first.alpha != second.alpha)
+        return false;
+    return first.alpha != RdpCombinerSource::Constant ||
+           expand(first.constant[3]) == expand(second.constant[3]);
+}
+
+bool zero_rgb_multiplier(const RdpCombinerTermPlan& term) {
+    if (term.rgb != RdpCombinerSource::Constant)
+        return false;
+    for (unsigned channel = 0; channel < 3; ++channel)
+        if (signed_nine(term.constant[channel]) != 0)
+            return false;
+    return true;
+}
+
+bool zero_alpha_multiplier(const RdpCombinerTermPlan& term) {
+    return term.alpha == RdpCombinerSource::Constant && signed_nine(term.constant[3]) == 0;
+}
+
+RdpColor resolve_prepared_rgb(const RdpCombinerTermPlan& term, const RdpColorInputs& inputs,
+                              const RdpColor& combined, unsigned cycle) {
+    RdpColor value = term.constant;
+    resolve_rgb(value, term.rgb, inputs, combined, cycle);
+    return value;
+}
+
+s32 resolve_prepared_alpha(const RdpCombinerTermPlan& term, const RdpColorInputs& inputs,
+                           const RdpColor& combined) {
+    RdpColor value = term.constant;
+    resolve_alpha(value, term.alpha, inputs, combined);
+    return value[3];
+}
+
+void evaluate_prepared_rgb(CycleResult& result, const RdpCombinerPlan& plan, const RdpColorInputs& inputs,
+                           const RdpColor& combined, unsigned cycle, bool key_enabled) {
+    const auto& terms = plan.cycles[cycle];
+    const auto d = resolve_prepared_rgb(terms[3], inputs, combined, cycle);
+    if (plan.rgb_expression[cycle] == RdpCombinerExpression::DirectD) {
+        for (unsigned channel = 0; channel < 3; ++channel)
+            result.color[channel] = expand(d[channel]);
+        if (!key_enabled)
+            return;
+        const auto a = resolve_prepared_rgb(terms[0], inputs, combined, cycle);
+        for (unsigned channel = 0; channel < 3; ++channel) {
+            result.key_value[channel] = signed_seventeen(128 + result.color[channel] * 256);
+            result.bypass[channel] = a[channel];
+        }
+        return;
     }
-    return terms;
+
+    const auto a = resolve_prepared_rgb(terms[0], inputs, combined, cycle);
+    const auto b = resolve_prepared_rgb(terms[1], inputs, combined, cycle);
+    const auto c = resolve_prepared_rgb(terms[2], inputs, combined, cycle);
+    for (unsigned channel = 0; channel < 3; ++channel) {
+        const s32 expanded_d = expand(d[channel]);
+        const s32 multiplied = (expand(a[channel]) - expand(b[channel])) * signed_nine(c[channel]) + 128;
+        result.color[channel] = (multiplied >> 8) + expanded_d;
+        if (key_enabled) {
+            result.key_value[channel] = signed_seventeen(multiplied + expanded_d * 256);
+            result.bypass[channel] = a[channel];
+        }
+    }
+}
+
+void evaluate_prepared_alpha(CycleResult& result, const RdpCombinerPlan& plan, const RdpColorInputs& inputs,
+                             const RdpColor& combined, unsigned cycle) {
+    const auto& terms = plan.cycles[cycle];
+    const s32 d = expand(resolve_prepared_alpha(terms[3], inputs, combined));
+    if (plan.alpha_expression[cycle] == RdpCombinerExpression::DirectD) {
+        result.color[3] = d;
+        return;
+    }
+    const s32 a = expand(resolve_prepared_alpha(terms[0], inputs, combined));
+    const s32 b = expand(resolve_prepared_alpha(terms[1], inputs, combined));
+    const s32 c = signed_nine(resolve_prepared_alpha(terms[2], inputs, combined));
+    result.color[3] = (((a - b) * c + 128) >> 8) + d;
+}
+
+CycleResult evaluate_prepared_cycle(const RdpCombinerPlan& plan, const RdpColorInputs& inputs,
+                                    const RdpColor& combined, unsigned cycle, bool key_enabled) {
+    CycleResult result;
+    evaluate_prepared_rgb(result, plan, inputs, combined, cycle, key_enabled);
+    evaluate_prepared_alpha(result, plan, inputs, combined, cycle);
+    return result;
 }
 
 CycleResult evaluate_cycle(const ResolvedTerms& terms) {
@@ -374,14 +461,14 @@ RdpCombinedPixel combine_impl(const RdpColorState& state, u64 modes, RdpColorInp
     if (two_cycles) {
         result = cycle(inputs, combined, 0);
         combined = result.color;
-        test_alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled,
-                                 key_alpha(state, result.key_value));
+        const unsigned key = key_enabled ? key_alpha(state, result.key_value) : 0;
+        test_alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled, key);
         std::swap(inputs.texel0, inputs.texel1);
     }
     result = cycle(inputs, combined, 1);
     combined = result.color;
-    const unsigned alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled,
-                                       key_alpha(state, result.key_value));
+    const unsigned key = key_enabled ? key_alpha(state, result.key_value) : 0;
+    const unsigned alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled, key);
     if ((modes & (1ULL << 12U)) != 0) {
         const unsigned clamped = static_cast<unsigned>(clamp_color(combined[3]));
         const unsigned expanded = clamped + ((clamped + 1U) >> 8U);
@@ -415,6 +502,14 @@ RdpCombinerPlan rdp_prepare_combiner(const RdpColorState& state) {
             prepare_rgb_term(prepared, state, term, rgb, primitive, environment);
             prepare_alpha_term(prepared, state, term, alpha, primitive, environment);
         }
+        plan.rgb_expression[cycle] = zero_rgb_multiplier(plan.cycles[cycle][2]) ||
+                                             same_rgb_term(plan.cycles[cycle][0], plan.cycles[cycle][1])
+                                         ? RdpCombinerExpression::DirectD
+                                         : RdpCombinerExpression::Full;
+        plan.alpha_expression[cycle] = zero_alpha_multiplier(plan.cycles[cycle][2]) ||
+                                               same_alpha_term(plan.cycles[cycle][0], plan.cycles[cycle][1])
+                                           ? RdpCombinerExpression::DirectD
+                                           : RdpCombinerExpression::Full;
         plan.uses_noise[cycle] = plan.cycles[cycle][0].rgb == RdpCombinerSource::Noise;
     }
     return plan;
@@ -452,10 +547,10 @@ RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInpu
 
 RdpCombinedPixel rdp_combine_prepared(const RdpColorState& state, const RdpCombinerPlan& plan, u64 modes,
                                       RdpColorInputs inputs, unsigned coverage, unsigned alpha_dither) {
+    const bool key_enabled = (modes & (1ULL << 40U)) != 0;
     return combine_impl(state, modes, inputs, coverage, alpha_dither,
                         [&](const RdpColorInputs& cycle_inputs, const RdpColor& combined, unsigned cycle) {
-                            return evaluate_cycle(
-                                resolve_prepared_terms(plan, cycle_inputs, combined, cycle));
+                            return evaluate_prepared_cycle(plan, cycle_inputs, combined, cycle, key_enabled);
                         });
 }
 

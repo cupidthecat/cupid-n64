@@ -48,6 +48,8 @@ void Rdp::color_triangle() {
     unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
     if ((other_modes_ & (1ULL << 48U)) != 0)
         texture_inputs |= 4U;
+    const bool lod_needed = (texture_inputs & 4U) != 0;
+    const bool one_cycle_texel1_needed = !two_cycles && (texture_inputs & 2U) != 0;
     const unsigned tile = static_cast<unsigned>(command >> 48U) & 7U;
     const unsigned maximum_level = static_cast<unsigned>(command >> 51U) & 7U;
     const s32 direction = geometry.left_major ? 1 : -1;
@@ -64,10 +66,8 @@ void Rdp::color_triangle() {
             for (unsigned i = 0; i < base.size(); ++i)
                 base[i] = rdp_varying_base(attributes[i], origin);
             const auto divide = [&](const std::array<s16, 3>& stw, bool& overflow) {
-                return perspective
-                           ? RdpTexturePoint{rdp_perspective_coordinate_wide(stw[0], stw[2], overflow),
-                                             rdp_perspective_coordinate_wide(stw[1], stw[2], overflow)}
-                           : RdpTexturePoint{stw[0], stw[1]};
+                return perspective ? rdp_perspective_point(stw[0], stw[1], stw[2], overflow)
+                                   : RdpTexturePoint{stw[0], stw[1]};
             };
             const auto texture_point = [&](s32 dx, bool next_y, bool& overflow) {
                 std::array<s16, 3> stw{};
@@ -81,7 +81,7 @@ void Rdp::color_triangle() {
             };
             const s32 lod_length = geometry.left_major ? static_cast<s32>(span.end) - origin.x
                                                        : origin.x - static_cast<s32>(span.start);
-            const bool lookahead_row = !two_cycles && (texture_inputs & 2U) != 0 && lod_length >= 8 &&
+            const bool lookahead_row = one_cycle_texel1_needed && lod_length >= 8 &&
                                        !scissor_field_enabled_ &&
                                        rdp_triangle_span(geometry, scissor, y + 1U).valid;
             RdpTexturePoint next_row_point{};
@@ -104,10 +104,15 @@ void Rdp::color_triangle() {
                 if (texture_inputs != 0) {
                     bool overflow = false;
                     const auto point = texture_point(dx, false, overflow);
-                    const auto next_x = texture_point(dx + direction, false, overflow);
-                    const auto next_y = texture_point(dx, true, overflow);
-                    const auto next_pixel =
-                        lookahead_row && step == span.end - span.start ? next_row_point : next_x;
+                    RdpTexturePoint next_x{};
+                    RdpTexturePoint next_y{};
+                    RdpTexturePoint next_pixel{};
+                    if (lod_needed || one_cycle_texel1_needed)
+                        next_x = texture_point(dx + direction, false, overflow);
+                    if (lod_needed)
+                        next_y = texture_point(dx, true, overflow);
+                    if (one_cycle_texel1_needed)
+                        next_pixel = lookahead_row && step == span.end - span.start ? next_row_point : next_x;
                     inputs = sample_color_textures({point, next_x, next_y, next_pixel, overflow}, tile,
                                                    texture_inputs, maximum_level);
                 }
