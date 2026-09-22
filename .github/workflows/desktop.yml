@@ -1,0 +1,72 @@
+name: Desktop validation
+
+on:
+  push:
+    branches: [main, feature/n64-hardware-accuracy]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows desktop
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install formatter
+        run: |
+          python -m venv .work/format
+          .work/format/Scripts/python.exe -m pip install clang-format==22.1.0
+      - name: Run local validation entry point
+        run: >-
+          python tools/ci/validate.py --desktop --build-dir build-desktop
+          --generator "Visual Studio 17 2022" --jobs 2
+          --clang-format .work/format/Scripts/clang-format.exe
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-desktop-validation
+          path: build-desktop/validation/
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux desktop sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends libasound2-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libudev-dev
+          python3 -m venv .work/format
+          .work/format/bin/python -m pip install clang-format==22.1.0
+      - name: Run local validation entry point
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: >-
+          python3 tools/ci/validate.py --desktop --sanitizers --config RelWithDebInfo
+          --build-dir build-desktop-sanitize --compiler clang++ --jobs 2
+          --clang-format .work/format/bin/clang-format
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-desktop-sanitizer-validation
+          path: build-desktop-sanitize/validation/
+          if-no-files-found: error
+          retention-days: 14
