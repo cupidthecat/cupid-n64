@@ -55,6 +55,11 @@ An unsupported successor keeps the first instruction on ordinary stepping to
 avoid setting up a one-instruction slice. Supported successors still undergo
 their live register, memory, and trap checks when they reach issue.
 
+The first instruction uses the checks completed after device clocks settle.
+Each following instruction is checked before the next loop iteration. This
+avoids repeating the first instruction's preflight while retaining the checks
+needed after a host callback or a preceding load changes its operands.
+
 The cached decoder is derived from the instruction cache. A line plan records
 the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
 when that image changes. The instruction at `pc` must also match the word already

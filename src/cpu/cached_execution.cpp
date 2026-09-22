@@ -611,33 +611,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const u64 initial_rcp_phase = system_.rcp_fraction_;
     u64 shadow_rcp_phase = initial_rcp_phase;
     [[maybe_unused]] u64 local_rsp_ticks = 0;
+    const CachedDecode* accepted = &settled_first;
     unsigned steps = 0;
-    while (steps < amount) {
-        if (!fetched_instruction_.valid || fetched_instruction_.address != pc)
-            break;
-        const u64 line_base = pc & ~31ULL;
-        if (active_plan == nullptr || line_base != active_line_base) {
-            active_plan = cached_line_plan(pc);
-            if (active_plan == nullptr)
-                break;
-            active_line_base = line_base;
-            active_line_index = static_cast<unsigned>((pc >> 5) & 511U);
-        }
-        current_word = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)].word;
-        if (current_word != fetched_instruction_.instruction)
-            break;
-        const auto& decoded = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
-        if (decoded.kind == CachedKind::Unsupported ||
-            (pending_load_register_ != 0 && (decoded.integer_reads & (1U << pending_load_register_)) != 0) ||
-            fpu_issue_hazard(decoded) || !cop1_ready(decoded) || !data_hit(decoded))
-            break;
-        if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
-            prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;
-        else if (!cached_word(next_pc, prefetched_word))
-            break;
-        if (branches_to_self(current_word, pc) && prefetched_word == 0)
-            break;
-
+    for (;;) {
+        const auto& decoded = *accepted;
         u64 next_rcp_phase = shadow_rcp_phase;
         bool run_rsp_tick = false;
         if (run_rsp_locally) {
@@ -676,6 +653,36 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         }
         shadow_rcp_phase = next_rcp_phase;
         ++steps;
+        if (steps == amount)
+            break;
+
+        if (!fetched_instruction_.valid || fetched_instruction_.address != pc)
+            break;
+        const u64 line_base = pc & ~31ULL;
+        if (active_plan == nullptr || line_base != active_line_base) {
+            active_plan = cached_line_plan(pc);
+            if (active_plan == nullptr)
+                break;
+            active_line_base = line_base;
+            active_line_index = static_cast<unsigned>((pc >> 5) & 511U);
+        }
+        current_word = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)].word;
+        if (current_word != fetched_instruction_.instruction)
+            break;
+        const auto& next_decoded = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
+        if (next_decoded.kind == CachedKind::Unsupported ||
+            (pending_load_register_ != 0 &&
+             (next_decoded.integer_reads & (1U << pending_load_register_)) != 0) ||
+            fpu_issue_hazard(next_decoded) || !cop1_ready(next_decoded) || !data_hit(next_decoded))
+            break;
+        if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
+            prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;
+        else if (!cached_word(next_pc, prefetched_word))
+            break;
+        if (branches_to_self(current_word, pc) && prefetched_word == 0)
+            break;
+
+        accepted = &next_decoded;
     }
 
     if (steps == 0) {
