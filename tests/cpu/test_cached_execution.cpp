@@ -4,6 +4,7 @@
 
 #include <array>
 #include <initializer_list>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -756,4 +757,57 @@ TEST(cpu_cached_memory_keeps_alignment_and_external_doubleword_faults_before_cac
         if (!external_doubleword)
             CHECK_EQ(batched.cpu.cp0[13] & 0x7cU, static_cast<u32>(Exception::AddressStore) << 2U);
     }
+}
+
+TEST(cpu_cached_line_plan_rechecks_instruction_edits_at_video_callback_boundaries) {
+    auto machines = std::make_unique<std::array<System, 2>>();
+    auto& [batched, stepped] = *machines;
+    std::array<std::vector<Observation>, 2> observations;
+    for (unsigned index = 0; index < machines->size(); ++index) {
+        auto& system = (*machines)[index];
+        prepare(system, {immediate(0x09, 8, 8, 1), immediate(0x0d, 0, 9, 1), 0U, 0U, 0U, 0U, 0U, 0U,
+                         immediate(0x09, 10, 10, 1), immediate(0x05, 8, 0, -10), 0U});
+        warm_instruction_cache_line(system, code);
+        warm_instruction_cache_line(system, code + 32);
+        short_video(system);
+        system.bus.set_video_output([&system, &output = observations[index]](VideoField) {
+            output.push_back({system.cpu.cycles, system.cpu.pc, system.cpu.gpr[9], system.cpu.gpr[10]});
+            auto& first = system.cpu.instruction_cache[(code >> 5) & 511U];
+            auto& second = system.cpu.instruction_cache[((code + 32) >> 5) & 511U];
+            write_be32(first.data.data() + 4, immediate(0x0d, 0, 9, 7));
+            write_be32(second.data.data(), immediate(0x09, 10, 10, 3));
+        });
+    }
+    compare_slice(batched, stepped, 8192);
+    CHECK(!observations[0].empty());
+    CHECK(observations[0] == observations[1]);
+    CHECK_EQ(batched.cpu.gpr[9], 7U);
+    CHECK(batched.cpu.batched_cached_instructions() != 0);
+}
+
+TEST(cpu_cached_line_plan_keeps_stale_icache_during_rsp_dma_to_code) {
+    auto machines = std::make_unique<std::array<System, 2>>();
+    auto& [batched, stepped] = *machines;
+    for (auto* system : {&batched, &stepped}) {
+        prepare(*system,
+                {immediate(0x09, 8, 8, 1), immediate(0x0e, 8, 9, 0x55), immediate(0x05, 8, 0, -3), 0U});
+        warm_instruction_cache_line(*system, code);
+        system->cpu.write_cop0(12, 0x34000401U);
+        system->cpu.step();
+        constexpr std::array<u32, 6> rsp_program{
+            0x24010000U, // ADDIU at,zero,0.
+            0x40810000U, // MTC0 at,SP_MEM_ADDR.
+            0x24011000U, // ADDIU at,zero,0x1000.
+            0x40810800U, // MTC0 at,SP_DRAM_ADDR.
+            0x2401001fU, // ADDIU at,zero,31.
+            0x40811800U, // MTC0 at,SP_WR_LEN; four beats replace the backing code with zeroes.
+        };
+        for (unsigned index = 0; index < rsp_program.size(); ++index)
+            system->bus.write(0x04001000U + index * 4U, 4, rsp_program[index]);
+        system->rsp.write_register(0x10, 1); // Start the DMA from inside the coupled CPU slice.
+    }
+    compare_slice(batched, stepped, 128);
+    CHECK_EQ(batched.bus.memory.read(0x1000, 8), 0U);
+    CHECK(batched.cpu.gpr[8] > 1U);
+    CHECK_EQ(batched.cpu.batched_cached_instructions(), 128U);
 }

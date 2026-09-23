@@ -79,7 +79,10 @@ latched by the preceding fetch. That comparison is repeated after device clocks
 are settled and before every retired instruction. The next instruction word is
 read from the live cache before it is latched. These guards preserve an older
 latched word even if software or a test changes the cache line and later restores
-the same byte image.
+the same byte image. Regressions also edit both active cache lines from video
+callbacks and start an SP DMA to cached code from inside a coupled CPU slice.
+The latter must retain the old instruction-cache contents while the backing
+RDRAM changes, with the same results as single-instruction execution.
 
 Before batching, the CPU obtains a bound on the remaining device time. An
 existing deferred interval can be reused while the RSP is halted, its deadline
