@@ -104,6 +104,53 @@ void continue_steps(System& first, System& second) {
 }
 } // namespace
 
+TEST(cpu_cached_coupled_rsp_local_budget_stops_at_taken_branch_and_interrupt) {
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        for (unsigned budget : {1U, 2U, 3U, 5U, 7U, 16U, 31U, 64U}) {
+            System batched, stepped;
+            for (auto* system : {&batched, &stepped}) {
+                hot_loop(*system, phase);
+                // The fallthrough has only NOPs; the taken target raises SP.
+                // Looking past the branch would postpone interrupt acceptance.
+                system->bus.write(0x04001000U, 4, 0x24010010U); // ADDIU at,zero,SET_INTR.
+                system->bus.write(0x04001004U, 4, 0x1000000eU); // BEQ zero,zero,0x40.
+                system->bus.write(0x04001040U, 4, 0x40812000U); // MTC0 at,SP_STATUS.
+                system->bus.write(0x04001044U, 4, 0x40026000U); // MFC0 v0,DPC_CLOCK.
+                system->bus.write(0x04001048U, 4, 0xac020080U); // SW v0,0x80(zero).
+                system->bus.write(0x0400104cU, 4, 0x0000000dU); // BREAK.
+                system->rsp.write_register(0x10, 1U);
+                CHECK(system->rsp.memory.imem_trusted());
+            }
+            compare_slice(batched, stepped, 64, budget);
+            continue_steps(batched, stepped);
+            CHECK(batched.cpu.batched_cached_instructions() != 0U || budget == 1U);
+            CHECK_EQ(batched.bus.read(0x04000080U, 4), stepped.bus.read(0x04000080U, 4));
+        }
+    }
+}
+
+TEST(cpu_cached_coupled_rsp_local_budget_revalidates_unchanged_entry_after_imem_write) {
+    for (unsigned offset : {4U, 8U, 60U}) {
+        System batched, stepped;
+        for (auto* system : {&batched, &stepped}) {
+            hot_loop(*system, 0);
+            system->bus.write(0x04001000U, 4, 0x24010010U); // ADDIU at,zero,SET_INTR.
+            system->rsp.write_register(0x10, 1U);
+        }
+        compare_slice(batched, stepped, 96);
+        CHECK(batched.cpu.batched_cached_instructions() > 32U);
+        for (auto* system : {&batched, &stepped}) {
+            system->rsp.write_pc(0);
+            // The first word and its dependency metadata are unchanged.
+            system->bus.write(0x04001000U + offset, 4, 0x40812000U); // MTC0 at,SP_STATUS.
+            CHECK(system->rsp.memory.imem_trusted());
+        }
+        compare_slice(batched, stepped, 96);
+        continue_steps(batched, stepped);
+        CHECK(batched.bus.interrupt_pending());
+    }
+}
+
 TEST(cpu_cached_coupled_rsp_ignores_irq_cleared_before_divide_retirement) {
     for (unsigned phase = 0; phase < 3; ++phase) {
         System batched, stepped;

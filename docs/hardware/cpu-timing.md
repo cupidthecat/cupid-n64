@@ -79,7 +79,10 @@ latched by the preceding fetch. That comparison is repeated after device clocks
 are settled and before every retired instruction. The next instruction word is
 read from the live cache before it is latched. These guards preserve an older
 latched word even if software or a test changes the cache line and later restores
-the same byte image.
+the same byte image. Regressions also edit both active cache lines from video
+callbacks and start an SP DMA to cached code from inside a coupled CPU slice.
+The latter must retain the old instruction-cache contents while the backing
+RDRAM changes, with the same results as single-instruction execution.
 
 Before batching, the CPU obtains a bound on the remaining device time. An
 existing deferred interval can be reused while the RSP is halted, its deadline
@@ -93,14 +96,18 @@ elapsed cycles, including issue waits and arithmetic latency. A multicycle
 instruction that would reach an event is left to ordinary stepping.
 
 When the RSP is running and the CPU can accept an RCP interrupt, each accepted
-CPU instruction retires before its corresponding RSP cycles advance. A shadow
+CPU instruction retires before its corresponding shared RSP operations advance. A shadow
 of the 2:3 clock phase supplies the complete RSP quota, including cycles spent
 on a CPU issue wait or floating-point operation. The next CPU instruction can
 remain in the slice after shared SP/DP register accesses, BREAK, single-step,
 or a direct SP PC change. Those operations use the ordinary RSP issue path.
 
-`src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each RSP
-tick. The tick transfers any due DMA row before issuing its RSP instruction.
+Local RSP work may execute ahead within a checkpointed interval. Shared accesses
+and output callbacks restore the RSP to the observed clock, as described in
+[RCP scheduling](rcp-scheduling.md).
+
+`src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each shared
+RSP tick. The tick transfers any due DMA row before issuing its RSP instruction.
 Shared-register reads and RDRAM accesses therefore retain their ordinary clock
 values. At slice exit, peripherals advance once for the elapsed span without
 repeating the shared clocks or RSP work.

@@ -71,9 +71,10 @@ void System::advance_deferred(u64 cpu_cycles) {
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
     deferred_rcp_ += whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
-    if (deferred_rcp_ < defer_limit_ && !bus.schedule_dirty_ && !rsp.running() &&
-        bus.pending_outputs_.empty() && cpu.next_buffered_write() == 0)
+    if (deferred_rcp_ < defer_limit_ && !bus.schedule_dirty_ && (!rsp.running() || rsp.lead() != 0) &&
+        bus.pending_outputs_.empty() && cpu.next_buffered_write() == 0) {
         return;
+    }
     settle_deferred();
 }
 
@@ -132,8 +133,8 @@ void System::settle_deferred() {
     }
     // VI lines count even without refresh or a presentation callback, so they bound
     // the deferral alongside the cached schedule and the RSP's DMA rows. A running
-    // RSP never defers, so its limit is only worked out once it halts.
-    if (rsp.running()) {
+    // RSP defers only across local work it has already executed.
+    if (rsp.running() && !rsp_lead_enabled_) {
         defer_limit_ = 0;
     } else {
         settle_peripherals();
@@ -141,9 +142,34 @@ void System::settle_deferred() {
             event_gap_ = bus.next_event();
             event_valid_ = true;
         }
-        defer_limit_ = std::min(std::min(event_gap_, bus.next_vi_line()), rsp.next_dma_event());
+        const u64 rsp_bound = rsp_defer_bound(event_gap_);
+        defer_limit_ =
+            rsp_bound == 0 ? 0 : std::min({event_gap_, bus.next_vi_line(), rsp.next_dma_event(), rsp_bound});
     }
     settling_ = false;
+}
+
+u64 System::rsp_defer_bound(u64 event_gap) {
+    if (!rsp.running())
+        return std::numeric_limits<u64>::max();
+    if (!rsp_lead_enabled_)
+        return 0;
+    // Ending the lead by the next device event lets output callbacks at that
+    // event find the RSP on the shared clock without a replay.
+    rsp.run_ahead(std::min(rsp_lead_cycles, event_gap));
+    // The cycle after the lead holds a shared instruction, a DMA row, or more
+    // local work that has not run yet. Settlement must reach it in order.
+    return rsp.lead() == 0 ? 0 : rsp.lead() + 1;
+}
+
+void System::synchronize_rsp() {
+    if (rsp.lead() == 0)
+        return;
+    const bool settling = settling_;
+    settling_ = true;
+    rsp.rewind_lead();
+    settling_ = settling;
+    defer_limit_ = 0;
 }
 
 void System::settle_peripherals() {
@@ -191,8 +217,10 @@ void System::finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced) {
     }
     if (bus.take_schedule_change())
         event_valid_ = false;
+    const u64 event_gap = bus.next_event();
+    const u64 rsp_bound = rsp_defer_bound(event_gap);
     defer_limit_ =
-        rsp.running() ? 0 : std::min(std::min(bus.next_event(), bus.next_vi_line()), rsp.next_dma_event());
+        rsp_bound == 0 ? 0 : std::min({event_gap, bus.next_vi_line(), rsp.next_dma_event(), rsp_bound});
     settling_ = false;
 }
 

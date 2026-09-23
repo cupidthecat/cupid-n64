@@ -201,6 +201,35 @@ consumer. `Rsp::step()` processes one issue, dependency stall or branch bubble;
 `Rsp::tick()` advances SP DMA and can spend a pending branch bubble while halted.
 `System::advance()` orders these cycles with the other devices.
 
+`src/rsp/local_execution.cpp` groups consecutive operand bubbles, preserving
+the fetched packet when a slice ends inside a stall. Branch bubbles remain
+separate from instruction fetch, and DMA transfer cycles use ordinary stepping.
+`tests/rsp/test_bulk_stalls.cpp` compares grouped waits with single-cycle
+progression and checks machine state across partial slices.
+
+With trusted IMEM, `src/rsp/local_blocks.cpp` caches straight-line blocks of up
+to 16 instructions. Each block records its issue pairs, operand-stall cost,
+and outgoing dependency history. Its key includes the IMEM revision, all three
+incoming dependency stages, and the single-issue restriction. An interior IMEM
+write invalidates the block even when its entry instruction stays unchanged.
+
+Branches and COP0 operations end a block. Execution uses a cached block only
+when the complete cycle cost fits before the next scheduling boundary; partial
+blocks use ordinary fetch and issue processing. The accepted instructions cannot
+observe PC, so its updates can be deferred until block exit. DMA still advances
+through the enclosing local-execution interval. The local-block regressions
+check partial slices, wrapped stores, blocks crossing the end of IMEM, interior
+IMEM writes, incoming vector hazards, and the single-issue restriction after a
+taken branch. Reusing the wrong pipeline state would execute BREAK too early.
+
+When local RSP execution runs ahead of the shared clock, its checkpoint retains
+the latched instruction words, decoded operations, and decode-cache revision.
+An IMEM edit can leave an old instruction waiting in the pipeline while a later
+loop iteration fetches its replacement into the same cache slot. Rewinding to
+the checkpoint restores the old latched fetch; subsequent fetches still validate
+against IMEM. The regression in `tests/cpu/test_cached_rsp_ordering.cpp` checks
+this case across all three CPU/RCP clock phases and partial CPU slices.
+
 The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
 DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved
 SPECIAL fields, and control changes. Halt/resume fixtures check BREAK interrupts,

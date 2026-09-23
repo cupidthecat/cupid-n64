@@ -76,6 +76,9 @@ class RspPipeline {
     [[nodiscard]] LocalIssue local_issue();
     void fetch(u32 first, u32 second, bool single_step, u32 address = 0);
     [[nodiscard]] bool advance_operand_wait();
+    // Consume only operand bubbles, leaving the fetched packet pending at a
+    // scheduling boundary. The returned count never includes its issue cycle.
+    [[nodiscard]] unsigned advance_operand_wait(unsigned maximum_cycles);
     [[nodiscard]] unsigned size() const {
         return count_;
     }
@@ -118,6 +121,7 @@ class RspPipeline {
         u32 scalar_result{};
         u32 vector_result{};
         bool load{};
+        bool operator==(const Stage&) const = default;
     };
 
     struct DecodedFetch {
@@ -134,6 +138,33 @@ class RspPipeline {
         u8 flags{};
     };
     static_assert(sizeof(DecodedFetch) == 32);
+
+    // Preserve the latched fetch even if a later fetch replaces its cache slot.
+    struct Snapshot {
+        DecodedFetch fetched{};
+        u64 revision{};
+        std::array<Stage, 3> previous{};
+        unsigned current_index{};
+        unsigned count{};
+        bool single_issue{};
+        bool branch_wait{};
+    };
+
+    [[nodiscard]] Snapshot snapshot() const {
+        return {current_fetch(), decoded_revision_[current_index_],
+                previous_,       current_index_,
+                count_,          single_issue_,
+                branch_wait_};
+    }
+    void restore(const Snapshot& snapshot) {
+        decoded_[snapshot.current_index] = snapshot.fetched;
+        decoded_revision_[snapshot.current_index] = snapshot.revision;
+        previous_ = snapshot.previous;
+        current_index_ = snapshot.current_index;
+        count_ = snapshot.count;
+        single_issue_ = snapshot.single_issue;
+        branch_wait_ = snapshot.branch_wait;
+    }
 
     struct DecodedWord {
         Ports ports{};

@@ -2,6 +2,7 @@
 
 #include "fpu/binary_arithmetic.hpp"
 #include "fpu/host_environment.hpp"
+#include "fpu/integer_conversion.hpp"
 
 #include <bit>
 #include <cfenv>
@@ -688,6 +689,28 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             write_result_doubleword(fd, result);
         }
         return;
+    }
+
+    if ((format == 0x10U || format == 0x11U) &&
+        ((function >= 0x08U && function <= 0x0fU) || function == 0x24U || function == 0x25U)) {
+        const bool fixed_rounding = function < 0x10U;
+        const bool long_result = fixed_rounding ? function < 0x0cU : function == 0x25U;
+        const unsigned rounding = fixed_rounding ? function & 3U : control & 3U;
+        const auto result =
+            format == 0x10U
+                ? fpu_host::integer_from_bits<23, 8, 127>(source_word(fs), long_result, rounding)
+                : fpu_host::integer_from_bits<52, 11, 1023>(source_doubleword(fs), long_result, rounding);
+        if (result && (!result->inexact || (control & (1U << 7U)) == 0)) {
+            clear_causes();
+            cpu_.add_cycles(4);
+            if (result->inexact)
+                static_cast<void>(signal_maskable(0));
+            if (long_result)
+                write_result_doubleword(fd, result->bits);
+            else
+                write_result_word(fd, static_cast<u32>(result->bits));
+            return;
+        }
     }
 
     fpu_host::ScopedEnvironment environment(host_rounding(control & 3U));

@@ -307,11 +307,15 @@ bool RspPipeline::can_pair(const Ports& first, const Ports& second) {
 
 bool RspPipeline::instruction_is_local(u32 word) {
     if ((word >> 26U) == 0x10U) {
-        // DMA rows and device events bound these constant register reads. SP status
-        // and semaphore retain synchronization; DP clock depends on elapsed time.
+        // DMA rows and device events bound these constant register reads. Other
+        // SP status changes come from shared writes. The semaphore read has a side
+        // effect and DP clock depends on elapsed time. The pending DMA addresses
+        // stay private until a length write starts the transfer.
         const unsigned operation = (word >> 21U) & 31U;
         const unsigned index = (word >> 11U) & 15U;
-        return operation == 0U && index != 4U && index != 7U && index != 12U;
+        if (operation == 4U)
+            return index == 0U || index == 1U;
+        return operation == 0U && index != 7U && index != 12U;
     }
     return (word & 0xfc00003fU) != 0x0000000dU;
 }
@@ -526,6 +530,45 @@ bool RspPipeline::advance_operand_wait() {
         return false;
     advance({});
     return true;
+}
+
+unsigned RspPipeline::advance_operand_wait(unsigned maximum_cycles) {
+    const auto& fetched = current_fetch();
+    const auto& current = fetched.ports;
+    unsigned waits = 0;
+    if ((current.vector_reads & previous_[0].vector_result) != 0U)
+        waits = 3;
+    else if ((current.scalar_reads & previous_[0].scalar_result) != 0U ||
+             (current.vector_reads & previous_[1].vector_result) != 0U)
+        waits = 2;
+    else if ((current.scalar_reads & previous_[1].scalar_result) != 0U ||
+             (current.vector_reads & previous_[2].vector_result) != 0U)
+        waits = 1;
+
+    // A load one cycle back blocks a store. If both preceding stages are
+    // loads, the second load moves into that stage after the first bubble.
+    if ((fetched.flags & store) != 0U) {
+        if (waits == 0U && previous_[1].load)
+            waits = 1;
+        if (waits == 1U && previous_[0].load)
+            waits = 2;
+    }
+    const unsigned elapsed = waits < maximum_cycles ? waits : maximum_cycles;
+    switch (elapsed) {
+    case 3:
+        previous_ = {};
+        break;
+    case 2:
+        previous_[2] = previous_[0];
+        previous_[1] = previous_[0] = {};
+        break;
+    case 1:
+        advance({});
+        break;
+    default:
+        break;
+    }
+    return elapsed;
 }
 
 void RspPipeline::retire(bool taken_delay_slot, u32 next_pc) {

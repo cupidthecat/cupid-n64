@@ -29,6 +29,7 @@ u64 System::cached_private_event_cycles() {
     // edges. An RCP-interruptible slice advances shared RSP operations in order;
     // a masked slice catches them up through the ordinary scheduler before returning.
     const u64 rcp_cycles = std::min(bus.next_event(), bus.next_vi_line());
+    coupled_event_gap_ = rcp_cycles;
     return cpu_cycles_for_rcp(rcp_cycles);
 }
 
