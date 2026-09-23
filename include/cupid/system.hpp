@@ -59,18 +59,23 @@ class System {
     u64 rcp_fraction_{};
     u64 event_gap_{};
     bool event_valid_{};
+    // Set only while Cpu::run_slice owns the machine. Host code outside a slice
+    // always sees the RSP at the shared clock.
+    bool rsp_lead_enabled_{};
+    static constexpr u64 rsp_lead_cycles = 1024;
+    // RCP cycles from the shared clock to the edge that bounds a coupled CPU slice.
+    u64 coupled_event_gap_{};
     void advance_deferred(u64 cpu_cycles);
     void settle_deferred();
     void settle_peripherals();
+    [[nodiscard]] u64 rsp_defer_bound(u64 event_gap);
+    void synchronize_rsp();
     [[nodiscard]] u64 cpu_cycles_for_rcp(u64 rcp_cycles) const;
     [[nodiscard]] bool reusable_deferred_event_cycles(u64& cpu_cycles) const;
     [[nodiscard]] u64 idle_loop_event_cycles();
     [[nodiscard]] u64 cached_private_event_cycles();
     [[nodiscard]] u64 run_local_rsp_for_idle(u64 maximum_cpu_cycles);
     void advance_cached_rsp_ticks(u64 rcp_cycles);
-    [[nodiscard]] u64 local_rsp_cycle_budget(u64 maximum_cycles) {
-        return rsp.local_cycle_budget(maximum_cycles);
-    }
     void finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced = false);
     bool pif_loaded_{};
 };

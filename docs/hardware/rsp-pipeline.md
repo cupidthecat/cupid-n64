@@ -201,17 +201,19 @@ consumer. `Rsp::step()` processes one issue, dependency stall or branch bubble;
 `Rsp::tick()` advances SP DMA and can spend a pending branch bubble while halted.
 `System::advance()` orders these cycles with the other devices.
 
-`src/rsp/local_execution.cpp` groups consecutive operand bubbles during local
-execution. It shifts the same three dependency stages and leaves the fetched
-packet pending if the cycle budget ends inside a stall. Branch bubbles remain
-separate from instruction fetch, and the DMA transfer cycle stays on ordinary
-stepping. The local cycle lookahead described in [CPU timing](cpu-timing.md)
-lets interruptible cached CPU slices use this path without advancing shared
-RSP operations early.
+`src/rsp/local_execution.cpp` groups consecutive operand bubbles, preserving
+the fetched packet when a slice ends inside a stall. Branch bubbles remain
+separate from instruction fetch, and DMA transfer cycles use ordinary stepping.
+`tests/rsp/test_bulk_stalls.cpp` compares grouped waits with single-cycle
+progression and checks machine state across partial slices.
 
-`tests/rsp/test_bulk_stalls.cpp` compares bounded bubble consumption with
-single-cycle progression, including the following packet's dependencies, and
-checks machine state at every slice length from one through 32 CPU cycles.
+When local RSP execution runs ahead of the shared clock, its checkpoint retains
+the latched instruction words, decoded operations, and decode-cache revision.
+An IMEM edit can leave an old instruction waiting in the pipeline while a later
+loop iteration fetches its replacement into the same cache slot. Rewinding to
+the checkpoint restores the old latched fetch; subsequent fetches still validate
+against IMEM. The regression in `tests/cpu/test_cached_rsp_ordering.cpp` checks
+this case across all three CPU/RCP clock phases and partial CPU slices.
 
 The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
 DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved

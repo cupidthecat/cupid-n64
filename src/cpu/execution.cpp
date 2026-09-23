@@ -30,6 +30,17 @@ void Cpu::advance_batched_instruction_counters(unsigned instructions) {
 }
 
 unsigned Cpu::run_slice(unsigned maximum_steps, u64 maximum_cycles) {
+    struct LeadScope {
+        System& system;
+        explicit LeadScope(System& selected) : system(selected) {
+            system.rsp_lead_enabled_ = true;
+        }
+        ~LeadScope() {
+            system.synchronize_rsp();
+            system.rsp_lead_enabled_ = false;
+        }
+    } lead_scope{system_};
+
     const u64 start = cycles;
     unsigned steps = 0;
     while (steps < maximum_steps && cycles - start < maximum_cycles && !frozen) {

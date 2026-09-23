@@ -74,10 +74,7 @@ needed after a host callback or a preceding load changes its operands.
 
 The cached decoder is derived from the instruction cache. A line plan records
 the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
-when that image changes. Each line is validated on its first visit in a slice.
-Accepted instructions cannot change I-cache, and callbacks end the slice, so
-revisiting the same line within that slice reuses the validation. The instruction
-at `pc` must also match the word already
+when that image changes. The instruction at `pc` must also match the word already
 latched by the preceding fetch. That comparison is repeated after device clocks
 are settled and before every retired instruction. The next instruction word is
 read from the live cache before it is latched. These guards preserve an older
@@ -102,13 +99,9 @@ on a CPU issue wait or floating-point operation. The next CPU instruction can
 remain in the slice after shared SP/DP register accesses, BREAK, single-step,
 or a direct SP PC change. Those operations use the ordinary RSP issue path.
 
-The CPU can defer cycles that contain only local RSP packets. A conservative
-lookahead counts at most 64 packets, stopping at a branch, pending delay slot,
-or shared operation. Each packet needs at least one RSP cycle; operand stalls
-can only delay it. DMA limits the interval to before the next row transfer.
-Trusted IMEM caches this bound with its instruction revision, including writes
-that leave the first packet unchanged. Untrusted or stale latched packets allow
-only one local cycle. Remaining local work is completed before leaving the slice.
+Local RSP work may execute ahead within a checkpointed interval. Shared accesses
+and output callbacks restore the RSP to the observed clock, as described in
+[RCP scheduling](rcp-scheduling.md).
 
 `src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each shared
 RSP tick. The tick transfers any due DMA row before issuing its RSP instruction.

@@ -16,6 +16,8 @@ u64 Bus::read(u32 physical, unsigned width_bytes) {
     // Register and cartridge reads may start busy periods the schedule does not know
     // about yet. The next CPU cycle re-evaluates how far the devices can lag.
     forget_deferral_limit();
+    if (physical <= 0x040bffffU)
+        system_.synchronize_rsp();
     if (width_bytes == 8) {
         system_.cpu.frozen = true;
         return 0;
@@ -52,6 +54,10 @@ void Bus::write(u32 physical, unsigned width_bytes, u64 value) {
         write_rdram(physical, width_bytes, value);
         return;
     }
+
+    // SP state and the RDP command registers are the RSP's local inputs.
+    if (physical <= 0x040bffffU || (physical >= 0x04100000U && physical <= 0x042fffffU))
+        system_.synchronize_rsp();
 
     if (physical >= 0x04000000U && physical <= 0x0403ffffU) {
         forget_deferral_limit();

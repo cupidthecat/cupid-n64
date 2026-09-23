@@ -135,9 +135,35 @@ class RspPipeline {
         u8 count{};
         bool issued_local{};
         u8 flags{};
-        u8 local_cycles{};
     };
     static_assert(sizeof(DecodedFetch) == 32);
+
+    // Preserve the latched fetch even if a later fetch replaces its cache slot.
+    struct Snapshot {
+        DecodedFetch fetched{};
+        u64 revision{};
+        std::array<Stage, 3> previous{};
+        unsigned current_index{};
+        unsigned count{};
+        bool single_issue{};
+        bool branch_wait{};
+    };
+
+    [[nodiscard]] Snapshot snapshot() const {
+        return {current_fetch(), decoded_revision_[current_index_],
+                previous_,       current_index_,
+                count_,          single_issue_,
+                branch_wait_};
+    }
+    void restore(const Snapshot& snapshot) {
+        decoded_[snapshot.current_index] = snapshot.fetched;
+        decoded_revision_[snapshot.current_index] = snapshot.revision;
+        previous_ = snapshot.previous;
+        current_index_ = snapshot.current_index;
+        count_ = snapshot.count;
+        single_issue_ = snapshot.single_issue;
+        branch_wait_ = snapshot.branch_wait;
+    }
 
     struct DecodedWord {
         Ports ports{};

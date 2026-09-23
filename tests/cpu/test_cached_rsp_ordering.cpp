@@ -125,6 +125,51 @@ void prepare_local_branch_program(System& system) {
 
 } // namespace
 
+TEST(cpu_cached_rsp_rewind_preserves_latched_words_after_decode_cache_replacement) {
+    for (unsigned phase = 0; phase < 3U; ++phase) {
+        System batched, stepped;
+        for (auto* system : {&batched, &stepped}) {
+            prepare_cpu_with_load_hazard(*system);
+            system->advance(phase);
+            prepare_local_branch_program(*system);
+            system->rsp.tick(1);
+            system->rsp.tick(1);
+            CHECK_EQ(system->rsp.pc, 4U);
+            // The pending pair retains VADD and ADDIU until it retires. A later
+            // trip around the loop fetches the replacement into the same slot.
+            rsp_word(*system, 4U, 0x24030077U);
+            rsp_word(*system, 8U, 0x240200aaU);
+        }
+        for (unsigned slice = 0; slice < 12U; ++slice)
+            compare_slice(batched, stepped, 1U);
+        compare_slice(batched, stepped, 64U);
+    }
+}
+
+TEST(cpu_cached_rsp_rewind_restores_stores_across_dmem_blocks_and_wrap) {
+    for (unsigned phase = 0; phase < 3U; ++phase) {
+        System batched, stepped;
+        for (auto* system : {&batched, &stepped}) {
+            prepare_cpu_with_load_hazard(*system);
+            system->advance(phase);
+            rsp_word(*system, 0x00U, 0x24030fffU); // ADDIU v1,zero,0xfff.
+            rsp_word(*system, 0x04U, 0xc8012010U); // LQV v1,0x100(zero).
+            rsp_word(*system, 0x08U, 0x24210001U); // ADDIU at,at,1.
+            rsp_word(*system, 0x0cU, 0xac010ffeU); // SW at,0xffe(zero), wrapping DMEM.
+            rsp_word(*system, 0x10U, 0xa401000fU); // SH at,0xf(zero), crossing a block.
+            rsp_word(*system, 0x14U, 0xe8610800U); // SSV v1[0],0(v1), wrapping DMEM.
+            rsp_word(*system, 0x18U, 0x1000fffbU); // BEQ zero,zero,0x08.
+            rsp_word(*system, 0x1cU, 0xa0010040U); // SB at,0x40(zero).
+            system->rsp.memory[0x100U] = 0x12U;
+            system->rsp.memory[0x101U] = 0x34U;
+            start_rsp(*system);
+        }
+        for (const unsigned steps : {1U, 2U, 3U, 7U, 13U, 31U, 64U})
+            compare_slice(batched, stepped, steps);
+        CHECK(batched.rsp.memory[0x40U] != 0U);
+    }
+}
+
 TEST(cpu_cached_rsp_ordering_matches_steps_across_phases_and_early_cpu_exits) {
     constexpr std::array<unsigned, 7> budgets{6U, 7U, 8U, 9U, 13U, 17U, 31U};
     for (unsigned phase = 0; phase < 3U; ++phase) {

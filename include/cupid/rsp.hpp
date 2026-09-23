@@ -33,9 +33,18 @@ class Rsp {
     [[nodiscard]] u64 next_dma_event() const;
     [[nodiscard]] bool local_execution_ready() const;
     [[nodiscard]] u64 run_local(u64 maximum_cycles);
-    [[nodiscard]] u64 local_cycle_budget(u64 maximum_cycles);
-    [[nodiscard]] bool step_local();
+    [[nodiscard]] u64 execute_local(u64 maximum_cycles);
     void execute_group();
+
+    // Local instructions may run before the shared clock reaches them. The
+    // checkpoint lets an observer rewind to the shared clock and replay the
+    // cycles that clock has already passed.
+    [[nodiscard]] u64 lead() const {
+        return lead_cycles_;
+    }
+    void run_ahead(u64 maximum_cycles);
+    [[nodiscard]] u64 consume_lead(u64 rcp_cycles);
+    void rewind_lead();
 
     struct Vector {
         std::array<u16, 8> lane{};
@@ -88,6 +97,44 @@ class Rsp {
     u32 current_pc_{};
     bool branch_pending_{};
     RspPipeline pipeline_{};
+
+    // Local groups change only these fields and DMEM.
+    struct LocalState {
+        std::array<u32, 32> gpr{};
+        std::array<Vector, 32> vr{};
+        Accumulator accumulator{};
+        u8 vcol{};
+        u8 vcoh{};
+        u8 vccl{};
+        u8 vcch{};
+        u8 vce{};
+        s16 div_input{};
+        s16 div_output{};
+        bool div_input_high{};
+        u64 dma_cycles_until_row{};
+        u32 pc{};
+        u32 next_pc{};
+        u32 pc_shadow{};
+        u32 current_pc{};
+        bool branch_pending{};
+        DmaTransfer dma_pending{};
+        RspPipeline::Snapshot pipeline{};
+    };
+    LocalState checkpoint_{};
+    u64 lead_cycles_{};
+    u64 lead_elapsed_{};
+    // DMEM keeps the checkpoint's contents only for 16-byte blocks the lead writes.
+    std::array<std::array<u8, 16>, 256> saved_dmem_{};
+    std::array<u64, 4> saved_dmem_blocks_{};
+    bool tracking_dmem_{};
+    [[nodiscard]] bool can_issue_local();
+    void save_dmem(u32 address, u32 bytes) {
+        if (!tracking_dmem_)
+            return;
+        save_dmem_block((address & 0x0fffU) >> 4U);
+        save_dmem_block(((address + bytes - 1U) & 0x0fffU) >> 4U);
+    }
+    void save_dmem_block(u32 block);
 
     [[nodiscard]] u8 dmem_read8(u32 address) const;
     [[nodiscard]] u16 dmem_read16(u32 address) const;
