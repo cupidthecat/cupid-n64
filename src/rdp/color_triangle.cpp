@@ -46,6 +46,10 @@ void Rdp::color_triangle() {
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
     const bool perspective = (other_modes_ & (1ULL << 51U)) != 0;
     const bool depth_value_needed = (other_modes_ & 0x30U) != 0;
+    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
+    const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
+    const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
+    const bool early_depth_test = compare_depth && !image_read && (other_modes_ & (1ULL << 12U)) == 0;
     unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
     if ((other_modes_ & (1ULL << 48U)) != 0)
         texture_inputs |= 4U;
@@ -97,6 +101,9 @@ void Rdp::color_triangle() {
             }
             const s32 max_left = std::max({span.left[0], span.left[1], span.left[2], span.left[3]});
             const s32 min_right = std::min({span.right[0], span.right[1], span.right[2], span.right[3]});
+            s32 cached_next_dx = -0x7fffffff;
+            RdpTexturePoint cached_next_x{};
+            bool cached_overflow = false;
             for (unsigned step = 0; step <= span.end - span.start; ++step) {
                 const unsigned x = geometry.left_major ? span.start + step : span.end - step;
                 const unsigned coverage =
@@ -106,15 +113,38 @@ void Rdp::color_triangle() {
                 if (coverage == 0 || ((other_modes_ & 8U) == 0 && (coverage & 1U) == 0))
                     continue;
                 const s32 dx = static_cast<s32>(x) - origin.x;
+                const RdpDepth depth{
+                    depth_value_needed ? rdp_interpolate_depth(base[7], attributes[7], dx, coverage) : 0U,
+                    delta};
+                RdpDepthResult tested{};
+                if (early_depth_test) {
+                    const u32 pixel = y * color_image_width_ + x;
+                    const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
+                    const auto stored_depth = bus_.memory.read_halfword(depth_address);
+                    tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden,
+                                            static_cast<unsigned>(std::popcount(coverage)), 7U, other_modes_);
+                    if (!tested.pass || (antialias && tested.coverage == 0U))
+                        continue;
+                }
                 RdpColorInputs inputs;
                 if (texture_inputs != 0) {
                     bool overflow = false;
-                    const auto point = texture_point(dx, false, overflow);
+                    RdpTexturePoint point{};
+                    if ((lod_needed || one_cycle_texel1_needed) && dx == cached_next_dx) {
+                        point = cached_next_x;
+                        overflow = cached_overflow;
+                    } else {
+                        point = texture_point(dx, false, overflow);
+                    }
                     RdpTexturePoint next_x{};
                     RdpTexturePoint next_y{};
                     RdpTexturePoint next_pixel{};
-                    if (lod_needed || one_cycle_texel1_needed)
+                    if (lod_needed || one_cycle_texel1_needed) {
                         next_x = texture_point(dx + direction, false, overflow);
+                        cached_next_x = next_x;
+                        cached_overflow = overflow;
+                        cached_next_dx = dx + direction;
+                    }
                     if (lod_needed)
                         next_y = texture_point(dx, true, overflow);
                     if (one_cycle_texel1_needed)
@@ -124,10 +154,7 @@ void Rdp::color_triangle() {
                 }
                 for (unsigned i = 0; i < inputs.shade.size(); ++i)
                     inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
-                const RdpDepth depth{
-                    depth_value_needed ? rdp_interpolate_depth(base[7], attributes[7], dx, coverage) : 0U,
-                    delta};
-                write_color_pixel(x, y, coverage, inputs, depth);
+                write_color_pixel(x, y, coverage, inputs, depth, early_depth_test ? &tested : nullptr);
             }
         }
     };

@@ -6,7 +6,7 @@
 
 namespace cupid {
 void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
-                            RdpDepth depth) {
+                            RdpDepth depth, const RdpDepthResult* pre_tested) {
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
@@ -39,7 +39,6 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     const u32 pixel = y * color_image_width_ + x;
     const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
-    const auto stored_depth = compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
 
     RdpColor memory{};
     unsigned old_coverage = 7U;
@@ -47,8 +46,14 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
         memory = read_framebuffer_color(address);
         old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
     }
-    const auto tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage,
-                                       old_coverage, other_modes_);
+    const auto tested = [&] {
+        if (pre_tested != nullptr)
+            return *pre_tested;
+        const auto stored_depth =
+            compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
+        return rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage, old_coverage,
+                              other_modes_);
+    }();
     if (!tested.pass || (antialias && tested.coverage == 0U))
         return;
 

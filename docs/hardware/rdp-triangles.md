@@ -52,9 +52,13 @@ Field filtering prevents this row transition. Two-cycle sampling uses the
 current coordinate and the selected second tile.
 
 Interpolated shade, texels, and depth feed the shared combiner, alpha/coverage,
-depth, blender, and framebuffer stages. Shade alpha also supplies the blender's
-shade-alpha selector. Color writes precede depth writes, with the visible and
-hidden storage rules described in [depth and coverage](rdp-depth.md).
+depth, blender, and framebuffer stages. Consecutive pixels along a span reuse
+the forward texture perspective division calculated for the preceding pixel's
+horizontal neighbor. When depth comparison is active without destination-image
+reads or alpha-modulated coverage, depth testing rejects occluded pixels before
+evaluating texture samples, combiner inputs, or color memory. Shade alpha also
+supplies the blender's shade-alpha selector. Color writes precede depth writes,
+with the visible and hidden storage rules described in [depth and coverage](rdp-depth.md).
 
 For sufficiently large draws with independent memory ranges, host workers can
 render separate row groups. A triangle's middle span estimates the amount of

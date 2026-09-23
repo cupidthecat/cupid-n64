@@ -67,10 +67,13 @@ rejects the pixel. The coverage-wrap decision still uses the coverage before
 that reduction. Color-on-coverage and coverage destination modes consume this
 depth-stage result.
 
-Alpha rejection and failed depth comparison preserve both buffers. Passing
-pixels write color first, then depth if depth updates are enabled. When an
-RGBA16 color buffer shares its address with the depth buffer, the depth word
-and its hidden bits are the final stored value.
+Alpha rejection and failed depth comparison preserve both buffers. When depth
+comparison is active and neither destination-image reads nor alpha-modulated
+coverage are selected, depth testing rejects occluded pixels before evaluating
+texture samples or combiner inputs. Passing pixels write color first, then
+depth if depth updates are enabled. When an RGBA16 color buffer shares its
+address with the depth buffer, the depth word and its hidden bits are the
+final stored value.
 
 ## Tests and limits
 

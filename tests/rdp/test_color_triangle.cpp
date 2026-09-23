@@ -337,3 +337,27 @@ TEST(rdp_color_triangle_texel1_steps_left_for_right_major_spans) {
     CHECK_EQ(commands.pixel(1), TextureCommands::expected(0, 0));
     CHECK_EQ(commands.pixel(3), TextureCommands::expected(2, 0));
 }
+
+TEST(rdp_color_triangle_early_depth_rejection_preserves_framebuffer) {
+    TriangleCommands commands;
+    commands.modes((1ULL << 4U) | (1ULL << 5U));
+    commands.system->bus.memory.write(0x9000U, 2, 0x2000U);
+    commands.system->bus.memory.write(0x8000U, 4, 0x11223344U);
+    commands.z = {0x70000000, 0, 0, 0};
+    commands.triangle(9);
+    commands.run();
+    CHECK_EQ(commands.pixel(0, 0), 0x11223344U);
+    CHECK_EQ(commands.depth(0), 0x2000U);
+}
+
+TEST(rdp_color_triangle_consecutive_horizontal_texture_point_matches_stepped) {
+    TriangleCommands commands;
+    commands.append(0x3c, combine_word({}, {.d = 1, .ad = 1}));
+    commands.modes(1ULL << 48U);
+    commands.triangle(10, {.major = 0, .upper = 0x60000, .lower = 0x60000});
+    commands.run();
+    for (unsigned x = 0; x < 6; ++x) {
+        CHECK_EQ(commands.pixel(x, 0), TextureCommands::expected(x, 0));
+        CHECK_EQ(commands.pixel(x, 1), TextureCommands::expected(x, 1));
+    }
+}
