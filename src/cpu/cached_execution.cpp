@@ -168,7 +168,7 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
             break;
         case 0x10:
         case 0x11:
-            if ((instruction & 63U) >= 0x30U)
+            if ((instruction & 63U) <= 3U || (instruction & 63U) >= 0x30U)
                 direct(CachedDirect::None);
             break;
         default:
@@ -521,16 +521,20 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         return fs == pending_fpu_register_ || ft == pending_fpu_register_;
     };
 
-    const auto cop1_ready = [&](const CachedDecode& decoded) {
+    const auto operation_cycles = [&](const CachedDecode& decoded) -> unsigned {
         const unsigned op = decoded.word >> 26;
         if (op != 0x11 && !decoded.floating_memory)
-            return true;
+            return 1;
         if ((status() & (1U << 29U)) == 0)
-            return false;
+            return 0;
         if (op != 0x11)
-            return true;
+            return 1;
         const unsigned cop1_operation = (decoded.word >> 21) & 31U;
-        return cop1_operation < 16 || fpu.compare_nontrapping(decoded.word);
+        if (cop1_operation < 16)
+            return 1;
+        if ((decoded.word & 63U) >= 0x30U)
+            return fpu.compare_nontrapping(decoded.word) ? 1U : 0U;
+        return fpu.nontrapping_arithmetic_cycles(decoded.word);
     };
 
     u32 current_word = 0;
@@ -538,9 +542,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     if (!cached_word(pc, current_word) || current_word != fetched_instruction_.instruction)
         return 0;
     const auto& first = decode(pc, current_word);
-    if (first.kind == CachedKind::Unsupported ||
-        (pending_load_register_ != 0 && (first.integer_reads & (1U << pending_load_register_)) != 0) ||
-        fpu_issue_hazard(first) || !cop1_ready(first) || !data_hit(first) ||
+    if (first.kind == CachedKind::Unsupported || operation_cycles(first) == 0 || !data_hit(first) ||
         !cached_word(next_pc, prefetched_word))
         return 0;
     if (branches_to_self(current_word, pc) && prefetched_word == 0)
@@ -565,10 +567,8 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     if (current_word != fetched_instruction_.instruction)
         return 0;
     const auto& settled_first = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
-    if (settled_first.kind == CachedKind::Unsupported ||
-        (pending_load_register_ != 0 &&
-         (settled_first.integer_reads & (1U << pending_load_register_)) != 0) ||
-        fpu_issue_hazard(settled_first) || !cop1_ready(settled_first) || !data_hit(settled_first))
+    unsigned accepted_cycles = operation_cycles(settled_first);
+    if (settled_first.kind == CachedKind::Unsupported || accepted_cycles == 0 || !data_hit(settled_first))
         return 0;
     if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
         prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;
@@ -576,9 +576,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         return 0;
     if (branches_to_self(current_word, pc) && prefetched_word == 0)
         return 0;
-    const bool run_rsp_locally = system_.rsp.running();
-    if (run_rsp_locally && !system_.rsp_local_execution_ready())
-        return 0;
+    // Sample interrupt acceptance after settlement callbacks. An accepting CPU
+    // advances the RSP at each instruction boundary; a masked CPU can finish its
+    // private register/cache work before the ordinary scheduler catches up the RSP.
+    const bool run_rsp_coupled = system_.rsp.running() && (status() & 0x407U) == 0x401U;
     update_interrupt_inputs();
     if ((status() & 7U) == 1U && (static_cast<u32>(cp0[13]) & status() & 0xff00U) != 0)
         return 0;
@@ -586,12 +587,12 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const u32 distance = static_cast<u32>(cp0[11]) - static_cast<u32>(cp0[9]);
     const u64 count_ticks = distance == 0 ? (1ULL << 32) : distance;
     const u64 timer_edge = count_ticks * 2 - static_cast<u64>(count_half_);
-    u64 amount = std::min(static_cast<u64>(maximum_steps), maximum_cycles);
-    amount = std::min(amount, device_edge - 1);
-    amount = std::min(amount, timer_edge - 1);
-    amount = std::min(amount, std::numeric_limits<u64>::max() - instruction_count);
-    amount = std::min(amount, std::numeric_limits<u64>::max() - cycles);
-    if (amount < 2)
+    const u64 step_limit =
+        std::min(static_cast<u64>(maximum_steps), std::numeric_limits<u64>::max() - instruction_count);
+    u64 cycle_limit = std::min(maximum_cycles, device_edge - 1);
+    cycle_limit = std::min(cycle_limit, timer_edge - 1);
+    cycle_limit = std::min(cycle_limit, std::numeric_limits<u64>::max() - cycles);
+    if (step_limit < 2 || cycle_limit < 2)
         return 0;
 
     struct StepGuard {
@@ -610,9 +611,73 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     synchronized_instruction_cycles_ = 0;
     const u64 initial_rcp_phase = system_.rcp_fraction_;
     u64 shadow_rcp_phase = initial_rcp_phase;
-    [[maybe_unused]] u64 local_rsp_ticks = 0;
+    [[maybe_unused]] u64 coupled_rsp_ticks = 0;
+    u64 extra_cycles = 0;
+    u64 amount = std::min(step_limit, cycle_limit);
+    const CachedDecode* accepted = &settled_first;
     unsigned steps = 0;
-    while (steps < amount) {
+    for (;;) {
+        const auto& decoded = *accepted;
+        // Both issue interlocks wait only while the instruction is still in its
+        // first cycle. If both encoded fields match, they share that one wait.
+        const bool issue_wait =
+            fpu_issue_hazard(decoded) ||
+            (pending_load_register_ != 0 && (decoded.integer_reads & (1U << pending_load_register_)) != 0);
+        const unsigned cost = accepted_cycles + static_cast<unsigned>(issue_wait);
+        if (cost > 1U && cost > cycle_limit - steps - extra_cycles)
+            break;
+        u64 next_rcp_phase = shadow_rcp_phase;
+        u64 rsp_ticks = 0;
+        if (run_rsp_coupled) {
+            if (cost == 1U) {
+                const u64 phase_sum = shadow_rcp_phase + 2U;
+                rsp_ticks = static_cast<u64>(phase_sum >= 3U);
+                next_rcp_phase = phase_sum - rsp_ticks * 3U;
+            } else {
+                const u64 phase_sum = shadow_rcp_phase + static_cast<u64>(cost) * 2U;
+                rsp_ticks = phase_sum / 3U;
+                next_rcp_phase = phase_sum % 3U;
+            }
+        }
+
+        instruction_cycles_ = 1U + static_cast<unsigned>(issue_wait);
+        pending_load_register_ = 0;
+        pending_fpu_register_ = 32;
+        following_pc_ = next_pc + 4;
+        following_delay_slot_ = annul_next_ = false;
+        fetched_instruction_.valid = false;
+        if (decoded.kind == CachedKind::Load || decoded.kind == CachedKind::Store)
+            execute_cached_memory(decoded, *data_line, data_offset);
+        else if (decoded.kind == CachedKind::Private && decoded.direct != CachedDirect::None)
+            execute_cached_direct(decoded);
+        else
+            execute(current_word);
+        // Live operand preflight proves the exact latency and excludes traps and
+        // internal synchronization. Arithmetic still uses the ordinary FPU path.
+        assert(!exception_pending && !redirected_ && !frozen && !annul_next_ && instruction_cycles_ == cost &&
+               synchronized_instruction_cycles_ == 0);
+        pending_load_register_ = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
+        if ((decoded.word >> 26U) == 0x11U && ((decoded.word >> 21U) & 31U) >= 16U &&
+            (decoded.word & 63U) < 0x30U)
+            pending_fpu_register_ = (decoded.word >> 6U) & 31U;
+        pc = next_pc;
+        next_pc = following_pc_;
+        in_delay_slot_ = following_delay_slot_;
+        fetched_instruction_ = {pc, prefetched_word, true};
+        if (rsp_ticks != 0)
+            system_.advance_cached_rsp_ticks(rsp_ticks);
+        coupled_rsp_ticks += rsp_ticks;
+        shadow_rcp_phase = next_rcp_phase;
+        if (cost > 1U) {
+            extra_cycles += cost - 1U;
+            amount = std::min(step_limit, cycle_limit - extra_cycles);
+        }
+        ++steps;
+        // An interrupt raised and cleared during one multicycle instruction is
+        // sampled only after that entire instruction's RSP time has elapsed.
+        if (steps == amount || (run_rsp_coupled && system_.bus.interrupt_pending()))
+            break;
+
         if (!fetched_instruction_.valid || fetched_instruction_.address != pc)
             break;
         const u64 line_base = pc & ~31ULL;
@@ -626,10 +691,9 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         current_word = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)].word;
         if (current_word != fetched_instruction_.instruction)
             break;
-        const auto& decoded = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
-        if (decoded.kind == CachedKind::Unsupported ||
-            (pending_load_register_ != 0 && (decoded.integer_reads & (1U << pending_load_register_)) != 0) ||
-            fpu_issue_hazard(decoded) || !cop1_ready(decoded) || !data_hit(decoded))
+        const auto& next_decoded = cached_decode_[active_line_index * 8U + ((pc >> 2) & 7U)];
+        accepted_cycles = operation_cycles(next_decoded);
+        if (next_decoded.kind == CachedKind::Unsupported || accepted_cycles == 0 || !data_hit(next_decoded))
             break;
         if ((next_pc & 3U) == 0 && (next_pc & ~31ULL) == active_line_base)
             prefetched_word = cached_decode_[active_line_index * 8U + ((next_pc >> 2) & 7U)].word;
@@ -638,44 +702,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         if (branches_to_self(current_word, pc) && prefetched_word == 0)
             break;
 
-        u64 next_rcp_phase = shadow_rcp_phase;
-        bool run_rsp_tick = false;
-        if (run_rsp_locally) {
-            const u64 phase_sum = shadow_rcp_phase + 2U;
-            run_rsp_tick = phase_sum >= 3U;
-            next_rcp_phase = phase_sum % 3U;
-            // The accepted CPU operation only touches registers and cache hits;
-            // the local RSP tick only touches its registers and IMEM/DMEM. Running
-            // that tick here keeps its locality check and execution together.
-            if (run_rsp_tick && !system_.run_local_rsp_tick())
-                break;
-        }
-
-        pending_load_register_ = 0;
-        pending_fpu_register_ = 32;
-        following_pc_ = next_pc + 4;
-        following_delay_slot_ = annul_next_ = false;
-        fetched_instruction_.valid = false;
-        if (decoded.kind == CachedKind::Load || decoded.kind == CachedKind::Store)
-            execute_cached_memory(decoded, *data_line, data_offset);
-        else if (decoded.kind == CachedKind::Private && decoded.direct != CachedDirect::None)
-            execute_cached_direct(decoded);
-        else
-            execute(current_word);
-        // Classification and cache-hit preflight make every accepted instruction a
-        // single-cycle, non-faulting operation with no internal synchronization.
-        assert(!exception_pending && !redirected_ && !frozen && !annul_next_ && instruction_cycles_ == 1 &&
-               synchronized_instruction_cycles_ == 0);
-        pending_load_register_ = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
-        pc = next_pc;
-        next_pc = following_pc_;
-        in_delay_slot_ = following_delay_slot_;
-        fetched_instruction_ = {pc, prefetched_word, true};
-        if (run_rsp_tick) {
-            ++local_rsp_ticks;
-        }
-        shadow_rcp_phase = next_rcp_phase;
-        ++steps;
+        accepted = &next_decoded;
     }
 
     if (steps == 0) {
@@ -685,19 +712,20 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     }
     advance_batched_instruction_counters(steps);
     batched_cached_instructions_ += steps;
-    if (run_rsp_locally) {
-        const u64 fraction = (static_cast<u64>(steps) % 3U) * 2U + initial_rcp_phase;
-        [[maybe_unused]] const u64 expected_rsp_ticks = (static_cast<u64>(steps) / 3U) * 2U + fraction / 3U;
-        assert(local_rsp_ticks == expected_rsp_ticks);
+    const u64 elapsed_cycles = steps + extra_cycles;
+    if (run_rsp_coupled) {
+        const u64 fraction = (elapsed_cycles % 3U) * 2U + initial_rcp_phase;
+        [[maybe_unused]] const u64 expected_rsp_ticks = (elapsed_cycles / 3U) * 2U + fraction / 3U;
+        assert(coupled_rsp_ticks == expected_rsp_ticks);
         assert(shadow_rcp_phase == fraction % 3U);
-        advance_clock_counters(steps);
-        system_.advance_after_local_rsp(steps);
+        advance_clock_counters(elapsed_cycles);
+        system_.finish_rsp_slice(elapsed_cycles, true);
         assert(system_.rcp_fraction_ == shadow_rcp_phase);
         update_interrupt_inputs();
     } else {
-        update_clocks(steps);
+        update_clocks(elapsed_cycles);
     }
-    instruction_cycles_ = synchronized_instruction_cycles_ = 1;
+    synchronized_instruction_cycles_ = instruction_cycles_;
     return steps;
 }
 

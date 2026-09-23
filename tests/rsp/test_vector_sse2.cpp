@@ -438,7 +438,7 @@ constexpr std::array<u16, 8> edge_right{
 
 } // namespace
 
-TEST(rsp_vector_sse2_vadd_vsub_use_widened_carry_arithmetic) {
+TEST(rsp_vector_sse2_vadd_vsub_match_signed_carry_arithmetic) {
     for (const unsigned function : {0x10U, 0x11U}) {
         for (const u8 vcol : {u8{0x00}, u8{0xff}, u8{0x55}, u8{0xaa}, u8{0x81}}) {
             const u16 vco = static_cast<u16>(vcol | (u16{0x5a} << 8U));
@@ -447,6 +447,21 @@ TEST(rsp_vector_sse2_vadd_vsub_use_widened_carry_arithmetic) {
                     check_case(function, element, destination, edge_left, edge_right, 0x07, vco, 0xc33c,
                                0x5a);
                 }
+            }
+        }
+    }
+}
+
+TEST(rsp_vector_sse2_vadd_vsub_saturate_after_carry_at_both_signed_endpoints) {
+    constexpr std::array<u16, 8> boundaries{0x8000, 0x8001, 0xfffe, 0xffff, 0x0000, 0x0001, 0x7ffe, 0x7fff};
+    for (const unsigned function : {0x10U, 0x11U}) {
+        for (unsigned rotation = 0; rotation < boundaries.size(); ++rotation) {
+            std::array<u16, 8> right{};
+            for (unsigned lane = 0; lane < right.size(); ++lane)
+                right[lane] = boundaries[(lane + rotation) & 7U];
+            for (const u16 vco : {u16{0xff00}, u16{0xffff}}) {
+                for (const unsigned destination : {1U, 2U, 3U})
+                    check_case(function, 0, destination, boundaries, right, 0x07, vco, 0xc33c, 0x5a);
             }
         }
     }

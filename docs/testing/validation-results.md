@@ -1,5 +1,217 @@
 # Recorded validation results
 
+## Shared RSP scheduling and instruction storage (2026-09-23)
+
+Cached CPU slices now keep shared RSP operations within their existing device
+and timer bounds. Each interruptible CPU instruction retires before its full
+RSP cycle quota runs. RDP and RDRAM clocks advance before each RSP tick, DMA
+payloads become visible before issue, and MI is sampled after the complete
+instruction. Masked RCP work catches up through the ordinary scheduler before
+the CPU can observe shared state or re-enable interrupts.
+
+SP memory tracks IMEM writes so decoded packets can be reused across calls.
+Public storage aliases permanently select exact word checks, including const
+aliases and aliases retained across reset. DMA invalidates future fetches once
+per IMEM row while preserving an already latched packet. The
+[CPU timing guide](../hardware/cpu-timing.md) and
+[instruction-storage guide](../hardware/rsp-instruction-storage.md) describe the
+execution bounds and invalidation rules.
+
+Strict Windows Clang and MSVC desktop validation and Linux Clang ASan/UBSan
+passed the same implementation and tests:
+
+| Check | Windows Clang | Windows MSVC | Linux ASan/UBSan |
+| --- | ---: | ---: | ---: |
+| Core regressions | 1,397/1,397 | 1,397/1,397 | 1,397/1,397 |
+| Default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 14/14 | 14/14 | 9/9 |
+
+All three runs passed 41 validation-tool tests, formatting with clang-format
+22.1.0, and source/input integrity checks. Their manifests contain 429 existing
+files and two recorded deletions. The sanitizer logs contain no diagnostic.
+Each default stepped/batched comparison matched all 3,673 observations; each
+extended comparison matched all 3,876, including register state and timestamps.
+The cartridge inputs retain the documented fixture corrections.
+
+The retained original extended image, SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089`, still
+reports eleven triangle-fixture disagreements and two timing failures. Its guest
+output and totals match the previous published build: 358,173,663 instructions
+and 793,786,086 CPU cycles. The comparison excludes the host elapsed-time field
+in the runner's final summary. The VI-disabled cache average remains 43.03
+against 42.5 +/- 0.5, and the original CPU/RDP sampler remains 133,300 against
+133,333 +/- 20. This original layout still fails; #5 and #39 remain open.
+
+The 31 added core regressions cover shared SP/DP reads, semaphore side effects,
+transient and persistent interrupts, branch-delay exception state, DMA row
+timestamps, code replacement during stalls, storage aliases, and callback/NMI
+boundaries. Two tool regressions cover formatter path resolution and failure
+propagation. Source-relative filenames remove the repeated checkout prefix from
+the formatter command, fixing the Windows command-length failure in #63.
+
+One paired run on the i7-13700H used ordinary Clang Release builds, strict
+floating-point settings, high process QoS, and performance-core affinity:
+
+| Replay | Previous build | Combined build | Wall-time reduction |
+| --- | ---: | ---: | ---: |
+| Stationary title, 2,000 fields | 72.860 s | 68.344 s | 6.20% |
+| Gameplay, 6,000 fields | 136.563 s | 130.055 s | 4.77% |
+
+All 8,000 field observations and 71 retained video, audio, and EEPROM files
+matched. Executables and inputs retained their hashes. The combined gameplay
+run covers about 100.63 seconds of emulated time, or 77.4% of real time at the
+measured wall time. Each build was measured once per workload, so these pairs
+do not establish sustained performance. Full-speed gameplay and normal audible
+playback remain open in #48 and #47.
+
+A separate desktop title-screen run completed 60.067 seconds with 1,739 VI
+fields, 1,724 presentations, 645 audio underruns, and 104 device audio drops.
+Host audio drops were zero. The application saved its capture and EEPROM and
+exited successfully. Its approximately 29.0 VI fields per second and audio
+underruns leave the desktop speed and playback requirements unmet.
+
+Reports and replay comparisons are retained under
+`.work/validation/rsp-cpu-integration-20260923/`. This result record and the
+formatter-path explanation in the testing guide were updated after validation;
+implementation and test bytes were unchanged.
+
+## Cached arithmetic and RSP settlement (2026-09-23)
+
+Cached CPU execution accepts binary floating-point arithmetic whose live
+operands and control bits prove an exact, nontrapping latency. It charges the
+same integer and floating-point issue waits as ordinary stepping, advances
+instruction counters by retirements, and advances clocks by elapsed cycles.
+Instructions that would reach a device or Count/Compare edge use ordinary
+stepping. A multicycle instruction with a running RSP first proves that the
+entire RSP span accesses only local state.
+
+RSP settlement can also run local instructions together within a scheduled
+interval. It preserves the final cycle's device-before-issue ordering. Shared
+register operations, DMA visibility, branch waits, and already fetched packets
+retain their synchronized behavior. The [CPU timing guide](../hardware/cpu-timing.md)
+and [RCP scheduling guide](../hardware/rcp-scheduling.md) describe these bounds.
+
+Strict Windows Clang 21.1.5 and MSVC 19.43 desktop builds and Linux Clang 18.1.3
+ASan/UBSan passed the same 422-file source snapshot:
+
+| Check | Windows Clang | Windows MSVC | Linux ASan/UBSan |
+| --- | ---: | ---: | ---: |
+| Core regressions | 1,366/1,366 | 1,366/1,366 | 1,366/1,366 |
+| Default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 14/14 | 14/14 | 9/9 |
+
+All three runs passed both stepped-versus-batched cartridge comparisons, all
+39 validation-tool tests, formatting with clang-format 22.1.0, and source/input
+integrity checks. The sanitizer logs contain no diagnostic. Extended results
+were Base 4,649, Timing 1,604, Cycle 13, CP0 hazards five, and quirks two, with
+zero failures. The cartridge inputs retain the documented fixture corrections.
+
+The 23 added regressions cover exact arithmetic costs, dependency waits,
+budgets ending within instructions, rounding and register aliases, host
+floating-point state, timer and output callbacks, DMA boundaries, and IMEM
+edits while an instruction packet is latched. The existing 23 framebuffer
+regressions also passed, covering every color-image size and format code in
+both cycle modes. This completes the storage behavior tracked in #49; the
+broader rendering and hardware-capture limits remain separate.
+
+On the i7-13700H, one final paired run took 71.537 seconds before these changes
+and 70.800 afterward for 2,000 stationary title-screen fields. The 6,000-field
+gameplay replay took 133.097 and 132.691 seconds. Every field observation and
+all 71 retained video, audio, and EEPROM files matched. The ordinary Clang
+Release runs kept strict floating-point settings, high process QoS, and
+performance-core affinity. Their inputs and executables retained their hashes.
+
+Those pairs observed 1.03% and 0.30% less wall time. Each candidate was measured
+once per workload. Earlier intermediate snapshots ranged from a 1.25%
+regression to a 2.35% reduction against the same baseline, while repeated
+baseline times varied by about 1.4 to 1.5%. These measurements do not establish
+a repeatable speedup.
+
+A separate desktop title-screen run completed in 60.066 seconds with 1,658 VI
+fields, 1,566 presentations, and 607 audio underruns. Host and device audio-drop
+counters were zero. The application saved its capture and EEPROM and exited
+successfully, but approximately 27.6 VI fields per second is below full speed.
+The matched replay recorded zero audio-timeline discontinuities; it does not
+establish normal audible playback. Issues #48 and #47 remain open.
+
+Reports, replay comparisons, and the desktop capture are retained under
+`.work/validation/continuation-20260923/`. The result record and two guide
+clarifications were added after validation; implementation and test bytes were
+unchanged.
+
+## Scalar SSE binary arithmetic (2026-09-23)
+
+ADD, SUB, MUL, and DIV now use scalar SSE on x64 while preserving guest
+rounding, exception flags, result normalization, register mapping, and latency.
+The calling thread's MXCSR is restored after arithmetic. Potential guest traps
+retain a full environment scope, including traps whose younger instruction
+fetch delivers a callback that changes the host environment. Other targets
+retain the portable arithmetic path.
+
+Strict Windows Clang 21.1.5 and MSVC desktop builds and Linux Clang ASan/UBSan
+passed 1,343 core regressions, the 4,637-case default cartridge including cold
+and warm boots, the 6,273-case extended cartridge, and both execution-mode
+comparisons. Windows passed all 14 CTest groups; Linux passed all nine core
+groups. Formatting, validation-tool tests, and source/input integrity checks
+passed. The sanitizer run reported no diagnostic.
+
+The added arithmetic test compares result bits and exception flags with the
+portable path across all rounding modes, signed zeros, finite boundaries,
+subnormals, and infinities. It checks host-state restoration with denormal
+controls and existing exception flags set. The exception-fetch callback test
+now covers invalid arithmetic input, overflow, and exact subnormal results.
+
+On an i7-13700H, the 2,000-field stationary title-screen replay took 74.164
+seconds before the change and 71.667 afterward. A 6,000-field gameplay replay
+took 141.358 and 138.447 seconds. Each pair matches every field observation and
+all retained video, audio, and EEPROM files: 19 files for the title screen and
+52 for gameplay. These pairs show about 3.4% and 2.1% less elapsed time. They
+used ordinary Clang Release builds, strict floating-point settings, high process
+QoS, and performance-core affinity. Executable and input hashes were unchanged.
+
+Evidence is retained under `.work/validation/fpu-binary-20260923/`. All 416
+source files matched the validated snapshot when copied to the feature branch.
+This result record was added afterward; executable source and tests were
+unchanged. Full-speed gameplay and normal audible playback remain unresolved
+in #48 and #47.
+
+## Packed vector carry arithmetic (2026-09-22)
+
+The VADD/VSUB packed arithmetic change passed strict Windows Clang and MSVC
+Release validation with the desktop enabled, and Linux Clang ASan/UBSan
+validation. All three runs passed 1,331 core regressions, the 4,637-case default
+cartridge, both cold and warm boots, and the 6,273-case extended cartridge.
+Windows passed all 14 CTest groups; Linux passed all nine core groups. Both
+cartridge execution-mode comparisons matched, including registers and report
+timestamps. Formatting, validation-tool tests, and source/input integrity checks
+passed. The sanitizer run reported no diagnostic.
+
+The added encoded tests cover all pairs of eight values at and near the signed
+endpoints and zero, with carry clear and set. They observe the saturated result,
+all accumulator slices, and control flags, including destinations that overwrite
+either input.
+
+The 6,000-field Mario replay matches all field observations and all 52 retained
+video, audio, and EEPROM files. It took 173.606 seconds for 100.631 seconds of
+emulated time, or 58.0% of real time. The preceding baseline run took 175.482
+seconds; this single pair does not establish a whole-game speedup.
+
+A separate encoded VADD/VSUB loop ran 600 million RSP clocks per measurement.
+Six runs of each build, alternating their order, produced median times of
+3.401 seconds for a freshly built baseline and 3.320 seconds for the packed
+change. Final PC and stored lanes matched in every run. Both benchmarks used
+high process QoS and performance-core affinity. The focused result does not
+establish full-speed gameplay or uninterrupted audible playback.
+
+Evidence is retained under `.work/validation/vector-carry-20260922/`. All 411
+checked source files matched the Linux validation copy before this result
+record was added. Executable source and tests were unchanged after validation.
+The acceptance work in #48 and #47 remains open.
+
 ## Cached execution and reset deadline follow-up (2026-09-22)
 
 The next 411-file source snapshot passed strict Windows Clang and MSVC Release

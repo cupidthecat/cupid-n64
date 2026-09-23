@@ -108,7 +108,7 @@ unsigned Cpu::batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles) {
             fetched_instruction_ = {pc, 0, true};
         }
         advance_clock_counters(steps);
-        system_.advance_after_local_rsp(steps);
+        system_.finish_rsp_slice(steps);
         update_interrupt_inputs();
         return steps;
     }

@@ -12,7 +12,7 @@ memory helpers support local tests without advancing those clocks.
 
 ## Cached execution slices
 
-`Cpu::run_slice` can retire consecutive single-cycle instructions without
+`Cpu::run_slice` can retire consecutive cached instructions without
 returning through `Cpu::step` for every instruction. Entry is limited to cached
 kseg0 execution in kernel, big-endian state with a clean pipeline. Pending NMI,
 exceptions, redirects, annulment, Count-write holds, software-interrupt delays,
@@ -30,11 +30,12 @@ The next instruction computes its address again, including when a load changed
 its own base register. Alignment faults and the external-memory doubleword load
 restriction are checked before a cached access can be accepted.
 
-COP1 register transfers and single- and double-precision comparisons can also
+COP1 register transfers, comparisons, and bounded binary arithmetic can also
 use the slice. CU1 is checked before an FP data-cache access. FP loads and
 stores use the FPU's transfer register mapping, including paired registers when
 FR is clear; FPR0 remains an ordinary floating-point register. CTC1, FP branches,
-arithmetic, and conversions continue through `Cpu::step`.
+conversions, and arithmetic outside the preflight domain continue through
+`Cpu::step`.
 
 A comparison is accepted only when its live operands and FCSR cannot raise an
 invalid-operation trap. Preflight uses the same first- and second-source mapping
@@ -42,18 +43,34 @@ as execution, including their different handling of odd registers with FR clear.
 It runs again after settling device clocks and before each accepted instruction.
 The timing regressions retain one CPU cycle per nontrapping comparison.
 
-A preceding FPU result blocks a dependent comparison when either encoded source
-matches its pending destination. An accepted independent instruction consumes
-that issue boundary and clears the pending interlock. The checks before and after
-settling device clocks preserve the same encoded-source rule as ordinary stepping.
+A preceding FPU result adds one issue cycle when either encoded arithmetic or
+comparison source matches its pending destination. Integer load interlocks also
+use the encoded register fields, including destinations. The slice charges the
+same wait as ordinary stepping, then carries the current instruction's pending
+result to its successor. An independent instruction clears the older interlock.
 `tests/cpu/test_cached_cop1.cpp` covers these interlocks, both precisions, NaN trap
 policies, register aliases, cache-hit memory transfers, and callbacks that change
 the operands or FCSR before a comparison can issue.
+
+ADD, SUB, MUL, and DIV in single or double precision enter the slice only when
+their live operands and FCSR prove both nontrapping execution and an exact cycle
+cost. The preflight reads encoded bits without performing host arithmetic. It
+requires flush mode with the four non-invalid exception enables clear, and checks
+invalid-operation safety when that exception is enabled. NaN and subnormal inputs
+fall back. Multiplication also falls back when its product could select a shorter
+underflow latency that the operand bits do not already determine. Accepted
+operations use the ordinary FPU implementation for results, flags, rounding, and
+latency; preflight includes the same source-register aliases and timing shortcuts.
 
 Before entering a slice, the decoder classifies the already-cached successor.
 An unsupported successor keeps the first instruction on ordinary stepping to
 avoid setting up a one-instruction slice. Supported successors still undergo
 their live register, memory, and trap checks when they reach issue.
+
+The first instruction uses the checks completed after device clocks settle.
+Each following instruction is checked before the next loop iteration. This
+avoids repeating the first instruction's preflight while retaining the checks
+needed after a host callback or a preceding load changes its operands.
 
 The cached decoder is derived from the instruction cache. A line plan records
 the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
@@ -70,32 +87,65 @@ remains valid, and no peripheral debt, buffered store, or output needs service.
 Otherwise, the query settles device time and recomputes the bound. The entry
 checks and current-word match are evaluated again afterward because settling
 can deliver a callback that changes machine state. The slice stops before the
-next Bus event, VI line boundary, or Count/Compare edge. Instruction and Random
-state and the deferred device clocks advance for exactly the instructions that
-retired.
+next Bus event, VI line boundary, or Count/Compare edge. Instruction count and
+Random advance by retired instructions; Count and device clocks advance by their
+elapsed cycles, including issue waits and arithmetic latency. A multicycle
+instruction that would reach an event is left to ordinary stepping.
 
-When the RSP is running, a cached CPU slice can execute local RSP work at the
-same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock
-phase determines which CPU instructions produce an RSP tick. Before each such
-instruction, the next latched or fetched RSP packet must contain only local
-operations; COP0 and BREAK end the slice before that tick. The CPU operation is
-already checked as nonfaulting and limited to registers and cache hits. Its RSP
-tick can therefore run first: both operations use disjoint state, including when
-the CPU cache contains a copy of SP memory. At exit, the common device clocks
-are advanced once without running the RSP a second time. DMA, single-step, and
-an SP PC changed behind the pipeline prevent this path. The differential tests
-cover all three clock phases, cached SP memory, and IMEM changes during a latched
-operand stall. They continue ordinary stepping after each slice to check the
-retained pipeline state.
+When the RSP is running and the CPU can accept an RCP interrupt, each accepted
+CPU instruction retires before its corresponding RSP cycles advance. A shadow
+of the 2:3 clock phase supplies the complete RSP quota, including cycles spent
+on a CPU issue wait or floating-point operation. The next CPU instruction can
+remain in the slice after shared SP/DP register accesses, BREAK, single-step,
+or a direct SP PC change. Those operations use the ordinary RSP issue path.
+
+`src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each RSP
+tick. The tick transfers any due DMA row before issuing its RSP instruction.
+Shared-register reads and RDRAM accesses therefore retain their ordinary clock
+values. At slice exit, peripherals advance once for the elapsed span without
+repeating the shared clocks or RSP work.
+
+MI is sampled after the complete CPU instruction's RSP quota. An SP interrupt
+raised and cleared within a divide does not interrupt it. A line that remains
+pending ends the slice before a younger CPU instruction, preserving the current
+branch-delay state for EPC and Cause.BD. Device callbacks and Count/Compare
+boundaries remain outside the accepted span and observe materialized CPU state.
+
+`tests/cpu/test_cached_coupled_rsp_boundaries.cpp` checks all three clock phases,
+transient and persistent interrupts, branch delay slots, and exact DMA row
+timestamps. `test_cached_coupled_rsp_events.cpp` covers shared reads, semaphore
+side effects, SyncFull, single-step, PC rewrites, and timer/output/NMI boundaries.
+The multicycle and cached-RSP tests retain state comparisons with ordinary
+stepping, including continuation after a slice and IMEM edits during operand waits.
+
+When IE or IM2 is clear, or EXL or ERL is set, RSP work cannot interrupt the
+accepted CPU instructions. The slice can execute its register and cache-hit
+operations before catching up the RSP through the ordinary scheduler. RSP and
+RDP memory accesses reach physical RAM without snooping the CPU caches. The
+catch-up preserves SP DMA progress, shared SP/DP register accesses, instruction
+issue, and pending interrupts. It finishes before the next CPU operation can
+observe shared state or re-enable interrupts. Status is sampled after entry
+settlement because a host callback can change it.
+
+This path retains the same Bus, VI, and Count/Compare bounds and rejects SP DMA
+that is already active or queued at entry. An RSP instruction may start DMA
+during catch-up; its transfer still occurs on its ordinary RCP cycle. The
+regressions in `tests/cpu/test_cached_masked_rsp.cpp` compare mask combinations,
+cache visibility, SP/DP interrupts, and callback observations with instruction
+stepping. The other cached-RSP tests keep interrupt acceptance enabled to exercise
+the per-instruction path above.
 
 The idle-loop path is narrower. It recognizes a cached self-branch with a NOP
 delay slot, verifies both live instruction-cache words, and stops before the same
 timer and device-visible boundaries. When the RSP is running, the idle path may
 advance RSP issue, operand-stall, and branch-wait cycles within that bound. It
-does so only while SP DMA is idle, single-step is off, the SP PC has not been
-changed behind the pipeline, and the next RSP packet contains no COP0 operation
-or BREAK. An already latched packet is checked by its latched words, so an
-operand stall cannot hide a shared-register operation. If the CPU slice ends
+does so while single-step is off, the SP PC has not been changed behind the
+pipeline, and the next RSP packet contains only local operations and stable
+control-register reads. Active DMA limits the slice to the cycles before its
+next row transfer. The DMA countdown advances with local execution, and the
+transfer cycle uses ordinary stepping. An already latched packet is checked by
+its latched words, so an operand stall cannot hide a shared-register operation.
+If the CPU slice ends
 after the branch but before its delay slot, the branch/delay-slot state is
 materialized before normal stepping resumes.
 

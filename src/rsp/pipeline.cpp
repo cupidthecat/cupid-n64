@@ -306,14 +306,33 @@ bool RspPipeline::can_pair(const Ports& first, const Ports& second) {
 }
 
 bool RspPipeline::instruction_is_local(u32 word) {
-    return (word >> 26U) != 0x10U && (word & 0xfc00003fU) != 0x0000000dU;
+    if ((word >> 26U) == 0x10U) {
+        // DMA rows and device events bound these constant register reads. SP status
+        // and semaphore retain synchronization; DP clock depends on elapsed time.
+        const unsigned operation = (word >> 21U) & 31U;
+        const unsigned index = (word >> 11U) & 15U;
+        return operation == 0U && index != 4U && index != 7U && index != 12U;
+    }
+    return (word & 0xfc00003fU) != 0x0000000dU;
+}
+
+unsigned RspPipeline::cache_index(u32 address, bool pairing_allowed) {
+    const unsigned word_index = static_cast<unsigned>((address >> 2U) & 1023U);
+    return word_index * 2U + static_cast<unsigned>(pairing_allowed);
+}
+
+RspPipeline::DecodedFetch& RspPipeline::current_fetch() {
+    return decoded_[current_index_];
+}
+
+const RspPipeline::DecodedFetch& RspPipeline::current_fetch() const {
+    return decoded_[current_index_];
 }
 
 RspPipeline::DecodedFetch& RspPipeline::prepare(u32 first, u32 second, bool pairing_allowed, u32 address) {
-    const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
     auto& cached = decoded_[decoded_index];
-    if (cached.count != 0U && cached.words[0] == first && cached.words[1] == second &&
-        cached.pairing_allowed == pairing_allowed) {
+    if (cached.count != 0U && cached.words[0] == first && cached.words[1] == second) {
         return cached;
     }
 
@@ -339,9 +358,28 @@ RspPipeline::DecodedFetch& RspPipeline::prepare(u32 first, u32 second, bool pair
         }
     }
 
-    cached = {{first, second}, ports, operations, count, pairing_allowed, first_local && second_local,
-              issued_local};
+    // Control and element-field dependencies have already decided pairing. Only
+    // register dependencies and issue flags remain relevant to the live packet.
+    cached = {
+        {first, second}, {ports.scalar_reads, ports.scalar_result, ports.vector_reads, ports.vector_result},
+        operations,      count,
+        issued_local,    static_cast<u8>(ports.flags)};
     return cached;
+}
+
+RspPipeline::DecodedFetch& RspPipeline::prepare(std::span<const u8, 4096> imem, u64 revision,
+                                                bool pairing_allowed, u32 address) {
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
+    auto& cached = decoded_[decoded_index];
+    if (cached.count != 0U && decoded_revision_[decoded_index] == revision)
+        return cached;
+
+    const auto read_word = [&](u32 word_address) {
+        return read_be32(imem.data() + (word_address & 0x0ffcU));
+    };
+    auto& decoded = prepare(read_word(address), read_word(address + 4U), pairing_allowed, address);
+    decoded_revision_[decoded_index] = revision;
+    return decoded;
 }
 
 void RspPipeline::reset() {
@@ -372,12 +410,12 @@ RspPipeline::LocalIssue RspPipeline::local_issue(u32 first, u32 second, u32 addr
         return LocalIssue::Blocked;
 
     const bool pairing_allowed = !single_issue_;
-    const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
     auto& decoded = prepare(first, second, pairing_allowed, address);
-    if (!decoded.fresh_local)
+    if (!decoded.issued_local)
         return LocalIssue::Blocked;
 
-    // Preserve the raw-word safety check before a branch bubble without latching
+    // Check the selected issue group before a branch bubble without latching
     // the prepared packet until its real fetch cycle.
     if (advance_branch_wait())
         return LocalIssue::Advanced;
@@ -395,26 +433,25 @@ RspPipeline::LocalIssue RspPipeline::local_issue(std::span<const u8, 4096> imem,
         return LocalIssue::Blocked;
 
     const bool pairing_allowed = !single_issue_;
-    const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
-    auto& cached = decoded_[decoded_index];
-    DecodedFetch* decoded = nullptr;
-    if (!window.validated.test(decoded_index)) {
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
+    DecodedFetch* decoded = &decoded_[decoded_index];
+    const unsigned word_index = static_cast<unsigned>((address >> 2U) & 1023U);
+    if (!window.validated.test(word_index)) {
         const auto read_word = [&](u32 word_address) {
             return read_be32(imem.data() + (word_address & 0x0ffcU));
         };
-        decoded = &prepare(read_word(address), read_word(address + 4U), pairing_allowed, address);
-        window.validated.set(decoded_index);
-    } else if (cached.pairing_allowed != pairing_allowed) {
-        const auto words = cached.words;
-        decoded = &prepare(words[0], words[1], pairing_allowed, address);
-    } else {
-        decoded = &cached;
+        const u32 first = read_word(address);
+        const u32 second = read_word(address + 4U);
+        static_cast<void>(prepare(first, second, false, address));
+        static_cast<void>(prepare(first, second, true, address));
+        window.validated.set(word_index);
+        decoded = &decoded_[decoded_index];
     }
 
-    if (!decoded->fresh_local)
+    if (!decoded->issued_local)
         return LocalIssue::Blocked;
 
-    // Raw locality must be established before consuming the target bubble. Once an
+    // Check the selected issue group before consuming the target bubble. Once an
     // address is validated in this run_local() call, its two IMEM words cannot change.
     if (advance_branch_wait())
         return LocalIssue::Advanced;
@@ -426,8 +463,28 @@ RspPipeline::LocalIssue RspPipeline::local_issue(std::span<const u8, 4096> imem,
     return LocalIssue::Ready;
 }
 
+RspPipeline::LocalIssue RspPipeline::local_issue(std::span<const u8, 4096> imem, u64 revision, u32 address) {
+    if (count_ != 0U)
+        return LocalIssue::Blocked;
+
+    const bool pairing_allowed = !single_issue_;
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
+    auto& decoded = prepare(imem, revision, pairing_allowed, address);
+    if (!decoded.issued_local)
+        return LocalIssue::Blocked;
+
+    if (advance_branch_wait())
+        return LocalIssue::Advanced;
+
+    current_index_ = decoded_index;
+    count_ = decoded.count;
+    if (advance_operand_wait())
+        return LocalIssue::Advanced;
+    return LocalIssue::Ready;
+}
+
 RspPipeline::LocalIssue RspPipeline::local_issue() {
-    if (count_ == 0U || !decoded_[current_index_].issued_local)
+    if (count_ == 0U || !current_fetch().issued_local)
         return LocalIssue::Blocked;
     if (advance_branch_wait())
         return LocalIssue::Advanced;
@@ -440,20 +497,31 @@ void RspPipeline::fetch(u32 first, u32 second, bool single_step, u32 address) {
     if (count_ != 0U)
         return;
     const bool pairing_allowed = !single_step && !single_issue_;
-    const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
     auto& decoded = prepare(first, second, pairing_allowed, address);
     current_index_ = decoded_index;
     count_ = decoded.count;
 }
 
+void RspPipeline::fetch(std::span<const u8, 4096> imem, u64 revision, bool single_step, u32 address) {
+    if (count_ != 0U)
+        return;
+    const bool pairing_allowed = !single_step && !single_issue_;
+    const unsigned decoded_index = cache_index(address, pairing_allowed);
+    auto& decoded = prepare(imem, revision, pairing_allowed, address);
+    current_index_ = decoded_index;
+    count_ = decoded.count;
+}
+
 bool RspPipeline::advance_operand_wait() {
-    const auto& current = decoded_[current_index_].ports;
+    const auto& fetched = current_fetch();
+    const auto& current = fetched.ports;
     const bool scalar_wait =
         (current.scalar_reads & (previous_[0].scalar_result | previous_[1].scalar_result)) != 0U;
     const bool vector_wait =
         (current.vector_reads &
          (previous_[0].vector_result | previous_[1].vector_result | previous_[2].vector_result)) != 0U;
-    const bool store_wait = (current.flags & store) != 0U && previous_[1].load;
+    const bool store_wait = (fetched.flags & store) != 0U && previous_[1].load;
     if (!scalar_wait && !vector_wait && !store_wait)
         return false;
     advance({});
@@ -461,9 +529,11 @@ bool RspPipeline::advance_operand_wait() {
 }
 
 void RspPipeline::retire(bool taken_delay_slot, u32 next_pc) {
-    const auto& current = decoded_[current_index_].ports;
-    advance({current.scalar_result, current.vector_result, (current.flags & load) != 0U});
-    single_issue_ = (current.flags & branch) != 0U;
+    const auto& fetched = current_fetch();
+    const auto& current = fetched.ports;
+    const u8 flags = fetched.flags;
+    advance({current.scalar_result, current.vector_result, (flags & load) != 0U});
+    single_issue_ = (flags & branch) != 0U;
     count_ = 0;
     if (taken_delay_slot) {
         branch_wait_ = true;

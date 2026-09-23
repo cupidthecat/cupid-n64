@@ -148,7 +148,7 @@ u64 Bus::read_sp_memory(u32 physical, unsigned width) {
     u64 value = 0;
     for (unsigned index = 0; index < width; ++index) {
         const u32 offset = (physical + index) & 0x1fffU;
-        value = (value << 8) | system_.rsp.memory[offset];
+        value = (value << 8) | system_.rsp.memory.internal_read(offset);
     }
     return value;
 }
@@ -157,7 +157,8 @@ void Bus::write_sp_memory(u32 physical, unsigned width, u64 value) {
     const u32 aligned = physical & ~3U;
     const u32 word = expand_rcp_write(physical, width, value);
     for (unsigned index = 0; index < 4; ++index) {
-        system_.rsp.memory[(aligned + index) & 0x1fffU] = static_cast<u8>(word >> ((3U - index) * 8U));
+        system_.rsp.memory.internal_write((aligned + index) & 0x1fffU,
+                                          static_cast<u8>(word >> ((3U - index) * 8U)));
     }
 }
 
@@ -501,7 +502,7 @@ void Bus::process_pif_control() {
 
 u8 Bus::rdp_source_byte(u32 address, bool dmem) const {
     if (dmem)
-        return system_.rsp.memory[address & 0xfffU];
+        return system_.rsp.memory.internal_read(address & 0xfffU);
     return read_ram_byte(address);
 }
 

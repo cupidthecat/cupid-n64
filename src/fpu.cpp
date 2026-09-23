@@ -1,5 +1,6 @@
 #include "cupid/system.hpp"
 
+#include "fpu/binary_arithmetic.hpp"
 #include "fpu/host_environment.hpp"
 
 #include <bit>
@@ -95,6 +96,32 @@ u64 arithmetic_latency(unsigned function, typename FloatBits<T>::UInt left, type
     return sizeof(T) == 4 ? 28 : 57;
 }
 
+template <class T>
+unsigned nontrapping_binary_cycles(unsigned function, typename FloatBits<T>::UInt left,
+                                   typename FloatBits<T>::UInt right, bool invalid_enabled) {
+    using Bits = FloatBits<T>;
+    if (is_nan_bits<T>(left) || is_nan_bits<T>(right) || is_subnormal_bits<T>(left) ||
+        is_subnormal_bits<T>(right))
+        return 0;
+    if (invalid_enabled) {
+        if (is_infinite_bits<T>(left) || is_infinite_bits<T>(right))
+            return 0;
+        if (function == 3U && ((left | right) & ~Bits::sign_mask) == 0)
+            return 0;
+    }
+    if (function == 2U && (left & Bits::fraction_mask) != 0 && (right & Bits::fraction_mask) != 0) {
+        constexpr unsigned fraction_bits = sizeof(T) == 4 ? 23U : 52U;
+        constexpr unsigned minimum_sum = sizeof(T) == 4 ? 128U : 1024U;
+        const auto exponent_sum = ((left & Bits::exponent_mask) >> fraction_bits) +
+                                  ((right & Bits::exponent_mask) >> fraction_bits);
+        // A tiny product can use a shorter underflow latency. Keep it on ordinary
+        // stepping unless an operand already guarantees the one-cycle shortcut.
+        if (exponent_sum < minimum_sum)
+            return 0;
+    }
+    return 1U + static_cast<unsigned>(arithmetic_latency<T>(function, left, right, false));
+}
+
 int host_rounding(u32 mode) {
     switch (mode & 3U) {
     case 0:
@@ -173,6 +200,21 @@ void Fpu::write_word(unsigned index, u32 value) {
 void Fpu::write_doubleword(unsigned index, u64 value) {
     index &= 31U;
     registers[full_register_mode() ? index : (index & ~1U)] = value;
+}
+
+unsigned Fpu::nontrapping_arithmetic_cycles(u32 instruction) const {
+    const unsigned format = (instruction >> 21U) & 31U;
+    const unsigned function = instruction & 63U;
+    if ((instruction >> 26U) != 0x11U || (format != 0x10U && format != 0x11U) || function > 3U ||
+        (control & (1U << 24U)) == 0 || (control & 0x0780U) != 0)
+        return 0;
+    const unsigned fs = (instruction >> 11U) & 31U;
+    const unsigned ft = (instruction >> 16U) & 31U;
+    const bool invalid_enabled = (control & (1U << 11U)) != 0;
+    return format == 0x10U ? nontrapping_binary_cycles<float>(function, source_word(fs),
+                                                              second_source_word(ft), invalid_enabled)
+                           : nontrapping_binary_cycles<double>(function, source_doubleword(fs),
+                                                               second_source_doubleword(ft), invalid_enabled);
 }
 
 bool Fpu::compare_nontrapping(u32 instruction) const {
@@ -584,6 +626,70 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
         return;
     }
 
+    if ((format == 0x10U || format == 0x11U) && function <= 0x03U) {
+        clear_causes();
+        const bool single = format == 0x10U;
+        std::optional<fpu_host::ScopedEnvironment<>> environment;
+        if (single) {
+            const u32 left_bits = source_word(fs);
+            const u32 right_bits = second_source_word(ft);
+            if (is_nan_bits<float>(left_bits) || is_nan_bits<float>(right_bits) ||
+                is_subnormal_bits<float>(left_bits) || is_subnormal_bits<float>(right_bits))
+                environment.emplace(host_rounding(control & 3U));
+            if (!check_inputs_word(left_bits, right_bits)) {
+                cpu_.add_cycles(1);
+                return;
+            }
+            const auto arithmetic =
+                fpu_host::binary(function, value_of<float>(left_bits), value_of<float>(right_bits),
+                                 host_rounding(control & 3U));
+            const float output = arithmetic.value;
+            const int exceptions = arithmetic.exceptions;
+            u32 result = bits_of<float>(output);
+            // A guest trap may fetch a younger instruction and deliver a host callback.
+            if (!environment && (((exceptions != 0) && (control & 0x0f80U) != 0) ||
+                                 (exceptions & FE_UNDERFLOW) != 0 || is_subnormal_bits<float>(result)))
+                environment.emplace(host_rounding(control & 3U));
+            const bool flush_underflow =
+                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
+            cpu_.add_cycles(arithmetic_latency<float>(function, left_bits, right_bits, flush_underflow));
+            if (!handle_host_exceptions(exceptions, false))
+                return;
+            if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
+                return;
+            write_result_word(fd, result);
+        } else {
+            const u64 left_bits = source_doubleword(fs);
+            const u64 right_bits = second_source_doubleword(ft);
+            if (is_nan_bits<double>(left_bits) || is_nan_bits<double>(right_bits) ||
+                is_subnormal_bits<double>(left_bits) || is_subnormal_bits<double>(right_bits))
+                environment.emplace(host_rounding(control & 3U));
+            if (!check_inputs_doubleword(left_bits, right_bits)) {
+                cpu_.add_cycles(1);
+                return;
+            }
+            const auto arithmetic =
+                fpu_host::binary(function, value_of<double>(left_bits), value_of<double>(right_bits),
+                                 host_rounding(control & 3U));
+            const double output = arithmetic.value;
+            const int exceptions = arithmetic.exceptions;
+            u64 result = bits_of<double>(output);
+            // A guest trap may fetch a younger instruction and deliver a host callback.
+            if (!environment && (((exceptions != 0) && (control & 0x0f80U) != 0) ||
+                                 (exceptions & FE_UNDERFLOW) != 0 || is_subnormal_bits<double>(result)))
+                environment.emplace(host_rounding(control & 3U));
+            const bool flush_underflow =
+                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
+            cpu_.add_cycles(arithmetic_latency<double>(function, left_bits, right_bits, flush_underflow));
+            if (!handle_host_exceptions(exceptions, false))
+                return;
+            if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
+                return;
+            write_result_doubleword(fd, result);
+        }
+        return;
+    }
+
     fpu_host::ScopedEnvironment environment(host_rounding(control & 3U));
     clear_causes();
 
@@ -736,80 +842,6 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
     }
 
     const bool single = format == 0x10U;
-
-    if (function <= 0x03U) {
-        std::feclearexcept(FE_ALL_EXCEPT);
-        if (single) {
-            const u32 left_bits = source_word(fs);
-            const u32 right_bits = second_source_word(ft);
-            if (!check_inputs_word(left_bits, right_bits)) {
-                cpu_.add_cycles(1);
-                return;
-            }
-            const volatile float left = value_of<float>(left_bits);
-            const volatile float right = value_of<float>(right_bits);
-            volatile float output = 0.0f;
-            switch (function) {
-            case 0:
-                output = left + right;
-                break;
-            case 1:
-                output = left - right;
-                break;
-            case 2:
-                output = left * right;
-                break;
-            default:
-                output = left / right;
-                break;
-            }
-            const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
-            const bool flush_underflow =
-                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
-            cpu_.add_cycles(arithmetic_latency<float>(function, left_bits, right_bits, flush_underflow));
-            if (!handle_host_exceptions(exceptions, false))
-                return;
-            u32 result = bits_of<float>(output);
-            if (!finish_word(result, (exceptions & FE_UNDERFLOW) != 0))
-                return;
-            write_result_word(fd, result);
-        } else {
-            const u64 left_bits = source_doubleword(fs);
-            const u64 right_bits = second_source_doubleword(ft);
-            if (!check_inputs_doubleword(left_bits, right_bits)) {
-                cpu_.add_cycles(1);
-                return;
-            }
-            const volatile double left = value_of<double>(left_bits);
-            const volatile double right = value_of<double>(right_bits);
-            volatile double output = 0.0;
-            switch (function) {
-            case 0:
-                output = left + right;
-                break;
-            case 1:
-                output = left - right;
-                break;
-            case 2:
-                output = left * right;
-                break;
-            default:
-                output = left / right;
-                break;
-            }
-            const int exceptions = std::fetestexcept(FE_ALL_EXCEPT);
-            const bool flush_underflow =
-                (exceptions & FE_UNDERFLOW) != 0 && (control & (1U << 24)) != 0 && (control & 0x180U) == 0;
-            cpu_.add_cycles(arithmetic_latency<double>(function, left_bits, right_bits, flush_underflow));
-            if (!handle_host_exceptions(exceptions, false))
-                return;
-            u64 result = bits_of<double>(output);
-            if (!finish_doubleword(result, (exceptions & FE_UNDERFLOW) != 0))
-                return;
-            write_result_doubleword(fd, result);
-        }
-        return;
-    }
 
     if (function == 0x04U) {
         std::feclearexcept(FE_ALL_EXCEPT);

@@ -97,12 +97,19 @@ void System::settle_deferred() {
         if (elapsed == 0)
             elapsed = 1;
         if (rsp.running()) {
-            // The RSP runs one cycle at a time against the RDRAM and RDP clocks. It
-            // cannot observe the peripherals between their edges, so their time is
-            // owed until an edge fires or a buffered CPU write reaches them.
-            for (u64 cycle = 1; cycle < elapsed; ++cycle) {
-                bus.tick_clocks(1);
-                rsp.tick(1);
+            // Local instructions cannot observe the RDRAM or RDP clocks. Keep the
+            // final cycle separate so devices and DMA become visible before issue.
+            u64 remaining = elapsed - 1;
+            while (remaining != 0) {
+                const u64 local_cycles = remaining > 1 ? rsp.run_local(remaining) : 0;
+                if (local_cycles != 0) {
+                    bus.tick_clocks(local_cycles);
+                    remaining -= local_cycles;
+                } else {
+                    bus.tick_clocks(1);
+                    rsp.tick(1);
+                    --remaining;
+                }
             }
             bus.tick_clocks(1);
             peripheral_debt_ += elapsed;
@@ -159,17 +166,18 @@ bool System::reusable_deferred_event_cycles(u64& cpu_cycles) const {
     return true;
 }
 
-void System::advance_after_local_rsp(u64 cpu_cycles) {
+void System::finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced) {
     const u64 whole = cpu_cycles / 3;
     const u64 fraction = (cpu_cycles % 3) * 2 + rcp_fraction_;
     const u64 rcp_cycles = whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
 
-    // idle_loop_event_cycles() settled the machine before the RSP ran ahead. The
-    // RSP work was local to IMEM/DMEM/register state and stopped before every
-    // shared event, so clocks can catch up in one span without running the RSP twice.
+    // Slice entry settled the machine and bounded execution before every peripheral
+    // edge. Cached CPU slices advanced shared clocks at each RSP tick; local idle
+    // spans catch those clocks up here. Peripheral clocks advance once in either case.
     settling_ = true;
-    bus.tick_clocks(rcp_cycles);
+    if (!clocks_advanced)
+        bus.tick_clocks(rcp_cycles);
     bus.tick_peripherals(peripheral_debt_ + rcp_cycles);
     peripheral_debt_ = 0;
     cpu.tick_write_buffer(rcp_cycles);

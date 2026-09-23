@@ -132,22 +132,25 @@ bool Rsp::execute_vector_op_sse2(u32 instruction) {
         const __m128i left = operands.left;
         const __m128i right = operands.right;
         const __m128i carry = flag_values(vcol_);
-        const Wide32 left_wide = widen_signed(left);
-        const Wide32 right_wide = widen_signed(right);
-        const Wide32 carry_wide = widen_unsigned(carry);
-        Wide32 result{};
+        __m128i result{};
         __m128i low{};
         if (function == 0x10) {
-            result.low = _mm_add_epi32(_mm_add_epi32(left_wide.low, right_wide.low), carry_wide.low);
-            result.high = _mm_add_epi32(_mm_add_epi32(left_wide.high, right_wide.high), carry_wide.high);
             low = _mm_add_epi16(_mm_add_epi16(left, right), carry);
+            // Add carry to the smaller operand first. If that saturates, both
+            // operands already force the final signed sum to saturate as well.
+            const __m128i smaller = _mm_adds_epi16(_mm_min_epi16(left, right), carry);
+            result = _mm_adds_epi16(smaller, _mm_max_epi16(left, right));
         } else {
-            result.low = _mm_sub_epi32(_mm_sub_epi32(left_wide.low, right_wide.low), carry_wide.low);
-            result.high = _mm_sub_epi32(_mm_sub_epi32(left_wide.high, right_wide.high), carry_wide.high);
-            low = _mm_sub_epi16(_mm_sub_epi16(left, right), carry);
+            const __m128i wrapped = _mm_add_epi16(right, carry);
+            const __m128i saturated = _mm_adds_epi16(right, carry);
+            low = _mm_sub_epi16(left, wrapped);
+            // 32767 + carry represents 32768. Restore that lost unit after the
+            // saturated subtraction, without wrapping a negative endpoint.
+            const __m128i overflow = _mm_cmpgt_epi16(saturated, wrapped);
+            result = _mm_adds_epi16(_mm_subs_epi16(left, saturated), overflow);
         }
         store_bytes(accumulator_.low.data(), low);
-        store_vector(destination, _mm_packs_epi32(result.low, result.high));
+        store_vector(destination, result);
         vcol_ = vcoh_ = 0;
         return true;
     }

@@ -122,14 +122,18 @@ class RspPipeline {
 
     struct DecodedFetch {
         std::array<u32, 2> words{};
-        Ports ports{};
+        struct Dependencies {
+            u32 scalar_reads{};
+            u32 scalar_result{};
+            u32 vector_reads{};
+            u32 vector_result{};
+        } ports;
         std::array<Operation, 2> operations{};
         u8 count{};
-        bool pairing_allowed{};
-        bool fresh_local{};
         bool issued_local{};
+        u8 flags{};
     };
-    static_assert(sizeof(DecodedFetch) == 48);
+    static_assert(sizeof(DecodedFetch) == 32);
 
     struct DecodedWord {
         Ports ports{};
@@ -139,8 +143,15 @@ class RspPipeline {
     [[nodiscard]] static DecodedWord decode(u32 word);
     [[nodiscard]] static bool can_pair(const Ports& first, const Ports& second);
     [[nodiscard]] static bool instruction_is_local(u32 word);
+    [[nodiscard]] static unsigned cache_index(u32 address, bool pairing_allowed);
+    [[nodiscard]] DecodedFetch& current_fetch();
+    [[nodiscard]] const DecodedFetch& current_fetch() const;
     [[nodiscard]] DecodedFetch& prepare(u32 first, u32 second, bool pairing_allowed, u32 address);
+    [[nodiscard]] DecodedFetch& prepare(std::span<const u8, 4096> imem, u64 revision, bool pairing_allowed,
+                                        u32 address);
     [[nodiscard]] LocalIssue local_issue(std::span<const u8, 4096> imem, LocalWindow& window, u32 address);
+    [[nodiscard]] LocalIssue local_issue(std::span<const u8, 4096> imem, u64 revision, u32 address);
+    void fetch(std::span<const u8, 4096> imem, u64 revision, bool single_step, u32 address);
     void advance(Stage stage);
 
     std::array<Stage, 3> previous_{};
@@ -148,7 +159,8 @@ class RspPipeline {
     unsigned count_{};
     bool single_issue_{};
     bool branch_wait_{};
-    std::array<DecodedFetch, 1024> decoded_{};
+    std::array<DecodedFetch, 2048> decoded_{};
+    std::array<u64, 2048> decoded_revision_{};
 };
 
 } // namespace cupid

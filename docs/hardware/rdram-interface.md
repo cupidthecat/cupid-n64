@@ -111,6 +111,18 @@ describe the address limits and error behavior.
 
 ## Coverage and limits
 
+Aligned 16-byte and 32-byte cache bursts use a contiguous transfer when all
+installed chips have their normal mapping and reliable current settings. The
+transfer records one bank access at the settled RCP clock and updates each
+written halfword's hidden pair. It does not change CPU transfer timing.
+Unaligned transfers, missing memory, remapped chips, and calibration reads keep
+their individual word accesses and error behavior.
+
+`tests/rcp/test_rdram_burst.cpp` checks both line sizes in 4 MiB and 8 MiB memory,
+row and chip boundaries, hidden bits, bank timestamps, scoped bank summaries,
+and byte-for-byte agreement with word transfers under remapping and marginal
+current settings.
+
 `tests/rcp/test_ri.cpp` covers all eight banks, row boundaries, dirty-state
 transitions, cache hits and writebacks, DMA memory paths, relocated chips,
 absent memory, error clearing, reset, and the `0xff00` bank-status result after a

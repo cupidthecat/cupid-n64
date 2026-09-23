@@ -12,8 +12,8 @@ The next device access, scheduled peripheral edge, buffered store, or running RS
 catches the devices up before anything is observed. `System::advance` still settles
 immediately, so callers that step the public clock see current device state.
 
-The owed time is split. The RDP clock and the RDRAM row tracker keep pace with a
-running RSP, because DP_CLOCK and SP DMA can see them between peripheral edges.
+The owed time is split. The RDP clock and the RDRAM row tracker catch up before
+shared RSP operations, because DPC_CLOCK and SP DMA can see them between peripheral edges.
 VI, PI, SI, AI, EEPROM, flash, and the RI refresh counter stay deferred until
 their next scheduled edge, a CPU access, or a buffered write that reaches them.
 A write-buffer entry is only queued after that catch-up, so earlier deferred
@@ -31,6 +31,30 @@ at each one-cycle boundary. An eligible scalar/vector pair shares that boundary;
 [signal processor instruction timing](rsp-pipeline.md). When it is halted, the
 scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
 store, or peripheral event.
+
+Within an elapsed interval, local RSP instructions can run together before the
+RDP and RDRAM clocks catch up. Dynamic shared-register reads and writes end that
+local span. After their ordinary issue cycle, the scheduler checks for another
+local span, bounded by any DMA transfer the shared instruction started.
+The final cycle still advances clocks and any due peripheral event
+before RSP issue, so a DMA row or shared boundary remains visible on its original
+cycle. `tests/rcp/test_rsp_settlement.cpp` compares bulk and one-cycle advances
+across DMA edges, operand waits, shared reads, halts, and host code changes.
+
+A cached CPU slice with RCP interrupts enabled advances the RSP after each
+complete CPU instruction, advancing shared clocks before each RSP tick.
+MI is sampled after the instruction's full RSP quota, so a line raised and
+cleared during a multicycle CPU operation remains invisible to the next CPU
+interrupt check. A pending line stops the slice before the next instruction.
+The slice's final clock update advances peripherals once, without repeating
+the shared clocks or RSP work.
+
+A cached CPU slice whose Status masks RCP interrupts can defer its RSP work
+until the slice's clock update. Its accepted operations touch only CPU registers
+and resident cache lines. The ordinary scheduler then catches the RSP up before
+any shared CPU access, interrupt-enable write, or output callback can observe
+it. Device and timer deadlines still bound the slice; the
+[CPU timing guide](cpu-timing.md#cached-execution-slices) describes both paths.
 
 The inverse conversion rounds an RCP wait up to the first reachable CPU clock
 while retaining that fractional phase. A zero wait costs no cycles at any phase.

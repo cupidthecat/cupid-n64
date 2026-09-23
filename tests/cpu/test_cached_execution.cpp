@@ -262,8 +262,10 @@ TEST(cpu_cached_private_preserves_consecutive_load_interlocks) {
         warm_data_cache(*system);
         system->cpu.step();
     }
+    const u64 encoded_start_cycles = encoded_batched.cpu.cycles;
     compare_slice(encoded_batched, encoded_stepped, 2);
-    CHECK_EQ(encoded_batched.cpu.batched_cached_instructions(), 1U);
+    CHECK_EQ(encoded_batched.cpu.batched_cached_instructions(), 2U);
+    CHECK_EQ(encoded_batched.cpu.cycles - encoded_start_cycles, 3U);
     probe_next_step(encoded_batched, encoded_stepped);
 }
 
@@ -423,6 +425,7 @@ TEST(cpu_cached_private_preserves_device_callbacks_and_local_rsp_execution) {
     System rsp_batched, rsp_stepped;
     for (auto* system : {&rsp_batched, &rsp_stepped}) {
         prepare(*system, program);
+        system->cpu.write_cop0(12, 0x34000401U);
         system->cpu.step();
         system->rsp.write_pc(0);
         system->rsp.write_register(0x10, 1U); // Clear halt; zero IMEM is a local NOP stream.

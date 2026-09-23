@@ -74,5 +74,5 @@ state is instead represented through the color format as described above.
 These regressions establish the synchronous storage rules for exact-origin
 color/depth aliasing. Arbitrary offset overlaps, deferred rasterizer ordering,
 and scanout from unusual framebuffer layouts still need hardware captures.
-Drawing remains synchronous. Issues #22, #23, #37, and #49 track those broader
+Drawing remains synchronous. Issues #22, #23, and #37 track those broader
 checks.

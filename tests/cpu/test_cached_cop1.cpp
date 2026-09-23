@@ -177,8 +177,10 @@ TEST(cpu_cached_cop1_keeps_encoded_integer_load_interlock_and_cu1_priority) {
             system->cpu.fpu.registers[4] = 0x12345678U;
             system->cpu.step();
         }
+        const u64 start_cycles = batched.cpu.cycles;
         compare_slice(batched, stepped, 3);
-        CHECK_EQ(batched.cpu.batched_cached_instructions(), 1U);
+        CHECK_EQ(batched.cpu.batched_cached_instructions(), 3U);
+        CHECK_EQ(batched.cpu.cycles - start_cycles, 4U);
         CHECK_EQ(batched.cpu.gpr[2], 0x12345678U);
     }
 
@@ -333,8 +335,10 @@ TEST(cpu_cached_cop1_replaces_blanket_pending_fpu_reject_with_exact_hazard) {
             system->cpu.fpu.registers[4] = 0x3f800000U;
             system->cpu.step();
         }
+        const u64 start_cycles = batched.cpu.cycles;
         compare_slice(batched, stepped, 2);
-        CHECK_EQ(batched.cpu.batched_cached_instructions(), mode == 0 ? 2U : 0U);
+        CHECK_EQ(batched.cpu.batched_cached_instructions(), 2U);
+        CHECK_EQ(batched.cpu.cycles - start_cycles, mode == 0 ? 2U : 3U);
         CHECK_EQ(batched.cpu.gpr[8], mode == 0 ? sign_extend32(0x3f800000U) : 0U);
     }
 }
@@ -499,6 +503,7 @@ TEST(cpu_cached_cop1_preserves_device_and_local_rsp_boundaries) {
     System rsp_batched, rsp_stepped;
     for (auto* system : {&rsp_batched, &rsp_stepped}) {
         prepare(*system, program);
+        system->cpu.write_cop0(12, 0x34000401U);
         warm_instruction_cache_line(*system, code);
         system->cpu.gpr[8] = 0x3f800000U;
         system->cpu.fpu.registers[4] = 0x3f800000U;

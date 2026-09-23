@@ -54,7 +54,7 @@ void warm_data_cache(System& system) {
 
 void prepare_cpu(System& system) {
     test::initialize_memory(system);
-    system.cpu.write_cop0(12, 0x34000000U);
+    system.cpu.write_cop0(12, 0x34000401U);
     write_program(system, {
                               immediate(0x23, 16, 8, 0),     // LW t0,0(s0): cached load.
                               special(8, 0, 9, 0, 0x21),     // ADDU t1,t0,zero: load-use handoff.
@@ -73,7 +73,7 @@ void prepare_cpu(System& system) {
 
 void prepare_simple_cpu(System& system) {
     test::initialize_memory(system);
-    system.cpu.write_cop0(12, 0x34000000U);
+    system.cpu.write_cop0(12, 0x34000401U);
     write_program(system, {
                               0U,                          // Prologue used only to latch the hot loop.
                               immediate(0x09, 8, 8, 1),    // ADDIU t0,t0,1.
@@ -236,9 +236,9 @@ TEST(cpu_cached_rsp_keeps_cached_sp_memory_independent_from_rsp_dmem) {
     }
 }
 
-TEST(cpu_cached_rsp_stops_before_shared_control_ops_in_either_raw_slot) {
+TEST(cpu_cached_rsp_preserves_shared_control_ops_in_either_raw_slot) {
     constexpr u32 vnop = 0x4a000037U;
-    constexpr u32 mfc0_dp_clock = 0x40025800U;
+    constexpr u32 mfc0_dp_clock = 0x40026000U;
     constexpr u32 store_v0 = 0xac020080U;
     constexpr u32 break_instruction = 0x0000000dU;
     for (unsigned phase = 0; phase < 3; ++phase) {
@@ -286,7 +286,7 @@ TEST(cpu_cached_rsp_uses_latched_local_words_after_imem_changes_during_a_stall) 
             system->rsp.tick(1);
             CHECK_EQ(system->rsp.pc, 4U);
             write_be32(system->rsp.memory.data() + 0x1004, 0x0000000dU);
-            write_be32(system->rsp.memory.data() + 0x1008, 0x40025800U);
+            write_be32(system->rsp.memory.data() + 0x1008, 0x40026000U);
         }
         compare_slice(batched, stepped, 64);
         CHECK(batched.cpu.batched_cached_instructions() > 0U);
@@ -296,7 +296,7 @@ TEST(cpu_cached_rsp_uses_latched_local_words_after_imem_changes_during_a_stall) 
     }
 }
 
-TEST(cpu_cached_rsp_can_retire_a_non_rcp_cpu_cycle_before_a_shared_rsp_tick) {
+TEST(cpu_cached_rsp_preserves_shared_rsp_tick_phase_while_batching_cpu_instructions) {
     for (unsigned advance = 0; advance < 3; ++advance) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -307,12 +307,12 @@ TEST(cpu_cached_rsp_can_retire_a_non_rcp_cpu_cycle_before_a_shared_rsp_tick) {
         const u64 previously_batched = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2);
         const u64 added = batched.cpu.batched_cached_instructions() - previously_batched;
-        CHECK_EQ(added, advance == 2 ? 1U : 0U);
+        CHECK_EQ(added, 2U);
         future_steps(batched, stepped);
     }
 }
 
-TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrites) {
+TEST(cpu_cached_rsp_preserves_latched_shared_ops_dma_single_step_and_raw_pc_rewrites) {
     // A shared COP0 in the second slot remains visible even while a vector dependency
     // stalls the already-latched pair.
     {
@@ -322,7 +322,7 @@ TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrit
             rsp_program(*system, {
                                      0xc8012000U, // LQV v1,0(zero).
                                      0x4a010850U, // VADD v1,v1,v1.
-                                     0x40025800U, // MFC0 v0,DPC_CLOCK behind the stall.
+                                     0x40026000U, // MFC0 v0,DPC_CLOCK behind the stall.
                                      0xac020080U,
                                      0x0000000dU,
                                  });
@@ -352,7 +352,7 @@ TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrit
                                          0x4a010850U,
                                          0x24420001U,
                                      });
-                write_be32(system->rsp.memory.data() + 0x1040, 0x40025800U);
+                write_be32(system->rsp.memory.data() + 0x1040, 0x40026000U);
                 write_be32(system->rsp.memory.data() + 0x1044, 0xac020080U);
                 write_be32(system->rsp.memory.data() + 0x1048, 0x0000000dU);
                 system->rsp.tick(1);
@@ -362,9 +362,38 @@ TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrit
         }
         const u64 previously_batched = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2);
-        CHECK_EQ(batched.cpu.batched_cached_instructions(), previously_batched);
+        CHECK_EQ(batched.cpu.batched_cached_instructions() - previously_batched, mode == 0 ? 0U : 2U);
         future_steps(batched, stepped);
     }
+}
+
+TEST(cpu_cached_rsp_register_polling_observes_callback_changes_at_the_same_clock) {
+    using Observation = std::array<u64, 6>;
+    System batched, stepped;
+    std::vector<Observation> first, second;
+    const auto attach = [&](System& system, std::vector<Observation>& observations) {
+        prepare_simple_cpu(system);
+        rsp_program(system, {
+                                0x40025800U, // MFC0 v0,DPC_STATUS.
+                                0xac020080U, // SW v0,0x80(zero).
+                                0x1000fffdU, // BEQ zero,zero,0.
+                                0U,
+                            });
+        system.bus.write(0x04500010, 4, 99);
+        system.bus.set_audio_sample_output([machine = &system, output = &observations](const AudioSample&) {
+            output->push_back({machine->cpu.cycles, machine->cpu.pc, machine->cpu.gpr[8], machine->rsp.pc,
+                               read_be32(machine->rsp.memory.data() + 0x80), machine->bus.output_clock()});
+            machine->bus.rdp.write_register(0x0c, (output->size() & 1U) != 0U ? 8U : 4U);
+        });
+    };
+    attach(batched, first);
+    attach(stepped, second);
+    compare_slice(batched, stepped, 4096);
+    CHECK(first.size() > 8);
+    CHECK(first == second);
+    for (unsigned index = 2; index < first.size(); ++index)
+        CHECK_EQ(first[index][4] & 2U, (index & 1U) != 0U ? 2U : 0U);
+    CHECK(batched.cpu.batched_cached_instructions() > 1000);
 }
 
 TEST(cpu_cached_rsp_preserves_compare_and_vi_callback_boundaries) {

@@ -8,7 +8,7 @@ constexpr u32 addiu = 0x24010001U;
 constexpr u32 vnop = 0x4a000037U;
 constexpr u32 lqv = 0xc8012000U;
 constexpr u32 vadd = 0x4a010850U;
-constexpr u32 mfc0 = 0x40025800U;
+constexpr u32 mfc0 = 0x40026000U;
 constexpr u32 break_instruction = 0x0000000dU;
 
 void drain(RspPipeline& pipeline) {
@@ -138,7 +138,7 @@ TEST(rsp_decoded_fetch_leaves_latched_packets_unchanged_until_retirement) {
     pipeline.fetch(vadd, addiu, false, address);
     CHECK_EQ(pipeline.size(), 2U);
     CHECK(pipeline.advance_operand_wait());
-    pipeline.fetch(0x0000000dU, 0x40015800U, true, address);
+    pipeline.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(pipeline.size(), 2U);
     CHECK_EQ(pipeline.instruction(0), vadd);
     CHECK_EQ(pipeline.instruction(1), addiu);
@@ -147,7 +147,7 @@ TEST(rsp_decoded_fetch_leaves_latched_packets_unchanged_until_retirement) {
     pipeline.retire(false, 16);
 
     // Once the packet retires, the same cache slot observes the changed IMEM words.
-    pipeline.fetch(0x0000000dU, 0x40015800U, true, address);
+    pipeline.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(pipeline.size(), 1U);
     CHECK_EQ(pipeline.instruction(0), 0x0000000dU);
     pipeline.retire(false, address + 4U);
@@ -184,7 +184,7 @@ TEST(rsp_decoded_fetch_latched_cache_index_is_independent_after_pipeline_copy) {
 
     RspPipeline copied = original;
     original.redirect();
-    original.fetch(0x0000000dU, 0x40015800U, true, address);
+    original.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(original.size(), 1U);
     CHECK_EQ(original.instruction(0), 0x0000000dU);
 
@@ -219,13 +219,19 @@ TEST(rsp_decoded_fetch_redirect_and_reset_keep_latch_state_self_contained) {
     CHECK(!pipeline.advance_operand_wait());
 }
 
-TEST(rsp_decoded_fetch_fresh_local_safety_tracks_both_raw_words) {
+TEST(rsp_decoded_fetch_fresh_local_safety_uses_the_selected_issue_group) {
     constexpr u32 address = 0x180U;
     RspPipeline pipeline;
     using LocalIssue = RspPipeline::LocalIssue;
 
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Blocked);
-    CHECK_EQ(pipeline.local_issue(addiu, break_instruction, address), LocalIssue::Blocked);
+    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Ready);
+    CHECK_EQ(pipeline.size(), 1U);
+    CHECK_EQ(pipeline.instruction(0), addiu);
+    pipeline.retire(false, address + 4U);
+    CHECK_EQ(pipeline.local_issue(addiu, break_instruction, address), LocalIssue::Ready);
+    CHECK_EQ(pipeline.size(), 1U);
+    CHECK_EQ(pipeline.instruction(0), addiu);
+    pipeline.retire(false, address + 4U);
     CHECK_EQ(pipeline.local_issue(mfc0, vnop, address), LocalIssue::Blocked);
     CHECK_EQ(pipeline.local_issue(break_instruction, vnop, address), LocalIssue::Blocked);
 
@@ -233,15 +239,30 @@ TEST(rsp_decoded_fetch_fresh_local_safety_tracks_both_raw_words) {
     CHECK_EQ(pipeline.size(), 2U);
 }
 
+TEST(rsp_decoded_fetch_local_reads_exclude_sp_status_semaphore_and_dp_clock) {
+    using LocalIssue = RspPipeline::LocalIssue;
+    for (unsigned index = 0; index < 32; ++index) {
+        for (const unsigned operation : {0U, 4U}) {
+            for (const bool second : {false, true}) {
+                RspPipeline pipeline;
+                const u32 word = 0x40020000U | (operation << 21U) | (index << 11U);
+                const unsigned selected = index & 15U;
+                const bool local = operation == 0U && selected != 4U && selected != 7U && selected != 12U;
+                CHECK_EQ(pipeline.local_issue(second ? vnop : word, second ? word : vnop, 0x100U),
+                         local ? LocalIssue::Ready : LocalIssue::Blocked);
+            }
+        }
+    }
+}
+
 TEST(rsp_decoded_fetch_latched_local_safety_uses_only_issued_words) {
     constexpr u32 address = 0x200U;
     RspPipeline pipeline;
     using LocalIssue = RspPipeline::LocalIssue;
 
-    // Both words are scalar, so only ADDIU issues. A normal RSP fetch may latch
-    // that instruction even though a fresh local co-run would reject the raw COP0
-    // in slot two. Once latched, only the issued instruction controls locality.
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Blocked);
+    // Both words are scalar, so only ADDIU issues. Fresh and latched packets
+    // both use the instructions selected by the pairing rules.
+    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Ready);
     pipeline.fetch(addiu, mfc0, false, address);
     CHECK_EQ(pipeline.size(), 1U);
     CHECK_EQ(pipeline.local_issue(), LocalIssue::Ready);
@@ -265,7 +286,7 @@ TEST(rsp_decoded_fetch_local_safety_revalidates_colliding_cache_entries) {
     constexpr u32 first_address = 0x0fc0U;
     constexpr u32 colliding_address = first_address + 0x1000U;
 
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, colliding_address), LocalIssue::Blocked);
+    CHECK_EQ(pipeline.local_issue(vnop, mfc0, colliding_address), LocalIssue::Blocked);
     CHECK_EQ(pipeline.local_issue(addiu, vnop, first_address), LocalIssue::Ready);
     pipeline.retire(false, first_address + 8U);
 
@@ -292,8 +313,8 @@ TEST(rsp_decoded_fetch_local_issue_checks_shared_words_before_branch_bubble) {
     CHECK_EQ(pipeline.size(), 1U);
     pipeline.retire(true, 0x020U);
 
-    // A shared raw slot stops local co-run before the pending bubble is consumed.
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, 0x020U), LocalIssue::Blocked);
+    // A shared issued slot stops local co-run before the pending bubble is consumed.
+    CHECK_EQ(pipeline.local_issue(vnop, mfc0, 0x020U), LocalIssue::Blocked);
     CHECK(pipeline.advance_branch_wait());
 
     // Recreate the bubble. With two local raw words, local_issue consumes the bubble
@@ -306,4 +327,45 @@ TEST(rsp_decoded_fetch_local_issue_checks_shared_words_before_branch_bubble) {
     CHECK_EQ(pipeline.size(), 0U);
     CHECK_EQ(pipeline.local_issue(addiu, vnop, 0x020U), LocalIssue::Ready);
     CHECK_EQ(pipeline.size(), 2U);
+}
+
+TEST(rsp_decoded_fetch_reuses_every_scalar_and_vector_dependency_bit) {
+    for (unsigned reg = 0; reg < 32; ++reg) {
+        RspPipeline pipeline;
+        for (unsigned repeat = 0; repeat < 2; ++repeat) {
+            drain(pipeline);
+            pipeline.fetch(0x8c000000U | (reg << 16U), vnop, false, 0x80U);
+            pipeline.retire(false, 0x88U);
+            pipeline.fetch((reg << 21U) | 0x00001021U, vnop, false, 0x100U);
+            CHECK_EQ(pipeline.size(), 2U);
+            if (reg != 0U) {
+                CHECK(pipeline.advance_operand_wait());
+                CHECK(pipeline.advance_operand_wait());
+            }
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x108U);
+
+            drain(pipeline);
+            pipeline.fetch(0xc8002000U | (reg << 16U), vnop, false, 0x180U);
+            pipeline.retire(false, 0x188U);
+            pipeline.fetch(0x4a000050U | (reg << 16U) | (reg << 11U), addiu, false, 0x200U);
+            CHECK_EQ(pipeline.size(), 2U);
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x208U);
+
+            drain(pipeline);
+            pipeline.fetch(0x8c000000U, vnop, false, 0x280U);
+            pipeline.retire(false, 0x288U);
+            pipeline.fetch(0, vnop, false, 0x300U);
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x308U);
+            pipeline.fetch(0xac000000U, vnop, false, 0x380U);
+            CHECK(pipeline.advance_operand_wait());
+            CHECK(!pipeline.advance_operand_wait());
+            pipeline.retire(false, 0x388U);
+        }
+    }
 }

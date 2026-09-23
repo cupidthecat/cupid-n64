@@ -26,17 +26,10 @@ u64 System::cached_private_event_cycles() {
     if (rsp.dma_busy_ || rsp.dma_full_ || cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
         return 0;
     // The cached CPU slice keeps every materialized clock strictly before Bus/VI
-    // edges. A running RSP is handled separately one proven-local tick at a time.
+    // edges. An RCP-interruptible slice advances shared RSP operations in order;
+    // a masked slice catches them up through the ordinary scheduler before returning.
     const u64 rcp_cycles = std::min(bus.next_event(), bus.next_vi_line());
     return cpu_cycles_for_rcp(rcp_cycles);
-}
-
-bool System::rsp_local_execution_ready() const {
-    return rsp.local_execution_ready();
-}
-
-bool System::run_local_rsp_tick() {
-    return rsp.run_local(1) == 1;
 }
 
 u64 System::run_local_rsp_for_idle(u64 maximum_cpu_cycles) {

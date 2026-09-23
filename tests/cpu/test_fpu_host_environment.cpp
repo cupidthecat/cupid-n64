@@ -261,75 +261,78 @@ TEST(fpu_early_exception_paths_restore_dirty_host_environment) {
 #endif
 }
 
-TEST(fpu_compare_trap_restores_host_environment_after_younger_uncached_fetch_callback) {
-    constexpr u64 code = 0xffffffff80001000ULL;
-    constexpr u64 target = 0xffffffffa0002000ULL;
-    HostEnvironment host;
-    System system;
-    test::initialize_memory(system);
-    auto& cpu = system.cpu;
-    auto& fpu = cpu.fpu;
-    cpu.write_cop0(12, 0x34000000U);
-    cpu.set_pc(code);
-    cpu.gpr[3] = target;
-    fpu.control = 1U << 11U;
-    fpu.registers[2] = 0x7fc00000U;
-    fpu.registers[4] = 0x3f800000U;
-    system.bus.write(0x1000, 4, 0x00600008U); // JR v1
-    system.bus.write(0x1004, 4, operation(0x10U, 0x32U));
-    system.bus.write(0x2000, 4, 0x48000000U); // COP2 opcode sampled by the older FPU exception.
+TEST(fpu_traps_restore_host_environment_after_younger_uncached_fetch_callback) {
+    for (unsigned scenario = 0; scenario < 4; ++scenario) {
+        constexpr u64 code = 0xffffffff80001000ULL;
+        constexpr u64 target = 0xffffffffa0002000ULL;
+        HostEnvironment host;
+        System system;
+        test::initialize_memory(system);
+        auto& cpu = system.cpu;
+        auto& fpu = cpu.fpu;
+        cpu.write_cop0(12, 0x34000000U);
+        cpu.set_pc(code);
+        cpu.gpr[3] = target;
+        fpu.control = scenario < 2 ? 1U << 11U : scenario == 2 ? 1U << 9U : 0;
+        fpu.registers[2] = scenario < 2 ? 0x7fc00000U : scenario == 2 ? 0x7f7fffffU : 0x00800000U;
+        fpu.registers[4] = scenario < 2 ? 0x3f800000U : scenario == 2 ? 0x40000000U : 0x3f000000U;
+        system.bus.write(0x1000, 4, 0x00600008U); // JR v1
+        system.bus.write(0x1004, 4, operation(0x10U, scenario == 0 ? 0x32U : scenario == 1 ? 0U : 2U));
+        system.bus.write(0x2000, 4, 0x48000000U); // COP2 opcode sampled by the older FPU exception.
 
-    system.bus.write(0x04400000, 4, 0x303U);
-    system.bus.write(0x04400008, 4, 16U);
-    system.bus.write(0x04400018, 4, 4U);
-    system.bus.write(0x0440001c, 4, 99U);
-    system.bus.write(0x04400020, 4, (100U << 16U) | 100U);
-    system.bus.write(0x04400024, 4, (100U << 16U) | 100U);
-    system.bus.write(0x04400028, 4, (2U << 16U) | 4U);
-    system.bus.write(0x04400030, 4, 1024U);
-    system.bus.write(0x04400034, 4, 1024U);
+        system.bus.write(0x04400000, 4, 0x303U);
+        system.bus.write(0x04400008, 4, 16U);
+        system.bus.write(0x04400018, 4, 4U);
+        system.bus.write(0x0440001c, 4, 99U);
+        system.bus.write(0x04400020, 4, (100U << 16U) | 100U);
+        system.bus.write(0x04400024, 4, (100U << 16U) | 100U);
+        system.bus.write(0x04400028, 4, (2U << 16U) | 4U);
+        system.bus.write(0x04400030, 4, 1024U);
+        system.bus.write(0x04400034, 4, 1024U);
 
-    u64 ignored = 0;
-    CHECK(cpu.read_memory(code, 4, ignored, true));
-    unsigned callbacks = 0;
-    system.bus.set_video_output([&](VideoField) {
-        ++callbacks;
-        CHECK_EQ(std::fesetround(FE_TOWARDZERO), 0);
+        u64 ignored = 0;
+        CHECK(cpu.read_memory(code, 4, ignored, true));
+        unsigned callbacks = 0;
+        system.bus.set_video_output([&](VideoField) {
+            ++callbacks;
+            CHECK_EQ(std::fesetround(FE_TOWARDZERO), 0);
+            CHECK_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+            CHECK_EQ(std::feraiseexcept(FE_INVALID), 0);
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+            _mm_setcsr(0x1f80U | static_cast<unsigned>(_MM_FLUSH_ZERO_ON) | 0x0040U |
+                       static_cast<unsigned>(_MM_ROUND_TOWARD_ZERO));
+#endif
+        });
+
+        cpu.step();
+        CHECK(!cpu.exception_pending);
+        const u64 first_line =
+            (100ULL * 62500000ULL + system.video_frequency() - 1U) / system.video_frequency();
+        const u64 clock = system.bus.output_clock();
+        CHECK(clock < first_line);
+        system.bus.tick(first_line - clock - 1U);
+        CHECK_EQ(callbacks, 0U);
+
+        CHECK_EQ(std::fesetround(FE_DOWNWARD), 0);
         CHECK_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
-        CHECK_EQ(std::feraiseexcept(FE_INVALID), 0);
+        CHECK_EQ(std::feraiseexcept(FE_OVERFLOW | FE_INEXACT), 0);
+        const int flags = std::fetestexcept(FE_ALL_EXCEPT);
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-        _mm_setcsr(0x1f80U | static_cast<unsigned>(_MM_FLUSH_ZERO_ON) | 0x0040U |
-                   static_cast<unsigned>(_MM_ROUND_TOWARD_ZERO));
-#endif
-    });
-
-    cpu.step();
-    CHECK(!cpu.exception_pending);
-    const u64 first_line = (100ULL * 62500000ULL + system.video_frequency() - 1U) / system.video_frequency();
-    const u64 clock = system.bus.output_clock();
-    CHECK(clock < first_line);
-    system.bus.tick(first_line - clock - 1U);
-    CHECK_EQ(callbacks, 0U);
-
-    CHECK_EQ(std::fesetround(FE_DOWNWARD), 0);
-    CHECK_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
-    CHECK_EQ(std::feraiseexcept(FE_OVERFLOW | FE_INEXACT), 0);
-    const int flags = std::fetestexcept(FE_ALL_EXCEPT);
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-    const unsigned dirty_control = (_mm_getcsr() | static_cast<unsigned>(_MM_FLUSH_ZERO_ON) | 0x0040U) &
-                                   ~static_cast<unsigned>(_MM_MASK_DIV_ZERO);
-    _mm_setcsr(dirty_control);
+        const unsigned dirty_control = (_mm_getcsr() | static_cast<unsigned>(_MM_FLUSH_ZERO_ON) | 0x0040U) &
+                                       ~static_cast<unsigned>(_MM_MASK_DIV_ZERO);
+        _mm_setcsr(dirty_control);
 #endif
 
-    cpu.step();
-    CHECK(cpu.exception_pending);
-    CHECK_EQ(callbacks, 1U);
-    CHECK_EQ(cpu.read_cop0(13) & 0x3000007cU, 0x2000003cU);
-    CHECK_EQ(std::fegetround(), FE_DOWNWARD);
-    CHECK_EQ(std::fetestexcept(FE_ALL_EXCEPT), flags);
+        cpu.step();
+        CHECK(cpu.exception_pending);
+        CHECK_EQ(callbacks, 1U);
+        CHECK_EQ(cpu.read_cop0(13) & 0x3000007cU, 0x2000003cU);
+        CHECK_EQ(std::fegetround(), FE_DOWNWARD);
+        CHECK_EQ(std::fetestexcept(FE_ALL_EXCEPT), flags);
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
-    CHECK_EQ(_mm_getcsr(), dirty_control);
+        CHECK_EQ(_mm_getcsr(), dirty_control);
 #endif
+    }
 }
 
 TEST(fpu_compare_integer_path_matches_all_predicates_without_touching_host_environment) {

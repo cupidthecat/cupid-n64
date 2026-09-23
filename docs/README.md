@@ -57,6 +57,8 @@ DMA completion, interrupts, and output delivery.
 [RSP control flow](hardware/rsp-control-flow.md) covers scalar execution,
 branches, and halt behavior. [RSP instruction timing](hardware/rsp-pipeline.md)
 describes issue pairing, dependency waits, and branch bubbles.
+[Instruction storage](hardware/rsp-instruction-storage.md) explains decoded
+packet reuse, IMEM write invalidation, and direct memory aliases.
 [SP DMA](hardware/rsp-dma.md) covers transfer registers, row visibility, and
 the clocks used by the scheduler.
 
@@ -108,7 +110,7 @@ layout includes both top-level CPU/RSP files and their subsystem directories.
 | Area | Implementation | Regression tests |
 | --- | --- | --- |
 | CPU and floating point | `src/cpu*.cpp`, `src/cpu/`, `src/fpu.cpp` | `tests/cpu/`, top-level CPU/FPU tests |
-| Physical memory and peripherals | `src/bus*.cpp`, `src/bus/`, `src/rdram.cpp`, `src/rcp/` | `tests/rcp/`, top-level bus and memory tests |
+| Physical memory and peripherals | `src/bus*.cpp`, `src/bus/`, `src/rdram.cpp`, `src/rdram/`, `src/rcp/` | `tests/rcp/`, top-level bus and memory tests |
 | Signal processor | `src/rsp*.cpp`, `src/rsp/` | `tests/rsp/`, top-level RSP tests |
 | Display and video | `src/rdp.cpp`, `src/rdp/`, `src/vi/`, `src/rcp/vi.cpp` | `tests/rdp/`, `tests/vi/` |
 | Cartridge devices | `src/cartridge/` | `tests/cartridge/`, device cases in `tests/rcp/` |

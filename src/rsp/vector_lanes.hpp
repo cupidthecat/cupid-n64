@@ -9,11 +9,6 @@
 
 namespace cupid::rsp_vector {
 
-struct Wide32 {
-    __m128i low;
-    __m128i high;
-};
-
 struct Accumulator {
     __m128i low;
     __m128i middle;
@@ -62,16 +57,6 @@ inline __m128i select_vector(const std::array<u16, 8>& lanes, unsigned element) 
     default:
         return value;
     }
-}
-
-inline Wide32 widen_signed(__m128i value) {
-    const __m128i sign = _mm_srai_epi16(value, 15);
-    return {_mm_unpacklo_epi16(value, sign), _mm_unpackhi_epi16(value, sign)};
-}
-
-inline Wide32 widen_unsigned(__m128i value) {
-    const __m128i zero = _mm_setzero_si128();
-    return {_mm_unpacklo_epi16(value, zero), _mm_unpackhi_epi16(value, zero)};
 }
 
 inline __m128i unsigned_less(__m128i left, __m128i right) {

@@ -18,10 +18,7 @@ bool Bus::read_cache(u32 physical, std::span<u8> bytes) {
         write_be32(bytes.data(), memory.read_register(physical));
         return true;
     }
-    for (std::size_t offset = 0; offset < bytes.size(); offset += 4) {
-        write_be32(bytes.data() + offset,
-                   static_cast<u32>(memory.read(physical + static_cast<u32>(offset), 4)));
-    }
+    memory.read_burst(physical, bytes);
     return true;
 }
 
@@ -37,9 +34,7 @@ bool Bus::write_cache(u32 physical, std::span<const u8> bytes) {
         memory.write_register(physical, read_be32(bytes.data()));
         return true;
     }
-    for (std::size_t offset = 0; offset < bytes.size(); offset += 4) {
-        memory.write(physical + static_cast<u32>(offset), 4, read_be32(bytes.data() + offset));
-    }
+    memory.write_burst(physical, bytes);
     return true;
 }
 

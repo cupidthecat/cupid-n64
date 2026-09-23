@@ -3,8 +3,11 @@
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <future>
+#include <latch>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <thread>
 
@@ -140,13 +143,20 @@ TEST(parallel_ranges_explicit_shutdown_joins_workers_and_allows_restart) {
     std::atomic<unsigned> registered{};
     std::array<std::atomic<bool>, 3> seen{};
     const auto owner = std::this_thread::get_id();
+    std::atomic<unsigned> participants{};
+    tasks::parallel_ranges(0, 256, true,
+                           [&](s32, s32, unsigned) { participants.fetch_add(1, std::memory_order_relaxed); });
+    std::latch started(static_cast<std::ptrdiff_t>(participants.load(std::memory_order_relaxed) - 1U));
     tasks::parallel_ranges(0, 256, true, [&](s32, s32, unsigned index) {
-        if (std::this_thread::get_id() == owner)
+        if (std::this_thread::get_id() == owner) {
+            started.wait();
             return;
+        }
         if (!seen[index].exchange(true, std::memory_order_relaxed)) {
             thread_exit_probe.exits = &exits;
             registered.fetch_add(1, std::memory_order_relaxed);
         }
+        started.count_down();
     });
     const unsigned worker_count = registered.load(std::memory_order_relaxed);
     tasks::shutdown_parallel_ranges();
@@ -158,4 +168,23 @@ TEST(parallel_ranges_explicit_shutdown_joins_workers_and_allows_restart) {
     });
     CHECK_EQ(rows.load(std::memory_order_relaxed), 256U);
     tasks::shutdown_parallel_ranges();
+}
+
+TEST(parallel_ranges_release_each_callback_context_before_the_next_job) {
+    const tasks::ParallelRangesScope scope;
+    struct Payload {
+        std::array<unsigned, 64> values{};
+    };
+    for (unsigned generation = 1; generation <= 1024; ++generation) {
+        auto payload = std::make_unique<Payload>();
+        tasks::parallel_ranges(0, 64, true,
+                               [target = payload.get(), generation](s32 first, s32 last, unsigned index) {
+                                   if (index == 0 && (generation & 31U) == 0U)
+                                       std::this_thread::yield();
+                                   for (s32 row = first; row < last; ++row)
+                                       target->values[static_cast<unsigned>(row)] = generation;
+                               });
+        for (const unsigned value : payload->values)
+            CHECK_EQ(value, generation);
+    }
 }
