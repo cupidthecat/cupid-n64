@@ -34,8 +34,8 @@ not name a functional operand. MTC2 and LTV retain their special VNOP conflicts.
 
 Instruction decoding is cached as derived metadata at instruction addresses.
 Each 32-byte entry stores the issued register dependencies, issue flags,
-operations, and whether the instructions can execute without accessing shared
-devices. The 1,024-entry table occupies 32 KiB. Control-register and element-field
+operations, and whether the instructions can execute within a local slice.
+The 1,024-entry table occupies 32 KiB. Control-register and element-field
 dependencies decide pairing during decode; they are not needed in the cached
 packet once that decision is made. A cached packet
 is reused only when both fetched IMEM words and the current pairing permission
@@ -56,9 +56,21 @@ without latching those words before their actual fetch cycle.
 An idle slice of at least eight RCP cycles can reuse the validated words within
 one `Rsp::run_local` call. A local bitmap records fresh addresses already read
 in that call. Pairing changes still rebuild the entry from those words. The
-slice excludes DMA, shared instructions, and callbacks, and local stores can
-write only DMEM. The bitmap is discarded when the call returns, so the next
-call rereads both IMEM words even when PC has not changed.
+slice stops before DMA row transfers, shared writes, and callbacks, and local
+stores can write only DMEM. The bitmap is discarded when the call returns, so
+the next call rereads both IMEM words even when PC has not changed.
+
+Local slices admit COP0 reads whose values stay constant before the next device
+event: SP DMA addresses, lengths, busy/full flags, and DP registers other than
+DPC_CLOCK. SP_STATUS and SP_SEMAPHORE reads retain their synchronized path.
+All COP0 writes and BREAK still end local execution. An idle CPU can run local
+RSP work while DMA is active, but only before the next row transfer. The DMA
+countdown advances by the cycles actually executed; ordinary stepping handles
+the transfer cycle before issuing its RSP instruction.
+
+Regression tests compare queued DMA rows, both transfer directions, IMEM/DMEM
+wrapping, register aliases, and callback changes with ordinary stepping. Clock
+fixtures use COP0 register 12 for DPC_CLOCK; register 11 reads DPC_STATUS.
 
 `src/rsp/execution.cpp` executes the decoded scalar operation without repeating
 the primary, SPECIAL, and REGIMM decoders. Link branches still test the original

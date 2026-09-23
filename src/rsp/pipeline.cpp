@@ -306,7 +306,14 @@ bool RspPipeline::can_pair(const Ports& first, const Ports& second) {
 }
 
 bool RspPipeline::instruction_is_local(u32 word) {
-    return (word >> 26U) != 0x10U && (word & 0xfc00003fU) != 0x0000000dU;
+    if ((word >> 26U) == 0x10U) {
+        // DMA rows and device events bound these constant register reads. SP status
+        // and semaphore retain synchronization; DP clock depends on elapsed time.
+        const unsigned operation = (word >> 21U) & 31U;
+        const unsigned index = (word >> 11U) & 15U;
+        return operation == 0U && index != 4U && index != 7U && index != 12U;
+    }
+    return (word & 0xfc00003fU) != 0x0000000dU;
 }
 
 RspPipeline::DecodedFetch& RspPipeline::prepare(u32 first, u32 second, bool pairing_allowed, u32 address) {

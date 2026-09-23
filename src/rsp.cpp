@@ -70,7 +70,7 @@ u64 Rsp::next_dma_event() const {
 }
 
 bool Rsp::local_execution_ready() const {
-    return !halted_ && !single_step_ && !dma_busy_ && !dma_full_ && pc == pc_shadow_;
+    return !halted_ && !single_step_ && pc == pc_shadow_;
 }
 
 bool Rsp::step_local() {
@@ -93,10 +93,19 @@ u64 Rsp::run_local(u64 maximum_cycles) {
     if (!local_execution_ready())
         return 0;
 
+    if (dma_busy_) {
+        // The row's payload stays unchanged before its transfer cycle. Leave that
+        // cycle to tick(), which transfers the row before issuing its instruction.
+        if (dma_cycles_until_row_ <= 1)
+            return 0;
+        maximum_cycles = std::min(maximum_cycles, dma_cycles_until_row_ - 1);
+    }
+
     if (maximum_cycles < 8) {
         u64 elapsed = 0;
         while (elapsed < maximum_cycles && step_local())
             ++elapsed;
+        tick_dma(elapsed);
         return elapsed;
     }
 
@@ -119,9 +128,10 @@ u64 Rsp::run_local(u64 maximum_cycles) {
     u64 elapsed = 0;
     while (elapsed < maximum_cycles && step_window()) {
         // A branch-wait or operand-wait cycle is still an RSP cycle. Local groups
-        // cannot touch shared registers, start DMA, halt, or raise an SP interrupt.
+        // cannot change shared registers, start DMA, halt, or raise an SP interrupt.
         ++elapsed;
     }
+    tick_dma(elapsed);
     return elapsed;
 }
 

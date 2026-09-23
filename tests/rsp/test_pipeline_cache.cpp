@@ -8,7 +8,7 @@ constexpr u32 addiu = 0x24010001U;
 constexpr u32 vnop = 0x4a000037U;
 constexpr u32 lqv = 0xc8012000U;
 constexpr u32 vadd = 0x4a010850U;
-constexpr u32 mfc0 = 0x40025800U;
+constexpr u32 mfc0 = 0x40026000U;
 constexpr u32 break_instruction = 0x0000000dU;
 
 void drain(RspPipeline& pipeline) {
@@ -138,7 +138,7 @@ TEST(rsp_decoded_fetch_leaves_latched_packets_unchanged_until_retirement) {
     pipeline.fetch(vadd, addiu, false, address);
     CHECK_EQ(pipeline.size(), 2U);
     CHECK(pipeline.advance_operand_wait());
-    pipeline.fetch(0x0000000dU, 0x40015800U, true, address);
+    pipeline.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(pipeline.size(), 2U);
     CHECK_EQ(pipeline.instruction(0), vadd);
     CHECK_EQ(pipeline.instruction(1), addiu);
@@ -147,7 +147,7 @@ TEST(rsp_decoded_fetch_leaves_latched_packets_unchanged_until_retirement) {
     pipeline.retire(false, 16);
 
     // Once the packet retires, the same cache slot observes the changed IMEM words.
-    pipeline.fetch(0x0000000dU, 0x40015800U, true, address);
+    pipeline.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(pipeline.size(), 1U);
     CHECK_EQ(pipeline.instruction(0), 0x0000000dU);
     pipeline.retire(false, address + 4U);
@@ -184,7 +184,7 @@ TEST(rsp_decoded_fetch_latched_cache_index_is_independent_after_pipeline_copy) {
 
     RspPipeline copied = original;
     original.redirect();
-    original.fetch(0x0000000dU, 0x40015800U, true, address);
+    original.fetch(0x0000000dU, 0x40016000U, true, address);
     CHECK_EQ(original.size(), 1U);
     CHECK_EQ(original.instruction(0), 0x0000000dU);
 
@@ -231,6 +231,22 @@ TEST(rsp_decoded_fetch_fresh_local_safety_tracks_both_raw_words) {
 
     CHECK_EQ(pipeline.local_issue(addiu, vnop, address), LocalIssue::Ready);
     CHECK_EQ(pipeline.size(), 2U);
+}
+
+TEST(rsp_decoded_fetch_local_reads_exclude_sp_status_semaphore_and_dp_clock) {
+    using LocalIssue = RspPipeline::LocalIssue;
+    for (unsigned index = 0; index < 32; ++index) {
+        for (const unsigned operation : {0U, 4U}) {
+            for (const bool second : {false, true}) {
+                RspPipeline pipeline;
+                const u32 word = 0x40020000U | (operation << 21U) | (index << 11U);
+                const unsigned selected = index & 15U;
+                const bool local = operation == 0U && selected != 4U && selected != 7U && selected != 12U;
+                CHECK_EQ(pipeline.local_issue(second ? vnop : word, second ? word : vnop, 0x100U),
+                         local ? LocalIssue::Ready : LocalIssue::Blocked);
+            }
+        }
+    }
 }
 
 TEST(rsp_decoded_fetch_latched_local_safety_uses_only_issued_words) {

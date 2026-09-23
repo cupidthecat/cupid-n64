@@ -83,7 +83,9 @@ When the RSP is running, a cached CPU slice can execute local RSP work at the
 same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock
 phase determines which CPU instructions produce an RSP tick. Before each such
 instruction, the next latched or fetched RSP packet must contain only local
-operations; COP0 and BREAK end the slice before that tick. The CPU operation is
+operations. COP0 writes, SP_STATUS/SP_SEMAPHORE reads, DPC_CLOCK reads, and
+BREAK end the slice before that tick. Other COP0 reads stay constant within the
+device-event bound and can execute locally. The CPU operation is
 already checked as nonfaulting and limited to registers and cache hits. Its RSP
 tick can therefore run first: both operations use disjoint state, including when
 the CPU cache contains a copy of SP memory. At exit, the common device clocks
@@ -97,10 +99,13 @@ The idle-loop path is narrower. It recognizes a cached self-branch with a NOP
 delay slot, verifies both live instruction-cache words, and stops before the same
 timer and device-visible boundaries. When the RSP is running, the idle path may
 advance RSP issue, operand-stall, and branch-wait cycles within that bound. It
-does so only while SP DMA is idle, single-step is off, the SP PC has not been
-changed behind the pipeline, and the next RSP packet contains no COP0 operation
-or BREAK. An already latched packet is checked by its latched words, so an
-operand stall cannot hide a shared-register operation. If the CPU slice ends
+does so while single-step is off, the SP PC has not been changed behind the
+pipeline, and the next RSP packet contains only local operations and stable
+control-register reads. Active DMA limits the slice to the cycles before its
+next row transfer. The DMA countdown advances with local execution, and the
+transfer cycle uses ordinary stepping. An already latched packet is checked by
+its latched words, so an operand stall cannot hide a shared-register operation.
+If the CPU slice ends
 after the branch but before its delay slot, the branch/delay-slot state is
 materialized before normal stepping resumes.
 

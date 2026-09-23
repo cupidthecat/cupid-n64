@@ -149,7 +149,7 @@ TEST(cpu_idle_rsp_stops_before_cop0_and_break_shared_observations) {
                 const auto append = [&](unsigned index, u32 instruction) {
                     write_be32(system->rsp.memory.data() + 0x1000 + (delay + index) * 4, instruction);
                 };
-                append(0, 0x40025800U); // MFC0 v0,DPC_CLOCK.
+                append(0, 0x40026000U); // MFC0 v0,DPC_CLOCK.
                 append(1, 0xac020080U); // SW v0,0x80(zero).
                 append(2, 0x24030100U); // ADDIU v1,zero,0x100.
                 append(3, 0x40832000U); // MTC0 v1,SP_STATUS: interrupt on BREAK.
@@ -176,7 +176,7 @@ TEST(cpu_idle_rsp_rejects_a_latched_pair_with_cop0_during_operand_stall) {
         rsp_program(*system, {
                                  0xc8012000U, // LQV v1,0(zero), creating a vector load hazard.
                                  0x4a010850U, // VADD v1,v1,v1.
-                                 0x40025800U, // MFC0 v0,DPC_CLOCK, paired behind the stalled VADD.
+                                 0x40026000U, // MFC0 v0,DPC_CLOCK, paired behind the stalled VADD.
                                  0xac020080U, // SW v0,0x80(zero).
                                  0x0000000dU, // BREAK.
                              });
@@ -198,7 +198,7 @@ TEST(cpu_idle_rsp_rejects_a_latched_local_pair_after_raw_sp_pc_rewrite) {
                                  0x4a010850U, // VADD v1,v1,v1.
                                  0x24420001U, // ADDIU v0,v0,1, paired behind the stalled VADD.
                              });
-        write_be32(system->rsp.memory.data() + 0x1040, 0x40025800U); // MFC0 v0,DPC_CLOCK.
+        write_be32(system->rsp.memory.data() + 0x1040, 0x40026000U); // MFC0 v0,DPC_CLOCK.
         write_be32(system->rsp.memory.data() + 0x1044, 0xac020080U); // SW v0,0x80(zero).
         write_be32(system->rsp.memory.data() + 0x1048, 0x0000000dU); // BREAK.
         system->rsp.tick(1);                                         // Retire LQV.
@@ -238,6 +238,86 @@ TEST(cpu_idle_rsp_falls_back_for_dma_and_single_step) {
             CHECK_EQ(batched.rsp.read_register(0x10) & 0x21U, 0x21U);
         else
             CHECK_EQ(read_be32(batched.rsp.memory.data() + 0x200), 0x12345678U);
+    }
+}
+
+TEST(cpu_idle_rsp_batches_between_dma_rows_without_crossing_visibility_edges) {
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        for (const u32 bank : {0U, 0x1000U}) {
+            for (const bool to_sp : {false, true}) {
+                System batched, stepped;
+                for (auto* system : {&batched, &stepped}) {
+                    prepare_idle(*system);
+                    stepped_slice(*system, 32 + phase);
+                    local_rsp_loop(*system);
+                    for (unsigned offset = 0; offset < 0x600; offset += 4)
+                        system->bus.write(0x4000U + offset, 4, 0x24420001U);
+                    system->rsp.write_register(0, bank | 0xff0U);
+                    system->rsp.write_register(4, 0x4000);
+                    system->rsp.write_register(to_sp ? 8U : 12U, 0x11ffU);
+                    system->rsp.write_register(0, bank | 0x200U);
+                    system->rsp.write_register(4, 0x4400);
+                    system->rsp.write_register(to_sp ? 8U : 12U, 0x1ffU);
+                }
+                const u64 previous = batched.cpu.batched_idle_instructions();
+                compare_slice(batched, stepped, 31);
+                CHECK(batched.cpu.batched_idle_instructions() > previous + 16);
+                CHECK_EQ(batched.rsp.read_register(0x10) & 0xcU, 0xcU);
+                for (const unsigned budget : {1U, 2U, 17U, 43U, 1U, 97U, 257U}) {
+                    compare_slice(batched, stepped, budget);
+                    for (const u32 offset : {0U, 4U, 8U, 12U, 0x14U, 0x18U})
+                        CHECK_EQ(batched.rsp.read_register(offset), stepped.rsp.read_register(offset));
+                    CHECK(batched.bus.rdram == stepped.bus.rdram);
+                    CHECK_EQ(batched.bus.memory.bank_access_clock(0x4000),
+                             stepped.bus.memory.bank_access_clock(0x4000));
+                }
+                CHECK_EQ(batched.rsp.read_register(0x10) & 0xcU, 0U);
+            }
+        }
+    }
+}
+
+TEST(cpu_idle_rsp_dma_register_polling_matches_each_transfer_boundary) {
+    constexpr std::array<unsigned, 26> registers{0, 1,  2,  3,  5,  6,  16, 17, 18, 19, 21, 22, 8,
+                                                 9, 10, 11, 13, 14, 15, 24, 25, 26, 27, 29, 30, 31};
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        for (const u32 bank : {0U, 0x1000U}) {
+            System batched, stepped;
+            for (auto* system : {&batched, &stepped}) {
+                prepare_idle(*system);
+                stepped_slice(*system, 32 + phase);
+                unsigned address = 0x1000;
+                for (unsigned index = 0; index < registers.size(); ++index) {
+                    write_be32(system->rsp.memory.data() + address, 0x40020000U | (registers[index] << 11U));
+                    write_be32(system->rsp.memory.data() + address + 4U, 0xac020800U | (index * 4U));
+                    address += 8;
+                }
+                write_be32(system->rsp.memory.data() + address, 0x1000ffcbU);
+                write_be32(system->rsp.memory.data() + address + 4U, 0U);
+                system->rsp.write_pc(0);
+                system->rsp.write_register(0x10, 1U);
+                for (unsigned offset = 0; offset < 0x600; offset += 4)
+                    system->bus.write(0x4000U + offset, 4, 0x241f0042U);
+                system->rsp.write_register(0, bank | 0x400U);
+                system->rsp.write_register(4, 0x4000);
+                system->rsp.write_register(8, 0x11ffU);
+                system->rsp.write_register(0, bank | 0xa00U);
+                system->rsp.write_register(4, 0x4400);
+                system->rsp.write_register(8, 0x1ffU);
+            }
+            const u64 previous = batched.cpu.batched_idle_instructions();
+            compare_slice(batched, stepped, 31);
+            CHECK(batched.cpu.batched_idle_instructions() > previous + 16);
+            for (unsigned cycle = 0; cycle < 80; ++cycle)
+                compare_slice(batched, stepped, 1);
+            for (const unsigned budget : {2U, 17U, 43U, 97U, 257U}) {
+                compare_slice(batched, stepped, budget);
+                CHECK(batched.bus.rdram == stepped.bus.rdram);
+            }
+            CHECK_EQ(batched.rsp.read_register(0x10) & 0xcU, 0U);
+            CHECK_EQ(read_be32(batched.rsp.memory.data() + 0x810U), 0U);
+            CHECK_EQ(read_be32(batched.rsp.memory.data() + 0x814U), 0U);
+        }
     }
 }
 
@@ -290,6 +370,36 @@ TEST(cpu_idle_rsp_callbacks_observe_materialized_cpu_and_rsp_state) {
         CHECK(!first.empty());
         CHECK(first == second);
     }
+}
+
+TEST(cpu_idle_rsp_register_polling_observes_callback_changes_at_the_same_clock) {
+    using Observation = std::array<u64, 5>;
+    System batched, stepped;
+    std::vector<Observation> first, second;
+    const auto attach = [&](System& system, std::vector<Observation>& observations) {
+        prepare_idle(system);
+        rsp_program(system, {
+                                0x40025800U, // MFC0 v0,DPC_STATUS.
+                                0xac020080U, // SW v0,0x80(zero).
+                                0x1000fffdU, // BEQ zero,zero,0.
+                                0U,
+                            });
+        system.bus.write(0x04500010, 4, 99);
+        system.bus.set_audio_sample_output([machine = &system, output = &observations](const AudioSample&) {
+            output->push_back({machine->cpu.cycles, machine->rsp.pc,
+                               read_be32(machine->rsp.memory.data() + 0x80),
+                               machine->bus.rdp.read_register(0x0c), machine->bus.output_clock()});
+            machine->bus.rdp.write_register(0x0c, (output->size() & 1U) != 0U ? 8U : 4U);
+        });
+    };
+    attach(batched, first);
+    attach(stepped, second);
+    compare_slice(batched, stepped, 4096);
+    CHECK(first.size() > 8);
+    CHECK(first == second);
+    for (unsigned index = 2; index < first.size(); ++index)
+        CHECK_EQ(first[index][2] & 2U, (index & 1U) != 0U ? 2U : 0U);
+    CHECK(batched.cpu.batched_idle_instructions() > 1000);
 }
 
 TEST(cpu_idle_rsp_keeps_a_halted_branch_bubble_before_resume) {

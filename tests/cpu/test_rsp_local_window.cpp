@@ -157,7 +157,7 @@ TEST(cpu_rsp_local_window_does_not_survive_first_or_second_word_host_changes) {
             if (changed_word == 0) {
                 write_be32(system->rsp.memory.data() + 0x1000, 0x24210005U); // ADDIU at,at,5.
             } else {
-                write_be32(system->rsp.memory.data() + 0x1004, 0x40025800U); // MFC0 v0,DPC_CLOCK.
+                write_be32(system->rsp.memory.data() + 0x1004, 0x40026000U); // MFC0 v0,DPC_CLOCK.
                 write_be32(system->rsp.memory.data() + 0x1008, 0xac020084U); // SW v0,0x84(zero).
                 write_be32(system->rsp.memory.data() + 0x100c, 0x0000000dU); // BREAK.
             }
@@ -236,7 +236,7 @@ TEST(cpu_rsp_local_window_keeps_latched_words_during_operand_stall) {
         system->rsp.tick(1); // Latch VADD+ADDIU and hold on the LQV result.
         CHECK_EQ(system->rsp.pc, 4U);
         write_be32(system->rsp.memory.data() + 0x1004, 0x0000000dU);
-        write_be32(system->rsp.memory.data() + 0x1008, 0x40025800U);
+        write_be32(system->rsp.memory.data() + 0x1008, 0x40026000U);
     }
 
     compare_slice(batched, stepped, 256);
@@ -258,7 +258,7 @@ TEST(cpu_rsp_local_window_checks_unsafe_raw_second_word_before_branch_bubble) {
                                  0U,
                                  0U,
                                  0x24210001U, // Target first word is local.
-                                 0x40025800U, // Raw second word is shared MFC0.
+                                 0x40026000U, // Raw second word is shared MFC0.
                                  0xac020080U,
                                  0x0000000dU,
                              });
