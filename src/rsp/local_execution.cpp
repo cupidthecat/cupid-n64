@@ -173,6 +173,14 @@ u64 Rsp::execute_local(u64 maximum_cycles) {
                 ++elapsed;
                 continue;
             }
+            if (!branch_pending_ && maximum_cycles - elapsed >= 16 &&
+                (decoded.flags & RspPipeline::branch) == 0U) {
+                const u64 block_cycles = execute_local_block(revision, maximum_cycles - elapsed);
+                if (block_cycles != 0) {
+                    elapsed += block_cycles;
+                    continue;
+                }
+            }
             pipeline_.current_index_ = RspPipeline::cache_index(pc, pairing);
             pipeline_.count_ = decoded.count;
         } else if (!pipeline_.current_fetch().issued_local) {

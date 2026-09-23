@@ -121,6 +121,7 @@ class RspPipeline {
         u32 scalar_result{};
         u32 vector_result{};
         bool load{};
+        bool operator==(const Stage&) const = default;
     };
 
     struct DecodedFetch {

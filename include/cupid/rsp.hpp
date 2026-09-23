@@ -5,6 +5,7 @@
 #include "cupid/types.hpp"
 
 #include <array>
+#include <memory>
 
 namespace cupid {
 
@@ -97,6 +98,25 @@ class Rsp {
     u32 current_pc_{};
     bool branch_pending_{};
     RspPipeline pipeline_{};
+
+    struct LocalBlock {
+        struct Instruction {
+            u32 word{};
+            RspPipeline::Operation operation{};
+        };
+        std::array<Instruction, 16> instructions{};
+        std::array<RspPipeline::Stage, 3> incoming{};
+        RspPipeline::Snapshot outgoing{};
+        u64 revision{};
+        u32 next_pc{};
+        unsigned count{};
+        unsigned cycles{};
+        bool single_issue{};
+        bool valid{};
+    };
+    std::unique_ptr<std::array<LocalBlock, 1024>> local_blocks_;
+    [[nodiscard]] u64 execute_local_block(u64 revision, u64 maximum_cycles);
+    void prepare_local_block(LocalBlock& block, u64 revision);
 
     // Local groups change only these fields and DMEM.
     struct LocalState {
