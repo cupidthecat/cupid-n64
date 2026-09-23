@@ -48,6 +48,8 @@ class Rdram {
     void write_register(u32 address, u32 value, unsigned repeat_length = 0);
     [[nodiscard]] u64 read(u32 address, unsigned width, bool ebus = false) const;
     void write(u32 address, unsigned width, u64 value, bool ebus = false);
+    void read_burst(u32 address, std::span<u8> bytes) const;
+    void write_burst(u32 address, std::span<const u8> bytes);
     [[nodiscard]] u8 hidden_pair(u32 address) const;
     [[nodiscard]] std::span<const u8> hidden_memory() const {
         return hidden_;

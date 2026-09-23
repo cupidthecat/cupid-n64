@@ -108,7 +108,7 @@ layout includes both top-level CPU/RSP files and their subsystem directories.
 | Area | Implementation | Regression tests |
 | --- | --- | --- |
 | CPU and floating point | `src/cpu*.cpp`, `src/cpu/`, `src/fpu.cpp` | `tests/cpu/`, top-level CPU/FPU tests |
-| Physical memory and peripherals | `src/bus*.cpp`, `src/bus/`, `src/rdram.cpp`, `src/rcp/` | `tests/rcp/`, top-level bus and memory tests |
+| Physical memory and peripherals | `src/bus*.cpp`, `src/bus/`, `src/rdram.cpp`, `src/rdram/`, `src/rcp/` | `tests/rcp/`, top-level bus and memory tests |
 | Signal processor | `src/rsp*.cpp`, `src/rsp/` | `tests/rsp/`, top-level RSP tests |
 | Display and video | `src/rdp.cpp`, `src/rdp/`, `src/vi/`, `src/rcp/vi.cpp` | `tests/rdp/`, `tests/vi/` |
 | Cartridge devices | `src/cartridge/` | `tests/cartridge/`, device cases in `tests/rcp/` |
