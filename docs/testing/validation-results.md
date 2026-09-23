@@ -1,5 +1,41 @@
 # Recorded validation results
 
+## Scalar SSE binary arithmetic (2026-09-23)
+
+ADD, SUB, MUL, and DIV now use scalar SSE on x64 while preserving guest
+rounding, exception flags, result normalization, register mapping, and latency.
+The calling thread's MXCSR is restored after arithmetic. Potential guest traps
+retain a full environment scope, including traps whose younger instruction
+fetch delivers a callback that changes the host environment. Other targets
+retain the portable arithmetic path.
+
+Strict Windows Clang 21.1.5 and MSVC desktop builds and Linux Clang ASan/UBSan
+passed 1,343 core regressions, the 4,637-case default cartridge including cold
+and warm boots, the 6,273-case extended cartridge, and both execution-mode
+comparisons. Windows passed all 14 CTest groups; Linux passed all nine core
+groups. Formatting, validation-tool tests, and source/input integrity checks
+passed. The sanitizer run reported no diagnostic.
+
+The added arithmetic test compares result bits and exception flags with the
+portable path across all rounding modes, signed zeros, finite boundaries,
+subnormals, and infinities. It checks host-state restoration with denormal
+controls and existing exception flags set. The exception-fetch callback test
+now covers invalid arithmetic input, overflow, and exact subnormal results.
+
+On an i7-13700H, the 2,000-field stationary title-screen replay took 74.164
+seconds before the change and 71.667 afterward. A 6,000-field gameplay replay
+took 141.358 and 138.447 seconds. Each pair matches every field observation and
+all retained video, audio, and EEPROM files: 19 files for the title screen and
+52 for gameplay. These pairs show about 3.4% and 2.1% less elapsed time. They
+used ordinary Clang Release builds, strict floating-point settings, high process
+QoS, and performance-core affinity. Executable and input hashes were unchanged.
+
+Evidence is retained under `.work/validation/fpu-binary-20260923/`. All 416
+source files matched the validated snapshot when copied to the feature branch.
+This result record was added afterward; executable source and tests were
+unchanged. Full-speed gameplay and normal audible playback remain unresolved
+in #48 and #47.
+
 ## Packed vector carry arithmetic (2026-09-22)
 
 The VADD/VSUB packed arithmetic change passed strict Windows Clang and MSVC

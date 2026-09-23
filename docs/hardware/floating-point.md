@@ -57,12 +57,22 @@ operations have separate timing tests.
 
 ## Calling-thread environment
 
-Operations that use host floating-point arithmetic save the calling thread's
-environment, install the default environment, and select the guest rounding
-mode. FCSR then controls guest flushing and exception delivery. Every return
-restores the saved host environment, including returns that raise a guest
-exception. Register transfers and MOV copy encoded bits without changing the
-host environment.
+Host arithmetic selects the guest rounding mode and isolates its exception
+flags from the calling thread. FCSR controls guest flushing and exception
+delivery. Every return restores the host state it changed. Register transfers
+and MOV copy encoded bits without changing the host environment.
+
+On x64, ADD, SUB, MUL, and DIV use scalar SSE instructions. The helper in
+`src/fpu/binary_arithmetic.hpp` saves MXCSR, masks host traps, disables host
+flush-to-zero and denormal-as-zero modes, and installs the guest rounding mode.
+It reads the resulting exception flags before restoring MXCSR. The arithmetic
+leaves x87 state untouched. Other targets use the portable environment helper.
+
+Inputs and results that can raise a guest exception retain a full environment
+scope. An exception fetch can deliver a host callback, so this scope also
+restores any host state changed by that callback. Guest exception handling,
+result normalization, register mapping, and instruction latency use the same
+paths as portable arithmetic.
 
 The helper in `src/fpu/host_environment.hpp` skips a separate rounding-mode query
 after saving the full environment. It also skips setting nearest rounding when
@@ -95,6 +105,12 @@ standard floating-point environment checks run on every supported target.
 `test_fpu_host_environment.cpp` checks the helper's failure paths, integer
 comparison predicates and register aliases, and restoration when an exception
 fetch delivers a callback that changes the host environment.
+
+`test_fpu_binary.cpp` compares the SSE and portable binary paths across all
+rounding modes, signed zeros, finite boundaries, subnormals, and infinities.
+It checks result bits, exception flags, and host-state restoration. The callback
+regression also covers invalid arithmetic inputs, overflow traps, and exact
+subnormal results that raise an unimplemented-operation exception.
 
 These regressions complement the cartridge suite. Platform results and remaining
 accuracy failures are recorded in [validation results](../testing/validation-results.md).
