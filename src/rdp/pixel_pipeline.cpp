@@ -33,18 +33,34 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     if ((other_modes_ & 1U) != 0 && combined.test_alpha < alpha_threshold)
         return;
 
+    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
+    const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
     const unsigned bytes = color_image_size_ < 2U ? 1U : 1U << (color_image_size_ - 1U);
     const u32 pixel = y * color_image_width_ + x;
     const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
-    const RdpColor memory = read_framebuffer_color(address);
-    const unsigned old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
-    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
     const auto stored_depth = compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
+
+    RdpColor memory{};
+    unsigned old_coverage = 7U;
+    if (image_read) {
+        memory = read_framebuffer_color(address);
+        old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
+    }
     const auto tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage,
                                        old_coverage, other_modes_);
     if (!tested.pass || (antialias && tested.coverage == 0U))
         return;
+
+    const bool color_on_coverage = (other_modes_ & (1ULL << 7U)) != 0 && !tested.coverage_wrap;
+    const unsigned coverage_dest = (other_modes_ >> 8U) & 3U;
+    const bool needs_memory =
+        !image_read && (tested.blend_enabled || color_on_coverage || coverage_dest == 1U ||
+                        (coverage_dest == 0U && tested.blend_enabled));
+    if (needs_memory) {
+        memory = read_framebuffer_color(address);
+        old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
+    }
     const unsigned shade_alpha = std::min(255U, static_cast<unsigned>(inputs.shade[3]) + alpha_dither);
     RdpColor color =
         rdp_blend(color_state_, other_modes_, combined.color, memory, shade_alpha, tested.blend_enabled,

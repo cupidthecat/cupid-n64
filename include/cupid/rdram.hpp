@@ -3,6 +3,7 @@
 #include "cupid/types.hpp"
 
 #include <array>
+#include <atomic>
 #include <optional>
 #include <span>
 #include <vector>
@@ -12,6 +13,7 @@ namespace cupid {
 class Rdram {
   public:
     explicit Rdram(std::vector<u8>& bytes);
+    Rdram(const Rdram& other);
     void reset(bool warm = false);
     void set_bus_active(bool active);
     [[nodiscard]] bool bus_active() const {
@@ -127,6 +129,7 @@ class Rdram {
     mutable u32 errors_{};
     bool active_{};
     bool identity_mapping_{};
+    mutable std::atomic<unsigned> active_scopes_{0};
 
     void refresh_mapping();
     void track_access(u32 address, bool write) const;

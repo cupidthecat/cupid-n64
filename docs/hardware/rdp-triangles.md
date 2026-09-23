@@ -56,6 +56,13 @@ depth, blender, and framebuffer stages. Shade alpha also supplies the blender's
 shade-alpha selector. Color writes precede depth writes, with the visible and
 hidden storage rules described in [depth and coverage](rdp-depth.md).
 
+For sufficiently large draws with independent memory ranges, host workers can
+render separate row groups. A triangle's middle span estimates the amount of
+work before dispatch; a wide scissor alone does not make a narrow triangle
+eligible. The full scissor bounds still govern checks for framebuffer wrapping,
+stride overruns, and color/depth overlap. Serial and parallel execution retain
+the same pixels, hidden bits, and bank access order.
+
 ## Validation and limits
 
 `tests/rdp/test_color_triangle.cpp` checks encoded commands, every triangle

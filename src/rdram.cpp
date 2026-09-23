@@ -15,6 +15,12 @@ Rdram::Rdram(std::vector<u8>& bytes) : bytes_(bytes) {
     reset();
 }
 
+Rdram::Rdram(const Rdram& other)
+    : bytes_(other.bytes_), hidden_(other.hidden_), chips_(other.chips_), banks_(other.banks_),
+      clock_(other.clock_), noise_(other.noise_), errors_(other.errors_), active_(other.active_),
+      identity_mapping_(other.identity_mapping_),
+      active_scopes_(other.active_scopes_.load(std::memory_order_relaxed)) {}
+
 void Rdram::reset(bool warm) {
     active_ = false;
     identity_mapping_ = false;

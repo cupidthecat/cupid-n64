@@ -21,14 +21,24 @@ constexpr u32 as_u32(s32 value) {
 
 } // namespace
 
+Rsp::ScalarOperands Rsp::decode_scalar_operands(u32 instruction) {
+    return {static_cast<u8>((instruction >> 21U) & 31U), static_cast<u8>((instruction >> 16U) & 31U),
+            static_cast<u8>((instruction >> 11U) & 31U), static_cast<u8>((instruction >> 6U) & 31U),
+            std::bit_cast<s16>(static_cast<u16>(instruction))};
+}
+
 void Rsp::execute_decoded(u32 instruction, RspPipeline::Operation operation) {
+    execute_decoded(instruction, operation, decode_scalar_operands(instruction));
+}
+
+void Rsp::execute_decoded(u32 instruction, RspPipeline::Operation operation, const ScalarOperands& operands) {
     using Operation = RspPipeline::Operation;
 
-    const unsigned rs = (instruction >> 21U) & 31U;
-    const unsigned rt = (instruction >> 16U) & 31U;
-    const unsigned rd = (instruction >> 11U) & 31U;
-    const unsigned sa = (instruction >> 6U) & 31U;
-    const s16 imm = std::bit_cast<s16>(static_cast<u16>(instruction));
+    const unsigned rs = operands.rs;
+    const unsigned rt = operands.rt;
+    const unsigned rd = operands.rd;
+    const unsigned sa = operands.sa;
+    const s16 imm = operands.immediate;
     const auto branch_target = [&] { return current_pc_ + 4 + static_cast<u32>(static_cast<s32>(imm) * 4); };
 
     switch (operation) {

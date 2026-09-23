@@ -95,9 +95,14 @@ void Rdp::color_triangle() {
                 bool ignored = false;
                 next_row_point = divide(stw, ignored);
             }
+            const s32 max_left = std::max({span.left[0], span.left[1], span.left[2], span.left[3]});
+            const s32 min_right = std::min({span.right[0], span.right[1], span.right[2], span.right[3]});
             for (unsigned step = 0; step <= span.end - span.start; ++step) {
                 const unsigned x = geometry.left_major ? span.start + step : span.end - step;
-                const unsigned coverage = rdp_triangle_coverage(span, x);
+                const unsigned coverage =
+                    (static_cast<s32>(x * 8U) >= max_left && static_cast<s32>(x * 8U + 6U) < min_right)
+                        ? 0xffU
+                        : rdp_triangle_coverage(span, x);
                 if (coverage == 0 || ((other_modes_ & 8U) == 0 && (coverage & 1U) == 0))
                     continue;
                 const s32 dx = static_cast<s32>(x) - origin.x;
@@ -128,8 +133,17 @@ void Rdp::color_triangle() {
     };
     const unsigned first = static_cast<unsigned>(first_y / 4);
     const unsigned last = static_cast<unsigned>((last_y + 3) / 4);
-    rdp::raster_rows(bus_.memory, first, last,
-                     parallel_rows(first, last, scissor_x0_ / 4U, (scissor_x1_ + 3U) / 4U), render);
+    bool parallel = false;
+    if (parallel_rasterization_ && last - first >= 8U) {
+        // A wide scissor can contain a narrow triangle. Estimate useful work from
+        // its middle span before paying to wake the raster workers; the complete
+        // scissor bounds still decide whether their memory accesses are independent.
+        const auto middle = rdp_triangle_span(geometry, scissor, first + (last - first) / 2U);
+        if (middle.valid && middle.end >= middle.start &&
+            static_cast<u64>(last - first) * (middle.end - middle.start + 1U) >= 4096U)
+            parallel = parallel_rows(first, last, scissor_x0_ / 4U, (scissor_x1_ + 3U) / 4U);
+    }
+    rdp::raster_rows(bus_.memory, first, last, parallel, render);
 }
 
 } // namespace cupid

@@ -220,6 +220,12 @@ and outgoing dependency history. Its key includes the IMEM revision, all three
 incoming dependency stages, and the single-issue restriction. An interior IMEM
 write invalidates the block even when its entry instruction stays unchanged.
 
+Block preparation also records the scalar register indices, shift amount, and
+signed immediate in six bytes per instruction. Replay passes these operands to
+the same execution function used by ordinary instruction stepping. Register
+values and memory addresses are still evaluated when the instruction executes;
+only the fields decoded from the instruction word are cached.
+
 Branches and COP0 operations end a block. Execution uses a cached block only
 when the complete cycle cost fits before the next scheduling boundary; partial
 blocks use ordinary fetch and issue processing. The accepted instructions cannot

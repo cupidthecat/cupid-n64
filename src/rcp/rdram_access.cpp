@@ -8,9 +8,11 @@ Rdram::BankAccessScope::BankAccessScope(const Rdram& memory, BankAccessSummary& 
     : memory_(memory), summary_(summary), previous_(current_) {
     summary_ = {};
     current_ = this;
+    memory_.active_scopes_.fetch_add(1, std::memory_order_relaxed);
 }
 
 Rdram::BankAccessScope::~BankAccessScope() {
+    memory_.active_scopes_.fetch_sub(1, std::memory_order_relaxed);
     current_ = previous_;
 }
 

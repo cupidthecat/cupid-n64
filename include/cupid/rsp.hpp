@@ -99,11 +99,22 @@ class Rsp {
     bool branch_pending_{};
     RspPipeline pipeline_{};
 
+    struct ScalarOperands {
+        u8 rs{};
+        u8 rt{};
+        u8 rd{};
+        u8 sa{};
+        s16 immediate{};
+    };
+    static_assert(sizeof(ScalarOperands) == 6);
+
     struct LocalBlock {
         struct Instruction {
             u32 word{};
             RspPipeline::Operation operation{};
+            ScalarOperands operands{};
         };
+        static_assert(sizeof(Instruction) == 12);
         std::array<Instruction, 16> instructions{};
         std::array<RspPipeline::Stage, 3> incoming{};
         RspPipeline::Snapshot outgoing{};
@@ -114,7 +125,40 @@ class Rsp {
         bool single_issue{};
         bool valid{};
     };
-    std::unique_ptr<std::array<LocalBlock, 1024>> local_blocks_;
+    struct LocalBlocks {
+        std::unique_ptr<std::array<LocalBlock, 1024>> ptr;
+        LocalBlocks() = default;
+        ~LocalBlocks() = default;
+        LocalBlocks(const LocalBlocks& other)
+            : ptr(other.ptr ? std::make_unique<std::array<LocalBlock, 1024>>(*other.ptr) : nullptr) {}
+        LocalBlocks& operator=(const LocalBlocks& other) {
+            if (this != &other)
+                ptr = other.ptr ? std::make_unique<std::array<LocalBlock, 1024>>(*other.ptr) : nullptr;
+            return *this;
+        }
+        LocalBlocks(LocalBlocks&&) noexcept = default;
+        LocalBlocks& operator=(LocalBlocks&&) noexcept = default;
+
+        [[nodiscard]] std::array<LocalBlock, 1024>& operator*() {
+            return *ptr;
+        }
+        [[nodiscard]] const std::array<LocalBlock, 1024>& operator*() const {
+            return *ptr;
+        }
+        [[nodiscard]] std::array<LocalBlock, 1024>* operator->() {
+            return ptr.get();
+        }
+        [[nodiscard]] const std::array<LocalBlock, 1024>* operator->() const {
+            return ptr.get();
+        }
+        [[nodiscard]] explicit operator bool() const {
+            return static_cast<bool>(ptr);
+        }
+        void reset(std::unique_ptr<std::array<LocalBlock, 1024>> p = nullptr) {
+            ptr = std::move(p);
+        }
+    };
+    LocalBlocks local_blocks_;
     [[nodiscard]] u64 execute_local_block(u64 revision, u64 maximum_cycles);
     void prepare_local_block(LocalBlock& block, u64 revision);
 
@@ -164,7 +208,9 @@ class Rsp {
     void dmem_write32(u32 address, u32 value);
 
     [[nodiscard]] u32 fetch_instruction(u32 address) const;
+    [[nodiscard]] static ScalarOperands decode_scalar_operands(u32 instruction);
     void execute_decoded(u32 instruction, RspPipeline::Operation operation);
+    void execute_decoded(u32 instruction, RspPipeline::Operation operation, const ScalarOperands& operands);
     void execute_cop0(u32 instruction);
     void execute_cop2(u32 instruction);
     void execute_vector_op(u32 instruction);

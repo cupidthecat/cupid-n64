@@ -162,3 +162,29 @@ TEST(rdp_parallel_rows_keep_concurrent_machine_state_independent) {
     for (auto& run : runs)
         run.get();
 }
+
+TEST(rdp_parallel_rows_keep_narrow_triangles_local_in_a_wide_scissor) {
+    for (const unsigned size : {2U, 3U}) {
+        TriangleCommands serial;
+        TriangleCommands parallel;
+        prepare(serial, false, size);
+        prepare(parallel, true, size);
+        for (auto* commands : {&serial, &parallel}) {
+            commands->modes(0x34U);
+            commands->append(0x3a, 0x80c040ffU);
+            commands->append(0x3c, combine_word({}, {.d = 3, .ad = 3}));
+            commands->triangle(0x0d, {.top = 1,
+                                      .middle = 128,
+                                      .bottom = 255,
+                                      .major = 0x00010000,
+                                      .upper = 0x00040000,
+                                      .lower = 0x00040000});
+            commands->run();
+        }
+        compare(serial, parallel);
+        const unsigned bytes = size == 2 ? 2U : 4U;
+        CHECK_EQ(parallel.system->bus.memory.read(color_base + (width + 1U) * bytes, bytes),
+                 size == 2 ? 0x8611U : 0x80c040e0U);
+        CHECK_EQ(parallel.system->bus.rdp.parallel_draws(), 0U);
+    }
+}
