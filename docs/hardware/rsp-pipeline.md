@@ -95,6 +95,13 @@ overwritten. The packed dispatcher selects the opcode once; multiplication
 handlers specialize their signedness, accumulator placement, and output slice
 at compile time.
 
+The vector dispatcher tries the packed handler before entering the scalar
+fallback. The fallback remains a separate function through link-time
+optimization, so supported packed instructions do not save registers or reserve
+stack space for scalar temporaries. Both paths retain the same operand snapshots,
+accumulator state, flags, and instruction timing. The existing alias, VMOV, and
+divider regressions exercise the packed and scalar paths.
+
 The accumulator is stored as three arrays of eight 16-bit slices. Packed
 multiplication and accumulation propagate carries between the low, middle, and
 high arrays and wrap at 48 bits. Scalar instructions read and write those same

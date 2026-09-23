@@ -1,5 +1,64 @@
 # Recorded validation results
 
+## RDP halfword transfers and RSP vector dispatch (2026-09-23)
+
+The RDP transfers each 16-bit color or depth value together with its hidden
+pair, preserving row tracking and ordinary accesses under remapping,
+calibration, and missing memory. The [RDRAM guide](../hardware/rdram-interface.md)
+describes the boundaries covered by four new regressions. RSP vector dispatch
+keeps scalar fallback setup outside the supported packed path; see
+[vector execution](../hardware/rsp-pipeline.md#decoded-packets-and-vector-execution).
+
+The same 437-file snapshot passed these Windows configurations:
+
+| Check | Clang Release | Clang ASan/UBSan | MSVC desktop Release |
+| --- | ---: | ---: | ---: |
+| Hardware and host regressions | 1,417/1,417 | 1,417/1,417 | 1,417/1,417 |
+| Prepared default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 9/9 | 9/9 | 14/14 |
+
+All runs passed the 41 validation-tool tests, clang-format 22.1.0, and source
+and input integrity checks. The logs contain no sanitizer diagnostic. Default
+and extended stepped/batched execution matched all 3,673 and 3,876 observations,
+respectively, with identical cartridge instruction and cycle totals across
+compilers. A separate Clang desktop build passed its five desktop test groups.
+These cartridges retain the [documented fixture corrections](cartridge-fixtures.md);
+original-image acceptance remains tracked in #5 and #39.
+
+Two Super Mario 64 replay pairs used ordinary Clang Release builds on the
+i7-13700H with high process QoS and performance-core affinity. The second pair
+reversed the executable order:
+
+| Replay | Before | After |
+| --- | ---: | ---: |
+| Title, 1,200 fields, first pair | 29.354 s | 28.938 s |
+| Title, 1,200 fields, reverse pair | 28.863 s | 29.210 s |
+| Outdoor, 6,000 fields, first pair | 124.904 s | 122.782 s |
+| Outdoor, 6,000 fields, reverse pair | 123.451 s | 123.041 s |
+
+Outdoor runtime fell by 0.3% to 1.7%, averaging about 1.0% across the pairs.
+The changed build ran at 81.8% to 82.0% of real time. Title timing varied in
+both directions and does not establish an improvement. Each title replay
+matched all 1,200 field observations and 12 retained video, audio, and save
+files. Each outdoor replay matched all 6,000 observations and 52 retained
+files. The executables and replay inputs retained their hashes. All replays
+recorded zero audio-timeline discontinuities, CPU freezes, and PIF failures.
+The retained outdoor capture was also inspected.
+
+The current Clang desktop completed a separate 60.048-second title-screen run
+with 2,051 VI fields and 2,040 presentations, averaging 34.2 VI fields per
+second. It saved its capture and EEPROM and exited successfully. The capture
+was inspected, and executable, dependency, firmware, and cartridge hashes
+remained unchanged. Playback recorded 773 underruns, zero host audio drops,
+and 364 dropped audio frames at the device queue. Full-speed gameplay and
+normal audible playback remain open in #48 and #47.
+
+Reports and replay comparisons are retained under
+`.work/validation/rdram-pairs-20260923/`. This result record was added after
+validation; executable source and tests were unchanged.
+
 ## Local RSP blocks and integer conversions (2026-09-23)
 
 Local RSP execution reuses decoded instructions and pipeline timing for blocks

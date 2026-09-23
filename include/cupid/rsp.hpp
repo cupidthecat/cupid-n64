@@ -168,6 +168,7 @@ class Rsp {
     void execute_cop0(u32 instruction);
     void execute_cop2(u32 instruction);
     void execute_vector_op(u32 instruction);
+    void execute_vector_op_scalar(u32 instruction);
     [[nodiscard]] bool execute_vector_op_sse2(u32 instruction);
     void execute_vector_load(u32 instruction);
     void execute_vector_store(u32 instruction);

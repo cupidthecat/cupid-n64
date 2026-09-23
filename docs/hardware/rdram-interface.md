@@ -39,6 +39,20 @@ use the hidden-bit packing path for every supported width. The packed-transfer
 regressions check backing-byte order, align-down behavior, remapping, low-current
 reads, failed translations, and hidden/EBUS results independently.
 
+The RDP transfers a 16-bit framebuffer or depth value together with its two
+hidden bits through `Rdram::read_halfword` and `write_halfword`. The normal
+mapping uses the aligned address directly for both arrays and records one row
+access for the complete cell. Writes store the requested hidden pair directly.
+Remapped chips, calibration reads, inactive memory, and incomplete halfwords
+retain the ordinary data and hidden-bit paths, including their error and
+noise-sequence behavior.
+Depth and color writes still follow their original order when buffers overlap.
+
+`tests/rcp/test_rdram_halfword.cpp` checks 4 MiB and 8 MiB memory, odd addresses,
+row and chip boundaries, hidden-bit masking, bank timestamps, and deferred
+raster summaries. It compares fallback transfers with separate data and hidden
+accesses, including an incomplete halfword after the backing memory is resized.
+
 ## Open rows and request timing
 
 A chip answers a request to its open row directly. A request to a closed or

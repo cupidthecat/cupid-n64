@@ -40,10 +40,9 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     const unsigned old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
     const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
-    const u16 stored_depth = compare_depth ? static_cast<u16>(bus_.memory.read(depth_address, 2)) : 0;
-    const u8 hidden_depth = compare_depth ? bus_.memory.hidden_pair(depth_address) : 0;
-    const auto tested =
-        rdp_test_depth(depth, stored_depth, hidden_depth, combined.coverage, old_coverage, other_modes_);
+    const auto stored_depth = compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
+    const auto tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage,
+                                       old_coverage, other_modes_);
     if (!tested.pass || (antialias && tested.coverage == 0U))
         return;
     const unsigned shade_alpha = std::min(255U, static_cast<unsigned>(inputs.shade[3]) + alpha_dither);
@@ -76,12 +75,12 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
         const unsigned delta = rdp_compress_depth_delta(depth.delta);
         const bool depth_alias = color_image_address_ == depth_image_address_;
         if (!depth_alias || color_image_size_ == 2U) {
-            bus_.memory.write(depth_address, 2,
-                              (static_cast<u32>(rdp_compress_depth(depth.value)) << 2U) | (delta >> 2U));
+            const auto value =
+                static_cast<u16>((static_cast<u32>(rdp_compress_depth(depth.value)) << 2U) | (delta >> 2U));
             const bool intensity_alias = depth_alias && color_image_format_ != 0U;
             const u8 hidden =
                 intensity_alias ? static_cast<u8>(((delta >> 2U) & 1U) * 3U) : static_cast<u8>(delta & 3U);
-            bus_.memory.set_hidden_pair(depth_address, hidden);
+            bus_.memory.write_halfword(depth_address, {value, hidden});
         }
     }
 }

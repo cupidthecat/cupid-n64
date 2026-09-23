@@ -9,7 +9,9 @@ u32 Rdp::framebuffer_address(u32 base, unsigned bytes, u32 pixel) const {
 
 RdpColor Rdp::read_framebuffer_color(u32 address) const {
     const unsigned bytes = color_image_size_ < 2U ? 1U : 1U << (color_image_size_ - 1U);
-    const u32 stored = static_cast<u32>(bus_.memory.read(address, bytes));
+    const auto halfword = color_image_size_ == 2U ? bus_.memory.read_halfword(address) : Rdram::Halfword{};
+    const u32 stored =
+        color_image_size_ == 2U ? halfword.value : static_cast<u32>(bus_.memory.read(address, bytes));
     if (color_image_size_ == 0U)
         return {0, 0, 0, 224};
     RdpColor color;
@@ -19,7 +21,7 @@ RdpColor Rdp::read_framebuffer_color(u32 address) const {
     }
     if (color_image_size_ == 2U) {
         if (color_image_format_ == 0U) {
-            const unsigned coverage = ((stored & 1U) << 2U) | bus_.memory.hidden_pair(address);
+            const unsigned coverage = ((stored & 1U) << 2U) | halfword.hidden;
             color = {static_cast<s32>((stored >> 8U) & 248U), static_cast<s32>((stored >> 3U) & 248U),
                      static_cast<s32>((stored << 2U) & 248U), static_cast<s32>(coverage << 5U)};
         } else {
@@ -48,10 +50,9 @@ void Rdp::write_framebuffer_color(u32 address, const RdpColor& color, unsigned c
                                     color_image_size_ == 0U || (address & 1U) == 0U ? hidden : written);
     } else if (color_image_size_ == 2U) {
         if (color_image_format_ == 0U) {
-            bus_.memory.write(address, 2,
-                              ((red & 248U) << 8U) | ((green & 248U) << 3U) | ((blue & 248U) >> 2U) |
-                                  (coverage >> 2U));
-            bus_.memory.set_hidden_pair(address, static_cast<u8>(coverage & 3U));
+            const auto value = static_cast<u16>(((red & 248U) << 8U) | ((green & 248U) << 3U) |
+                                                ((blue & 248U) >> 2U) | (coverage >> 2U));
+            bus_.memory.write_halfword(address, {value, static_cast<u8>(coverage & 3U)});
         } else {
             bus_.memory.write(address, 2, (red << 8U) | (coverage << 5U));
         }
