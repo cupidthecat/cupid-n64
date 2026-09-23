@@ -552,6 +552,15 @@ void Rsp::execute_vector_store(u32 instruction) {
 void Rsp::execute_vector_op(u32 instruction) {
     if (execute_vector_op_sse2(instruction))
         return;
+    execute_vector_op_scalar(instruction);
+}
+
+#if defined(_MSC_VER)
+__declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+void Rsp::execute_vector_op_scalar(u32 instruction) {
     const unsigned element = (instruction >> 21) & 15;
     const unsigned vt_index = (instruction >> 16) & 31;
     const unsigned vs_index = (instruction >> 11) & 31;

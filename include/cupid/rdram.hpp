@@ -50,6 +50,12 @@ class Rdram {
     void write(u32 address, unsigned width, u64 value, bool ebus = false);
     void read_burst(u32 address, std::span<u8> bytes) const;
     void write_burst(u32 address, std::span<const u8> bytes);
+    struct Halfword {
+        u16 value{};
+        u8 hidden{};
+    };
+    [[nodiscard]] Halfword read_halfword(u32 address) const;
+    void write_halfword(u32 address, Halfword value);
     [[nodiscard]] u8 hidden_pair(u32 address) const;
     [[nodiscard]] std::span<const u8> hidden_memory() const {
         return hidden_;
