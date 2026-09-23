@@ -1,5 +1,59 @@
 # Recorded validation results
 
+## AI word reads and triangle depth interpolation (2026-09-23)
+
+AI DMA reads each stereo sample as one RDRAM word. The calibration and
+incomplete-word regressions fail against the preceding core and pass with the
+corrected transaction; remapped and unavailable memory also pass. The
+[audio guide](../hardware/audio-timing.md) describes the address, FIFO, and
+timing coverage. Triangle drawing skips the depth value when neither comparison
+nor writing consumes it. Tests retain comparison without writing and the
+depth delta used by blending; existing tests cover writing without comparison.
+
+The same 438-file snapshot passed these Windows configurations:
+
+| Check | Clang Release | Clang ASan/UBSan | MSVC desktop Release |
+| --- | ---: | ---: | ---: |
+| Hardware and host regressions | 1,422/1,422 | 1,422/1,422 | 1,422/1,422 |
+| Prepared default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 9/9 | 9/9 | 14/14 |
+
+All configurations passed the 41 validation-tool tests, clang-format 22.1.0,
+and source and input integrity checks. No sanitizer diagnostics were found.
+Stepped and batched cartridge execution matched all 3,673 default and 3,876
+extended observations, with identical instruction and cycle totals across
+compilers. A separate Clang desktop build passed all five desktop test groups.
+The cartridges use the [documented fixture corrections](cartridge-fixtures.md);
+original-image acceptance remains open in #5 and #39.
+
+Super Mario 64 used ordinary Clang Release builds on an i7-13700H with high
+process QoS and performance-core affinity:
+
+| Replay | Baseline, two runs | Final build |
+| --- | ---: | ---: |
+| Title, 1,200 fields | 28.745–29.217 s | 29.162 s |
+| Outdoor, 6,000 fields | 122.781–123.902 s | 122.845 s |
+
+The final outdoor run reached 81.9% of real time. These measurements do not
+establish a speed improvement. The final build matched every recorded field
+observation and all 12 title and 52 outdoor video, audio, and EEPROM files.
+Replay inputs retained their hashes, and no audio-timeline discontinuity,
+CPU freeze, or PIF failure was recorded. The outdoor capture was inspected.
+
+The Clang desktop completed a separate 60.048-second title-screen run with
+2,000 VI fields and 1,980 presentations, averaging 33.3 VI fields per second.
+It exited successfully and saved its capture and EEPROM. The capture was
+inspected; executable, dependency, firmware, and cartridge hashes were unchanged.
+Playback recorded 748 underruns, zero host audio drops, and zero dropped audio
+frames at the device queue. Full-speed gameplay and normal audible playback
+remain open in #48 and #47.
+
+Reports and comparisons are retained under
+`.work/validation/3d-accuracy-20260923/`. This record was added after validation;
+executable source and tests were unchanged.
+
 ## RDP halfword transfers and RSP vector dispatch (2026-09-23)
 
 The RDP transfers each 16-bit color or depth value together with its hidden

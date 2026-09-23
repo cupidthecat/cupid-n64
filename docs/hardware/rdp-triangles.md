@@ -28,6 +28,10 @@ ones-complement magnitudes of the integer X/Y gradients, rounded to the next
 power of two and capped at 32,768. Primitive depth overrides both the value
 and gradients before interpolation.
 
+The depth value is evaluated only when depth comparison or depth writing uses
+it. Depth delta remains available with both disabled because it still controls
+the blender's memory-alpha shift.
+
 ## Textures and pixel output
 
 S/T/W interpolation feeds reciprocal-ROM perspective division. The divider

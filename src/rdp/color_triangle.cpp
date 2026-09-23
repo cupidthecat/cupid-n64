@@ -45,6 +45,7 @@ void Rdp::color_triangle() {
     const u16 delta = primitive_depth ? primitive_delta_depth_ : rdp_triangle_depth_delta(attributes[7]);
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
     const bool perspective = (other_modes_ & (1ULL << 51U)) != 0;
+    const bool depth_value_needed = (other_modes_ & 0x30U) != 0;
     unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
     if ((other_modes_ & (1ULL << 48U)) != 0)
         texture_inputs |= 4U;
@@ -118,7 +119,9 @@ void Rdp::color_triangle() {
                 }
                 for (unsigned i = 0; i < inputs.shade.size(); ++i)
                     inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
-                const RdpDepth depth{rdp_interpolate_depth(base[7], attributes[7], dx, coverage), delta};
+                const RdpDepth depth{
+                    depth_value_needed ? rdp_interpolate_depth(base[7], attributes[7], dx, coverage) : 0U,
+                    delta};
                 write_color_pixel(x, y, coverage, inputs, depth);
             }
         }

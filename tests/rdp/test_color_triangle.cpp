@@ -208,6 +208,32 @@ TEST(rdp_color_triangle_depth_overlap_rejects_farther_and_accepts_nearer) {
     CHECK_EQ(commands.depth(0), 0x1000U);
 }
 
+TEST(rdp_color_triangle_depth_compare_without_update_still_uses_interpolated_depth) {
+    TriangleCommands commands;
+    for (unsigned y = 0; y < 2; ++y)
+        for (unsigned x = 0; x < 4; ++x)
+            commands.system->bus.memory.write(0x9000U + (y * 16U + x) * 2U, 2, 0x2000);
+    commands.modes(1ULL << 4U);
+    commands.z[0] = 0x60000000;
+    commands.triangle(9);
+    commands.run();
+    CHECK_EQ(commands.pixel(), 0U);
+    CHECK_EQ(commands.depth(0), 0x2000U);
+}
+
+TEST(rdp_color_triangle_without_depth_test_or_update_preserves_delta_for_blending) {
+    TriangleCommands commands;
+    commands.append(0x3a, 0xa0a0a080U);
+    commands.system->bus.memory.write(commands.address(0), 4, 0x404040e0U);
+    commands.system->bus.memory.write(0x9000U, 2, 0x2468U);
+    commands.modes((1ULL << 14U) | (1ULL << 22U) | (1ULL << 18U));
+    commands.z = {0x40000000U, 0x7fff0000U, 0, 0};
+    commands.triangle(9);
+    commands.run();
+    CHECK_EQ(commands.pixel(), 0x909090e0U);
+    CHECK_EQ(commands.depth(0), 0x2468U);
+}
+
 TEST(rdp_color_triangle_rgba16_packs_color_and_hidden_coverage) {
     TriangleCommands commands;
     commands.append(0x3f, (2ULL << 51U) | (15ULL << 32U) | 0x8000U);
