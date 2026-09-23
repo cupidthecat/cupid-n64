@@ -97,10 +97,12 @@ void System::settle_deferred() {
         if (elapsed == 0)
             elapsed = 1;
         if (rsp.running()) {
-            // The RSP runs one cycle at a time against the RDRAM and RDP clocks. It
-            // cannot observe the peripherals between their edges, so their time is
-            // owed until an edge fires or a buffered CPU write reaches them.
-            for (u64 cycle = 1; cycle < elapsed; ++cycle) {
+            // Local instructions cannot observe the RDRAM or RDP clocks. Keep the
+            // final cycle separate so devices and DMA become visible before issue.
+            const u64 local_cycles = elapsed > 2 ? rsp.run_local(elapsed - 1) : 0;
+            if (local_cycles != 0)
+                bus.tick_clocks(local_cycles);
+            for (u64 cycle = local_cycles + 1; cycle < elapsed; ++cycle) {
                 bus.tick_clocks(1);
                 rsp.tick(1);
             }

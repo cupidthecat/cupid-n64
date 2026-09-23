@@ -48,6 +48,8 @@ void Rsp::reset() {
     current_pc_ = 0;
     branch_pending_ = false;
     pipeline_.reset();
+    for (auto& line : local_code_lines_)
+        line.valid = false;
 }
 
 void Rsp::tick(u64 rcp_cycles) {

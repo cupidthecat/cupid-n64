@@ -1,5 +1,71 @@
 # Recorded validation results
 
+## Cached arithmetic and RSP settlement (2026-09-23)
+
+Cached CPU execution accepts binary floating-point arithmetic whose live
+operands and control bits prove an exact, nontrapping latency. It charges the
+same integer and floating-point issue waits as ordinary stepping, advances
+instruction counters by retirements, and advances clocks by elapsed cycles.
+Instructions that would reach a device or Count/Compare edge use ordinary
+stepping. A multicycle instruction with a running RSP first proves that the
+entire RSP span accesses only local state.
+
+RSP settlement can also run local instructions together within a scheduled
+interval. It preserves the final cycle's device-before-issue ordering. Shared
+register operations, DMA visibility, branch waits, and already fetched packets
+retain their synchronized behavior. The [CPU timing guide](../hardware/cpu-timing.md)
+and [RCP scheduling guide](../hardware/rcp-scheduling.md) describe these bounds.
+
+Strict Windows Clang 21.1.5 and MSVC 19.43 desktop builds and Linux Clang 18.1.3
+ASan/UBSan passed the same 422-file source snapshot:
+
+| Check | Windows Clang | Windows MSVC | Linux ASan/UBSan |
+| --- | ---: | ---: | ---: |
+| Core regressions | 1,366/1,366 | 1,366/1,366 | 1,366/1,366 |
+| Default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 14/14 | 14/14 | 9/9 |
+
+All three runs passed both stepped-versus-batched cartridge comparisons, all
+39 validation-tool tests, formatting with clang-format 22.1.0, and source/input
+integrity checks. The sanitizer logs contain no diagnostic. Extended results
+were Base 4,649, Timing 1,604, Cycle 13, CP0 hazards five, and quirks two, with
+zero failures. The cartridge inputs retain the documented fixture corrections.
+
+The 23 added regressions cover exact arithmetic costs, dependency waits,
+budgets ending within instructions, rounding and register aliases, host
+floating-point state, timer and output callbacks, DMA boundaries, and IMEM
+edits while an instruction packet is latched. The existing 23 framebuffer
+regressions also passed, covering every color-image size and format code in
+both cycle modes. This completes the storage behavior tracked in #49; the
+broader rendering and hardware-capture limits remain separate.
+
+On the i7-13700H, one final paired run took 71.537 seconds before these changes
+and 70.800 afterward for 2,000 stationary title-screen fields. The 6,000-field
+gameplay replay took 133.097 and 132.691 seconds. Every field observation and
+all 71 retained video, audio, and EEPROM files matched. The ordinary Clang
+Release runs kept strict floating-point settings, high process QoS, and
+performance-core affinity. Their inputs and executables retained their hashes.
+
+Those pairs observed 1.03% and 0.30% less wall time. Each candidate was measured
+once per workload. Earlier intermediate snapshots ranged from a 1.25%
+regression to a 2.35% reduction against the same baseline, while repeated
+baseline times varied by about 1.4 to 1.5%. These measurements do not establish
+a repeatable speedup.
+
+A separate desktop title-screen run completed in 60.066 seconds with 1,658 VI
+fields, 1,566 presentations, and 607 audio underruns. Host and device audio-drop
+counters were zero. The application saved its capture and EEPROM and exited
+successfully, but approximately 27.6 VI fields per second is below full speed.
+The matched replay recorded zero audio-timeline discontinuities; it does not
+establish normal audible playback. Issues #48 and #47 remain open.
+
+Reports, replay comparisons, and the desktop capture are retained under
+`.work/validation/continuation-20260923/`. The result record and two guide
+clarifications were added after validation; implementation and test bytes were
+unchanged.
+
 ## Scalar SSE binary arithmetic (2026-09-23)
 
 ADD, SUB, MUL, and DIV now use scalar SSE on x64 while preserving guest

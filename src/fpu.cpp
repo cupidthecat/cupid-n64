@@ -96,6 +96,32 @@ u64 arithmetic_latency(unsigned function, typename FloatBits<T>::UInt left, type
     return sizeof(T) == 4 ? 28 : 57;
 }
 
+template <class T>
+unsigned nontrapping_binary_cycles(unsigned function, typename FloatBits<T>::UInt left,
+                                   typename FloatBits<T>::UInt right, bool invalid_enabled) {
+    using Bits = FloatBits<T>;
+    if (is_nan_bits<T>(left) || is_nan_bits<T>(right) || is_subnormal_bits<T>(left) ||
+        is_subnormal_bits<T>(right))
+        return 0;
+    if (invalid_enabled) {
+        if (is_infinite_bits<T>(left) || is_infinite_bits<T>(right))
+            return 0;
+        if (function == 3U && ((left | right) & ~Bits::sign_mask) == 0)
+            return 0;
+    }
+    if (function == 2U && (left & Bits::fraction_mask) != 0 && (right & Bits::fraction_mask) != 0) {
+        constexpr unsigned fraction_bits = sizeof(T) == 4 ? 23U : 52U;
+        constexpr unsigned minimum_sum = sizeof(T) == 4 ? 128U : 1024U;
+        const auto exponent_sum = ((left & Bits::exponent_mask) >> fraction_bits) +
+                                  ((right & Bits::exponent_mask) >> fraction_bits);
+        // A tiny product can use a shorter underflow latency. Keep it on ordinary
+        // stepping unless an operand already guarantees the one-cycle shortcut.
+        if (exponent_sum < minimum_sum)
+            return 0;
+    }
+    return 1U + static_cast<unsigned>(arithmetic_latency<T>(function, left, right, false));
+}
+
 int host_rounding(u32 mode) {
     switch (mode & 3U) {
     case 0:
@@ -174,6 +200,21 @@ void Fpu::write_word(unsigned index, u32 value) {
 void Fpu::write_doubleword(unsigned index, u64 value) {
     index &= 31U;
     registers[full_register_mode() ? index : (index & ~1U)] = value;
+}
+
+unsigned Fpu::nontrapping_arithmetic_cycles(u32 instruction) const {
+    const unsigned format = (instruction >> 21U) & 31U;
+    const unsigned function = instruction & 63U;
+    if ((instruction >> 26U) != 0x11U || (format != 0x10U && format != 0x11U) || function > 3U ||
+        (control & (1U << 24U)) == 0 || (control & 0x0780U) != 0)
+        return 0;
+    const unsigned fs = (instruction >> 11U) & 31U;
+    const unsigned ft = (instruction >> 16U) & 31U;
+    const bool invalid_enabled = (control & (1U << 11U)) != 0;
+    return format == 0x10U ? nontrapping_binary_cycles<float>(function, source_word(fs),
+                                                              second_source_word(ft), invalid_enabled)
+                           : nontrapping_binary_cycles<double>(function, source_doubleword(fs),
+                                                               second_source_doubleword(ft), invalid_enabled);
 }
 
 bool Fpu::compare_nontrapping(u32 instruction) const {

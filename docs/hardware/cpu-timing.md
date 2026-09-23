@@ -12,7 +12,7 @@ memory helpers support local tests without advancing those clocks.
 
 ## Cached execution slices
 
-`Cpu::run_slice` can retire consecutive single-cycle instructions without
+`Cpu::run_slice` can retire consecutive cached instructions without
 returning through `Cpu::step` for every instruction. Entry is limited to cached
 kseg0 execution in kernel, big-endian state with a clean pipeline. Pending NMI,
 exceptions, redirects, annulment, Count-write holds, software-interrupt delays,
@@ -30,11 +30,12 @@ The next instruction computes its address again, including when a load changed
 its own base register. Alignment faults and the external-memory doubleword load
 restriction are checked before a cached access can be accepted.
 
-COP1 register transfers and single- and double-precision comparisons can also
+COP1 register transfers, comparisons, and bounded binary arithmetic can also
 use the slice. CU1 is checked before an FP data-cache access. FP loads and
 stores use the FPU's transfer register mapping, including paired registers when
 FR is clear; FPR0 remains an ordinary floating-point register. CTC1, FP branches,
-arithmetic, and conversions continue through `Cpu::step`.
+conversions, and arithmetic outside the preflight domain continue through
+`Cpu::step`.
 
 A comparison is accepted only when its live operands and FCSR cannot raise an
 invalid-operation trap. Preflight uses the same first- and second-source mapping
@@ -42,13 +43,24 @@ as execution, including their different handling of odd registers with FR clear.
 It runs again after settling device clocks and before each accepted instruction.
 The timing regressions retain one CPU cycle per nontrapping comparison.
 
-A preceding FPU result blocks a dependent comparison when either encoded source
-matches its pending destination. An accepted independent instruction consumes
-that issue boundary and clears the pending interlock. The checks before and after
-settling device clocks preserve the same encoded-source rule as ordinary stepping.
+A preceding FPU result adds one issue cycle when either encoded arithmetic or
+comparison source matches its pending destination. Integer load interlocks also
+use the encoded register fields, including destinations. The slice charges the
+same wait as ordinary stepping, then carries the current instruction's pending
+result to its successor. An independent instruction clears the older interlock.
 `tests/cpu/test_cached_cop1.cpp` covers these interlocks, both precisions, NaN trap
 policies, register aliases, cache-hit memory transfers, and callbacks that change
 the operands or FCSR before a comparison can issue.
+
+ADD, SUB, MUL, and DIV in single or double precision enter the slice only when
+their live operands and FCSR prove both nontrapping execution and an exact cycle
+cost. The preflight reads encoded bits without performing host arithmetic. It
+requires flush mode with the four non-invalid exception enables clear, and checks
+invalid-operation safety when that exception is enabled. NaN and subnormal inputs
+fall back. Multiplication also falls back when its product could select a shorter
+underflow latency that the operand bits do not already determine. Accepted
+operations use the ordinary FPU implementation for results, flags, rounding, and
+latency; preflight includes the same source-register aliases and timing shortcuts.
 
 Before entering a slice, the decoder classifies the already-cached successor.
 An unsupported successor keeps the first instruction on ordinary stepping to
@@ -75,9 +87,10 @@ remains valid, and no peripheral debt, buffered store, or output needs service.
 Otherwise, the query settles device time and recomputes the bound. The entry
 checks and current-word match are evaluated again afterward because settling
 can deliver a callback that changes machine state. The slice stops before the
-next Bus event, VI line boundary, or Count/Compare edge. Instruction and Random
-state and the deferred device clocks advance for exactly the instructions that
-retired.
+next Bus event, VI line boundary, or Count/Compare edge. Instruction count and
+Random advance by retired instructions; Count and device clocks advance by their
+elapsed cycles, including issue waits and arithmetic latency. A multicycle
+instruction that would reach an event is left to ordinary stepping.
 
 When the RSP is running, a cached CPU slice can execute local RSP work at the
 same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock
@@ -94,6 +107,17 @@ an SP PC changed behind the pipeline prevent this path. The differential tests
 cover all three clock phases, cached SP memory, and IMEM changes during a latched
 operand stall. They continue ordinary stepping after each slice to check the
 retained pipeline state.
+
+A CPU instruction that needs several RSP ticks must prove the whole local span
+before either processor advances. `src/rsp/execution_window.cpp` compares all
+64 bytes of the current IMEM line before reusing its local-prefix metadata. The first
+branch ends that prefix. Since the RSP issues at most two words per cycle, the
+prefix supplies a conservative cycle bound; operand waits can only postpone its
+end. An already latched local packet uses its retained words even after a host
+IMEM edit. A short bound leaves the CPU instruction to ordinary stepping.
+`tests/cpu/test_cached_multicycle.cpp` and `test_cached_rsp_window.cpp` compare
+these paths with instruction stepping, including clock phases, code mutations,
+latched packets, and shared-register boundaries.
 
 The idle-loop path is narrower. It recognizes a cached self-branch with a NOP
 delay slot, verifies both live instruction-cache words, and stops before the same

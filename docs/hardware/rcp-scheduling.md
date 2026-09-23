@@ -32,6 +32,13 @@ at each one-cycle boundary. An eligible scalar/vector pair shares that boundary;
 scheduler can advance farther, but stops at the next SP DMA row, buffered CPU
 store, or peripheral event.
 
+Within an elapsed interval, local RSP instructions can run together before the
+RDP and RDRAM clocks catch up. Dynamic shared-register reads and writes end that
+local span. The final cycle still advances clocks and any due peripheral event
+before RSP issue, so a DMA row or shared boundary remains visible on its original
+cycle. `tests/rcp/test_rsp_settlement.cpp` compares bulk and one-cycle advances
+across DMA edges, operand waits, shared reads, halts, and host code changes.
+
 The inverse conversion rounds an RCP wait up to the first reachable CPU clock
 while retaining that fractional phase. A zero wait costs no cycles at any phase.
 The arithmetic avoids overflowing intermediate products; waits beyond the

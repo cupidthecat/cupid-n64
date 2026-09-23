@@ -20,6 +20,7 @@ class Fpu {
     void write_word(unsigned index, u32 value);
     void write_doubleword(unsigned index, u64 value);
     [[nodiscard]] bool compare_nontrapping(u32 instruction) const;
+    [[nodiscard]] unsigned nontrapping_arithmetic_cycles(u32 instruction) const;
 
     std::array<u64, 32> registers{};
     u32 control{};

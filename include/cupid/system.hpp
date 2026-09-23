@@ -67,6 +67,8 @@ class System {
     [[nodiscard]] u64 idle_loop_event_cycles();
     [[nodiscard]] u64 cached_private_event_cycles();
     [[nodiscard]] bool rsp_local_execution_ready() const;
+    [[nodiscard]] unsigned rsp_local_execution_window();
+    [[nodiscard]] u64 run_local_rsp_ticks(u64 ticks);
     [[nodiscard]] bool run_local_rsp_tick();
     [[nodiscard]] u64 run_local_rsp_for_idle(u64 maximum_cpu_cycles);
     void advance_after_local_rsp(u64 cpu_cycles);

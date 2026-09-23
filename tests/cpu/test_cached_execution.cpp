@@ -262,8 +262,10 @@ TEST(cpu_cached_private_preserves_consecutive_load_interlocks) {
         warm_data_cache(*system);
         system->cpu.step();
     }
+    const u64 encoded_start_cycles = encoded_batched.cpu.cycles;
     compare_slice(encoded_batched, encoded_stepped, 2);
-    CHECK_EQ(encoded_batched.cpu.batched_cached_instructions(), 1U);
+    CHECK_EQ(encoded_batched.cpu.batched_cached_instructions(), 2U);
+    CHECK_EQ(encoded_batched.cpu.cycles - encoded_start_cycles, 3U);
     probe_next_step(encoded_batched, encoded_stepped);
 }
 
