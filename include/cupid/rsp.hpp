@@ -33,6 +33,7 @@ class Rsp {
     [[nodiscard]] u64 next_dma_event() const;
     [[nodiscard]] bool local_execution_ready() const;
     [[nodiscard]] u64 run_local(u64 maximum_cycles);
+    [[nodiscard]] u64 local_cycle_budget(u64 maximum_cycles);
     [[nodiscard]] bool step_local();
     void execute_group();
 

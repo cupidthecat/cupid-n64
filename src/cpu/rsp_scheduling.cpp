@@ -17,6 +17,12 @@ void System::advance_cached_rsp_ticks(u64 rcp_cycles) {
     } scope{settling_};
     settling_ = true;
     while (rcp_cycles != 0) {
+        const u64 local = rcp_cycles > 1 ? rsp.run_local(rcp_cycles) : 0;
+        if (local != 0) {
+            bus.tick_clocks(local);
+            rcp_cycles -= local;
+            continue;
+        }
         bus.tick_clocks(1);
         rsp.tick(1);
         --rcp_cycles;

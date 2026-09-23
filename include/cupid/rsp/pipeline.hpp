@@ -76,6 +76,9 @@ class RspPipeline {
     [[nodiscard]] LocalIssue local_issue();
     void fetch(u32 first, u32 second, bool single_step, u32 address = 0);
     [[nodiscard]] bool advance_operand_wait();
+    // Consume only operand bubbles, leaving the fetched packet pending at a
+    // scheduling boundary. The returned count never includes its issue cycle.
+    [[nodiscard]] unsigned advance_operand_wait(unsigned maximum_cycles);
     [[nodiscard]] unsigned size() const {
         return count_;
     }
@@ -132,6 +135,7 @@ class RspPipeline {
         u8 count{};
         bool issued_local{};
         u8 flags{};
+        u8 local_cycles{};
     };
     static_assert(sizeof(DecodedFetch) == 32);
 

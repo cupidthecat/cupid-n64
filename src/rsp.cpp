@@ -94,56 +94,6 @@ bool Rsp::step_local() {
     return true;
 }
 
-u64 Rsp::run_local(u64 maximum_cycles) {
-    if (!local_execution_ready())
-        return 0;
-
-    if (dma_busy_) {
-        // The row's payload stays unchanged before its transfer cycle. Leave that
-        // cycle to tick(), which transfers the row before issuing its instruction.
-        if (dma_cycles_until_row_ <= 1)
-            return 0;
-        maximum_cycles = std::min(maximum_cycles, dma_cycles_until_row_ - 1);
-    }
-
-    if (maximum_cycles < 8) {
-        u64 elapsed = 0;
-        while (elapsed < maximum_cycles && step_local())
-            ++elapsed;
-        tick_dma(elapsed);
-        return elapsed;
-    }
-
-    RspPipeline::LocalWindow window;
-    const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
-    const bool trusted_imem = memory.imem_trusted();
-    const u64 imem_revision = memory.imem_revision();
-    const auto step_window = [&] {
-        RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
-        if (pipeline_.size() == 0U) {
-            issue = trusted_imem ? pipeline_.local_issue(imem, imem_revision, pc)
-                                 : pipeline_.local_issue(imem, window, pc);
-        } else {
-            issue = pipeline_.local_issue();
-        }
-
-        if (issue == RspPipeline::LocalIssue::Blocked)
-            return false;
-        if (issue == RspPipeline::LocalIssue::Ready)
-            execute_group();
-        return true;
-    };
-
-    u64 elapsed = 0;
-    while (elapsed < maximum_cycles && step_window()) {
-        // A branch-wait or operand-wait cycle is still an RSP cycle. Local groups
-        // cannot change shared registers, start DMA, halt, or raise an SP interrupt.
-        ++elapsed;
-    }
-    tick_dma(elapsed);
-    return elapsed;
-}
-
 u8 Rsp::dmem_read8(u32 address) const {
     return memory.internal_read(address & 0x0fffU);
 }

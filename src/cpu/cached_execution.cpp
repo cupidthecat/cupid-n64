@@ -1,6 +1,7 @@
 #include "cupid/system.hpp"
 
 #include <algorithm>
+#include <bitset>
 #include <cassert>
 #include <limits>
 
@@ -464,6 +465,9 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         return true;
     };
 
+    // Accepted instructions cannot modify I-cache, and the slice ends before
+    // callbacks or cache operations. Validate each visited line once per slice.
+    std::bitset<512> validated_lines;
     const auto cached_line_plan = [&](u64 address) -> CachedLinePlan* {
         if ((address & 0xffffffffe0000003ULL) != 0xffffffff80000000ULL)
             return nullptr;
@@ -475,6 +479,9 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
             return nullptr;
 
         auto& plan = cached_line_plans_[line_index];
+        if (validated_lines.test(line_index))
+            return &plan;
+        validated_lines.set(line_index);
         if (plan.valid && plan.tag == tag && line.data == plan.image)
             return &plan;
 
@@ -612,6 +619,11 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const u64 initial_rcp_phase = system_.rcp_fraction_;
     u64 shadow_rcp_phase = initial_rcp_phase;
     [[maybe_unused]] u64 coupled_rsp_ticks = 0;
+    // These cycles contain only local RSP packets, so no CPU-visible change
+    // can occur before they are retired. Shared operations keep instruction-
+    // boundary interrupt sampling, including multicycle FPU instructions.
+    u64 pending_rsp_ticks = 0;
+    u64 local_rsp_budget = run_rsp_coupled ? system_.local_rsp_cycle_budget(64) : 0;
     u64 extra_cycles = 0;
     u64 amount = std::min(step_limit, cycle_limit);
     const CachedDecode* accepted = &settled_first;
@@ -664,8 +676,16 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         next_pc = following_pc_;
         in_delay_slot_ = following_delay_slot_;
         fetched_instruction_ = {pc, prefetched_word, true};
-        if (rsp_ticks != 0)
-            system_.advance_cached_rsp_ticks(rsp_ticks);
+        if (rsp_ticks != 0) {
+            if (rsp_ticks <= local_rsp_budget) {
+                pending_rsp_ticks += rsp_ticks;
+                local_rsp_budget -= rsp_ticks;
+            } else {
+                system_.advance_cached_rsp_ticks(pending_rsp_ticks + rsp_ticks);
+                pending_rsp_ticks = 0;
+                local_rsp_budget = system_.local_rsp_cycle_budget(64);
+            }
+        }
         coupled_rsp_ticks += rsp_ticks;
         shadow_rcp_phase = next_rcp_phase;
         if (cost > 1U) {
@@ -714,6 +734,8 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     batched_cached_instructions_ += steps;
     const u64 elapsed_cycles = steps + extra_cycles;
     if (run_rsp_coupled) {
+        if (pending_rsp_ticks != 0)
+            system_.advance_cached_rsp_ticks(pending_rsp_ticks);
         const u64 fraction = (elapsed_cycles % 3U) * 2U + initial_rcp_phase;
         [[maybe_unused]] const u64 expected_rsp_ticks = (elapsed_cycles / 3U) * 2U + fraction / 3U;
         assert(coupled_rsp_ticks == expected_rsp_ticks);

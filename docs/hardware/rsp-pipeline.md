@@ -201,6 +201,18 @@ consumer. `Rsp::step()` processes one issue, dependency stall or branch bubble;
 `Rsp::tick()` advances SP DMA and can spend a pending branch bubble while halted.
 `System::advance()` orders these cycles with the other devices.
 
+`src/rsp/local_execution.cpp` groups consecutive operand bubbles during local
+execution. It shifts the same three dependency stages and leaves the fetched
+packet pending if the cycle budget ends inside a stall. Branch bubbles remain
+separate from instruction fetch, and the DMA transfer cycle stays on ordinary
+stepping. The local cycle lookahead described in [CPU timing](cpu-timing.md)
+lets interruptible cached CPU slices use this path without advancing shared
+RSP operations early.
+
+`tests/rsp/test_bulk_stalls.cpp` compares bounded bubble consumption with
+single-cycle progression, including the following packet's dependencies, and
+checks machine state at every slice length from one through 32 CPU cycles.
+
 The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
 DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved
 SPECIAL fields, and control changes. Halt/resume fixtures check BREAK interrupts,

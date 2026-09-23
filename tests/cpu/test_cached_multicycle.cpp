@@ -5,6 +5,7 @@
 #include <array>
 #include <bit>
 #include <initializer_list>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -141,7 +142,8 @@ TEST(cpu_cached_multicycle_chains_binary_fpu_results_with_exact_issue_waits) {
         immediate(0x0d, 0, 8, 7),         // ORI t0,zero,7: 1 cycle.
         0x40094800U,                      // MFC0 t1,Count: cached-batch exit.
     };
-    System batched, stepped;
+    auto machines = std::make_unique<std::array<System, 2>>();
+    auto& [batched, stepped] = *machines;
     for (auto* system : {&batched, &stepped}) {
         prepare(*system, program);
         system->cpu.fpu.control = flush_subnormals;
@@ -184,7 +186,8 @@ TEST(cpu_cached_multicycle_preserves_encoded_load_interlock_and_cycle_budgets) {
                                     Boundary{4U, 3U, 32U}, Boundary{31U, 3U, 32U}, Boundary{32U, 3U, 32U},
                                     Boundary{33U, 4U, 33U}};
     for (const auto boundary : boundaries) {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, program);
             warm_data_cache(*system);
@@ -209,7 +212,8 @@ TEST(cpu_cached_multicycle_preserves_encoded_load_interlock_and_cycle_budgets) {
 
 TEST(cpu_cached_multicycle_respects_fr_rounding_and_arithmetic_trap_fallbacks) {
     for (const bool full_registers : {false, true}) {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, {0U, cop1_format(0x10U, 5, 3, 7, 0), immediate(0x0d, 0, 8, 1), 0x40094800U},
                     full_registers);
@@ -227,7 +231,8 @@ TEST(cpu_cached_multicycle_respects_fr_rounding_and_arithmetic_trap_fallbacks) {
 
     constexpr std::array<u32, 4> rounded{0x3f800000U, 0x3f800000U, 0x3f800001U, 0x3f800000U};
     for (unsigned rounding = 0; rounding < 4U; ++rounding) {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, {0U, cop1_format(0x10U, 4, 2, 6, 0), immediate(0x0d, 0, 8, 1), 0x40094800U});
             system->cpu.fpu.control = flush_subnormals | rounding;
@@ -239,7 +244,8 @@ TEST(cpu_cached_multicycle_respects_fr_rounding_and_arithmetic_trap_fallbacks) {
         CHECK_EQ(static_cast<u32>(batched.cpu.fpu.registers[6]), rounded[rounding]);
     }
 
-    System trap_batched, trap_stepped;
+    auto trap_machines = std::make_unique<std::array<System, 2>>();
+    auto& [trap_batched, trap_stepped] = *trap_machines;
     for (auto* system : {&trap_batched, &trap_stepped}) {
         prepare(*system, {0U, cop1_format(0x10U, 4, 2, 6, 3), immediate(0x0d, 0, 8, 1)});
         system->cpu.fpu.control = flush_subnormals | (1U << 10U); // Enable divide-by-zero exception.
@@ -260,7 +266,8 @@ TEST(cpu_cached_multicycle_respects_fr_rounding_and_arithmetic_trap_fallbacks) {
 
 TEST(cpu_cached_multicycle_keeps_count_compare_and_video_callback_boundaries) {
     {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, {0U, cop1_format(0x10U, 4, 2, 6, 2), immediate(0x0d, 0, 8, 1), 0x40094800U});
             system->cpu.fpu.control = flush_subnormals;
@@ -278,7 +285,8 @@ TEST(cpu_cached_multicycle_keeps_count_compare_and_video_callback_boundaries) {
     }
 
     using Observation = std::array<u64, 6>;
-    System batched, stepped;
+    auto machines = std::make_unique<std::array<System, 2>>();
+    auto& [batched, stepped] = *machines;
     std::vector<Observation> first, second;
     const auto attach = [&](System& system, std::vector<Observation>& output) {
         prepare(system, {0U, cop1_format(0x10U, 4, 2, 6, 2), cop1_format(0x10U, 4, 2, 8, 0),
@@ -305,7 +313,8 @@ TEST(cpu_cached_multicycle_keeps_count_compare_and_video_callback_boundaries) {
 TEST(cpu_cached_multicycle_keeps_shared_rsp_cycles_and_active_dma_boundaries) {
     const auto cpu_program = {0U, cop1_format(0x10U, 4, 2, 6, 2), immediate(0x0d, 0, 8, 1), 0x40094800U};
     for (unsigned phase = 0; phase < 3U; ++phase) {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, cpu_program);
             system->cpu.write_cop0(12, 0x34000401U);
@@ -323,7 +332,8 @@ TEST(cpu_cached_multicycle_keeps_shared_rsp_cycles_and_active_dma_boundaries) {
     }
 
     for (unsigned mode = 0; mode < 3U; ++mode) {
-        System batched, stepped;
+        auto machines = std::make_unique<std::array<System, 2>>();
+        auto& [batched, stepped] = *machines;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, cpu_program);
             system->cpu.write_cop0(12, 0x34000401U);

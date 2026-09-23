@@ -68,6 +68,9 @@ class System {
     [[nodiscard]] u64 cached_private_event_cycles();
     [[nodiscard]] u64 run_local_rsp_for_idle(u64 maximum_cpu_cycles);
     void advance_cached_rsp_ticks(u64 rcp_cycles);
+    [[nodiscard]] u64 local_rsp_cycle_budget(u64 maximum_cycles) {
+        return rsp.local_cycle_budget(maximum_cycles);
+    }
     void finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced = false);
     bool pif_loaded_{};
 };

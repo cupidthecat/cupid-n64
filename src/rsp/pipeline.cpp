@@ -378,6 +378,7 @@ RspPipeline::DecodedFetch& RspPipeline::prepare(std::span<const u8, 4096> imem, 
         return read_be32(imem.data() + (word_address & 0x0ffcU));
     };
     auto& decoded = prepare(read_word(address), read_word(address + 4U), pairing_allowed, address);
+    decoded.local_cycles = 0;
     decoded_revision_[decoded_index] = revision;
     return decoded;
 }
@@ -526,6 +527,45 @@ bool RspPipeline::advance_operand_wait() {
         return false;
     advance({});
     return true;
+}
+
+unsigned RspPipeline::advance_operand_wait(unsigned maximum_cycles) {
+    const auto& fetched = current_fetch();
+    const auto& current = fetched.ports;
+    unsigned waits = 0;
+    if ((current.vector_reads & previous_[0].vector_result) != 0U)
+        waits = 3;
+    else if ((current.scalar_reads & previous_[0].scalar_result) != 0U ||
+             (current.vector_reads & previous_[1].vector_result) != 0U)
+        waits = 2;
+    else if ((current.scalar_reads & previous_[1].scalar_result) != 0U ||
+             (current.vector_reads & previous_[2].vector_result) != 0U)
+        waits = 1;
+
+    // A load one cycle back blocks a store. If both preceding stages are
+    // loads, the second load moves into that stage after the first bubble.
+    if ((fetched.flags & store) != 0U) {
+        if (waits == 0U && previous_[1].load)
+            waits = 1;
+        if (waits == 1U && previous_[0].load)
+            waits = 2;
+    }
+    const unsigned elapsed = waits < maximum_cycles ? waits : maximum_cycles;
+    switch (elapsed) {
+    case 3:
+        previous_ = {};
+        break;
+    case 2:
+        previous_[2] = previous_[0];
+        previous_[1] = previous_[0] = {};
+        break;
+    case 1:
+        advance({});
+        break;
+    default:
+        break;
+    }
+    return elapsed;
 }
 
 void RspPipeline::retire(bool taken_delay_slot, u32 next_pc) {
