@@ -348,11 +348,13 @@ RspPipeline::DecodedFetch& RspPipeline::prepare(u32 first, u32 second, bool pair
 
     // Control and element-field dependencies have already decided pairing. Only
     // register dependencies and issue flags remain relevant to the live packet.
-    cached = {
-        {first, second}, {ports.scalar_reads, ports.scalar_result, ports.vector_reads, ports.vector_result},
-        operations,      count,
-        pairing_allowed, first_local && second_local,
-        issued_local,    static_cast<u8>(ports.flags)};
+    cached = {{first, second},
+              {ports.scalar_reads, ports.scalar_result, ports.vector_reads, ports.vector_result},
+              operations,
+              count,
+              pairing_allowed,
+              issued_local,
+              static_cast<u8>(ports.flags)};
     return cached;
 }
 
@@ -386,10 +388,10 @@ RspPipeline::LocalIssue RspPipeline::local_issue(u32 first, u32 second, u32 addr
     const bool pairing_allowed = !single_issue_;
     const unsigned decoded_index = static_cast<unsigned>((address >> 2U) & (decoded_.size() - 1U));
     auto& decoded = prepare(first, second, pairing_allowed, address);
-    if (!decoded.fresh_local)
+    if (!decoded.issued_local)
         return LocalIssue::Blocked;
 
-    // Preserve the raw-word safety check before a branch bubble without latching
+    // Check the selected issue group before a branch bubble without latching
     // the prepared packet until its real fetch cycle.
     if (advance_branch_wait())
         return LocalIssue::Advanced;
@@ -423,10 +425,10 @@ RspPipeline::LocalIssue RspPipeline::local_issue(std::span<const u8, 4096> imem,
         decoded = &cached;
     }
 
-    if (!decoded->fresh_local)
+    if (!decoded->issued_local)
         return LocalIssue::Blocked;
 
-    // Raw locality must be established before consuming the target bubble. Once an
+    // Check the selected issue group before consuming the target bubble. Once an
     // address is validated in this run_local() call, its two IMEM words cannot change.
     if (advance_branch_wait())
         return LocalIssue::Advanced;

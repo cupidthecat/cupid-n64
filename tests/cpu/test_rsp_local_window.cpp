@@ -244,7 +244,7 @@ TEST(cpu_rsp_local_window_keeps_latched_words_during_operand_stall) {
     CHECK_EQ(batched.rsp.read_register(0x10) & 3U, 3U);
 }
 
-TEST(cpu_rsp_local_window_checks_unsafe_raw_second_word_before_branch_bubble) {
+TEST(cpu_rsp_local_window_defers_shared_second_word_until_it_issues) {
     System batched, stepped;
     for (auto* system : {&batched, &stepped}) {
         prepare_idle(*system);
@@ -258,7 +258,7 @@ TEST(cpu_rsp_local_window_checks_unsafe_raw_second_word_before_branch_bubble) {
                                  0U,
                                  0U,
                                  0x24210001U, // Target first word is local.
-                                 0x40026000U, // Raw second word is shared MFC0.
+                                 0x40026000U, // DPC_CLOCK cannot pair with the scalar target.
                                  0xac020080U,
                                  0x0000000dU,
                              });

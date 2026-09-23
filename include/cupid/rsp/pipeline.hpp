@@ -131,7 +131,6 @@ class RspPipeline {
         std::array<Operation, 2> operations{};
         u8 count{};
         bool pairing_allowed{};
-        bool fresh_local{};
         bool issued_local{};
         u8 flags{};
     };

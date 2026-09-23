@@ -321,6 +321,44 @@ TEST(cpu_idle_rsp_dma_register_polling_matches_each_transfer_boundary) {
     }
 }
 
+TEST(cpu_idle_rsp_dma_polling_keeps_the_clock_read_after_the_taken_delay_slot) {
+    constexpr std::array<u32, 6> words{
+        0x40033000U, // MFC0 v1,SP_DMA_BUSY.
+        0x1460fffeU, // BNE v1,zero,loop.
+        0U,          // NOP delay slot; the following clock read cannot pair here.
+        0x40026000U, // MFC0 v0,DPC_CLOCK after DMA finishes.
+        0xac020080U, // SW v0,0x80(zero).
+        0x0000000dU,
+    };
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        for (const u32 address : {0U, 4U, 0xffcU}) {
+            System batched, stepped;
+            for (auto* system : {&batched, &stepped}) {
+                prepare_idle(*system);
+                stepped_slice(*system, 32 + phase);
+                for (unsigned index = 0; index < words.size(); ++index)
+                    write_be32(system->rsp.memory.data() + 0x1000U + ((address + index * 4U) & 0xfffU),
+                               words[index]);
+                system->rsp.write_pc(address);
+                system->rsp.write_register(0x10, 0x101U);
+                system->bus.write(0x4000, 4, 0x12345678U);
+                system->rsp.write_register(0, 0x200);
+                system->rsp.write_register(4, 0x4000);
+                system->rsp.write_register(8, 0x11ffU);
+            }
+            const u64 previous = batched.cpu.batched_idle_instructions();
+            compare_slice(batched, stepped, 31);
+            CHECK(batched.cpu.batched_idle_instructions() > previous + 16);
+            CHECK_EQ(read_be32(batched.rsp.memory.data() + 0x80), 0U);
+            for (const unsigned budget : {1U, 2U, 17U, 97U, 257U})
+                compare_slice(batched, stepped, budget);
+            CHECK(read_be32(batched.rsp.memory.data() + 0x80) > 0U);
+            CHECK_EQ(read_be32(batched.rsp.memory.data() + 0x200), 0x12345678U);
+            CHECK_EQ(batched.rsp.read_register(0x10) & 3U, 3U);
+        }
+    }
+}
+
 TEST(cpu_idle_rsp_preserves_count_compare_interrupt_boundaries) {
     for (unsigned phase = 0; phase < 3; ++phase) {
         for (const unsigned distance : {1U, 2U, 3U, 17U, 127U}) {

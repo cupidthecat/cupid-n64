@@ -219,13 +219,19 @@ TEST(rsp_decoded_fetch_redirect_and_reset_keep_latch_state_self_contained) {
     CHECK(!pipeline.advance_operand_wait());
 }
 
-TEST(rsp_decoded_fetch_fresh_local_safety_tracks_both_raw_words) {
+TEST(rsp_decoded_fetch_fresh_local_safety_uses_the_selected_issue_group) {
     constexpr u32 address = 0x180U;
     RspPipeline pipeline;
     using LocalIssue = RspPipeline::LocalIssue;
 
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Blocked);
-    CHECK_EQ(pipeline.local_issue(addiu, break_instruction, address), LocalIssue::Blocked);
+    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Ready);
+    CHECK_EQ(pipeline.size(), 1U);
+    CHECK_EQ(pipeline.instruction(0), addiu);
+    pipeline.retire(false, address + 4U);
+    CHECK_EQ(pipeline.local_issue(addiu, break_instruction, address), LocalIssue::Ready);
+    CHECK_EQ(pipeline.size(), 1U);
+    CHECK_EQ(pipeline.instruction(0), addiu);
+    pipeline.retire(false, address + 4U);
     CHECK_EQ(pipeline.local_issue(mfc0, vnop, address), LocalIssue::Blocked);
     CHECK_EQ(pipeline.local_issue(break_instruction, vnop, address), LocalIssue::Blocked);
 
@@ -254,10 +260,9 @@ TEST(rsp_decoded_fetch_latched_local_safety_uses_only_issued_words) {
     RspPipeline pipeline;
     using LocalIssue = RspPipeline::LocalIssue;
 
-    // Both words are scalar, so only ADDIU issues. A normal RSP fetch may latch
-    // that instruction even though a fresh local co-run would reject the raw COP0
-    // in slot two. Once latched, only the issued instruction controls locality.
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Blocked);
+    // Both words are scalar, so only ADDIU issues. Fresh and latched packets
+    // both use the instructions selected by the pairing rules.
+    CHECK_EQ(pipeline.local_issue(addiu, mfc0, address), LocalIssue::Ready);
     pipeline.fetch(addiu, mfc0, false, address);
     CHECK_EQ(pipeline.size(), 1U);
     CHECK_EQ(pipeline.local_issue(), LocalIssue::Ready);
@@ -281,7 +286,7 @@ TEST(rsp_decoded_fetch_local_safety_revalidates_colliding_cache_entries) {
     constexpr u32 first_address = 0x0fc0U;
     constexpr u32 colliding_address = first_address + 0x1000U;
 
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, colliding_address), LocalIssue::Blocked);
+    CHECK_EQ(pipeline.local_issue(vnop, mfc0, colliding_address), LocalIssue::Blocked);
     CHECK_EQ(pipeline.local_issue(addiu, vnop, first_address), LocalIssue::Ready);
     pipeline.retire(false, first_address + 8U);
 
@@ -308,8 +313,8 @@ TEST(rsp_decoded_fetch_local_issue_checks_shared_words_before_branch_bubble) {
     CHECK_EQ(pipeline.size(), 1U);
     pipeline.retire(true, 0x020U);
 
-    // A shared raw slot stops local co-run before the pending bubble is consumed.
-    CHECK_EQ(pipeline.local_issue(addiu, mfc0, 0x020U), LocalIssue::Blocked);
+    // A shared issued slot stops local co-run before the pending bubble is consumed.
+    CHECK_EQ(pipeline.local_issue(vnop, mfc0, 0x020U), LocalIssue::Blocked);
     CHECK(pipeline.advance_branch_wait());
 
     // Recreate the bubble. With two local raw words, local_issue consumes the bubble

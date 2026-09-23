@@ -48,8 +48,9 @@ retires or an SP_PC redirect discards it.
 The active packet retains an index into the decoding table. Fetch cannot replace
 an entry while a packet is latched, and copying the pipeline keeps an index into
 the copy's own table. Local CPU slices prepare and check a fresh packet once.
-Both raw words must be local, even when the second would not issue in that
-group. An already-latched packet checks only its issued words. The fresh-word
+Fresh and already-latched packets check only the instructions selected to issue.
+A shared second word does not stop a slice when pairing rules exclude it, such
+as after a scalar instruction or in a branch delay slot. The selected-group
 check precedes a pending branch bubble; an accepted bubble ages dependencies
 without latching those words before their actual fetch cycle.
 
@@ -71,6 +72,8 @@ the transfer cycle before issuing its RSP instruction.
 Regression tests compare queued DMA rows, both transfer directions, IMEM/DMEM
 wrapping, register aliases, and callback changes with ordinary stepping. Clock
 fixtures use COP0 register 12 for DPC_CLOCK; register 11 reads DPC_STATUS.
+DMA-polling loops also cover a clock read after a taken delay slot, including
+all CPU/RSP clock phases and instruction addresses that wrap around IMEM.
 
 `src/rsp/execution.cpp` executes the decoded scalar operation without repeating
 the primary, SPECIAL, and REGIMM decoders. Link branches still test the original
