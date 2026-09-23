@@ -307,11 +307,15 @@ bool RspPipeline::can_pair(const Ports& first, const Ports& second) {
 
 bool RspPipeline::instruction_is_local(u32 word) {
     if ((word >> 26U) == 0x10U) {
-        // DMA rows and device events bound these constant register reads. SP status
-        // and semaphore retain synchronization; DP clock depends on elapsed time.
+        // DMA rows and device events bound these constant register reads. Other
+        // SP status changes come from shared writes. The semaphore read has a side
+        // effect and DP clock depends on elapsed time. The pending DMA addresses
+        // stay private until a length write starts the transfer.
         const unsigned operation = (word >> 21U) & 31U;
         const unsigned index = (word >> 11U) & 15U;
-        return operation == 0U && index != 4U && index != 7U && index != 12U;
+        if (operation == 4U)
+            return index == 0U || index == 1U;
+        return operation == 0U && index != 7U && index != 12U;
     }
     return (word & 0xfc00003fU) != 0x0000000dU;
 }

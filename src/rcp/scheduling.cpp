@@ -1,4 +1,5 @@
 #include "cupid/bus.hpp"
+#include "cupid/system.hpp"
 
 #include <algorithm>
 #include <utility>
@@ -51,6 +52,8 @@ void Bus::dispatch_outputs() {
         ai_boundary_pending_ = false;
         return;
     }
+    // Callbacks can read the RSP directly, so it must not be ahead of their clock.
+    system_.synchronize_rsp();
     struct DeliveryScope {
         bool& active;
         ~DeliveryScope() {

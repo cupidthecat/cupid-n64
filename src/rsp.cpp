@@ -48,9 +48,12 @@ void Rsp::reset() {
     current_pc_ = 0;
     branch_pending_ = false;
     pipeline_.reset();
+    lead_cycles_ = 0;
+    lead_elapsed_ = 0;
 }
 
 void Rsp::tick(u64 rcp_cycles) {
+    rcp_cycles -= consume_lead(rcp_cycles);
     while (rcp_cycles != 0) {
         if (halted_) {
             if (!pipeline_.advance_branch_wait())
@@ -66,82 +69,7 @@ void Rsp::tick(u64 rcp_cycles) {
 }
 
 u64 Rsp::next_dma_event() const {
-    return dma_busy_ ? dma_cycles_until_row_ : std::numeric_limits<u64>::max();
-}
-
-bool Rsp::local_execution_ready() const {
-    return !halted_ && !single_step_ && pc == pc_shadow_;
-}
-
-bool Rsp::step_local() {
-    RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
-    if (pipeline_.size() == 0U) {
-        if (memory.imem_trusted()) {
-            const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
-            issue = pipeline_.local_issue(imem, memory.imem_revision(), pc);
-        } else {
-            const std::array<u32, 2> words{fetch_instruction(pc), fetch_instruction(pc + 4)};
-            issue = pipeline_.local_issue(words[0], words[1], pc);
-        }
-    } else {
-        issue = pipeline_.local_issue();
-    }
-
-    if (issue == RspPipeline::LocalIssue::Blocked)
-        return false;
-    if (issue == RspPipeline::LocalIssue::Ready)
-        execute_group();
-    return true;
-}
-
-u64 Rsp::run_local(u64 maximum_cycles) {
-    if (!local_execution_ready())
-        return 0;
-
-    if (dma_busy_) {
-        // The row's payload stays unchanged before its transfer cycle. Leave that
-        // cycle to tick(), which transfers the row before issuing its instruction.
-        if (dma_cycles_until_row_ <= 1)
-            return 0;
-        maximum_cycles = std::min(maximum_cycles, dma_cycles_until_row_ - 1);
-    }
-
-    if (maximum_cycles < 8) {
-        u64 elapsed = 0;
-        while (elapsed < maximum_cycles && step_local())
-            ++elapsed;
-        tick_dma(elapsed);
-        return elapsed;
-    }
-
-    RspPipeline::LocalWindow window;
-    const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
-    const bool trusted_imem = memory.imem_trusted();
-    const u64 imem_revision = memory.imem_revision();
-    const auto step_window = [&] {
-        RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
-        if (pipeline_.size() == 0U) {
-            issue = trusted_imem ? pipeline_.local_issue(imem, imem_revision, pc)
-                                 : pipeline_.local_issue(imem, window, pc);
-        } else {
-            issue = pipeline_.local_issue();
-        }
-
-        if (issue == RspPipeline::LocalIssue::Blocked)
-            return false;
-        if (issue == RspPipeline::LocalIssue::Ready)
-            execute_group();
-        return true;
-    };
-
-    u64 elapsed = 0;
-    while (elapsed < maximum_cycles && step_window()) {
-        // A branch-wait or operand-wait cycle is still an RSP cycle. Local groups
-        // cannot change shared registers, start DMA, halt, or raise an SP interrupt.
-        ++elapsed;
-    }
-    tick_dma(elapsed);
-    return elapsed;
+    return dma_busy_ ? lead_cycles_ + dma_cycles_until_row_ : std::numeric_limits<u64>::max();
 }
 
 u8 Rsp::dmem_read8(u32 address) const {
@@ -164,12 +92,14 @@ u32 Rsp::dmem_read32(u32 address) const {
 }
 
 void Rsp::dmem_write8(u32 address, u8 value) {
+    save_dmem(address, 1);
     memory.internal_write(address & 0x0fffU, value);
 }
 
 void Rsp::dmem_write16(u32 address, u16 value) {
     const u32 offset = address & 0x0fffU;
     if (offset + 2U <= 0x1000U) {
+        save_dmem(offset, 2);
         write_be16(memory.internal_data() + offset, value);
         return;
     }
@@ -180,6 +110,7 @@ void Rsp::dmem_write16(u32 address, u16 value) {
 void Rsp::dmem_write32(u32 address, u32 value) {
     const u32 offset = address & 0x0fffU;
     if (offset + 4U <= 0x1000U) {
+        save_dmem(offset, 4);
         write_be32(memory.internal_data() + offset, value);
         return;
     }

@@ -8,7 +8,7 @@ for the current CPU and DMA timing limits.
 `System::advance` converts CPU cycles to RCP cycles with a persistent fractional
 clock. While the CPU runs from its caches and does not touch device state, those
 RCP cycles can be recorded instead of ticking every device after every instruction.
-The next device access, scheduled peripheral edge, buffered store, or running RSP
+The next device access, scheduled peripheral edge, buffered store, or shared RSP operation
 catches the devices up before anything is observed. `System::advance` still settles
 immediately, so callers that step the public clock see current device state.
 
@@ -48,6 +48,20 @@ cleared during a multicycle CPU operation remains invisible to the next CPU
 interrupt check. A pending line stops the slice before the next instruction.
 The slice's final clock update advances peripherals once, without repeating
 the shared clocks or RSP work.
+
+During `Cpu::run_slice`, local RSP instructions may execute up to 1,024 RCP
+cycles ahead of the shared clock. The next peripheral event and DMA row bound
+that interval. Semaphore reads, DPC_CLOCK reads, BREAK, and shared register
+writes end it. Writes to the pending SP DMA addresses remain local until a
+length write starts the transfer.
+
+The scheduler consumes those completed cycles as the CPU clock advances. A
+checkpoint retains RSP registers, pipeline state, and the original contents of
+each modified 16-byte DMEM block. Before a CPU access to SP state, a CPU write
+to DP registers, an output callback, or return from the CPU slice, any unused
+lead is discarded and the elapsed portion is replayed from the checkpoint.
+Observers therefore see the RSP at the shared clock. Instruction timing and
+interrupt sampling use the same boundaries as ordinary execution.
 
 A cached CPU slice whose Status masks RCP interrupts can defer its RSP work
 until the slice's clock update. Its accepted operations touch only CPU registers

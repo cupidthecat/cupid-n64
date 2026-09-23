@@ -239,7 +239,7 @@ TEST(rsp_decoded_fetch_fresh_local_safety_uses_the_selected_issue_group) {
     CHECK_EQ(pipeline.size(), 2U);
 }
 
-TEST(rsp_decoded_fetch_local_reads_exclude_sp_status_semaphore_and_dp_clock) {
+TEST(rsp_decoded_fetch_local_cop0_excludes_semaphore_dp_clock_and_shared_writes) {
     using LocalIssue = RspPipeline::LocalIssue;
     for (unsigned index = 0; index < 32; ++index) {
         for (const unsigned operation : {0U, 4U}) {
@@ -247,7 +247,7 @@ TEST(rsp_decoded_fetch_local_reads_exclude_sp_status_semaphore_and_dp_clock) {
                 RspPipeline pipeline;
                 const u32 word = 0x40020000U | (operation << 21U) | (index << 11U);
                 const unsigned selected = index & 15U;
-                const bool local = operation == 0U && selected != 4U && selected != 7U && selected != 12U;
+                const bool local = operation == 0U ? selected != 7U && selected != 12U : selected <= 1U;
                 CHECK_EQ(pipeline.local_issue(second ? vnop : word, second ? word : vnop, 0x100U),
                          local ? LocalIssue::Ready : LocalIssue::Blocked);
             }

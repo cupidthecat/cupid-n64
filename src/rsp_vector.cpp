@@ -96,6 +96,7 @@ void Rsp::store_plain_vector(u32 address, const Vector& source, unsigned element
         return;
 
     const unsigned destination = address & 0x0fffU;
+    save_dmem(destination, count);
     if (count == 16U && element == 0U && destination <= 0x0ff0U) {
         rsp_vector::store_full_vector(memory.internal_data() + destination, source.lane);
         return;

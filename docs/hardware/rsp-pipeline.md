@@ -201,6 +201,14 @@ consumer. `Rsp::step()` processes one issue, dependency stall or branch bubble;
 `Rsp::tick()` advances SP DMA and can spend a pending branch bubble while halted.
 `System::advance()` orders these cycles with the other devices.
 
+When local RSP execution runs ahead of the shared clock, its checkpoint retains
+the latched instruction words, decoded operations, and decode-cache revision.
+An IMEM edit can leave an old instruction waiting in the pipeline while a later
+loop iteration fetches its replacement into the same cache slot. Rewinding to
+the checkpoint restores the old latched fetch; subsequent fetches still validate
+against IMEM. The regression in `tests/cpu/test_cached_rsp_ordering.cpp` checks
+this case across all three CPU/RCP clock phases and partial CPU slices.
+
 The encoded microprograms in `tests/rsp/test_pipeline*.cpp` observe PC, status,
 DMEM and DPC_CLOCK. They cover dependency spacing, issue pairing, reserved
 SPECIAL fields, and control changes. Halt/resume fixtures check BREAK interrupts,
