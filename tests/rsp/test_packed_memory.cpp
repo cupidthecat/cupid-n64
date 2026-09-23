@@ -194,7 +194,7 @@ TEST(rsp_packed_scalar_dmem_reads_and_writes_preserve_unaligned_and_wrapped_byte
 
 TEST(rsp_packed_vector_loads_preserve_elements_truncation_and_dmem_wrap) {
     System system;
-    constexpr std::array<u32, 4> addresses{0x120U, 0x123U, 0x0ff0U, 0x0fffU};
+    constexpr std::array<u32, 8> addresses{0U, 0x120U, 0x121U, 0x123U, 0x12fU, 0x0ff0U, 0x0ff1U, 0x0fffU};
 
     for (unsigned kind = 0x01U; kind <= 0x05U; ++kind) {
         const unsigned scale = transfer_scale(kind);
@@ -225,7 +225,7 @@ TEST(rsp_packed_vector_loads_preserve_elements_truncation_and_dmem_wrap) {
 
 TEST(rsp_packed_vector_stores_preserve_source_and_dmem_wrap_with_sentinels) {
     System system;
-    constexpr std::array<u32, 4> addresses{0x120U, 0x123U, 0x0ff0U, 0x0fffU};
+    constexpr std::array<u32, 8> addresses{0U, 0x120U, 0x121U, 0x123U, 0x12fU, 0x0ff0U, 0x0ff1U, 0x0fffU};
 
     for (unsigned kind = 0x01U; kind <= 0x05U; ++kind) {
         const unsigned scale = transfer_scale(kind);

@@ -114,6 +114,9 @@ Scalar halfword and word DMEM accesses use packed big-endian transfers when the
 bytes are contiguous, with byte transfers retained at the 4 KiB wrap. Ordinary
 vector loads and stores also copy contiguous spans while preserving each
 opcode's vector-end truncation, modulo-16 source wrapping, and DMEM wrapping.
+Full 16-byte transfers at element zero convert all eight lanes together on
+SSE2 hosts. Partial transfers retain the byte-preserving path, including at
+the end of DMEM.
 Packed, fractional, and transpose memory opcodes retain their lane-specific
 paths. The memory tests execute every element selection and check untouched
 bytes as well as the transferred result.

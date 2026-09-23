@@ -1,6 +1,7 @@
 #include "cupid/rsp.hpp"
 
 #include "rsp/divider_tables.hpp"
+#include "rsp/vector_transfer.hpp"
 
 #include <algorithm>
 #include <array>
@@ -65,8 +66,12 @@ void Rsp::load_plain_vector(Vector& target, unsigned element, u32 address, unsig
     if (count == 0U)
         return;
 
-    std::array<u8, 16> packed{};
     const unsigned offset = address & 0x0fffU;
+    if (count == 16U && offset <= 0x0ff0U) {
+        rsp_vector::load_full_vector(target.lane, memory.data() + offset);
+        return;
+    }
+    std::array<u8, 16> packed{};
     const unsigned first = std::min(count, 0x1000U - offset);
     std::memcpy(packed.data(), memory.data() + offset, first);
     if (first != count)
@@ -90,6 +95,11 @@ void Rsp::store_plain_vector(u32 address, const Vector& source, unsigned element
     if (count == 0U)
         return;
 
+    const unsigned destination = address & 0x0fffU;
+    if (count == 16U && element == 0U && destination <= 0x0ff0U) {
+        rsp_vector::store_full_vector(memory.data() + destination, source.lane);
+        return;
+    }
     std::array<u8, 16> packed{};
     unsigned packed_byte = 0;
     unsigned source_byte = element & 15U;
@@ -104,7 +114,6 @@ void Rsp::store_plain_vector(u32 address, const Vector& source, unsigned element
         }
     }
 
-    const unsigned destination = address & 0x0fffU;
     const unsigned first = std::min(count, 0x1000U - destination);
     std::memcpy(memory.data() + destination, packed.data(), first);
     if (first != count)
