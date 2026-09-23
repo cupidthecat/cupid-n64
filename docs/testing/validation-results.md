@@ -1,5 +1,63 @@
 # Recorded validation results
 
+## Local RSP blocks and integer conversions (2026-09-23)
+
+Local RSP execution reuses decoded instructions and pipeline timing for blocks
+of up to 16 instructions. Checkpoints preserve latched instructions and memory
+stores while CPU accesses and callbacks bring observable RSP state back to the
+shared clock. Reuse requires matching instruction-memory revision, dependency
+history, and single-issue state. The [RSP pipeline guide](../hardware/rsp-pipeline.md)
+describes the execution and rollback bounds.
+
+Supported floating-point conversions to word or long now use the encoded
+significand and discarded bits. Guest rounding, flags, register aliases, and
+five-cycle latency are preserved. Inputs that can raise a guest exception keep
+the scoped conversion path. The [floating-point guide](../hardware/floating-point.md)
+describes the ranges and host-environment checks.
+
+The same 435-file snapshot passed these Windows configurations:
+
+| Check | Clang Release | Clang ASan/UBSan | MSVC desktop Release |
+| --- | ---: | ---: | ---: |
+| Hardware and host regressions | 1,413/1,413 | 1,413/1,413 | 1,413/1,413 |
+| Prepared default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 9/9 | 9/9 | 14/14 |
+
+Each run passed all 41 validation-tool tests, clang-format 22.1.0, and source
+and input integrity checks. Sanitizer logs contain no diagnostic. The default
+stepped/batched comparison matched all 3,673 observations; the extended
+comparison matched all 3,876. Instruction and cycle totals agree across the
+three configurations. A separate Clang desktop build passed its five desktop
+test groups. The cartridges retain the [documented fixture corrections](cartridge-fixtures.md);
+original-image failures remain tracked in #5 and #39.
+
+Two fresh Super Mario 64 replays used ordinary Clang Release builds on the
+i7-13700H, high process QoS, and performance-core affinity:
+
+| Replay | First run | Second run |
+| --- | ---: | ---: |
+| Title, 1,200 fields | 29.282 s | 28.836 s |
+| Outdoor gameplay, 6,000 fields | 125.788 s | 124.799 s |
+
+Each title replay matched all 1,200 field observations and 12 retained video,
+audio, and save files. Each outdoor replay matched all 6,000 observations and
+52 retained files. Executables and inputs retained their hashes. Outdoor
+gameplay covered 100.631 seconds of emulated time, or 80.0% and 80.6% of real
+time in these runs. Both recorded zero audio-timeline discontinuities, without
+a CPU freeze or PIF failure.
+
+The current Clang desktop completed a separate 60.050-second title-screen run
+with 2,020 VI fields and 1,986 presentations. It saved its capture and EEPROM
+and exited successfully. The run averaged 33.6 VI fields per second and recorded
+766 audio underruns, with zero host or device audio drops. Full-speed gameplay
+and normal audible playback remain open in #48 and #47.
+
+Reports and replay comparisons are retained under
+`.work/validation/cached-conversions-20260923/`. This result record was added
+after validation; executable source and tests were unchanged.
+
 ## Shared RSP scheduling and instruction storage (2026-09-23)
 
 Cached CPU slices now keep shared RSP operations within their existing device

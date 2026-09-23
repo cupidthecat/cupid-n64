@@ -49,11 +49,21 @@ result is zero or the minimum normal value. NaN classification uses the VR4300
 encodings; the canonical arithmetic NaNs are `0x7fbfffff` and
 `0x7ff7ffffffffffff`.
 
-Integer conversions check the input and rounded result before performing a host
-integer cast. Explicit ROUND, TRUNC, CEIL, and FLOOR instructions select their own
+Integer conversions check the input and rounded result before storing an integer.
+Explicit ROUND, TRUNC, CEIL, and FLOOR instructions select their own
 rounding mode; CVT uses FCSR. Long conversions retain the implemented VR4300
-precision boundary. Source exceptions, result exceptions, and successful
-operations have separate timing tests.
+precision boundary: magnitudes at or above `2^53` are unsupported. Word inputs
+must be at least `-2^31` and less than `2^31`; a rounded result above `2^31 - 1`
+also raises an unimplemented-operation exception. Source exceptions, result
+exceptions, and successful operations have separate timing tests.
+
+`src/fpu/integer_conversion.hpp` converts supported zeros and normal inputs using
+integer shifts on the encoded significand. Discarded bits determine inexactness,
+nearest-even ties, and directed rounding. If the result fits and cannot trap,
+execution updates FCSR and the destination without changing host floating-point
+state. The instruction keeps its five-cycle latency. Subnormals, infinities,
+NaNs, range failures, and enabled inexact exceptions use the existing exception
+path and its environment scope.
 
 ## Calling-thread environment
 
@@ -114,3 +124,9 @@ subnormal results that raise an unimplemented-operation exception.
 
 These regressions complement the cartridge suite. Platform results and remaining
 accuracy failures are recorded in [validation results](../testing/validation-results.md).
+
+`test_fpu_integer_conversion.cpp` compares the bit conversion with host rounding
+across every exponent, selected mantissa boundaries, deterministic random
+encodings, both precisions and signs, and word and long results. It also checks
+fixed rounding against FCSR, sticky flags, source/destination register aliases,
+and enabled x64 host traps with denormal controls.
