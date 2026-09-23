@@ -1,17 +1,24 @@
 # Render-worker lifetime
 
 RDP drawing and VI scanout use the range helpers in `src/tasks/`. Each calling
-thread can keep up to three workers and do the remaining work itself. Separate
-emulation threads own separate pools. A nested range job runs on the worker
-that called it, avoiding another pool or a wait on the current job.
+thread can keep up to three workers, execute its own range, and finish ranges
+that workers have not claimed. Separate emulation threads own separate pools.
+A nested range job runs on its current thread and keeps the enclosing range
+index, avoiding another pool or a wait on the current job.
 
 ## Completing a job
 
-A job publishes its immutable bounds and callback with a release store to the
-generation counter. Workers acquire that generation before reading the job.
-The caller waits for every worker's completion before returning or propagating
-an exception. A callback can therefore refer to its caller's stack for the
-duration of the synchronous call.
+A job publishes its bounds and callback before making the new generation
+available for claiming. Each worker must atomically claim its range for that
+generation before reading the job fields. After finishing its own range, the
+caller can claim and execute ranges that workers have not started.
+
+The caller waits for every callback to finish before returning or propagating
+an exception. It does not need to wait for a worker that missed a job already
+finished by the caller. A late worker sees either an existing claim or a
+different generation and leaves the saved callback context untouched. This
+keeps stack references valid for the synchronous call and allows the job
+storage to be reused after completion.
 
 Worker creation can stop after a resource failure. The pool uses the workers
 that were created; if none are available, the caller executes the whole range.
@@ -45,6 +52,8 @@ range boundaries, exception propagation after completion, nested work, and
 concurrent callers. Native-thread exit is tested separately from `std::async`,
 which can reuse operating-system threads. The explicit-shutdown case observes
 worker thread-local destruction before returning, then starts another job.
+Repeated short jobs also destroy each callback's heap storage immediately
+after completion to check that later work cannot retain that context.
 
 RDP and VI regression tests compare parallel output with serial execution.
 Timed desktop runs also require a successful process exit after saving and
