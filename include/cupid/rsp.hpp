@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cupid/rsp/memory.hpp"
 #include "cupid/rsp/pipeline.hpp"
 #include "cupid/types.hpp"
 
@@ -24,14 +25,13 @@ class Rsp {
     void write_register(u32 byte_offset, u32 value);
     void write_pc(u32 value);
 
-    std::array<u8, 8192> memory{};
+    RspMemory memory{};
     u32 pc{};
 
   private:
     friend class System;
     [[nodiscard]] u64 next_dma_event() const;
     [[nodiscard]] bool local_execution_ready() const;
-    [[nodiscard]] unsigned local_execution_window();
     [[nodiscard]] u64 run_local(u64 maximum_cycles);
     [[nodiscard]] bool step_local();
     void execute_group();
@@ -87,13 +87,6 @@ class Rsp {
     u32 current_pc_{};
     bool branch_pending_{};
     RspPipeline pipeline_{};
-
-    struct LocalCodeLine {
-        std::array<u8, 64> image{};
-        std::array<u8, 16> prefix{};
-        bool valid{};
-    };
-    std::array<LocalCodeLine, 64> local_code_lines_{};
 
     [[nodiscard]] u8 dmem_read8(u32 address) const;
     [[nodiscard]] u16 dmem_read16(u32 address) const;

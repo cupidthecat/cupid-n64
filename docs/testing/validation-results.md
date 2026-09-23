@@ -1,5 +1,82 @@
 # Recorded validation results
 
+## Shared RSP scheduling and instruction storage (2026-09-23)
+
+Cached CPU slices now keep shared RSP operations within their existing device
+and timer bounds. Each interruptible CPU instruction retires before its full
+RSP cycle quota runs. RDP and RDRAM clocks advance before each RSP tick, DMA
+payloads become visible before issue, and MI is sampled after the complete
+instruction. Masked RCP work catches up through the ordinary scheduler before
+the CPU can observe shared state or re-enable interrupts.
+
+SP memory tracks IMEM writes so decoded packets can be reused across calls.
+Public storage aliases permanently select exact word checks, including const
+aliases and aliases retained across reset. DMA invalidates future fetches once
+per IMEM row while preserving an already latched packet. The
+[CPU timing guide](../hardware/cpu-timing.md) and
+[instruction-storage guide](../hardware/rsp-instruction-storage.md) describe the
+execution bounds and invalidation rules.
+
+Strict Windows Clang and MSVC desktop validation and Linux Clang ASan/UBSan
+passed the same implementation and tests:
+
+| Check | Windows Clang | Windows MSVC | Linux ASan/UBSan |
+| --- | ---: | ---: | ---: |
+| Core regressions | 1,397/1,397 | 1,397/1,397 | 1,397/1,397 |
+| Default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 14/14 | 14/14 | 9/9 |
+
+All three runs passed 41 validation-tool tests, formatting with clang-format
+22.1.0, and source/input integrity checks. Their manifests contain 429 existing
+files and two recorded deletions. The sanitizer logs contain no diagnostic.
+Each default stepped/batched comparison matched all 3,673 observations; each
+extended comparison matched all 3,876, including register state and timestamps.
+The cartridge inputs retain the documented fixture corrections.
+
+The retained original extended image, SHA-256
+`441bc0b4409034c0c4cffdb658005cae9033c53c0fef69763ffbd89dcf30b089`, still
+reports eleven triangle-fixture disagreements and two timing failures. Its guest
+output and totals match the previous published build: 358,173,663 instructions
+and 793,786,086 CPU cycles. The comparison excludes the host elapsed-time field
+in the runner's final summary. The VI-disabled cache average remains 43.03
+against 42.5 +/- 0.5, and the original CPU/RDP sampler remains 133,300 against
+133,333 +/- 20. This original layout still fails; #5 and #39 remain open.
+
+The 31 added core regressions cover shared SP/DP reads, semaphore side effects,
+transient and persistent interrupts, branch-delay exception state, DMA row
+timestamps, code replacement during stalls, storage aliases, and callback/NMI
+boundaries. Two tool regressions cover formatter path resolution and failure
+propagation. Source-relative filenames remove the repeated checkout prefix from
+the formatter command, fixing the Windows command-length failure in #63.
+
+One paired run on the i7-13700H used ordinary Clang Release builds, strict
+floating-point settings, high process QoS, and performance-core affinity:
+
+| Replay | Previous build | Combined build | Wall-time reduction |
+| --- | ---: | ---: | ---: |
+| Stationary title, 2,000 fields | 72.860 s | 68.344 s | 6.20% |
+| Gameplay, 6,000 fields | 136.563 s | 130.055 s | 4.77% |
+
+All 8,000 field observations and 71 retained video, audio, and EEPROM files
+matched. Executables and inputs retained their hashes. The combined gameplay
+run covers about 100.63 seconds of emulated time, or 77.4% of real time at the
+measured wall time. Each build was measured once per workload, so these pairs
+do not establish sustained performance. Full-speed gameplay and normal audible
+playback remain open in #48 and #47.
+
+A separate desktop title-screen run completed 60.067 seconds with 1,739 VI
+fields, 1,724 presentations, 645 audio underruns, and 104 device audio drops.
+Host audio drops were zero. The application saved its capture and EEPROM and
+exited successfully. Its approximately 29.0 VI fields per second and audio
+underruns leave the desktop speed and playback requirements unmet.
+
+Reports and replay comparisons are retained under
+`.work/validation/rsp-cpu-integration-20260923/`. This result record and the
+formatter-path explanation in the testing guide were updated after validation;
+implementation and test bytes were unchanged.
+
 ## Cached arithmetic and RSP settlement (2026-09-23)
 
 Cached CPU execution accepts binary floating-point arithmetic whose live

@@ -20,6 +20,10 @@ python tools/ci/validate.py --compiler clang++ \
 The script checks all C++ files with `clang-format --dry-run --Werror`, configures
 a strict build, compiles it, and runs CTest. CI installs clang-format 22.1.0;
 use the same version locally. `--clang-format` accepts a formatter path.
+The formatter runs from the source root with relative source filenames, reducing
+the command length in nested Windows checkouts. An explicit relative formatter
+path is resolved from the directory where the validator was invoked; a bare
+executable name is found through `PATH`. Formatting failures stop validation.
 
 Use `--build-dir` for separate compiler configurations, `--jobs` to limit parallel
 compilation, and `--sanitizers --config RelWithDebInfo` for Clang sanitizer checks.

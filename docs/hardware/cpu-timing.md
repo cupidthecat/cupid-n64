@@ -92,32 +92,48 @@ Random advance by retired instructions; Count and device clocks advance by their
 elapsed cycles, including issue waits and arithmetic latency. A multicycle
 instruction that would reach an event is left to ordinary stepping.
 
-When the RSP is running, a cached CPU slice can execute local RSP work at the
-same CPU-to-RCP clock boundaries as ordinary stepping. A shadow of the 2:3 clock
-phase determines which CPU instructions produce an RSP tick. Before each such
-instruction, the next latched or fetched RSP packet must contain only local
-operations. COP0 writes, SP_STATUS/SP_SEMAPHORE reads, DPC_CLOCK reads, and
-BREAK end the slice before that tick. Other COP0 reads stay constant within the
-device-event bound and can execute locally. The CPU operation is
-already checked as nonfaulting and limited to registers and cache hits. Its RSP
-tick can therefore run first: both operations use disjoint state, including when
-the CPU cache contains a copy of SP memory. At exit, the common device clocks
-are advanced once without running the RSP a second time. DMA, single-step, and
-an SP PC changed behind the pipeline prevent this path. The differential tests
-cover all three clock phases, cached SP memory, and IMEM changes during a latched
-operand stall. They continue ordinary stepping after each slice to check the
-retained pipeline state.
+When the RSP is running and the CPU can accept an RCP interrupt, each accepted
+CPU instruction retires before its corresponding RSP cycles advance. A shadow
+of the 2:3 clock phase supplies the complete RSP quota, including cycles spent
+on a CPU issue wait or floating-point operation. The next CPU instruction can
+remain in the slice after shared SP/DP register accesses, BREAK, single-step,
+or a direct SP PC change. Those operations use the ordinary RSP issue path.
 
-A CPU instruction that needs several RSP ticks must prove the whole local span
-before either processor advances. `src/rsp/execution_window.cpp` compares all
-64 bytes of the current IMEM line before reusing its local-prefix metadata. The first
-branch ends that prefix. Since the RSP issues at most two words per cycle, the
-prefix supplies a conservative cycle bound; operand waits can only postpone its
-end. An already latched local packet uses its retained words even after a host
-IMEM edit. A short bound leaves the CPU instruction to ordinary stepping.
-`tests/cpu/test_cached_multicycle.cpp` and `test_cached_rsp_window.cpp` compare
-these paths with instruction stepping, including clock phases, code mutations,
-latched packets, and shared-register boundaries.
+`src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each RSP
+tick. The tick transfers any due DMA row before issuing its RSP instruction.
+Shared-register reads and RDRAM accesses therefore retain their ordinary clock
+values. At slice exit, peripherals advance once for the elapsed span without
+repeating the shared clocks or RSP work.
+
+MI is sampled after the complete CPU instruction's RSP quota. An SP interrupt
+raised and cleared within a divide does not interrupt it. A line that remains
+pending ends the slice before a younger CPU instruction, preserving the current
+branch-delay state for EPC and Cause.BD. Device callbacks and Count/Compare
+boundaries remain outside the accepted span and observe materialized CPU state.
+
+`tests/cpu/test_cached_coupled_rsp_boundaries.cpp` checks all three clock phases,
+transient and persistent interrupts, branch delay slots, and exact DMA row
+timestamps. `test_cached_coupled_rsp_events.cpp` covers shared reads, semaphore
+side effects, SyncFull, single-step, PC rewrites, and timer/output/NMI boundaries.
+The multicycle and cached-RSP tests retain state comparisons with ordinary
+stepping, including continuation after a slice and IMEM edits during operand waits.
+
+When IE or IM2 is clear, or EXL or ERL is set, RSP work cannot interrupt the
+accepted CPU instructions. The slice can execute its register and cache-hit
+operations before catching up the RSP through the ordinary scheduler. RSP and
+RDP memory accesses reach physical RAM without snooping the CPU caches. The
+catch-up preserves SP DMA progress, shared SP/DP register accesses, instruction
+issue, and pending interrupts. It finishes before the next CPU operation can
+observe shared state or re-enable interrupts. Status is sampled after entry
+settlement because a host callback can change it.
+
+This path retains the same Bus, VI, and Count/Compare bounds and rejects SP DMA
+that is already active or queued at entry. An RSP instruction may start DMA
+during catch-up; its transfer still occurs on its ordinary RCP cycle. The
+regressions in `tests/cpu/test_cached_masked_rsp.cpp` compare mask combinations,
+cache visibility, SP/DP interrupts, and callback observations with instruction
+stepping. The other cached-RSP tests keep interrupt acceptance enabled to exercise
+the per-instruction path above.
 
 The idle-loop path is narrower. It recognizes a cached self-branch with a NOP
 delay slot, verifies both live instruction-cache words, and stops before the same

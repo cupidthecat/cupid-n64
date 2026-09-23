@@ -503,6 +503,7 @@ TEST(cpu_cached_cop1_preserves_device_and_local_rsp_boundaries) {
     System rsp_batched, rsp_stepped;
     for (auto* system : {&rsp_batched, &rsp_stepped}) {
         prepare(*system, program);
+        system->cpu.write_cop0(12, 0x34000401U);
         warm_instruction_cache_line(*system, code);
         system->cpu.gpr[8] = 0x3f800000U;
         system->cpu.fpu.registers[4] = 0x3f800000U;

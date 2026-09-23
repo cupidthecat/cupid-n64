@@ -54,7 +54,7 @@ void warm_data_cache(System& system) {
 
 void prepare_cpu(System& system) {
     test::initialize_memory(system);
-    system.cpu.write_cop0(12, 0x34000000U);
+    system.cpu.write_cop0(12, 0x34000401U);
     write_program(system, {
                               immediate(0x23, 16, 8, 0),     // LW t0,0(s0): cached load.
                               special(8, 0, 9, 0, 0x21),     // ADDU t1,t0,zero: load-use handoff.
@@ -73,7 +73,7 @@ void prepare_cpu(System& system) {
 
 void prepare_simple_cpu(System& system) {
     test::initialize_memory(system);
-    system.cpu.write_cop0(12, 0x34000000U);
+    system.cpu.write_cop0(12, 0x34000401U);
     write_program(system, {
                               0U,                          // Prologue used only to latch the hot loop.
                               immediate(0x09, 8, 8, 1),    // ADDIU t0,t0,1.
@@ -236,7 +236,7 @@ TEST(cpu_cached_rsp_keeps_cached_sp_memory_independent_from_rsp_dmem) {
     }
 }
 
-TEST(cpu_cached_rsp_stops_before_shared_control_ops_in_either_raw_slot) {
+TEST(cpu_cached_rsp_preserves_shared_control_ops_in_either_raw_slot) {
     constexpr u32 vnop = 0x4a000037U;
     constexpr u32 mfc0_dp_clock = 0x40026000U;
     constexpr u32 store_v0 = 0xac020080U;
@@ -296,7 +296,7 @@ TEST(cpu_cached_rsp_uses_latched_local_words_after_imem_changes_during_a_stall) 
     }
 }
 
-TEST(cpu_cached_rsp_can_retire_a_non_rcp_cpu_cycle_before_a_shared_rsp_tick) {
+TEST(cpu_cached_rsp_preserves_shared_rsp_tick_phase_while_batching_cpu_instructions) {
     for (unsigned advance = 0; advance < 3; ++advance) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -307,12 +307,12 @@ TEST(cpu_cached_rsp_can_retire_a_non_rcp_cpu_cycle_before_a_shared_rsp_tick) {
         const u64 previously_batched = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2);
         const u64 added = batched.cpu.batched_cached_instructions() - previously_batched;
-        CHECK_EQ(added, advance == 2 ? 1U : 0U);
+        CHECK_EQ(added, 2U);
         future_steps(batched, stepped);
     }
 }
 
-TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrites) {
+TEST(cpu_cached_rsp_preserves_latched_shared_ops_dma_single_step_and_raw_pc_rewrites) {
     // A shared COP0 in the second slot remains visible even while a vector dependency
     // stalls the already-latched pair.
     {
@@ -362,7 +362,7 @@ TEST(cpu_cached_rsp_rejects_latched_shared_ops_dma_single_step_and_raw_pc_rewrit
         }
         const u64 previously_batched = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2);
-        CHECK_EQ(batched.cpu.batched_cached_instructions(), previously_batched);
+        CHECK_EQ(batched.cpu.batched_cached_instructions() - previously_batched, mode == 0 ? 0U : 2U);
         future_steps(batched, stepped);
     }
 }

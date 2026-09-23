@@ -576,9 +576,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         return 0;
     if (branches_to_self(current_word, pc) && prefetched_word == 0)
         return 0;
-    const bool run_rsp_locally = system_.rsp.running();
-    if (run_rsp_locally && !system_.rsp_local_execution_ready())
-        return 0;
+    // Sample interrupt acceptance after settlement callbacks. An accepting CPU
+    // advances the RSP at each instruction boundary; a masked CPU can finish its
+    // private register/cache work before the ordinary scheduler catches up the RSP.
+    const bool run_rsp_coupled = system_.rsp.running() && (status() & 0x407U) == 0x401U;
     update_interrupt_inputs();
     if ((status() & 7U) == 1U && (static_cast<u32>(cp0[13]) & status() & 0xff00U) != 0)
         return 0;
@@ -610,7 +611,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     synchronized_instruction_cycles_ = 0;
     const u64 initial_rcp_phase = system_.rcp_fraction_;
     u64 shadow_rcp_phase = initial_rcp_phase;
-    [[maybe_unused]] u64 local_rsp_ticks = 0;
+    [[maybe_unused]] u64 coupled_rsp_ticks = 0;
     u64 extra_cycles = 0;
     u64 amount = std::min(step_limit, cycle_limit);
     const CachedDecode* accepted = &settled_first;
@@ -627,7 +628,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
             break;
         u64 next_rcp_phase = shadow_rcp_phase;
         u64 rsp_ticks = 0;
-        if (run_rsp_locally) {
+        if (run_rsp_coupled) {
             if (cost == 1U) {
                 const u64 phase_sum = shadow_rcp_phase + 2U;
                 rsp_ticks = static_cast<u64>(phase_sum >= 3U);
@@ -636,17 +637,6 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                 const u64 phase_sum = shadow_rcp_phase + static_cast<u64>(cost) * 2U;
                 rsp_ticks = phase_sum / 3U;
                 next_rcp_phase = phase_sum % 3U;
-            }
-            if (rsp_ticks > 1) {
-                // Prove the whole span before either processor advances. The
-                // accepted CPU operation and local RSP instructions touch disjoint
-                // state, and all their clocks stay strictly before shared events.
-                if (system_.rsp_local_execution_window() < rsp_ticks)
-                    break;
-                [[maybe_unused]] const u64 executed = system_.run_local_rsp_ticks(rsp_ticks);
-                assert(executed == rsp_ticks);
-            } else if (rsp_ticks == 1 && !system_.run_local_rsp_tick()) {
-                break;
             }
         }
 
@@ -674,14 +664,18 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         next_pc = following_pc_;
         in_delay_slot_ = following_delay_slot_;
         fetched_instruction_ = {pc, prefetched_word, true};
-        local_rsp_ticks += rsp_ticks;
+        if (rsp_ticks != 0)
+            system_.advance_cached_rsp_ticks(rsp_ticks);
+        coupled_rsp_ticks += rsp_ticks;
         shadow_rcp_phase = next_rcp_phase;
         if (cost > 1U) {
             extra_cycles += cost - 1U;
             amount = std::min(step_limit, cycle_limit - extra_cycles);
         }
         ++steps;
-        if (steps == amount)
+        // An interrupt raised and cleared during one multicycle instruction is
+        // sampled only after that entire instruction's RSP time has elapsed.
+        if (steps == amount || (run_rsp_coupled && system_.bus.interrupt_pending()))
             break;
 
         if (!fetched_instruction_.valid || fetched_instruction_.address != pc)
@@ -719,13 +713,13 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     advance_batched_instruction_counters(steps);
     batched_cached_instructions_ += steps;
     const u64 elapsed_cycles = steps + extra_cycles;
-    if (run_rsp_locally) {
+    if (run_rsp_coupled) {
         const u64 fraction = (elapsed_cycles % 3U) * 2U + initial_rcp_phase;
         [[maybe_unused]] const u64 expected_rsp_ticks = (elapsed_cycles / 3U) * 2U + fraction / 3U;
-        assert(local_rsp_ticks == expected_rsp_ticks);
+        assert(coupled_rsp_ticks == expected_rsp_ticks);
         assert(shadow_rcp_phase == fraction % 3U);
         advance_clock_counters(elapsed_cycles);
-        system_.advance_after_local_rsp(elapsed_cycles);
+        system_.finish_rsp_slice(elapsed_cycles, true);
         assert(system_.rcp_fraction_ == shadow_rcp_phase);
         update_interrupt_inputs();
     } else {

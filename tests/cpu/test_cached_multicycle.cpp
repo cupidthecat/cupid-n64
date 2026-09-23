@@ -302,12 +302,13 @@ TEST(cpu_cached_multicycle_keeps_count_compare_and_video_callback_boundaries) {
     CHECK(first == second);
 }
 
-TEST(cpu_cached_multicycle_requires_full_private_rsp_span_before_commuting) {
+TEST(cpu_cached_multicycle_keeps_shared_rsp_cycles_and_active_dma_boundaries) {
     const auto cpu_program = {0U, cop1_format(0x10U, 4, 2, 6, 2), immediate(0x0d, 0, 8, 1), 0x40094800U};
     for (unsigned phase = 0; phase < 3U; ++phase) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, cpu_program);
+            system->cpu.write_cop0(12, 0x34000401U);
             system->cpu.fpu.control = flush_subnormals;
             system->cpu.fpu.registers[2] = std::bit_cast<u32>(2.25f);
             system->cpu.fpu.registers[4] = std::bit_cast<u32>(3.5f);
@@ -325,12 +326,13 @@ TEST(cpu_cached_multicycle_requires_full_private_rsp_span_before_commuting) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
             prepare(*system, cpu_program);
+            system->cpu.write_cop0(12, 0x34000401U);
             system->cpu.fpu.control = flush_subnormals;
             system->cpu.fpu.registers[2] = std::bit_cast<u32>(2.25f);
             system->cpu.fpu.registers[4] = std::bit_cast<u32>(3.5f);
             latch_prologue(*system);
             if (mode == 0) {
-                rsp_word(*system, 0, 0x40026000U); // Shared DPC_CLOCK read rejects the private proof.
+                rsp_word(*system, 0, 0x40026000U); // Shared DPC_CLOCK is sampled on its exact RSP cycle.
                 rsp_word(*system, 4, 0xac020080U);
                 rsp_word(*system, 8, 0x0000000dU);
                 start_rsp(*system);
@@ -339,7 +341,7 @@ TEST(cpu_cached_multicycle_requires_full_private_rsp_span_before_commuting) {
                 system->bus.write(0x2000U, 4, 0x12345678U);
                 system->rsp.write_register(0x00, 0x200U);
                 system->rsp.write_register(0x04, 0x2000U);
-                system->rsp.write_register(0x08, 31U); // Active DMA rejects the private proof.
+                system->rsp.write_register(0x08, 31U); // Active DMA keeps slice entry on ordinary stepping.
             } else {
                 rsp_word(*system, 0x00U, 0xc8012000U); // LQV v1,0(zero).
                 rsp_word(*system, 0x04U, 0x4a010850U); // VADD v1,v1,v1.
@@ -356,7 +358,7 @@ TEST(cpu_cached_multicycle_requires_full_private_rsp_span_before_commuting) {
         }
         const u64 before = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2U);
-        if (mode < 2U)
+        if (mode == 1U)
             CHECK_EQ(batched.cpu.batched_cached_instructions(), before);
         else
             CHECK(batched.cpu.batched_cached_instructions() > before);

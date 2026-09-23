@@ -35,31 +35,32 @@ not name a functional operand. MTC2 and LTV retain their special VNOP conflicts.
 Instruction decoding is cached as derived metadata at instruction addresses.
 Each 32-byte entry stores the issued register dependencies, issue flags,
 operations, and whether the instructions can execute within a local slice.
-The 1,024-entry table occupies 32 KiB. Control-register and element-field
+Each of the 1,024 word addresses has paired and unpaired variants, occupying
+64 KiB together, plus 16 KiB of revision tags. Control-register and element-field
 dependencies decide pairing during decode; they are not needed in the cached
-packet once that decision is made. A cached packet
-is reused only when both fetched IMEM words and the current pairing permission
-match the entry. A change to either word, including one made by SP DMA, is
-decoded again on the next packet fetch. Cache-index collisions and wrapped
-instruction addresses use the same word checks. Once a packet has been selected,
-its words and execution metadata stay latched through operand stalls until it
-retires or an SP_PC redirect discards it.
+packet once that decision is made. With tracked instruction storage, a matching
+IMEM revision permits reuse without rereading the words. CPU MMIO and SP DMA
+writes invalidate that revision before the next fetch. Raw storage aliases use
+exact checks of both words instead. See [instruction storage](rsp-instruction-storage.md).
+Once a packet has been selected, its words and execution metadata stay latched
+through operand stalls until it retires or an SP_PC redirect discards it.
 
 The active packet retains an index into the decoding table. Fetch cannot replace
 an entry while a packet is latched, and copying the pipeline keeps an index into
-the copy's own table. Local CPU slices prepare and check a fresh packet once.
+the copy's own table. Local RSP slices prepare and check a fresh packet once.
 Fresh and already-latched packets check only the instructions selected to issue.
 A shared second word does not stop a slice when pairing rules exclude it, such
 as after a scalar instruction or in a branch delay slot. The selected-group
 check precedes a pending branch bubble; an accepted bubble ages dependencies
 without latching those words before their actual fetch cycle.
 
-An idle slice of at least eight RCP cycles can reuse the validated words within
-one `Rsp::run_local` call. A local bitmap records fresh addresses already read
-in that call. Pairing changes still rebuild the entry from those words. The
-slice stops before DMA row transfers, shared writes, and callbacks, and local
+A local slice reuses trusted packets across `Rsp::run_local` calls while IMEM's
+revision is unchanged. When raw storage has escaped, a slice of at least eight
+RCP cycles instead uses a local bitmap to record addresses already checked in
+that call. Its first visit reads both words and prepares both pairing variants.
+The slice stops before DMA row transfers, shared writes, and callbacks, and local
 stores can write only DMEM. The bitmap is discarded when the call returns, so
-the next call rereads both IMEM words even when PC has not changed.
+raw storage is checked again even when PC has not changed.
 
 Local slices admit COP0 reads whose values stay constant before the next device
 event: SP DMA addresses, lengths, busy/full flags, and DP registers other than

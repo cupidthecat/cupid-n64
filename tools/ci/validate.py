@@ -9,7 +9,20 @@ import sys
 from evidence import Evidence
 
 
+def resolve_formatter_executable(executable, caller_cwd):
+    """Keep explicit relative formatter paths anchored to the invoking directory."""
+    text = str(executable)
+    path = Path(text)
+    if path.is_absolute():
+        return text
+    separators = tuple(separator for separator in (os.sep, os.altsep) if separator)
+    if any(separator in text for separator in separators):
+        return str((Path(caller_cwd) / path).resolve())
+    return text
+
+
 def main():
+    caller_cwd = Path.cwd()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--build-dir", type=Path, default=Path("build-local"))
     parser.add_argument("--compiler")
@@ -37,6 +50,7 @@ def main():
     for path in (args.rom, args.pif, args.extended_rom):
         if path is not None and not path.is_file():
             parser.error(f"File not found: {path}")
+    args.clang_format = resolve_formatter_executable(args.clang_format, caller_cwd)
 
     root = Path(__file__).resolve().parents[2]
     build = args.build_dir.resolve()
@@ -86,14 +100,15 @@ def main():
     return exit_code
 
 
-def validate(args, root, build, evidence):
+def validate(args, root, build, evidence, caller_cwd=None):
+    formatter = resolve_formatter_executable(args.clang_format, caller_cwd or Path.cwd())
     sources = sorted(
-        path
+        path.relative_to(root)
         for folder in ("src", "include", "tests")
         for path in (root / folder).rglob("*")
         if path.suffix in (".cpp", ".hpp")
     )
-    evidence.run("format", [args.clang_format, "--dry-run", "--Werror", *sources], root)
+    evidence.run("format", [formatter, "--dry-run", "--Werror", *sources], root)
     configure = [
         "cmake", "-S", root, "-B", build, "-G", args.generator,
         f"-DCMAKE_BUILD_TYPE={args.config}", "-DCUPID_STRICT=ON",

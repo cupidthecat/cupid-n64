@@ -425,6 +425,7 @@ TEST(cpu_cached_private_preserves_device_callbacks_and_local_rsp_execution) {
     System rsp_batched, rsp_stepped;
     for (auto* system : {&rsp_batched, &rsp_stepped}) {
         prepare(*system, program);
+        system->cpu.write_cop0(12, 0x34000401U);
         system->cpu.step();
         system->rsp.write_pc(0);
         system->rsp.write_register(0x10, 1U); // Clear halt; zero IMEM is a local NOP stream.

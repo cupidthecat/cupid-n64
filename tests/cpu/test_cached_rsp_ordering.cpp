@@ -50,7 +50,7 @@ void warm_data_cache(System& system) {
 
 void prepare_cpu_with_load_hazard(System& system) {
     test::initialize_memory(system);
-    system.cpu.write_cop0(12, 0x34000000U);
+    system.cpu.write_cop0(12, 0x34000401U);
     write_cpu_program(system,
                       {
                           0U,                            // Prologue that latches the cached loop.
@@ -125,7 +125,7 @@ void prepare_local_branch_program(System& system) {
 
 } // namespace
 
-TEST(cpu_cached_rsp_window_matches_steps_across_phases_and_early_cpu_exits) {
+TEST(cpu_cached_rsp_ordering_matches_steps_across_phases_and_early_cpu_exits) {
     constexpr std::array<unsigned, 7> budgets{6U, 7U, 8U, 9U, 13U, 17U, 31U};
     for (unsigned phase = 0; phase < 3U; ++phase) {
         System batched, stepped;
@@ -143,7 +143,7 @@ TEST(cpu_cached_rsp_window_matches_steps_across_phases_and_early_cpu_exits) {
     }
 }
 
-TEST(cpu_cached_rsp_window_reauthenticates_same_line_imem_mutation_at_same_pc) {
+TEST(cpu_cached_rsp_ordering_observes_imem_mutation_at_same_pc) {
     for (unsigned phase = 0; phase < 3U; ++phase) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -162,7 +162,7 @@ TEST(cpu_cached_rsp_window_reauthenticates_same_line_imem_mutation_at_same_pc) {
 
         compare_slice(batched, stepped, 18U);
         for (auto* system : {&batched, &stepped}) {
-            system->rsp.write_pc(0U); // Revisit the same PC with cached line metadata still resident.
+            system->rsp.write_pc(0U); // Revisit the same PC with decoded metadata still resident.
             rsp_word(*system, 0x00U, 0x40026000U); // MFC0 v0,DPC_CLOCK: shared now.
             rsp_word(*system, 0x04U, 0xac020084U); // SW v0,0x84(zero).
             rsp_word(*system, 0x08U, 0x0000000dU); // BREAK.
@@ -175,7 +175,7 @@ TEST(cpu_cached_rsp_window_reauthenticates_same_line_imem_mutation_at_same_pc) {
     }
 }
 
-TEST(cpu_cached_rsp_window_keeps_latched_local_words_authoritative_after_imem_mutation) {
+TEST(cpu_cached_rsp_ordering_keeps_latched_words_after_imem_mutation) {
     for (unsigned phase = 0; phase < 3U; ++phase) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -188,7 +188,7 @@ TEST(cpu_cached_rsp_window_keeps_latched_local_words_authoritative_after_imem_mu
             rsp_word(*system, 0x10U, 0x24210001U);
             rsp_word(*system, 0x14U, 0x24420001U);
             rsp_word(*system, 0x18U, 0x24630001U);
-            rsp_word(*system, 0x1cU, 0x0000000dU); // BREAK after enough future local work for a window.
+            rsp_word(*system, 0x1cU, 0x0000000dU); // BREAK after the local instruction sequence.
             start_rsp(*system);
             system->rsp.tick(1); // Retire LQV.
             system->rsp.tick(1); // Latch VADD+ADDIU, then stall on the vector result.
@@ -203,7 +203,7 @@ TEST(cpu_cached_rsp_window_keeps_latched_local_words_authoritative_after_imem_mu
     }
 }
 
-TEST(cpu_cached_rsp_window_stops_at_first_branch_before_shared_target) {
+TEST(cpu_cached_rsp_ordering_preserves_branch_delay_slot_before_shared_target) {
     for (unsigned phase = 0; phase < 3U; ++phase) {
         System batched, stepped;
         for (auto* system : {&batched, &stepped}) {
@@ -214,7 +214,7 @@ TEST(cpu_cached_rsp_window_stops_at_first_branch_before_shared_target) {
             rsp_word(*system, 0x08U, 0x4a000037U); // VNOP.
             rsp_word(*system, 0x0cU, 0x24020044U); // ADDIU v0,zero,0x44.
             rsp_word(*system, 0x10U, 0x4a000037U); // VNOP.
-            rsp_word(*system, 0x14U, 0x10000003U); // BEQ zero,zero,0x24; third proven cycle.
+            rsp_word(*system, 0x14U, 0x10000003U); // BEQ zero,zero,0x24.
             rsp_word(*system, 0x18U, 0xac010080U); // SW at,0x80(zero) in the delay slot.
             rsp_word(*system, 0x1cU, 0x24040077U); // Skipped fallthrough marker.
             rsp_word(*system, 0x20U, 0xac040088U);
@@ -232,7 +232,7 @@ TEST(cpu_cached_rsp_window_stops_at_first_branch_before_shared_target) {
     }
 }
 
-TEST(cpu_cached_rsp_window_reproves_across_64_byte_and_imem_wrap_boundaries) {
+TEST(cpu_cached_rsp_ordering_crosses_64_byte_and_imem_wrap_boundaries) {
     for (unsigned phase = 0; phase < 3U; ++phase) {
         for (const u32 start : {0x028U, 0x0fe8U}) {
             System batched, stepped;
@@ -245,7 +245,7 @@ TEST(cpu_cached_rsp_window_reproves_across_64_byte_and_imem_wrap_boundaries) {
                 rsp_word(*system, start + 8U, 0U);
                 rsp_word(*system, start + 12U, 0U);
                 rsp_word(*system, start + 16U, 0U);
-                rsp_word(*system, start + 20U, 0U);         // Last word in the first proof line.
+                rsp_word(*system, start + 20U, 0U);         // Last word before the address boundary.
                 rsp_word(*system, after + 0U, 0x24020022U); // ADDIU v0,zero,0x22 after boundary.
                 rsp_word(*system, after + 4U, 0xac020084U); // SW v0,0x84(zero).
                 rsp_word(*system, after + 8U, 0x0000000dU); // BREAK.

@@ -48,8 +48,6 @@ void Rsp::reset() {
     current_pc_ = 0;
     branch_pending_ = false;
     pipeline_.reset();
-    for (auto& line : local_code_lines_)
-        line.valid = false;
 }
 
 void Rsp::tick(u64 rcp_cycles) {
@@ -78,8 +76,13 @@ bool Rsp::local_execution_ready() const {
 bool Rsp::step_local() {
     RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
     if (pipeline_.size() == 0U) {
-        const std::array<u32, 2> words{fetch_instruction(pc), fetch_instruction(pc + 4)};
-        issue = pipeline_.local_issue(words[0], words[1], pc);
+        if (memory.imem_trusted()) {
+            const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
+            issue = pipeline_.local_issue(imem, memory.imem_revision(), pc);
+        } else {
+            const std::array<u32, 2> words{fetch_instruction(pc), fetch_instruction(pc + 4)};
+            issue = pipeline_.local_issue(words[0], words[1], pc);
+        }
     } else {
         issue = pipeline_.local_issue();
     }
@@ -112,13 +115,17 @@ u64 Rsp::run_local(u64 maximum_cycles) {
     }
 
     RspPipeline::LocalWindow window;
-    const std::span<const u8, 4096> imem(memory.data() + 0x1000U, 4096U);
+    const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
+    const bool trusted_imem = memory.imem_trusted();
+    const u64 imem_revision = memory.imem_revision();
     const auto step_window = [&] {
         RspPipeline::LocalIssue issue = RspPipeline::LocalIssue::Blocked;
-        if (pipeline_.size() == 0U)
-            issue = pipeline_.local_issue(imem, window, pc);
-        else
+        if (pipeline_.size() == 0U) {
+            issue = trusted_imem ? pipeline_.local_issue(imem, imem_revision, pc)
+                                 : pipeline_.local_issue(imem, window, pc);
+        } else {
             issue = pipeline_.local_issue();
+        }
 
         if (issue == RspPipeline::LocalIssue::Blocked)
             return false;
@@ -138,32 +145,32 @@ u64 Rsp::run_local(u64 maximum_cycles) {
 }
 
 u8 Rsp::dmem_read8(u32 address) const {
-    return memory[address & 0x0fff];
+    return memory.internal_read(address & 0x0fffU);
 }
 
 u16 Rsp::dmem_read16(u32 address) const {
     const u32 offset = address & 0x0fffU;
     if (offset + 2U <= 0x1000U)
-        return read_be16(memory.data() + offset);
+        return read_be16(memory.internal_data() + offset);
     return static_cast<u16>((static_cast<u16>(dmem_read8(address)) << 8) | dmem_read8(address + 1));
 }
 
 u32 Rsp::dmem_read32(u32 address) const {
     const u32 offset = address & 0x0fffU;
     if (offset + 4U <= 0x1000U)
-        return read_be32(memory.data() + offset);
+        return read_be32(memory.internal_data() + offset);
     return (static_cast<u32>(dmem_read8(address)) << 24) | (static_cast<u32>(dmem_read8(address + 1)) << 16) |
            (static_cast<u32>(dmem_read8(address + 2)) << 8) | static_cast<u32>(dmem_read8(address + 3));
 }
 
 void Rsp::dmem_write8(u32 address, u8 value) {
-    memory[address & 0x0fff] = value;
+    memory.internal_write(address & 0x0fffU, value);
 }
 
 void Rsp::dmem_write16(u32 address, u16 value) {
     const u32 offset = address & 0x0fffU;
     if (offset + 2U <= 0x1000U) {
-        write_be16(memory.data() + offset, value);
+        write_be16(memory.internal_data() + offset, value);
         return;
     }
     dmem_write8(address, static_cast<u8>(value >> 8));
@@ -173,7 +180,7 @@ void Rsp::dmem_write16(u32 address, u16 value) {
 void Rsp::dmem_write32(u32 address, u32 value) {
     const u32 offset = address & 0x0fffU;
     if (offset + 4U <= 0x1000U) {
-        write_be32(memory.data() + offset, value);
+        write_be32(memory.internal_data() + offset, value);
         return;
     }
     dmem_write8(address, static_cast<u8>(value >> 24));
@@ -183,7 +190,7 @@ void Rsp::dmem_write32(u32 address, u32 value) {
 }
 
 u32 Rsp::fetch_instruction(u32 address) const {
-    return read_be32(&memory[0x1000U | mask_pc(address)]);
+    return read_be32(memory.internal_data() + (0x1000U | mask_pc(address)));
 }
 
 void Rsp::write_gpr(unsigned index, u32 value) {
@@ -217,8 +224,14 @@ void Rsp::step() {
 
     if (pipeline_.advance_branch_wait())
         return;
-    if (pipeline_.size() == 0U)
-        pipeline_.fetch(fetch_instruction(pc), fetch_instruction(pc + 4), single_step_, pc);
+    if (pipeline_.size() == 0U) {
+        if (memory.imem_trusted()) {
+            const std::span<const u8, 4096> imem(memory.internal_data() + 0x1000U, 4096U);
+            pipeline_.fetch(imem, memory.imem_revision(), single_step_, pc);
+        } else {
+            pipeline_.fetch(fetch_instruction(pc), fetch_instruction(pc + 4), single_step_, pc);
+        }
+    }
     if (pipeline_.advance_operand_wait())
         return;
 
@@ -395,30 +408,30 @@ void Rsp::transfer_dma_row() {
     u32 dram = dma_current_.dram_address & 0x00ff'ffff;
     const u32 bytes = static_cast<u32>(dma_current_.length) + 8;
 
+    if (dma_current_.to_sp && bank != 0)
+        memory.invalidate_imem();
     for (u32 i = 0; i < bytes; i += 8) {
         const u32 sp_index = bank | (sp_offset & 0x0fff);
         if (dma_current_.to_sp) {
             if (bank != 0) {
                 const u64 value = system_.bus.memory.read(dram, 8);
-                for (unsigned byte = 0; byte < 8; ++byte) {
-                    memory[sp_index + byte] = static_cast<u8>(value >> ((7u - byte) * 8u));
-                }
+                write_be64(memory.internal_data() + sp_index, value);
             } else {
                 const u32 high = static_cast<u32>(system_.bus.memory.read(dram, 4));
                 const u32 low = static_cast<u32>(system_.bus.memory.read(dram + 4, 4));
-                write_be32(&memory[sp_index], high);
-                write_be32(&memory[sp_index + 4], low);
+                write_be32(memory.internal_data() + sp_index, high);
+                write_be32(memory.internal_data() + sp_index + 4U, low);
             }
         } else {
             if (bank != 0) {
                 u64 value = 0;
                 for (unsigned byte = 0; byte < 8; ++byte) {
-                    value = (value << 8) | memory[sp_index + byte];
+                    value = (value << 8) | memory.internal_read(sp_index + byte);
                 }
                 system_.bus.memory.write(dram, 8, value);
             } else {
-                system_.bus.memory.write(dram, 4, read_be32(&memory[sp_index]));
-                system_.bus.memory.write(dram + 4, 4, read_be32(&memory[sp_index + 4]));
+                system_.bus.memory.write(dram, 4, read_be32(memory.internal_data() + sp_index));
+                system_.bus.memory.write(dram + 4, 4, read_be32(memory.internal_data() + sp_index + 4U));
             }
         }
         sp_offset = (sp_offset + 8) & 0x0fff;

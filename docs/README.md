@@ -57,6 +57,8 @@ DMA completion, interrupts, and output delivery.
 [RSP control flow](hardware/rsp-control-flow.md) covers scalar execution,
 branches, and halt behavior. [RSP instruction timing](hardware/rsp-pipeline.md)
 describes issue pairing, dependency waits, and branch bubbles.
+[Instruction storage](hardware/rsp-instruction-storage.md) explains decoded
+packet reuse, IMEM write invalidation, and direct memory aliases.
 [SP DMA](hardware/rsp-dma.md) covers transfer registers, row visibility, and
 the clocks used by the scheduler.
 
