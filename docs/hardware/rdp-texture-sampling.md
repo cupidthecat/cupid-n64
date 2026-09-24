@@ -63,6 +63,11 @@ disabled, they can select two different base samples. Each retained tap keeps
 its original logical palette-bank index, including the bank exchange on an
 upper-triangle TLUT lookup.
 
+Plain RGBA16 selects its fetch path once per footprint. Each read still aligns
+to a halfword, wraps within TMEM, and exchanges word halves on odd rows.
+Enabling TLUT on an RGBA16 tile selects palette reads instead, including each
+tap's palette-bank address.
+
 The per-cycle filter-enable bits also select texture conversion. Clearing a
 filter bit applies the programmed conversion factors, including for non-YUV
 formats. `convert_one` can convert the preceding texture sample directly, or
@@ -99,7 +104,9 @@ signed fractions, detail/sharpen selection, overflow, and tile-index wrap.
 `tests/rdp/test_texture_rectangle.cpp` checks encoded loads and draws, both
 rectangle directions, interpolation, clipping, fields, alpha comparison,
 two-cycle sampling, lookahead, and incomplete commands. Together they add
-59 regressions. `test_texture_tap_selection.cpp` adds literal YUV cases where
+61 regressions. The RGBA16 cases check both filter triangles and the exact
+midpoint across TMEM wrap and odd-row exchange, plus the TLUT selection guard.
+`test_texture_tap_selection.cpp` adds literal YUV cases where
 chroma and luma select different triangles, base samples, or mid-texel paths,
 including `convert_one` and negative intermediate channels.
 
