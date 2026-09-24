@@ -88,6 +88,14 @@ The desktop workflow builds the SDL application on Windows and on Linux with
 sanitizers. The Linux job installs ALSA and X11 development packages, including
 XTEST, so SDL can configure its X11 video backend.
 
+The profile workflow uses a matching Clang/LLVM 18 installation to collect counts
+with the local regression suite, create a source-bound package, and run the suite
+again against a profile-use build. It retains both validation reports and the
+training context and manifest. This checks the profile build path separately
+from the ordinary GCC, Clang, MSVC, full-cartridge, and sanitizer jobs; it does
+not establish a game-specific performance gain. See
+[profile-guided builds](profile-guided-builds.md) for local cartridge measurements.
+
 The workflow retains these report directories as artifacts for 14 days, even
 after a validation failure. Missing report files also fail the artifact step.
 

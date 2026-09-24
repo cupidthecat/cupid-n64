@@ -38,16 +38,24 @@ def main():
     parser.add_argument("--jobs", type=int, default=4)
     parser.add_argument("--report-dir", type=Path)
     parser.add_argument("--test-source", type=Path)
+    profiles = parser.add_mutually_exclusive_group()
+    profiles.add_argument("--profile-generate", type=Path, help="Collect core/host Clang profile counts")
+    profiles.add_argument("--profile-use", type=Path, help="Use a source-bound merged Clang profile")
+    parser.add_argument("--profile-manifest", type=Path, help="Manifest for --profile-use")
     args = parser.parse_args()
     if (args.rom or args.extended_rom) and not args.pif:
         parser.error("--rom and --extended-rom require --pif")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    if bool(args.profile_use) != bool(args.profile_manifest):
+        parser.error("--profile-use and --profile-manifest require each other")
+    if (args.profile_use or args.profile_generate) and (args.sanitizers or args.config != "Release"):
+        parser.error("Profile builds require Release without sanitizers")
     if args.sdl_source and not args.desktop:
         parser.error("--sdl-source requires --desktop")
     if args.sdl_source and not (args.sdl_source / "include/SDL3/SDL_version.h").is_file():
         parser.error("--sdl-source must contain the SDL3 source headers")
-    for path in (args.rom, args.pif, args.extended_rom):
+    for path in (args.rom, args.pif, args.extended_rom, args.profile_use, args.profile_manifest):
         if path is not None and not path.is_file():
             parser.error(f"File not found: {path}")
     args.clang_format = resolve_formatter_executable(args.clang_format, caller_cwd)
@@ -62,6 +70,7 @@ def main():
         "asan_options": os.environ.get("ASAN_OPTIONS"),
         "ubsan_options": os.environ.get("UBSAN_OPTIONS"),
         "default_suite": args.rom is not None, "extended_suite": args.extended_rom is not None,
+        "profile_mode": "generate" if args.profile_generate else "use" if args.profile_use else "off",
     })
     exit_code = 0
     failure = None
@@ -73,6 +82,9 @@ def main():
         if args.sdl_source:
             evidence.add_input("sdl_version", args.sdl_source / "include/SDL3/SDL_version.h")
         for name, path in (("default_rom", args.rom), ("extended_rom", args.extended_rom), ("pif", args.pif)):
+            if path is not None:
+                evidence.add_input(name, path)
+        for name, path in (("profile", args.profile_use), ("profile_manifest", args.profile_manifest)):
             if path is not None:
                 evidence.add_input(name, path)
         evidence.run("validation-tests", [sys.executable, "-m", "unittest", "discover", "-s",
@@ -117,12 +129,17 @@ def validate(args, root, build, evidence, caller_cwd=None):
         f"-DCUPID_TEST_ROM={args.rom.resolve() if args.rom else ''}",
         f"-DCUPID_PIF_ROM={args.pif.resolve() if args.pif else ''}",
         f"-DCUPID_EXTENDED_TEST_ROM={args.extended_rom.resolve() if args.extended_rom else ''}",
+        f"-DCUPID_PROFILE_GENERATE={args.profile_generate.resolve() if args.profile_generate else ''}",
+        f"-DCUPID_PROFILE_USE={args.profile_use.resolve() if args.profile_use else ''}",
+        f"-DCUPID_PROFILE_MANIFEST={args.profile_manifest.resolve() if args.profile_manifest else ''}",
     ]
     if args.compiler:
         configure.append(f"-DCMAKE_CXX_COMPILER={args.compiler}")
     if args.sdl_source:
         configure.append(f"-DFETCHCONTENT_SOURCE_DIR_SDL3={args.sdl_source.resolve()}")
     evidence.run("configure", configure, root)
+    if args.profile_generate:
+        evidence.add_input("profile_context", args.profile_generate.resolve() / "context.json")
     evidence.add_build(build)
     evidence.run("build", ["cmake", "--build", build, "--config", args.config,
                            "--parallel", str(args.jobs)], root)

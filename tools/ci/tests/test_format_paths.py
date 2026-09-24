@@ -42,6 +42,7 @@ class FormatPathTests(unittest.TestCase):
             clang_format=str(Path("formatter tools") / "clang-format.exe"),
             config="Release", generator="Ninja", sanitizers=False, desktop=False,
             sdl_source=None, compiler="clang++", rom=None, pif=None, extended_rom=None, jobs=2,
+            profile_generate=None, profile_use=None, profile_manifest=None,
         )
 
     def populate_sources(self):
