@@ -15,6 +15,12 @@ class TransferPak {
     [[nodiscard]] const GameBoyCartridge* cartridge() const {
         return cartridge_ ? &*cartridge_ : nullptr;
     }
+    [[nodiscard]] bool clock_running() const noexcept {
+        return cartridge_.has_value() && cartridge_->clock_running();
+    }
+    [[nodiscard]] u64 next_tick() const noexcept {
+        return cartridge_->next_tick();
+    }
     [[nodiscard]] u8 read(u16 address);
     void write(u16 address, u8 value);
 

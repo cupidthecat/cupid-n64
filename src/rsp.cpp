@@ -7,14 +7,6 @@
 
 namespace cupid {
 
-namespace {
-
-constexpr u32 mask_pc(u32 value) {
-    return value & 0x0ffc;
-}
-
-} // namespace
-
 Rsp::Rsp(System& system) : system_(system) {
     reset();
 }
@@ -71,69 +63,6 @@ void Rsp::tick(u64 rcp_cycles) {
 
 u64 Rsp::next_dma_event() const {
     return dma_busy_ ? lead_cycles_ + dma_cycles_until_row_ : std::numeric_limits<u64>::max();
-}
-
-u8 Rsp::dmem_read8(u32 address) const {
-    return memory.internal_read(address & 0x0fffU);
-}
-
-u16 Rsp::dmem_read16(u32 address) const {
-    const u32 offset = address & 0x0fffU;
-    if (offset + 2U <= 0x1000U)
-        return read_be16(memory.internal_data() + offset);
-    return static_cast<u16>((static_cast<u16>(dmem_read8(address)) << 8) | dmem_read8(address + 1));
-}
-
-u32 Rsp::dmem_read32(u32 address) const {
-    const u32 offset = address & 0x0fffU;
-    if (offset + 4U <= 0x1000U)
-        return read_be32(memory.internal_data() + offset);
-    return (static_cast<u32>(dmem_read8(address)) << 24) | (static_cast<u32>(dmem_read8(address + 1)) << 16) |
-           (static_cast<u32>(dmem_read8(address + 2)) << 8) | static_cast<u32>(dmem_read8(address + 3));
-}
-
-void Rsp::dmem_write8(u32 address, u8 value) {
-    save_dmem(address, 1);
-    memory.internal_write(address & 0x0fffU, value);
-}
-
-void Rsp::dmem_write16(u32 address, u16 value) {
-    const u32 offset = address & 0x0fffU;
-    if (offset + 2U <= 0x1000U) {
-        save_dmem(offset, 2);
-        write_be16(memory.internal_data() + offset, value);
-        return;
-    }
-    dmem_write8(address, static_cast<u8>(value >> 8));
-    dmem_write8(address + 1, static_cast<u8>(value));
-}
-
-void Rsp::dmem_write32(u32 address, u32 value) {
-    const u32 offset = address & 0x0fffU;
-    if (offset + 4U <= 0x1000U) {
-        save_dmem(offset, 4);
-        write_be32(memory.internal_data() + offset, value);
-        return;
-    }
-    dmem_write8(address, static_cast<u8>(value >> 24));
-    dmem_write8(address + 1, static_cast<u8>(value >> 16));
-    dmem_write8(address + 2, static_cast<u8>(value >> 8));
-    dmem_write8(address + 3, static_cast<u8>(value));
-}
-
-u32 Rsp::fetch_instruction(u32 address) const {
-    return read_be32(memory.internal_data() + (0x1000U | mask_pc(address)));
-}
-
-void Rsp::write_gpr(unsigned index, u32 value) {
-    if (index != 0) {
-        gpr_[index & 31] = value;
-    }
-}
-
-void Rsp::take_branch(u32 target) {
-    next_pc_ = mask_pc(target);
-    branch_pending_ = true;
 }
 
 void Rsp::write_pc(u32 value) {

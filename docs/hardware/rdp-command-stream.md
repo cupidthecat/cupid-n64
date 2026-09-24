@@ -12,8 +12,11 @@ high byte is `0x29` must not raise the SyncFull interrupt.
 
 Buffered words also survive a change between RDRAM and XBUS DMEM sources. DMEM
 addresses wrap at 4 KiB while DPC_CURRENT continues through the selected DMA
-range. Cupid's command-stream assembly preserves an incomplete packet across a
-FLUSH set/clear roundtrip and the next DMA range. Reset discards incomplete commands.
+range. Command stream doublewords are read as aligned 64-bit transfers directly from
+RDRAM or DMEM, bypassing byte-by-byte bus arbitration. Buffered command words are
+decoded via inlined 64-bit big-endian accessors. Cupid's command-stream assembly
+preserves an incomplete packet across a FLUSH set/clear roundtrip and the next DMA
+range. Reset discards incomplete commands.
 
 `tests/rdp/test_command_fifo.cpp` splits every multiword opcode at every
 doubleword boundary, submits the tail from a different address, and checks that

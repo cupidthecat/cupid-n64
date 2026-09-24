@@ -81,8 +81,7 @@ void Bus::sample_ai() {
         if (ai_address_carry_)
             ai_addresses_[0] = (ai_addresses_[0] + 0x2000U) & 0x00ffffffU;
         const u32 address = ai_addresses_[0];
-        for (u32 byte = 0; byte < 4; ++byte)
-            sample = (sample << 8U) | read_ram_byte(address + byte);
+        sample = static_cast<u32>(memory.read(address, 4));
         const u32 low = (address + 4U) & 0x1fffU;
         ai_addresses_[0] = (address & 0x00ffe000U) | low;
         ai_address_carry_ = low == 0;

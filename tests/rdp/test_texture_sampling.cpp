@@ -82,6 +82,33 @@ TEST(rdp_sampler_rgba32_reads_split_tmem_banks) {
     }
 }
 
+TEST(rdp_sampler_rgba16_filtered_footprint_preserves_wrap_and_odd_row_swap) {
+    Sampler sample;
+    sample.tile.format = 0;
+    sample.tile.size = 2;
+    sample.tile.tmem_address = 4088;
+    sample.word(4088, 0xf801);
+    sample.word(4090, 0x07c1);
+    sample.word(4, 0x003f);
+    sample.word(6, 0xffff);
+    sample.modes = (1ULL << 45U) | (1ULL << 44U) | (1ULL << 43U);
+
+    CHECK_EQ(sample.sample(8, 8), (RdpColor{128, 64, 64, 255}));
+    CHECK_EQ(sample.sample(24, 24), (RdpColor{128, 191, 191, 255}));
+    CHECK_EQ(sample.sample(16, 16), (RdpColor{128, 128, 128, 255}));
+}
+
+TEST(rdp_sampler_rgba16_tile_still_uses_tlut_when_palette_mode_is_enabled) {
+    Sampler sample;
+    sample.tile.format = 0;
+    sample.tile.size = 2;
+    sample.word(0, 0x03ab);
+    sample.word(2048 + 3 * 8, 0x07c1);
+    sample.modes = (1ULL << 47U) | (1ULL << 43U);
+
+    CHECK_EQ(sample.sample(), (RdpColor{0, 255, 0, 255}));
+}
+
 TEST(rdp_sampler_point_reads_swap_odd_rows_and_wrap_tmem) {
     Sampler sample;
     CHECK_EQ(sample.sample(0, 32)[0], 128);

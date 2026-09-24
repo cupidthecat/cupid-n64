@@ -28,6 +28,10 @@ ones-complement magnitudes of the integer X/Y gradients, rounded to the next
 power of two and capped at 32,768. Primitive depth overrides both the value
 and gradients before interpolation.
 
+The depth value is evaluated only when depth comparison or depth writing uses
+it. Depth delta remains available with both disabled because it still controls
+the blender's memory-alpha shift.
+
 ## Textures and pixel output
 
 S/T/W interpolation feeds reciprocal-ROM perspective division. The divider
@@ -40,7 +44,9 @@ The divider normalizes W and prepares its reciprocal once for each S/T pair.
 Triangle drawing computes horizontal and vertical neighbors when LOD consumes
 them. One-cycle texel-1 also requires the horizontal neighbor and, where
 applicable, next-row lookahead. These choices depend on the draw's active texture
-inputs and retain the same overflow accumulation for LOD.
+inputs. LOD combines overflow from the current pixel and its required neighbors.
+A reused horizontal coordinate carries only its own overflow, so a preceding
+pixel's invalid W cannot keep later valid pixels at the farthest mipmap.
 
 One-cycle texel-1 reads ahead in the major-edge direction. At the end of a
 long span with a valid next row, it uses that row's initial texture attributes.
@@ -48,9 +54,25 @@ Field filtering prevents this row transition. Two-cycle sampling uses the
 current coordinate and the selected second tile.
 
 Interpolated shade, texels, and depth feed the shared combiner, alpha/coverage,
-depth, blender, and framebuffer stages. Shade alpha also supplies the blender's
-shade-alpha selector. Color writes precede depth writes, with the visible and
-hidden storage rules described in [depth and coverage](rdp-depth.md).
+depth, blender, and framebuffer stages. Attribute loading, span bases, and shade
+interpolation are gated on whether the triangle opcode enables shading. When coverage
+bit zero is set (including fully covered interior pixels), the subpixel centroid
+offset is zero, bypassing derivative adjustment. Consecutive pixels along a span reuse
+the forward texture perspective division calculated for the preceding pixel's
+horizontal neighbor. When depth comparison is active without destination-image
+reads, alpha comparison, or alpha-modulated coverage, depth testing rejects occluded pixels before
+evaluating texture samples, combiner inputs, or color memory. Shading and combiner
+inputs pass by reference through the pixel pipeline, avoiding redundant copies except
+when two-cycle texel swapping or active combiner noise requires an updated input state.
+Shade alpha also supplies the blender's shade-alpha selector. Color writes precede depth writes,
+with the visible and hidden storage rules described in [depth and coverage](rdp-depth.md).
+
+For sufficiently large draws with independent memory ranges, host workers can
+render separate row groups. A triangle's middle span estimates the amount of
+work before dispatch; a wide scissor alone does not make a narrow triangle
+eligible. The full scissor bounds still govern checks for framebuffer wrapping,
+stride overruns, and color/depth overlap. Serial and parallel execution retain
+the same pixels, hidden bits, and bank access order.
 
 ## Validation and limits
 
@@ -64,6 +86,9 @@ overflow regions, gradient normalization, and divider saturation.
 either axis, and paired-versus-separate division for every positive W value.
 `test_triangle_texture_needs.cpp` checks which neighbors reach LOD and texel-1,
 the next-row boundary, and RI bank state and clocks through real commands.
+`test_triangle_lod_recovery.cpp` checks that both span directions recover the
+base texture level after a nonpositive W, while preserving the initial distant
+pixel and the exclusive right edge.
 
 The unmodified experimental triangle fixtures have conflicting color packing
 and coverage expectations. The documented preparation corrects those fixtures

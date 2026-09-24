@@ -53,6 +53,16 @@ RdpColor rgba16(unsigned value) {
     return result;
 }
 
+RdpColor texel_rgba16(const std::array<u8, 4096>& memory, const RdpTile& tile, s32 s, s32 t) {
+    const unsigned x = static_cast<unsigned>(s);
+    const unsigned y = static_cast<unsigned>(t);
+    const unsigned row = tile.tmem_address + tile.line_stride * y;
+    const unsigned swap = (y & 1U) * 4U;
+    const unsigned address = ((row + x * 2U) ^ swap) & 4094U;
+    const unsigned value = (static_cast<unsigned>(memory[address]) << 8U) | memory[address + 1U];
+    return rgba16(value);
+}
+
 RdpColor ia16(unsigned value) {
     const s32 intensity = static_cast<s32>(value >> 8U);
     return {intensity, intensity, intensity, static_cast<s32>(value & 255U)};
@@ -99,8 +109,6 @@ RdpColor texel(const std::array<u8, 4096>& memory, const RdpTile& tile, s32 s, s
         const s32 intensity = static_cast<s32>((value >> 4U) * 17U);
         return {intensity, intensity, intensity, static_cast<s32>((value & 15U) * 17U)};
     } else if (tile.size == 2U) {
-        if (tile.format == 0U)
-            return rgba16(value);
         if (tile.format == 3U)
             return ia16(value);
     } else if (tile.size == 3U && tile.format == 0U) {
@@ -111,6 +119,18 @@ RdpColor texel(const std::array<u8, 4096>& memory, const RdpTile& tile, s32 s, s
                 static_cast<s32>(value & 255U)};
     const s32 intensity = static_cast<s32>(value);
     return {intensity, intensity, intensity, intensity};
+}
+
+template <typename Fetch>
+void fetch_taps(std::array<RdpColor, 4>& taps, unsigned needed, const Fetch& fetch) {
+    if ((needed & 1U) != 0)
+        taps[0] = fetch(0);
+    if ((needed & 6U) != 0) {
+        taps[1] = fetch(1);
+        taps[2] = fetch(2);
+    }
+    if ((needed & 8U) != 0)
+        taps[3] = fetch(3);
 }
 
 } // namespace
@@ -162,19 +182,16 @@ RdpColor rdp_sample_texture(const std::array<u8, 4096>& memory, const RdpTile& t
         return base | (convert_previous || (filter && (quad || palette)) ? 6U : 0U);
     };
     const unsigned needed = required_taps(sf) | (yuv ? required_taps(chroma_fraction) : 0U);
-    const auto fetch = [&](unsigned index) {
-        return texel(memory, tile, xs[index], ys[index], (index & 1U) != 0 ? chroma1 : chroma0, palette,
-                     palette_ia, index ^ bank_xor);
-    };
     std::array<RdpColor, 4> taps{};
-    if ((needed & 1U) != 0)
-        taps[0] = fetch(0);
-    if ((needed & 6U) != 0) {
-        taps[1] = fetch(1);
-        taps[2] = fetch(2);
+    if (!palette && tile.format == 0U && tile.size == 2U) {
+        fetch_taps(taps, needed,
+                   [&](unsigned index) { return texel_rgba16(memory, tile, xs[index], ys[index]); });
+    } else {
+        fetch_taps(taps, needed, [&](unsigned index) {
+            return texel(memory, tile, xs[index], ys[index], (index & 1U) != 0 ? chroma1 : chroma0, palette,
+                         palette_ia, index ^ bank_xor);
+        });
     }
-    if ((needed & 8U) != 0)
-        taps[3] = fetch(3);
     RdpColor result{};
     for (unsigned channel = 0; channel < 4; ++channel) {
         const s32 fraction = yuv && channel < 2U ? chroma_fraction : sf;

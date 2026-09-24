@@ -39,6 +39,11 @@ that addition is applied to the upper address bits at the next sample, including
 across a FIFO handoff. A zero-length buffer retires at a DAC boundary even with
 DMA disabled. Reads outside STATUS mirror the active remaining length.
 
+Both channels come from one aligned 32-bit RDRAM read. Device remapping,
+calibration degradation, and row tracking apply to that complete word. Splitting
+the transaction into four byte reads changes the order in which calibration
+degradation processes the sample bits.
+
 `Bus::audio_output` receives consumed stereo samples after their address and
 length updates, FIFO retirement or handoff, and handoff interrupt. A callback
 therefore sees the remaining length and available FIFO slot for that boundary.
@@ -78,6 +83,12 @@ FIFO. Refill tests compare bulk advances with single-cycle advances and verify
 both channels of all six samples across three buffers.
 The divider-handoff trace expects the interrupt on the outgoing buffer's last
 sample callback, when promotion occurs.
+
+`test_ai_memory.cpp` compares DMA samples with complete RDRAM word reads during
+calibration and across an 8 KiB address carry. It checks remapped and unavailable
+memory, FIFO retirement, bank clocks, and both regional sample deadlines. A
+shortened backing allocation also verifies that an incomplete word returns zero
+without exposing a partial stereo sample.
 
 `test_ai_conformance.cpp` adds independently specified raw RDRAM/register
 fixtures with literal signed samples and RCP timestamps. The fixture inputs,

@@ -64,7 +64,9 @@ A configured cartridge clock advances from RCP cycles even with adapter power
 or access disabled. Battery clock state and latched registers survive mapper
 power resets. Slot removal ends advancement of the removed cartridge. Clock
 ticks run before SI completion at a shared deadline, so a latch command at that
-boundary captures the advanced clock.
+boundary captures the advanced clock. Event scheduling in `Bus::next_event()`
+queries `TransferPak::clock_running()` directly to check for active cartridge
+clocks without indirect pointer dereferencing when no cartridge is inserted.
 
 Commands execute at the current SI model's completion event. Individual serial
 bits and Game Boy bus strobes are not scheduled. Hardware captures are still

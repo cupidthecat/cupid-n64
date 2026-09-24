@@ -5,8 +5,8 @@
 #include <bit>
 
 namespace cupid {
-void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
-                            RdpDepth depth) {
+void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
+                            RdpDepth depth, const RdpDepthResult* pre_tested) {
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
@@ -18,14 +18,20 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     const unsigned dither_y = scissor_field_enabled_ ? y >> 1U : y;
     const auto dither = rdp_dither_coefficients(other_modes_, x, dither_y, sample);
     const unsigned alpha_dither = dither[3];
-    inputs.noise.fill(rdp_combiner_noise(sample));
-    if (first_noise && last_noise) {
-        sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
-        inputs.noise[1] = rdp_combiner_noise(sample);
-    }
-    const auto combined =
-        rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
-                             static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+    const auto combined = [&] {
+        if (first_noise || last_noise) {
+            RdpColorInputs noise_inputs = inputs;
+            noise_inputs.noise.fill(rdp_combiner_noise(sample));
+            if (first_noise && last_noise) {
+                sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
+                noise_inputs.noise[1] = rdp_combiner_noise(sample);
+            }
+            return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, noise_inputs,
+                                        static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+        }
+        return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
+                                    static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+    }();
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     if (antialias ? combined.coverage == 0U : (coverage_mask & 1U) == 0U)
         return;
@@ -33,18 +39,44 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     if ((other_modes_ & 1U) != 0 && combined.test_alpha < alpha_threshold)
         return;
 
+    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
+    const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
     const unsigned bytes = color_image_size_ < 2U ? 1U : 1U << (color_image_size_ - 1U);
     const u32 pixel = y * color_image_width_ + x;
     const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
-    const RdpColor memory = read_framebuffer_color(address);
-    const unsigned old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
-    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
-    const auto stored_depth = compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
-    const auto tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage,
-                                       old_coverage, other_modes_);
+
+    RdpColor memory{0, 0, 0, 224};
+    unsigned old_coverage = 7U;
+    if (image_read) {
+        memory = read_framebuffer_color(address);
+        old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
+    }
+    const auto tested = [&] {
+        if (pre_tested != nullptr)
+            return *pre_tested;
+        const auto stored_depth =
+            compare_depth ? bus_.memory.read_halfword(depth_address) : Rdram::Halfword{};
+        return rdp_test_depth(depth, stored_depth.value, stored_depth.hidden, combined.coverage, old_coverage,
+                              other_modes_);
+    }();
     if (!tested.pass || (antialias && tested.coverage == 0U))
         return;
+
+    const bool color_on_coverage = (other_modes_ & (1ULL << 7U)) != 0 && !tested.coverage_wrap;
+    const unsigned coverage_dest = (other_modes_ >> 8U) & 3U;
+    const bool first_cycle_reads_memory_rgb =
+        two_cycles && (((other_modes_ >> 30U) & 3U) == 1U || ((other_modes_ >> 22U) & 3U) == 1U);
+    const unsigned final_pixel_shift = two_cycles ? 28U : 30U;
+    const bool final_cycle_reads_memory_rgb = ((other_modes_ >> final_pixel_shift) & 3U) == 1U;
+    const bool needs_memory =
+        !image_read &&
+        (tested.blend_enabled || first_cycle_reads_memory_rgb || final_cycle_reads_memory_rgb ||
+         color_on_coverage || coverage_dest == 1U || (coverage_dest == 0U && tested.blend_enabled));
+    if (needs_memory) {
+        memory = read_framebuffer_color(address);
+        old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
+    }
     const unsigned shade_alpha = std::min(255U, static_cast<unsigned>(inputs.shade[3]) + alpha_dither);
     RdpColor color =
         rdp_blend(color_state_, other_modes_, combined.color, memory, shade_alpha, tested.blend_enabled,

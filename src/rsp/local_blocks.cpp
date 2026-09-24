@@ -26,8 +26,11 @@ void Rsp::prepare_local_block(LocalBlock& block, u64 revision) {
         pipeline_.current_index_ = RspPipeline::cache_index(address, pairing);
         pipeline_.count_ = decoded.count;
         block.cycles += pipeline_.advance_operand_wait(3) + 1U;
-        for (unsigned index = 0; index < decoded.count; ++index)
-            block.instructions[block.count++] = {decoded.words[index], decoded.operations[index]};
+        for (unsigned index = 0; index < decoded.count; ++index) {
+            const u32 word = decoded.words[index];
+            block.instructions[block.count++] = {word, decoded.operations[index],
+                                                 decode_scalar_operands(word)};
+        }
         address = (address + decoded.count * 4U) & 0x0ffcU;
         pipeline_.retire(false, address);
     }
@@ -38,7 +41,7 @@ void Rsp::prepare_local_block(LocalBlock& block, u64 revision) {
 
 u64 Rsp::execute_local_block(u64 revision, u64 maximum_cycles) {
     if (!local_blocks_)
-        local_blocks_ = std::make_unique<std::array<LocalBlock, 1024>>();
+        local_blocks_.reset(std::make_unique<std::array<LocalBlock, 1024>>());
     auto& block = (*local_blocks_)[pc >> 2U];
     if (!block.valid || block.revision != revision || block.incoming != pipeline_.previous_ ||
         block.single_issue != pipeline_.single_issue_)
@@ -49,7 +52,7 @@ u64 Rsp::execute_local_block(u64 revision, u64 maximum_cycles) {
 
     for (unsigned index = 0; index < block.count; ++index) {
         const auto& instruction = block.instructions[index];
-        execute_decoded(instruction.word, instruction.operation);
+        execute_decoded(instruction.word, instruction.operation, instruction.operands);
     }
     gpr_[0] = 0;
     // These instructions cannot observe the PC or enter a shared register handler.

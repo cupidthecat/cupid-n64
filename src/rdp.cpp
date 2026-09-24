@@ -217,19 +217,7 @@ u8 Rdp::command_byte(u32 address) const {
 }
 
 u64 Rdp::command_word(u32 address) const {
-    u64 value = 0;
-    for (unsigned byte = 0; byte < 8; ++byte) {
-        value = (value << 8U) | command_byte(address + byte);
-    }
-    return value;
-}
-
-u64 Rdp::buffered_word(unsigned offset) const {
-    u64 value = 0;
-    for (unsigned byte = 0; byte < 8; ++byte) {
-        value = (value << 8U) | command_buffer_[offset + byte];
-    }
-    return value;
+    return bus_.rdp_source_word(address, source_dmem_);
 }
 
 unsigned Rdp::command_length(u8 opcode) const {
@@ -278,9 +266,8 @@ void Rdp::run_commands() {
         }
         if (command_buffer_size_ == 0)
             command_buffer_address_ = current_;
-        for (unsigned byte = 0; byte < 8; ++byte) {
-            command_buffer_[command_buffer_size_ + byte] = command_byte(current_ + byte);
-        }
+        const u64 word = bus_.rdp_source_word(current_, source_dmem_);
+        write_be64(command_buffer_.data() + command_buffer_size_, word);
         command_buffer_size_ += 8;
         current_ += 8;
 

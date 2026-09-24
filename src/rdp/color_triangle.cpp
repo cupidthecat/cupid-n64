@@ -30,7 +30,8 @@ void Rdp::color_triangle() {
             attributes[first + i] = {component(0, i), component(8, i), component(32, i), component(40, i)};
         offset += 64;
     };
-    if ((opcode & 4U) != 0)
+    const bool shaded = (opcode & 4U) != 0;
+    if (shaded)
         load_group(0, 4);
     if ((opcode & 2U) != 0)
         load_group(4, 3);
@@ -45,6 +46,13 @@ void Rdp::color_triangle() {
     const u16 delta = primitive_depth ? primitive_delta_depth_ : rdp_triangle_depth_delta(attributes[7]);
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
     const bool perspective = (other_modes_ & (1ULL << 51U)) != 0;
+    const bool depth_value_needed = (other_modes_ & 0x30U) != 0;
+    const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
+    const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
+    const bool alpha_compare = (other_modes_ & 1U) != 0;
+    const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
+    const bool early_depth_test =
+        compare_depth && !image_read && !alpha_compare && (other_modes_ & (1ULL << 12U)) == 0;
     unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
     if ((other_modes_ & (1ULL << 48U)) != 0)
         texture_inputs |= 4U;
@@ -63,8 +71,16 @@ void Rdp::color_triangle() {
                 continue;
             const auto origin = rdp_triangle_origin(geometry, y);
             std::array<u32, 8> base{};
-            for (unsigned i = 0; i < base.size(); ++i)
-                base[i] = rdp_varying_base(attributes[i], origin);
+            if (shaded) {
+                for (unsigned i = 0; i < 4; ++i)
+                    base[i] = rdp_varying_base(attributes[i], origin);
+            }
+            if (texture_inputs != 0) {
+                for (unsigned i = 4; i < 7; ++i)
+                    base[i] = rdp_varying_base(attributes[i], origin);
+            }
+            if (depth_value_needed)
+                base[7] = rdp_varying_base(attributes[7], origin);
             const auto divide = [&](const std::array<s16, 3>& stw, bool& overflow) {
                 return perspective ? rdp_perspective_point(stw[0], stw[1], stw[2], overflow)
                                    : RdpTexturePoint{stw[0], stw[1]};
@@ -94,21 +110,54 @@ void Rdp::color_triangle() {
                 bool ignored = false;
                 next_row_point = divide(stw, ignored);
             }
+            const s32 max_left = std::max({span.left[0], span.left[1], span.left[2], span.left[3]});
+            const s32 min_right = std::min({span.right[0], span.right[1], span.right[2], span.right[3]});
+            s32 cached_next_dx = -0x7fffffff;
+            RdpTexturePoint cached_next_x{};
+            bool cached_overflow = false;
             for (unsigned step = 0; step <= span.end - span.start; ++step) {
                 const unsigned x = geometry.left_major ? span.start + step : span.end - step;
-                const unsigned coverage = rdp_triangle_coverage(span, x);
+                const unsigned coverage =
+                    (static_cast<s32>(x * 8U) >= max_left && static_cast<s32>(x * 8U + 6U) < min_right)
+                        ? 0xffU
+                        : rdp_triangle_coverage(span, x);
                 if (coverage == 0 || ((other_modes_ & 8U) == 0 && (coverage & 1U) == 0))
                     continue;
                 const s32 dx = static_cast<s32>(x) - origin.x;
+                const RdpDepth depth{
+                    depth_value_needed ? rdp_interpolate_depth(base[7], attributes[7], dx, coverage) : 0U,
+                    delta};
+                RdpDepthResult tested{};
+                if (early_depth_test) {
+                    const u32 pixel = y * color_image_width_ + x;
+                    const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
+                    const auto stored_depth = bus_.memory.read_halfword(depth_address);
+                    tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden,
+                                            static_cast<unsigned>(std::popcount(coverage)), 7U, other_modes_);
+                    if (!tested.pass || (antialias && tested.coverage == 0U))
+                        continue;
+                }
                 RdpColorInputs inputs;
                 if (texture_inputs != 0) {
                     bool overflow = false;
-                    const auto point = texture_point(dx, false, overflow);
+                    RdpTexturePoint point{};
+                    if ((lod_needed || one_cycle_texel1_needed) && dx == cached_next_dx) {
+                        point = cached_next_x;
+                        overflow = cached_overflow;
+                    } else {
+                        point = texture_point(dx, false, overflow);
+                    }
                     RdpTexturePoint next_x{};
                     RdpTexturePoint next_y{};
                     RdpTexturePoint next_pixel{};
-                    if (lod_needed || one_cycle_texel1_needed)
-                        next_x = texture_point(dx + direction, false, overflow);
+                    if (lod_needed || one_cycle_texel1_needed) {
+                        bool next_overflow = false;
+                        next_x = texture_point(dx + direction, false, next_overflow);
+                        cached_next_x = next_x;
+                        cached_overflow = next_overflow;
+                        cached_next_dx = dx + direction;
+                        overflow = overflow || next_overflow;
+                    }
                     if (lod_needed)
                         next_y = texture_point(dx, true, overflow);
                     if (one_cycle_texel1_needed)
@@ -116,17 +165,27 @@ void Rdp::color_triangle() {
                     inputs = sample_color_textures({point, next_x, next_y, next_pixel, overflow}, tile,
                                                    texture_inputs, maximum_level);
                 }
-                for (unsigned i = 0; i < inputs.shade.size(); ++i)
-                    inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
-                const RdpDepth depth{rdp_interpolate_depth(base[7], attributes[7], dx, coverage), delta};
-                write_color_pixel(x, y, coverage, inputs, depth);
+                if (shaded) {
+                    for (unsigned i = 0; i < inputs.shade.size(); ++i)
+                        inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
+                }
+                write_color_pixel(x, y, coverage, inputs, depth, early_depth_test ? &tested : nullptr);
             }
         }
     };
     const unsigned first = static_cast<unsigned>(first_y / 4);
     const unsigned last = static_cast<unsigned>((last_y + 3) / 4);
-    rdp::raster_rows(bus_.memory, first, last,
-                     parallel_rows(first, last, scissor_x0_ / 4U, (scissor_x1_ + 3U) / 4U), render);
+    bool parallel = false;
+    if (parallel_rasterization_ && last - first >= 8U) {
+        // A wide scissor can contain a narrow triangle. Estimate useful work from
+        // its middle span before paying to wake the raster workers; the complete
+        // scissor bounds still decide whether their memory accesses are independent.
+        const auto middle = rdp_triangle_span(geometry, scissor, first + (last - first) / 2U);
+        if (middle.valid && middle.end >= middle.start &&
+            static_cast<u64>(last - first) * (middle.end - middle.start + 1U) >= 4096U)
+            parallel = parallel_rows(first, last, scissor_x0_ / 4U, (scissor_x1_ + 3U) / 4U);
+    }
+    rdp::raster_rows(bus_.memory, first, last, parallel, render);
 }
 
 } // namespace cupid

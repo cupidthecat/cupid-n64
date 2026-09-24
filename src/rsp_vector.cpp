@@ -30,37 +30,6 @@ constexpr u16 bits16(s32 value) {
 
 } // namespace
 
-u16 Rsp::vec_u16(const Vector& vector, unsigned lane) {
-    return vector.lane[lane & 7U];
-}
-
-s16 Rsp::vec_s16(const Vector& vector, unsigned lane) {
-    return std::bit_cast<s16>(vec_u16(vector, lane));
-}
-
-void Rsp::vec_set_u16(Vector& vector, unsigned lane, u16 value) {
-    vector.lane[lane & 7U] = value;
-}
-
-void Rsp::vec_set_s16(Vector& vector, unsigned lane, s16 value) {
-    vec_set_u16(vector, lane, std::bit_cast<u16>(value));
-}
-
-u8 Rsp::vec_byte(const Vector& vector, unsigned byte) {
-    const unsigned index = byte & 15U;
-    const u16 value = vector.lane[index >> 1U];
-    return (index & 1U) != 0U ? static_cast<u8>(value) : static_cast<u8>(value >> 8U);
-}
-
-void Rsp::vec_set_byte(Vector& vector, unsigned byte, u8 value) {
-    const unsigned index = byte & 15U;
-    u16& lane = vector.lane[index >> 1U];
-    if ((index & 1U) == 0U)
-        lane = static_cast<u16>((lane & 0x00ffU) | (static_cast<u32>(value) << 8U));
-    else
-        lane = static_cast<u16>((lane & 0xff00U) | value);
-}
-
 void Rsp::load_plain_vector(Vector& target, unsigned element, u32 address, unsigned width) {
     const unsigned count = std::min(width, 16U - element);
     if (count == 0U)
@@ -152,38 +121,6 @@ void Rsp::set_accumulator(unsigned lane, s64 value) {
     accumulator_.high[lane & 7U] = static_cast<u16>(bits >> 32U);
 }
 
-u16 Rsp::acc_low(unsigned lane) const {
-    return accumulator_.low[lane & 7U];
-}
-
-u16 Rsp::acc_mid(unsigned lane) const {
-    return accumulator_.middle[lane & 7U];
-}
-
-u16 Rsp::acc_high(unsigned lane) const {
-    return accumulator_.high[lane & 7U];
-}
-
-s16 Rsp::acc_mid_s(unsigned lane) const {
-    return std::bit_cast<s16>(acc_mid(lane));
-}
-
-s16 Rsp::acc_high_s(unsigned lane) const {
-    return std::bit_cast<s16>(acc_high(lane));
-}
-
-void Rsp::set_acc_low(unsigned lane, u16 value) {
-    accumulator_.low[lane & 7U] = value;
-}
-
-void Rsp::set_acc_mid(unsigned lane, u16 value) {
-    accumulator_.middle[lane & 7U] = value;
-}
-
-void Rsp::set_acc_high(unsigned lane, u16 value) {
-    accumulator_.high[lane & 7U] = value;
-}
-
 u16 Rsp::saturate_accumulator(unsigned lane, bool middle_slice, u16 negative, u16 positive) const {
     if (acc_high_s(lane) < 0) {
         if (acc_high(lane) != 0xffff || acc_mid_s(lane) >= 0) {
@@ -195,15 +132,6 @@ u16 Rsp::saturate_accumulator(unsigned lane, bool middle_slice, u16 negative, u1
         }
     }
     return middle_slice ? acc_mid(lane) : acc_low(lane);
-}
-
-bool Rsp::flag(u8 mask, unsigned lane) const {
-    return ((mask >> (lane & 7)) & 1) != 0;
-}
-
-void Rsp::set_flag(u8& mask, unsigned lane, bool value) {
-    const u8 bit = static_cast<u8>(1u << (lane & 7));
-    mask = value ? static_cast<u8>(mask | bit) : static_cast<u8>(mask & ~bit);
 }
 
 u32 Rsp::reciprocal(u32 value) {
