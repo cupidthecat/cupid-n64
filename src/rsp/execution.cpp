@@ -7,10 +7,6 @@
 namespace cupid {
 namespace {
 
-constexpr u32 mask_pc(u32 value) {
-    return value & 0x0ffcU;
-}
-
 constexpr s32 as_s32(u32 value) {
     return std::bit_cast<s32>(value);
 }

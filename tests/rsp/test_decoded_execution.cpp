@@ -78,3 +78,32 @@ TEST(rsp_decoded_regimm_link_branches_snapshot_rs31_before_link_write) {
         CHECK_EQ(bgez.fallthrough_value, negative ? 0x22U : 0U);
     }
 }
+
+TEST(rsp_decoded_scalar_memory_and_branches) {
+    auto system = std::make_unique<System>();
+    write_be32(system->rsp.memory.data(), 0x89abcdefU);
+    write_be32(system->rsp.memory.data() + 4U, 0x01234567U);
+
+    const std::array<u32, 9> program{
+        0x8c080000U, // LW  $t0, 0($zero)
+        0x80090000U, // LB  $t1, 0($zero)
+        0x900a0000U, // LBU $t2, 0($zero)
+        0x840b0000U, // LH  $t3, 0($zero)
+        0x940c0000U, // LHU $t4, 0($zero)
+        0xac080020U, // SW  $t0, 0x20($zero)
+        0xa40c0024U, // SH  $t4, 0x24($zero)
+        0xa00a0026U, // SB  $t2, 0x26($zero)
+        0x0000000dU, // BREAK
+    };
+    u32 address = 0;
+    for (const u32 word : program) {
+        instruction(system->rsp, address, word);
+        address += 4U;
+    }
+    system->rsp.write_register(0x10, 1U);
+    system->advance(64);
+    CHECK_EQ(system->rsp.read_register(0x10) & 3U, 3U);
+    CHECK_EQ(read_be32(system->rsp.memory.data() + 0x20U), 0x89abcdefU);
+    CHECK_EQ(read_be16(system->rsp.memory.data() + 0x24U), 0x89abU);
+    CHECK_EQ(system->rsp.memory[0x26U], 0x89U);
+}

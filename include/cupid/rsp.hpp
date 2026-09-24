@@ -5,6 +5,7 @@
 #include "cupid/types.hpp"
 
 #include <array>
+#include <bit>
 #include <memory>
 
 namespace cupid {
@@ -200,14 +201,57 @@ class Rsp {
     }
     void save_dmem_block(u32 block);
 
-    [[nodiscard]] u8 dmem_read8(u32 address) const;
-    [[nodiscard]] u16 dmem_read16(u32 address) const;
-    [[nodiscard]] u32 dmem_read32(u32 address) const;
-    void dmem_write8(u32 address, u8 value);
-    void dmem_write16(u32 address, u16 value);
-    void dmem_write32(u32 address, u32 value);
+    [[nodiscard]] static constexpr u32 mask_pc(u32 value) noexcept {
+        return value & 0x0ffcU;
+    }
 
-    [[nodiscard]] u32 fetch_instruction(u32 address) const;
+    [[nodiscard]] u8 dmem_read8(u32 address) const noexcept {
+        return memory.internal_read(address & 0x0fffU);
+    }
+    [[nodiscard]] u16 dmem_read16(u32 address) const noexcept {
+        const u32 offset = address & 0x0fffU;
+        if (offset + 2U <= 0x1000U)
+            return read_be16(memory.internal_data() + offset);
+        return static_cast<u16>((static_cast<u16>(dmem_read8(address)) << 8) | dmem_read8(address + 1));
+    }
+    [[nodiscard]] u32 dmem_read32(u32 address) const noexcept {
+        const u32 offset = address & 0x0fffU;
+        if (offset + 4U <= 0x1000U)
+            return read_be32(memory.internal_data() + offset);
+        return (static_cast<u32>(dmem_read8(address)) << 24) |
+               (static_cast<u32>(dmem_read8(address + 1)) << 16) |
+               (static_cast<u32>(dmem_read8(address + 2)) << 8) | static_cast<u32>(dmem_read8(address + 3));
+    }
+    void dmem_write8(u32 address, u8 value) noexcept {
+        save_dmem(address, 1);
+        memory.internal_write(address & 0x0fffU, value);
+    }
+    void dmem_write16(u32 address, u16 value) noexcept {
+        const u32 offset = address & 0x0fffU;
+        if (offset + 2U <= 0x1000U) {
+            save_dmem(offset, 2);
+            write_be16(memory.internal_data() + offset, value);
+            return;
+        }
+        dmem_write8(address, static_cast<u8>(value >> 8));
+        dmem_write8(address + 1, static_cast<u8>(value));
+    }
+    void dmem_write32(u32 address, u32 value) noexcept {
+        const u32 offset = address & 0x0fffU;
+        if (offset + 4U <= 0x1000U) {
+            save_dmem(offset, 4);
+            write_be32(memory.internal_data() + offset, value);
+            return;
+        }
+        dmem_write8(address, static_cast<u8>(value >> 24));
+        dmem_write8(address + 1, static_cast<u8>(value >> 16));
+        dmem_write8(address + 2, static_cast<u8>(value >> 8));
+        dmem_write8(address + 3, static_cast<u8>(value));
+    }
+
+    [[nodiscard]] u32 fetch_instruction(u32 address) const noexcept {
+        return read_be32(memory.internal_data() + (0x1000U | mask_pc(address)));
+    }
     [[nodiscard]] static ScalarOperands decode_scalar_operands(u32 instruction);
     void execute_decoded(u32 instruction, RspPipeline::Operation operation);
     void execute_decoded(u32 instruction, RspPipeline::Operation operation, const ScalarOperands& operands);
@@ -219,20 +263,46 @@ class Rsp {
     void execute_vector_load(u32 instruction);
     void execute_vector_store(u32 instruction);
 
-    void take_branch(u32 target);
-    void write_gpr(unsigned index, u32 value);
+    void take_branch(u32 target) noexcept {
+        next_pc_ = mask_pc(target);
+        branch_pending_ = true;
+    }
+    void write_gpr(unsigned index, u32 value) noexcept {
+        if (index != 0) {
+            gpr_[index & 31] = value;
+        }
+    }
 
     void start_dma(bool to_sp, u32 value);
     void promote_dma();
     void tick_dma(u64 rcp_cycles);
     void transfer_dma_row();
 
-    [[nodiscard]] static u16 vec_u16(const Vector& vector, unsigned lane);
-    [[nodiscard]] static s16 vec_s16(const Vector& vector, unsigned lane);
-    static void vec_set_u16(Vector& vector, unsigned lane, u16 value);
-    static void vec_set_s16(Vector& vector, unsigned lane, s16 value);
-    [[nodiscard]] static u8 vec_byte(const Vector& vector, unsigned byte);
-    static void vec_set_byte(Vector& vector, unsigned byte, u8 value);
+    [[nodiscard]] static u16 vec_u16(const Vector& vector, unsigned lane) noexcept {
+        return vector.lane[lane & 7U];
+    }
+    [[nodiscard]] static s16 vec_s16(const Vector& vector, unsigned lane) noexcept {
+        return std::bit_cast<s16>(vec_u16(vector, lane));
+    }
+    static void vec_set_u16(Vector& vector, unsigned lane, u16 value) noexcept {
+        vector.lane[lane & 7U] = value;
+    }
+    static void vec_set_s16(Vector& vector, unsigned lane, s16 value) noexcept {
+        vec_set_u16(vector, lane, std::bit_cast<u16>(value));
+    }
+    [[nodiscard]] static u8 vec_byte(const Vector& vector, unsigned byte) noexcept {
+        const unsigned index = byte & 15U;
+        const u16 value = vector.lane[index >> 1U];
+        return (index & 1U) != 0U ? static_cast<u8>(value) : static_cast<u8>(value >> 8U);
+    }
+    static void vec_set_byte(Vector& vector, unsigned byte, u8 value) noexcept {
+        const unsigned index = byte & 15U;
+        u16& lane = vector.lane[index >> 1U];
+        if ((index & 1U) == 0U)
+            lane = static_cast<u16>((lane & 0x00ffU) | (static_cast<u32>(value) << 8U));
+        else
+            lane = static_cast<u16>((lane & 0xff00U) | value);
+    }
     void load_plain_vector(Vector& target, unsigned element, u32 address, unsigned width);
     void store_plain_vector(u32 address, const Vector& source, unsigned element, unsigned count);
 
@@ -240,19 +310,40 @@ class Rsp {
     [[nodiscard]] static s64 wrap_accumulator(s64 value);
     [[nodiscard]] s64 read_accumulator(unsigned lane) const;
     void set_accumulator(unsigned lane, s64 value);
-    [[nodiscard]] u16 acc_low(unsigned lane) const;
-    [[nodiscard]] u16 acc_mid(unsigned lane) const;
-    [[nodiscard]] u16 acc_high(unsigned lane) const;
-    [[nodiscard]] s16 acc_mid_s(unsigned lane) const;
-    [[nodiscard]] s16 acc_high_s(unsigned lane) const;
-    void set_acc_low(unsigned lane, u16 value);
-    void set_acc_mid(unsigned lane, u16 value);
-    void set_acc_high(unsigned lane, u16 value);
+    [[nodiscard]] u16 acc_low(unsigned lane) const noexcept {
+        return accumulator_.low[lane & 7U];
+    }
+    [[nodiscard]] u16 acc_mid(unsigned lane) const noexcept {
+        return accumulator_.middle[lane & 7U];
+    }
+    [[nodiscard]] u16 acc_high(unsigned lane) const noexcept {
+        return accumulator_.high[lane & 7U];
+    }
+    [[nodiscard]] s16 acc_mid_s(unsigned lane) const noexcept {
+        return std::bit_cast<s16>(acc_mid(lane));
+    }
+    [[nodiscard]] s16 acc_high_s(unsigned lane) const noexcept {
+        return std::bit_cast<s16>(acc_high(lane));
+    }
+    void set_acc_low(unsigned lane, u16 value) noexcept {
+        accumulator_.low[lane & 7U] = value;
+    }
+    void set_acc_mid(unsigned lane, u16 value) noexcept {
+        accumulator_.middle[lane & 7U] = value;
+    }
+    void set_acc_high(unsigned lane, u16 value) noexcept {
+        accumulator_.high[lane & 7U] = value;
+    }
     [[nodiscard]] u16 saturate_accumulator(unsigned lane, bool middle_slice, u16 negative,
                                            u16 positive) const;
 
-    [[nodiscard]] bool flag(u8 mask, unsigned lane) const;
-    static void set_flag(u8& mask, unsigned lane, bool value);
+    [[nodiscard]] bool flag(u8 mask, unsigned lane) const noexcept {
+        return ((mask >> (lane & 7)) & 1) != 0;
+    }
+    static void set_flag(u8& mask, unsigned lane, bool value) noexcept {
+        const u8 bit = static_cast<u8>(1u << (lane & 7));
+        mask = value ? static_cast<u8>(mask | bit) : static_cast<u8>(mask & ~bit);
+    }
 
     [[nodiscard]] static u32 reciprocal(u32 value);
     [[nodiscard]] static u32 reciprocal_sqrt(u32 value);

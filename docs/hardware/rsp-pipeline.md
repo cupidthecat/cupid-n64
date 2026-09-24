@@ -224,7 +224,11 @@ Block preparation also records the scalar register indices, shift amount, and
 signed immediate in six bytes per instruction. Replay passes these operands to
 the same execution function used by ordinary instruction stepping. Register
 values and memory addresses are still evaluated when the instruction executes;
-only the fields decoded from the instruction word are cached.
+only the fields decoded from the instruction word are cached. Scalar register
+writes, branch redirects, DMEM accessors (`dmem_read8`/`16`/`32`, `dmem_write8`/`16`/`32`),
+and vector accumulator and flag helpers are inlined directly into `include/cupid/rsp.hpp`,
+eliminating function call overhead across compilation units while preserving full
+wrap-around semantics and unaligned byte handling.
 
 Branches and COP0 operations end a block. Execution uses a cached block only
 when the complete cycle cost fits before the next scheduling boundary; partial
