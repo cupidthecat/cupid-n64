@@ -33,6 +33,13 @@ retroactively change it. Page boundaries reselect the cartridge device at the
 time that boundary is reached. PI address registers therefore expose only the
 progress already made by the sampled RCP clock.
 
+Each RDRAM-to-cartridge transfer reads a complete RDRAM halfword. Chip mapping,
+calibration, and bounds checks apply to that transaction before the cartridge
+receives its two bytes. An incomplete halfword supplies zero rather than exposing
+the one available byte. The CPU's MI EBUS selection does not redirect PI data
+reads to hidden bits. Cartridge-to-RDRAM transfers retain their byte writes and
+the internal buffer's alignment behavior.
+
 Only `PI_STATUS` accepts PI register writes while DMA or cartridge I/O is busy.
 Other PI register writes set the error bit and leave the active transfer
 unchanged. CPU cartridge reads and writes continue through the ordinary PI bus
@@ -57,3 +64,7 @@ the cartridge device at the same domain page boundaries used by the timer.
 directions, page and 128-byte buffer boundaries, halfword rounding, clock
 conversion, progressive payload sampling, reset/abort behavior, busy writes,
 CPU cartridge I/O during DMA, register masks, status, and interrupt delivery.
+`test_pi_memory.cpp` covers halfword calibration, mapped and unavailable chips,
+incomplete backing storage, MI EBUS isolation, and live sampling at successive
+page deadlines. Calibration checks also verify the state seen by the next RDRAM
+read, and the same transfer runs with bulk and single-cycle advancement.
