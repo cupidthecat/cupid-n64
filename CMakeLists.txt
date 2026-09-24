@@ -143,3 +143,5 @@ endif()
 if(CUPID_DESKTOP)
     include(cmake/desktop.cmake)
 endif()
+
+include(cmake/profile.cmake)

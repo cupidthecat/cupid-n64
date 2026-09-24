@@ -73,6 +73,11 @@ platforms, and remaining failures. The [triangle fixture audit](testing/rdp-tria
 describes the command-packing and coverage disagreements. These tests remain
 enabled, and an unresolved failure makes the extended validation command fail.
 
+Clang Release builds can collect and use execution profiles for the core and host
+libraries. The [profile build guide](testing/profile-guided-builds.md) covers
+training, source/compiler compatibility, validation, and performance comparisons.
+Keep sanitizer runs in a separate ordinary build.
+
 Rebuild both images after updating the test checkout. A ROM left in an older
 output directory can contain different assertions even when the checkout is
 clean. Use a fresh `--target-dir` when checking a ROM's source revision.

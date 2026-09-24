@@ -1,0 +1,61 @@
+name: Profile-guided validation
+
+on:
+  push:
+    branches: [main, feature/n64-hardware-accuracy]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: profile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang:
+    name: Clang profile builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install matching LLVM tools and formatter
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends clang-18 llvm-18 lld-18 libclang-rt-18-dev
+          python3 -m venv .work/format
+          .work/format/bin/python -m pip install clang-format==22.1.0
+          clang++-18 --version
+          llvm-profdata-18 --version
+      - name: Collect profiles with the local regression suite
+        run: >-
+          python3 tools/ci/validate.py --build-dir build-profile-generate --compiler clang++-18 --jobs 2
+          --clang-format .work/format/bin/clang-format
+          --profile-generate .work/profile/raw
+      - name: Create a profile package
+        run: |
+          llvm-profdata-18 merge -o .work/profile/core.profdata .work/profile/raw/*.profraw
+          python3 tools/ci/profile.py create --source-root . \
+            --profile .work/profile/core.profdata --manifest .work/profile/core.json \
+            --build-cache build-profile-generate/CMakeCache.txt --llvm-profdata llvm-profdata-18
+      - name: Validate profile-use execution
+        run: >-
+          python3 tools/ci/validate.py --build-dir build-profile-use --compiler clang++-18 --jobs 2
+          --clang-format .work/format/bin/clang-format
+          --profile-use .work/profile/core.profdata --profile-manifest .work/profile/core.json
+      - name: Retain profile validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: profile-validation
+          include-hidden-files: true
+          path: |
+            build-profile-generate/validation/
+            build-profile-use/validation/
+            .work/profile/raw/context.json
+            .work/profile/core.json
+          if-no-files-found: error
+          retention-days: 14

@@ -34,6 +34,7 @@ class DesktopValidationTests(unittest.TestCase):
             clang_format="clang-format", config="Release", generator="Ninja",
             sanitizers=False, desktop=False, sdl_source=None, compiler="clang++",
             rom=None, pif=None, extended_rom=None, jobs=2,
+            profile_generate=None, profile_use=None, profile_manifest=None,
         )
 
     def test_headless_selection_overrides_an_existing_desktop_cache(self):
@@ -41,6 +42,19 @@ class DesktopValidationTests(unittest.TestCase):
         validate(self.args, self.root, self.root / "build", commands)
         self.assertIn("-DCUPID_DESKTOP=OFF", commands.commands["configure"])
         self.assertFalse(any("SDL3" in value for value in commands.commands["configure"]))
+        for setting in ("CUPID_PROFILE_GENERATE", "CUPID_PROFILE_USE", "CUPID_PROFILE_MANIFEST"):
+            self.assertIn(f"-D{setting}=", commands.commands["configure"])
+
+    def test_profile_package_paths_remain_literal_configure_arguments(self):
+        self.args.profile_use = self.root / "profiles with spaces" / "core.profdata"
+        self.args.profile_manifest = self.root / "profiles with spaces" / "core.json"
+        commands = Commands()
+        validate(self.args, self.root, self.root / "build", commands)
+        self.assertIn(f"-DCUPID_PROFILE_USE={self.args.profile_use.resolve()}",
+                      commands.commands["configure"])
+        self.assertIn(f"-DCUPID_PROFILE_MANIFEST={self.args.profile_manifest.resolve()}",
+                      commands.commands["configure"])
+        self.assertIn("-DCUPID_PROFILE_GENERATE=", commands.commands["configure"])
 
     def test_desktop_and_source_paths_remain_separate_literal_arguments(self):
         self.args.desktop = True

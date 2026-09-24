@@ -1,5 +1,48 @@
 # Recorded validation results
 
+## Profile-guided core and host execution (2026-09-24)
+
+A fresh Clang 21.1.5 profile used the 1,439 local hardware tests and a 6,000-field
+Super Mario 64 outdoor replay. The profiled implementation was the clean merged
+revision `1bc89585578c70a4ef01ed178b17d805f57cb332`. Both ordinary and profile-use
+builds retained Release optimization, ThinLTO, and strict floating-point flags.
+Only `cupid_core` and `cupid_host` received profile-use options.
+
+The paired measurements used an i7-13700H with high process QoS and performance
+core affinity. Each pair ran serially, with compilation finished beforehand:
+
+| Replay | Ordinary Release | Profile-use Release | Profile-use speed |
+| --- | ---: | ---: | ---: |
+| Title and attract sequence, 2,077 fields | 57.178 s | 44.885 s | 78.1% |
+| Outdoor gameplay, 6,000 fields | 123.620 s | 98.758 s | 101.9% |
+| Untrained gameplay sequence, 6,000 fields | 113.755 s | 91.911 s | 109.5% |
+
+Elapsed time fell by 19.2% to 21.5%. These are bounded replay measurements, one
+pair per workload. Every recorded field observation and retained video, audio,
+and EEPROM file matched. The executables, cartridge, firmware, and controller
+sequences retained their hashes. No replay reported an audio-timeline
+discontinuity, CPU freeze, or PIF failure.
+
+The profile-use build passed 1,439 hardware tests, the prepared 4,637-case default
+and 6,273-case extended cartridges, both 4,637-case cold and warm boots, and all
+14 desktop-enabled CTest groups. The cartridge inputs retain the
+[documented fixture corrections](cartridge-fixtures.md). Original-image and
+hardware-capture acceptance remain separate requirements.
+
+A timed profile-use desktop run completed 60.066 seconds with 2,600 VI fields
+and 2,572 presentations. It saved its capture and EEPROM and exited successfully;
+the capture was inspected. The run recorded 762 audio underruns, zero host-buffer
+drops, and 4,022 dropped frames at the device audio queue. Full-speed title/attract
+execution and normal audible playback remain open in #48 and #47.
+
+The [profile build guide](profile-guided-builds.md) documents the supported
+configuration and source/compiler checks. Experiment records are retained under
+`.work/validation/pgo-current-20260924/`; the production-interface validation and
+profile import proof are under `.work/validation/pgo-production-20260924/`.
+The import compared the frozen experiment's source closure, compiler identity,
+and actual core/host compile rules before reusing its profile with the supported
+build interface. Only the raw-counter output path differed.
+
 ## AI word reads and triangle depth interpolation (2026-09-23)
 
 AI DMA reads each stereo sample as one RDRAM word. The calibration and
