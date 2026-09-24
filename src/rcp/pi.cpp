@@ -183,8 +183,7 @@ void Bus::progress_pi_dma() {
                 transfer.cart_selected = true;
             }
             const u32 dram_address = transfer.start_dram + transfer.bus_bytes;
-            const u16 data = static_cast<u16>((static_cast<u16>(read_ram_byte(dram_address)) << 8U) |
-                                              read_ram_byte(dram_address + 1U));
+            const u16 data = static_cast<u16>(memory.read(dram_address, 2));
             cart_write_half(data);
             transfer.bus_bytes += 2U;
         }

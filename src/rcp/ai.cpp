@@ -10,6 +10,7 @@ void Bus::reset_ai_clock() {
     ai_counter_ = 0;
     ai_clock_rate_ = static_cast<u64>(system_.video_frequency()) * 44100;
     ai_clock_period_ = 62500000ULL * system_.video_frequency();
+    ai_dac_.reset(system_.video_frequency());
     ai_rate_numerator_ = 44100;
     ai_rate_denominator_ = 1;
     ai_clock_started_ = false;
@@ -95,13 +96,14 @@ void Bus::sample_ai() {
             set_interrupt(2, true);
         }
     }
+    if (consumed)
+        ai_dac_.write(sample);
+    else
+        ai_dac_.advance_idle(ai_clock_period_ / 62500000U);
     if ((consumed && audio_output) || audio_sample_output) {
-        const AudioSample output{static_cast<s16>(sample >> 16U),
-                                 static_cast<s16>(sample),
-                                 output_clock_,
-                                 ai_rate_numerator_,
-                                 ai_rate_denominator_,
-                                 consumed};
+        const auto channels = ai_dac_.sample();
+        const AudioSample output{channels[0],        channels[1],          output_clock_,
+                                 ai_rate_numerator_, ai_rate_denominator_, consumed};
         const auto generation = output_generation_;
         pending_outputs_.emplace_back([this, output, generation] {
             if (output.from_dma && audio_output)
@@ -110,6 +112,13 @@ void Bus::sample_ai() {
                 audio_sample_output(output);
         });
     }
+}
+
+void Bus::skip_ai_idle_periods() {
+    const u64 remainder = ai_counter_ % ai_clock_period_;
+    // Whole periods are exact multiples of the RCP frequency in the AI timebase.
+    ai_dac_.advance_idle((ai_counter_ - remainder) / 62500000U);
+    ai_counter_ = remainder;
 }
 
 void Bus::tick_ai(u64 rcp_cycles) {
@@ -122,7 +131,7 @@ void Bus::tick_ai(u64 rcp_cycles) {
             sample_ai();
             latch_ai_period();
             if (ai_fifo_count_ == 0 || ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)) {
-                ai_counter_ %= ai_clock_period_;
+                skip_ai_idle_periods();
                 break;
             }
         }
@@ -139,7 +148,7 @@ void Bus::tick_ai(u64 rcp_cycles) {
             sample_ai();
             latch_ai_period();
             if (ai_fifo_count_ == 0 || ((ai_[2] & 1U) == 0 && ai_lengths_[0] != 0)) {
-                ai_counter_ %= ai_clock_period_;
+                skip_ai_idle_periods();
                 break;
             }
         }

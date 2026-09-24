@@ -1,5 +1,62 @@
 # Recorded validation results
 
+## PI halfword reads and idle audio DAC output (2026-09-24)
+
+PI reads each cartridge-bound RDRAM halfword as one transaction, including its
+calibration and bounds checks. AI retains the last stereo DAC value and applies
+a 3 ms discharge when DMA supplies no sample. The
+[PI guide](../hardware/peripheral-interface.md) and
+[audio guide](../hardware/audio-timing.md) describe the behavior and its limits.
+Eleven new regressions cover these paths; eight fail on the preceding core.
+
+The same 450-file snapshot passed the local compiler matrix:
+
+| Check | Clang Release | Clang ASan/UBSan | MSVC desktop Release |
+| --- | ---: | ---: | ---: |
+| Hardware and host regressions | 1,450/1,450 | 1,450/1,450 | 1,450/1,450 |
+| Prepared default cartridge | 4,637/4,637 | 4,637/4,637 | 4,637/4,637 |
+| Cold and warm boots | 4,637 each | 4,637 each | 4,637 each |
+| Prepared extended cartridge | 6,273/6,273 | 6,273/6,273 | 6,273/6,273 |
+| CTest groups | 9/9 | 9/9 | 14/14 |
+
+All configurations passed the 64 tooling regressions and clang-format 22.1.0.
+The reports verified unchanged source and inputs, and identical cartridge
+instruction and cycle totals across compilers. No sanitizer diagnostics were
+found. The prepared cartridges retain the
+[documented fixture corrections](cartridge-fixtures.md).
+
+The original extended cartridge completed on both the preceding and corrected
+cores with the same 13 failures: 11 base and two timing cases. Their failure
+blocks matched exactly, as did 358,173,663 instructions and 793,786,086 CPU cycles.
+Original-image acceptance remains open in #5 and #39.
+
+Super Mario 64 completed a 2,077-field title replay and two 6,000-field gameplay
+sequences. All guest execution observations, video hashes, retained framebuffers,
+and EEPROM files matched the preceding core. The title audio also matched
+exactly. The outdoor comparison retained all 3,192,502 raw DMA samples with
+identical values and timestamps. Both gameplay sequences had 230 nonzero idle
+samples, each matching the discharge equation. Reconstructing the prior zero-idle
+stream reproduced its per-field audio hashes and complete PCM file, and an
+independent resampler reproduced the corrected PCM. The title and outdoor
+captures were inspected.
+
+Ordinary Clang Release with IPO completed the title, outdoor, and holdout runs
+in 57.372, 127.586, and 117.689 seconds, respectively. These were unprofiled
+builds; the measurements do not establish a performance improvement. No replay
+reported an audio-timeline discontinuity, CPU freeze, or PIF failure.
+
+A separate MSVC Release desktop run completed 60.066 seconds with 1,712 VI fields
+and 1,626 presentations. Its capture was inspected and its EEPROM was retained.
+The run recorded 632 audio underruns, zero host-buffer drops, and 21 dropped
+frames at the device audio queue. Full-speed playback and normal audible output
+remain open in #48 and #47. Independently captured analog audio waveforms remain
+part of #25.
+
+Reports, original-cartridge comparisons, audio event traces, and inspected
+captures are retained under `.work/validation/accuracy-continuation-20260924/`.
+This results record was added after validation; implementation and test files
+were unchanged.
+
 ## Profile-guided core and host execution (2026-09-24)
 
 A fresh Clang 21.1.5 profile used the 1,439 local hardware tests and a 6,000-field

@@ -4,6 +4,7 @@
 #include "cupid/cartridge/rtc.hpp"
 #include "cupid/cic.hpp"
 #include "cupid/rcp/audio.hpp"
+#include "cupid/rcp/audio_dac.hpp"
 #include "cupid/rcp/controller.hpp"
 #include "cupid/rcp/gamecube.hpp"
 #include "cupid/rcp/joybus.hpp"
@@ -168,6 +169,7 @@ class Bus {
     u64 ai_counter_{};
     u64 ai_clock_rate_{};
     u64 ai_clock_period_{};
+    AudioDac ai_dac_;
     u32 ai_rate_numerator_{44100};
     u32 ai_rate_denominator_{1};
     bool ai_clock_started_{};
@@ -267,6 +269,7 @@ class Bus {
     void write_ai(u32 offset, u32 value);
     void tick_ai(u64 rcp_cycles);
     void sample_ai();
+    void skip_ai_idle_periods();
     void reset_ai_clock();
     void latch_ai_period();
     [[nodiscard]] u32 read_pi(u32 offset) const;

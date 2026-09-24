@@ -53,6 +53,20 @@ waits until the enclosing device boundary, including SP work in CPU-driven
 advances, has finished. A transfer started by the callback begins at that clock.
 Retiring a zero-length buffer alone does not deliver a sample.
 
+The timed `AudioSample` output also reports idle DAC boundaries. An empty FIFO,
+disabled DMA, or retirement of a zero-length buffer discharges the last stereo
+sample with a 3 ms exponential time constant. A new DMA sample replaces that
+held value immediately. Idle output keeps `from_dma` false and does not invoke
+the consumed-sample callback or read RDRAM.
+
+Discharge duration follows the interval already latched by the oscillator,
+including the initial 44,100 Hz clock and later divider changes. The device
+accumulates that duration in integer clock units even while idle periods advance
+in bulk without an output observer. Attaching an observer therefore cannot
+restart the decay. Reset clears both channels and their elapsed discharge time.
+The timed API truncates the resulting amplitude toward zero to signed 16-bit PCM;
+observing a sample does not quantize the retained charge used by later samples.
+
 If a video callback queues audio exactly at a DAC boundary, the new buffer joins
 the following interval. It cannot supply the sample already consumed at that
 clock. Divider writes during output delivery at a DAC boundary select the next
@@ -90,6 +104,12 @@ memory, FIFO retirement, bank clocks, and both regional sample deadlines. A
 shortened backing allocation also verifies that an incomplete word returns zero
 without exposing a partial stereo sample.
 
+`test_ai_dac.cpp` checks literal stereo decay samples in both regions, disabled
+DMA and resumption, divider latching, the default clock, zero-length retirement,
+late observers after bulk and single-cycle advances, reset, and prolonged idle.
+It also checks that idle output leaves RDRAM access clocks, FIFO length, and the
+consumed-sample callback unchanged.
+
 `test_ai_conformance.cpp` adds independently specified raw RDRAM/register
 fixtures with literal signed samples and RCP timestamps. The fixture inputs,
 source documents, hashes, exact comparisons, and remaining limits are recorded
@@ -100,7 +120,9 @@ describes selecting internal divisors and returning the resulting frequency.
 The extreme divider tests here exercise register arithmetic; they do not establish
 valid analog output at every possible register value.
 
-BITRATE is stored but its serial-clock effects are not modeled. Empty-FIFO output
-and analog decay are also outside the sample callback model. AI fetches do not
-yet arbitrate shared RDRAM bandwidth. Hardware sample captures and those timing
-paths remain part of issue #25.
+BITRATE is stored but its serial-clock effects are not modeled. The discharge
+envelope is an output model; the signed 16-bit callback cannot represent its
+sub-LSB tail. Independently captured hardware waveforms are still needed to
+verify the analog response. AI fetches do not yet arbitrate shared RDRAM
+bandwidth. Hardware sample captures and those timing paths remain part of issue
+#25.
