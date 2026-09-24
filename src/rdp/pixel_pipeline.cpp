@@ -5,7 +5,7 @@
 #include <bit>
 
 namespace cupid {
-void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
+void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
                             RdpDepth depth, const RdpDepthResult* pre_tested) {
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
@@ -18,14 +18,20 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpC
     const unsigned dither_y = scissor_field_enabled_ ? y >> 1U : y;
     const auto dither = rdp_dither_coefficients(other_modes_, x, dither_y, sample);
     const unsigned alpha_dither = dither[3];
-    inputs.noise.fill(rdp_combiner_noise(sample));
-    if (first_noise && last_noise) {
-        sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
-        inputs.noise[1] = rdp_combiner_noise(sample);
-    }
-    const auto combined =
-        rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
-                             static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+    const auto combined = [&] {
+        if (first_noise || last_noise) {
+            RdpColorInputs noise_inputs = inputs;
+            noise_inputs.noise.fill(rdp_combiner_noise(sample));
+            if (first_noise && last_noise) {
+                sample = rdp_pixel_noise(primitive_sequence_ + 11U, x + 1023U, y + 7U);
+                noise_inputs.noise[1] = rdp_combiner_noise(sample);
+            }
+            return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, noise_inputs,
+                                        static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+        }
+        return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
+                                    static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+    }();
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     if (antialias ? combined.coverage == 0U : (coverage_mask & 1U) == 0U)
         return;

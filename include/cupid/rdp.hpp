@@ -119,7 +119,7 @@ class Rdp {
     [[nodiscard]] RdpColorInputs sample_color_textures(const RdpTextureCoordinates& coordinates,
                                                        unsigned tile, unsigned inputs,
                                                        unsigned maximum_level = 0) const;
-    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, RdpColorInputs inputs,
+    void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
                            RdpDepth depth, const RdpDepthResult* pre_tested = nullptr);
     [[nodiscard]] u32 framebuffer_address(u32 base, unsigned bytes, u32 pixel) const;
     [[nodiscard]] RdpColor read_framebuffer_color(u32 address) const;

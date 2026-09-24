@@ -71,11 +71,12 @@ struct RdpCombinerPlan {
 [[nodiscard]] RdpColor rdp_unpack_color(u32 value);
 [[nodiscard]] RdpCombinerPlan rdp_prepare_combiner(const RdpColorState& state);
 [[nodiscard]] unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles);
-[[nodiscard]] RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs,
-                                           unsigned coverage, unsigned alpha_dither);
+[[nodiscard]] RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes,
+                                           const RdpColorInputs& inputs, unsigned coverage,
+                                           unsigned alpha_dither);
 [[nodiscard]] RdpCombinedPixel rdp_combine_prepared(const RdpColorState& state, const RdpCombinerPlan& plan,
-                                                    u64 modes, RdpColorInputs inputs, unsigned coverage,
-                                                    unsigned alpha_dither);
+                                                    u64 modes, const RdpColorInputs& inputs,
+                                                    unsigned coverage, unsigned alpha_dither);
 [[nodiscard]] u8 rdp_blend_divide(unsigned numerator, unsigned denominator);
 [[nodiscard]] RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel,
                                  const RdpColor& memory, unsigned shade_alpha, bool blend_enabled,

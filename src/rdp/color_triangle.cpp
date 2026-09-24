@@ -30,7 +30,8 @@ void Rdp::color_triangle() {
             attributes[first + i] = {component(0, i), component(8, i), component(32, i), component(40, i)};
         offset += 64;
     };
-    if ((opcode & 4U) != 0)
+    const bool shaded = (opcode & 4U) != 0;
+    if (shaded)
         load_group(0, 4);
     if ((opcode & 2U) != 0)
         load_group(4, 3);
@@ -68,8 +69,16 @@ void Rdp::color_triangle() {
                 continue;
             const auto origin = rdp_triangle_origin(geometry, y);
             std::array<u32, 8> base{};
-            for (unsigned i = 0; i < base.size(); ++i)
-                base[i] = rdp_varying_base(attributes[i], origin);
+            if (shaded) {
+                for (unsigned i = 0; i < 4; ++i)
+                    base[i] = rdp_varying_base(attributes[i], origin);
+            }
+            if (texture_inputs != 0) {
+                for (unsigned i = 4; i < 7; ++i)
+                    base[i] = rdp_varying_base(attributes[i], origin);
+            }
+            if (depth_value_needed)
+                base[7] = rdp_varying_base(attributes[7], origin);
             const auto divide = [&](const std::array<s16, 3>& stw, bool& overflow) {
                 return perspective ? rdp_perspective_point(stw[0], stw[1], stw[2], overflow)
                                    : RdpTexturePoint{stw[0], stw[1]};
@@ -152,8 +161,10 @@ void Rdp::color_triangle() {
                     inputs = sample_color_textures({point, next_x, next_y, next_pixel, overflow}, tile,
                                                    texture_inputs, maximum_level);
                 }
-                for (unsigned i = 0; i < inputs.shade.size(); ++i)
-                    inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
+                if (shaded) {
+                    for (unsigned i = 0; i < inputs.shade.size(); ++i)
+                        inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
+                }
                 write_color_pixel(x, y, coverage, inputs, depth, early_depth_test ? &tested : nullptr);
             }
         }
