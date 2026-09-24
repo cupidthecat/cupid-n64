@@ -318,6 +318,7 @@ class Bus {
     void tick_flash(u64 cycles);
     void emit_isviewer();
     [[nodiscard]] u8 rdp_source_byte(u32 address, bool dmem) const;
+    [[nodiscard]] u64 rdp_source_word(u32 address, bool dmem) const;
 };
 
 } // namespace cupid

@@ -503,7 +503,17 @@ void Bus::process_pif_control() {
 u8 Bus::rdp_source_byte(u32 address, bool dmem) const {
     if (dmem)
         return system_.rsp.memory.internal_read(address & 0xfffU);
-    return read_ram_byte(address);
+    return static_cast<u8>(memory.read(address, 1));
+}
+
+u64 Bus::rdp_source_word(u32 address, bool dmem) const {
+    if (dmem) {
+        u64 value = 0;
+        for (unsigned byte = 0; byte < 8; ++byte)
+            value = (value << 8U) | system_.rsp.memory.internal_read((address + byte) & 0xfffU);
+        return value;
+    }
+    return memory.read(address, 8);
 }
 
 } // namespace cupid

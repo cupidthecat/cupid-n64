@@ -111,7 +111,9 @@ class Rdp {
     void halt_commands();
     [[nodiscard]] u8 command_byte(u32 address) const;
     [[nodiscard]] u64 command_word(u32 address) const;
-    [[nodiscard]] u64 buffered_word(unsigned offset) const;
+    [[nodiscard]] u64 buffered_word(unsigned offset) const noexcept {
+        return read_be64(command_buffer_.data() + offset);
+    }
     [[nodiscard]] unsigned command_length(u8 opcode) const;
     void execute(u8 opcode);
     void fill_rectangle(u64 command);
