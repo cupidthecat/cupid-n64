@@ -63,7 +63,10 @@ masking and quotient bits without repeating the eight divider stages.
 Full-alpha rejection and disabled blending select the first color directly.
 Color-on-coverage selects the second color until accumulated coverage wraps.
 Framebuffer RGB remains available when image reads are disabled; that mode
-replaces the memory coverage with seven. RGBA16 reads retain five-bit channel
+replaces the memory coverage with seven and memory alpha with 224. A deferred
+framebuffer read still runs when either first-cycle RGB selector or the final
+pixel-color selector consumes memory. The first blend cycle can also consume
+the fixed memory alpha when no RGB read is needed. RGBA16 reads retain five-bit channel
 precision without bit replication. The [depth stage](rdp-depth.md) controls
 blend enable and the pixel/memory alpha shifts from coverage and depth deltas.
 
@@ -149,6 +152,9 @@ texture swapping, and constants changed between draws.
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, keyed alpha rejection/depth ordering, keyed blending,
 two-cycle key comparison, and dither thresholds.
+`tests/rdp/test_framebuffer_read_dependencies.cpp` checks framebuffer RGB
+selection with blending disabled, both first-cycle RGB selectors, final-cycle
+memory selection, and fixed memory alpha with image reads disabled.
 `tests/rdp/test_noise.cpp` and `tests/rdp/test_pixel_noise.cpp` check
 noise quantization, selector combinations, separate cycle inputs, per-channel
 dithering, saturation, alpha rejection, unchanged depth/hidden bits, clipping,

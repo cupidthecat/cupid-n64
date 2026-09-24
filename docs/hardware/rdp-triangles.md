@@ -44,7 +44,9 @@ The divider normalizes W and prepares its reciprocal once for each S/T pair.
 Triangle drawing computes horizontal and vertical neighbors when LOD consumes
 them. One-cycle texel-1 also requires the horizontal neighbor and, where
 applicable, next-row lookahead. These choices depend on the draw's active texture
-inputs and retain the same overflow accumulation for LOD.
+inputs. LOD combines overflow from the current pixel and its required neighbors.
+A reused horizontal coordinate carries only its own overflow, so a preceding
+pixel's invalid W cannot keep later valid pixels at the farthest mipmap.
 
 One-cycle texel-1 reads ahead in the major-edge direction. At the end of a
 long span with a valid next row, it uses that row's initial texture attributes.
@@ -58,7 +60,7 @@ bit zero is set (including fully covered interior pixels), the subpixel centroid
 offset is zero, bypassing derivative adjustment. Consecutive pixels along a span reuse
 the forward texture perspective division calculated for the preceding pixel's
 horizontal neighbor. When depth comparison is active without destination-image
-reads or alpha-modulated coverage, depth testing rejects occluded pixels before
+reads, alpha comparison, or alpha-modulated coverage, depth testing rejects occluded pixels before
 evaluating texture samples, combiner inputs, or color memory. Shading and combiner
 inputs pass by reference through the pixel pipeline, avoiding redundant copies except
 when two-cycle texel swapping or active combiner noise requires an updated input state.
@@ -84,6 +86,9 @@ overflow regions, gradient normalization, and divider saturation.
 either axis, and paired-versus-separate division for every positive W value.
 `test_triangle_texture_needs.cpp` checks which neighbors reach LOD and texel-1,
 the next-row boundary, and RI bank state and clocks through real commands.
+`test_triangle_lod_recovery.cpp` checks that both span directions recover the
+base texture level after a nonpositive W, while preserving the initial distant
+pixel and the exclusive right edge.
 
 The unmodified experimental triangle fixtures have conflicting color packing
 and coverage expectations. The documented preparation corrects those fixtures
