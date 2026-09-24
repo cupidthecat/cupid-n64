@@ -46,7 +46,7 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
     const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
 
-    RdpColor memory{};
+    RdpColor memory{0, 0, 0, 224};
     unsigned old_coverage = 7U;
     if (image_read) {
         memory = read_framebuffer_color(address);
@@ -65,9 +65,14 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
 
     const bool color_on_coverage = (other_modes_ & (1ULL << 7U)) != 0 && !tested.coverage_wrap;
     const unsigned coverage_dest = (other_modes_ >> 8U) & 3U;
+    const bool first_cycle_reads_memory_rgb =
+        two_cycles && (((other_modes_ >> 30U) & 3U) == 1U || ((other_modes_ >> 22U) & 3U) == 1U);
+    const unsigned final_pixel_shift = two_cycles ? 28U : 30U;
+    const bool final_cycle_reads_memory_rgb = ((other_modes_ >> final_pixel_shift) & 3U) == 1U;
     const bool needs_memory =
-        !image_read && (tested.blend_enabled || color_on_coverage || coverage_dest == 1U ||
-                        (coverage_dest == 0U && tested.blend_enabled));
+        !image_read &&
+        (tested.blend_enabled || first_cycle_reads_memory_rgb || final_cycle_reads_memory_rgb ||
+         color_on_coverage || coverage_dest == 1U || (coverage_dest == 0U && tested.blend_enabled));
     if (needs_memory) {
         memory = read_framebuffer_color(address);
         old_coverage = static_cast<unsigned>(memory[3]) >> 5U;

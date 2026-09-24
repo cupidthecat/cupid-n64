@@ -49,8 +49,10 @@ void Rdp::color_triangle() {
     const bool depth_value_needed = (other_modes_ & 0x30U) != 0;
     const bool compare_depth = (other_modes_ & (1ULL << 4U)) != 0;
     const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
+    const bool alpha_compare = (other_modes_ & 1U) != 0;
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
-    const bool early_depth_test = compare_depth && !image_read && (other_modes_ & (1ULL << 12U)) == 0;
+    const bool early_depth_test =
+        compare_depth && !image_read && !alpha_compare && (other_modes_ & (1ULL << 12U)) == 0;
     unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
     if ((other_modes_ & (1ULL << 48U)) != 0)
         texture_inputs |= 4U;
@@ -149,10 +151,12 @@ void Rdp::color_triangle() {
                     RdpTexturePoint next_y{};
                     RdpTexturePoint next_pixel{};
                     if (lod_needed || one_cycle_texel1_needed) {
-                        next_x = texture_point(dx + direction, false, overflow);
+                        bool next_overflow = false;
+                        next_x = texture_point(dx + direction, false, next_overflow);
                         cached_next_x = next_x;
-                        cached_overflow = overflow;
+                        cached_overflow = next_overflow;
                         cached_next_dx = dx + direction;
+                        overflow = overflow || next_overflow;
                     }
                     if (lod_needed)
                         next_y = texture_point(dx, true, overflow);

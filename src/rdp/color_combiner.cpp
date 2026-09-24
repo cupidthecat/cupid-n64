@@ -451,8 +451,8 @@ unsigned final_alpha(s32 value, u64 modes, unsigned coverage, unsigned dither, b
 }
 
 template <typename Cycle>
-RdpCombinedPixel combine_impl(const RdpColorState& state, u64 modes, const RdpColorInputs& inputs,
-                              unsigned coverage, unsigned alpha_dither, Cycle&& cycle) {
+RdpCombinedPixel combine_impl(const RdpColorState& state, u64 modes, RdpColorInputs inputs, unsigned coverage,
+                              unsigned alpha_dither, Cycle&& cycle) {
     RdpColor combined{};
     unsigned test_alpha = 0;
     const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
@@ -463,12 +463,9 @@ RdpCombinedPixel combine_impl(const RdpColorState& state, u64 modes, const RdpCo
         combined = result.color;
         const unsigned key = key_enabled ? key_alpha(state, result.key_value) : 0;
         test_alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled, key);
-        RdpColorInputs cycle1_inputs = inputs;
-        std::swap(cycle1_inputs.texel0, cycle1_inputs.texel1);
-        result = cycle(cycle1_inputs, combined, 1);
-    } else {
-        result = cycle(inputs, combined, 1);
+        std::swap(inputs.texel0, inputs.texel1);
     }
+    result = cycle(inputs, combined, 1);
     combined = result.color;
     const unsigned key = key_enabled ? key_alpha(state, result.key_value) : 0;
     const unsigned alpha = final_alpha(combined[3], modes, coverage, alpha_dither, key_enabled, key);
@@ -540,8 +537,8 @@ unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles) {
     return result;
 }
 
-RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, const RdpColorInputs& inputs,
-                             unsigned coverage, unsigned alpha_dither) {
+RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs, unsigned coverage,
+                             unsigned alpha_dither) {
     return combine_impl(state, modes, inputs, coverage, alpha_dither,
                         [&](const RdpColorInputs& cycle_inputs, const RdpColor& combined, unsigned cycle) {
                             return evaluate_cycle(resolve_raw_terms(state, cycle_inputs, combined, cycle));
@@ -549,8 +546,7 @@ RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, const RdpCol
 }
 
 RdpCombinedPixel rdp_combine_prepared(const RdpColorState& state, const RdpCombinerPlan& plan, u64 modes,
-                                      const RdpColorInputs& inputs, unsigned coverage,
-                                      unsigned alpha_dither) {
+                                      RdpColorInputs inputs, unsigned coverage, unsigned alpha_dither) {
     const bool key_enabled = (modes & (1ULL << 40U)) != 0;
     return combine_impl(state, modes, inputs, coverage, alpha_dither,
                         [&](const RdpColorInputs& cycle_inputs, const RdpColor& combined, unsigned cycle) {
