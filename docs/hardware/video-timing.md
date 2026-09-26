@@ -77,8 +77,9 @@ fraction of the line that has elapsed.
 `src/vi/fetch.cpp` computes the fetch address and interval. Each fetch has a
 deadline in the RCP event schedule and opens its framebuffer row when that
 deadline arrives. A horizontal boundary ends the current line's schedule and
-starts the next one. Register writes that change the framebuffer source or
-format rebuild the schedule; blanking stops it. The fill leaves the framebuffer
+starts the next one. Source-address writes take effect at the next fetch without
+moving its deadline. A pixel-format or width change rebuilds the schedule;
+blanking stops it. The fill leaves the framebuffer
 row open in its 1 MiB bank, so an uncached CPU read of a different row in that bank
 pays the row-open wait described in [CPU timing](cpu-timing.md#uncached-rdram-reads).
 A read in another bank, or of the row VI is reading, does not.
@@ -90,4 +91,5 @@ measured; the model does not charge VI transfers against CPU or DMA bus time.
 Updated measurements after line-duration latching are recorded in the
 [VI timing results](../testing/vi-timing-results.md). `tests/cpu/test_rdram_rows.cpp`
 covers the same-bank, other-bank, same-row, interval, disabled-type, bank
-switch, line-boundary, and bulk versus single-cycle cases.
+switch, unchanged fetch deadlines across unrelated register writes,
+line-boundary, and bulk versus single-cycle cases.

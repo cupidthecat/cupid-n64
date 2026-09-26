@@ -7,10 +7,12 @@ using namespace cupid;
 constexpr u32 ViControl = 0x04400000;
 constexpr u32 ViOrigin = 0x04400004;
 constexpr u32 ViWidth = 0x04400008;
+constexpr u32 ViVSync = 0x04400018;
 constexpr u32 ViHSync = 0x0440001c;
 constexpr u32 ViVVideo = 0x04400028;
 constexpr u32 ViYScale = 0x04400034;
 constexpr u32 Refresh = 0x04700010;
+constexpr u32 RiSelect = 0x0470000c;
 constexpr u32 BankStatus = 0x0470001c;
 
 // LW v0, 0(at) from a program line in bank 0; the operand address selects the bank under test.
@@ -212,6 +214,36 @@ TEST(cpu_rdram_vi_fetch_switches_banks_and_stops_when_disabled) {
     CHECK_EQ(system.bus.memory.bank_access_clock(0x410000), second_bank_clock);
     system.bus.tick(1);
     CHECK_EQ(system.bus.memory.bank_access_clock(0x410000), interval * 6);
+}
+
+TEST(cpu_rdram_vi_register_writes_do_not_postpone_the_next_fetch) {
+    for (unsigned variant = 0; variant < 5; ++variant) {
+        System system;
+        prepare(system, 0xffffffffa0300000ULL);
+        enable_framebuffer(system, 0x310000);
+        const u64 interval = fetch_interval(system);
+        system.bus.tick(interval - 1);
+        switch (variant) {
+        case 0:
+            system.bus.write(ViOrigin, 4, 0x410000);
+            break;
+        case 1:
+            system.bus.write(ViVSync, 4, 0x20d);
+            break;
+        case 2:
+            system.bus.write(ViHSync, 4, 3094);
+            break;
+        case 3:
+            system.bus.write(ViControl, 4, 0x102);
+            break;
+        default:
+            system.bus.write(RiSelect, 4, 0x14);
+            break;
+        }
+        system.bus.tick(1);
+        const u32 address = variant == 0 ? 0x410000 : 0x310000;
+        CHECK_EQ(system.bus.memory.bank_access_clock(address), interval);
+    }
 }
 
 TEST(cpu_rdram_uncached_read_completes_across_a_vi_fetch) {

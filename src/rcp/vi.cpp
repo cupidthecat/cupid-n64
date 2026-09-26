@@ -33,8 +33,9 @@ void Bus::write_vi(u32 offset, u32 value) {
         0x0001ffffU, 0x00ffffffU, 0x00000fffU, 0x000003ffU, 0,           0x3fffffffU, 0x000003ffU,
         0x001f0fffU, 0x0fff0fffU, 0x03ff03ffU, 0x03ff03ffU, 0x03ff03ffU, 0x0fff0fffU, 0x0fff0fffU,
     };
+    const u32 previous = vi_[index];
     vi_[index] = value & masks[index];
-    if (index <= 2 || (index >= 5 && index <= 10) || index >= 12)
+    if ((index == 0 && ((previous ^ vi_[index]) & 3U) != 0) || (index == 2 && previous != vi_[index]))
         rebuild_vi_fetch_schedule();
 }
 
