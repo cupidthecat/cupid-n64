@@ -2,6 +2,9 @@
 #include "test.hpp"
 #include "test_system.hpp"
 
+#include <array>
+#include <vector>
+
 namespace {
 using namespace cupid;
 constexpr u32 ViControl = 0x04400000;
@@ -278,4 +281,88 @@ TEST(cpu_rdram_reset_restarts_the_row_clock_with_every_row_closed) {
     CHECK_EQ(system.bus.memory.bank_access_clock(0x300000), 0U);
     system.cpu.step();
     CHECK_EQ(system.cpu.cycles, 32U);
+}
+
+TEST(cpu_rdram_vi_clock_batches_preserve_rows_and_individual_access_times) {
+    for (auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        for (u32 format : {2U, 3U}) {
+            System bulk(standard), single(standard);
+            for (System* system : {&bulk, &single}) {
+                prepare(*system, 0xffffffffa0300000ULL);
+                enable_framebuffer(*system, 0x0ffc00);
+                system->bus.write(ViWidth, 4, 4095);
+                system->bus.write(ViControl, 4, format);
+                system->bus.write(0x0ffc00, 4, 1);
+                system->bus.write(0x100000, 4, 1);
+            }
+            for (u64 elapsed : {7U, 257U, 1700U, 1850U}) {
+                bulk.bus.tick(elapsed);
+                for (u64 cycle = 0; cycle < elapsed; ++cycle)
+                    single.bus.tick(1);
+                CHECK_EQ(bulk.bus.memory.bank_status(), single.bus.memory.bank_status());
+                for (u32 bank = 0; bank < 8; ++bank) {
+                    CHECK_EQ(bulk.bus.memory.bank_access_clock(bank << 20),
+                             single.bus.memory.bank_access_clock(bank << 20));
+                    for (u32 row = 0; row < 512; ++row)
+                        CHECK_EQ(bulk.bus.memory.row_open((bank << 20) | (row << 11)),
+                                 single.bus.memory.row_open((bank << 20) | (row << 11)));
+                }
+            }
+            CHECK(bulk.bus.memory.bank_access_clock(0) != 0);
+            CHECK(bulk.bus.memory.bank_access_clock(0x100000) != 0);
+        }
+    }
+}
+
+TEST(cpu_rdram_vi_clock_batch_discards_fetch_on_refresh_edge) {
+    for (auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        System system(standard);
+        prepare(system, 0xffffffffa0300000ULL);
+        enable_framebuffer(system, 0x310000);
+        system.bus.write(ViWidth, 4, 4095);
+        system.bus.write(ViControl, 4, 3);
+        system.bus.write(Refresh, 4, 0x007e3634U);
+        const u64 line = (3094ULL * 62500000 + system.video_frequency() - 1) / system.video_frequency();
+        system.bus.tick(line);
+        // This width fetches every RCP cycle. The horizontal edge cancels the
+        // old line's coincident fetch, then refresh closes the last accessed row.
+        CHECK_EQ(system.bus.memory.bank_access_clock(0x310000), line - 1);
+        CHECK_EQ(system.bus.memory.bank_status() & 0xffU, 0U);
+        system.bus.tick(1);
+        CHECK_EQ(system.bus.memory.bank_access_clock(0x310000), line + 1);
+    }
+}
+
+TEST(cpu_rdram_vi_clock_batches_precede_audio_dma_and_callbacks) {
+    using Observation = std::array<u64, 4>;
+    System bulk, single;
+    std::array<std::vector<Observation>, 2> observations;
+    for (unsigned index = 0; index < 2; ++index) {
+        auto& system = index == 0 ? bulk : single;
+        prepare(system, 0xffffffffa0300000ULL);
+        enable_framebuffer(system, 0x310000);
+        system.bus.write(ViWidth, 4, 4095);
+        system.bus.write(ViControl, 4, 3);
+        system.bus.write(0x04500010, 4, 29);
+        system.bus.write(0x04500000, 4, 0x300000);
+        system.bus.write(0x04500004, 4, 64);
+        system.bus.write(0x04500008, 4, 1);
+        system.bus.set_audio_sample_output([&, index](const AudioSample& sample) {
+            const auto& memory = (index == 0 ? bulk : single).bus.memory;
+            observations[index].push_back({sample.rcp_cycle, memory.bank_access_clock(0x300000),
+                                           memory.row_open(0x300000), sample.from_dma});
+        });
+    }
+    bulk.bus.tick(900);
+    for (unsigned cycle = 0; cycle < 900; ++cycle)
+        single.bus.tick(1);
+    CHECK(observations[0] == observations[1]);
+    CHECK(observations[0].size() > 16U);
+    for (unsigned index = 0; index < 16; ++index) {
+        CHECK_EQ(observations[0][index][0], observations[0][index][1]);
+        CHECK_EQ(observations[0][index][2], 1U);
+        CHECK_EQ(observations[0][index][3], 1U);
+    }
+    CHECK_EQ(observations[0][16][2], 0U);
+    CHECK_EQ(observations[0][16][3], 0U);
 }

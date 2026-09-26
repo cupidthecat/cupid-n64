@@ -139,6 +139,59 @@ using Observation = std::array<u64, 4>;
 
 } // namespace
 
+TEST(cpu_cached_private_crosses_vi_word_fetches_with_rsp_execution_and_dma) {
+    for (unsigned phase = 0; phase < 3; ++phase) {
+        for (unsigned rsp_mode = 0; rsp_mode < 3; ++rsp_mode) {
+            System batched, stepped;
+            for (System* system : {&batched, &stepped}) {
+                prepare(*system, {immediate(9, 8, 8, 1), immediate(14, 8, 9, 0x55), immediate(4, 0, 0, -3),
+                                  immediate(9, 10, 10, 1)});
+                warm_instruction_cache_line(*system, code);
+                auto& bus = system->bus;
+                bus.write(0x0440001c, 4, 3093);
+                bus.write(0x04400020, 4, (3094U << 16) | 3094U);
+                bus.write(0x04400018, 4, 525);
+                bus.write(0x04400028, 4, (0x25U << 16) | 0x1ffU);
+                bus.write(0x04400034, 4, 1024);
+                bus.write(0x04400008, 4, 4095);
+                bus.write(0x04400004, 4, 0x0ffc00);
+                bus.write(0x04400000, 4, 3);
+                if (rsp_mode != 0) {
+                    bus.write(0x04001000, 4, 0x24210001); // ADDIU r1,r1,1
+                    bus.write(0x04001004, 4, 0x1000fffe); // BEQ zero,zero,0
+                    bus.write(0x04001008, 4, 0xac010000); // SW r1,0(zero)
+                    bus.write(0x04040010, 4, 1);
+                }
+                if (rsp_mode == 2) {
+                    for (u32 offset = 0; offset < 64; offset += 4)
+                        bus.write(0x110000 + offset, 4, 0x12340000U + offset);
+                    bus.write(0x04040000, 4, 0x200);
+                    bus.write(0x04040004, 4, 0x110000);
+                    bus.write(0x04040008, 4, 63);
+                }
+                system->advance(phase);
+            }
+            for (unsigned steps : {17U, 256U, 4096U}) {
+                compare_slice(batched, stepped, steps);
+                CHECK_EQ(batched.bus.memory.bank_status(), stepped.bus.memory.bank_status());
+                for (u32 bank = 0; bank < 8; ++bank) {
+                    CHECK_EQ(batched.bus.memory.bank_access_clock(bank << 20),
+                             stepped.bus.memory.bank_access_clock(bank << 20));
+                    for (u32 row = 0; row < 512; ++row)
+                        CHECK_EQ(batched.bus.memory.row_open((bank << 20) | (row << 11)),
+                                 stepped.bus.memory.row_open((bank << 20) | (row << 11)));
+                }
+            }
+            CHECK(batched.cpu.batched_cached_instructions() > 3000U);
+            if (rsp_mode != 0)
+                CHECK((batched.rsp.memory[0] | batched.rsp.memory[1] | batched.rsp.memory[2] |
+                       batched.rsp.memory[3]) != 0);
+            if (rsp_mode == 2)
+                CHECK_EQ(batched.rsp.memory[0x200], 0x12U);
+        }
+    }
+}
+
 TEST(cpu_cached_private_matches_integer_branch_loops_at_each_system_phase) {
     const auto program = {
         immediate(0x0d, 0, 8, 0),     // ORI t0,zero,0

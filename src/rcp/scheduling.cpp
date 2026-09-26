@@ -26,10 +26,6 @@ u64 Bus::next_event() const {
             include(true, pak.next_tick());
     }
     include(ri_refresh_counter_ != 0, ri_refresh_counter_);
-    if (vi_fetch_deadline_) {
-        const u64 remaining = *vi_fetch_deadline_ > memory.clock() ? *vi_fetch_deadline_ - memory.clock() : 0;
-        include(true, remaining);
-    }
     if (((ri_[4] & 0x20000U) != 0 && memory.bus_active()) || vi_fetch_deadline_ ||
         (video_output_ && (vi_[0] & 3U) != 0))
         include(true, next_vi_line());

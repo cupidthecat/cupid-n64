@@ -62,8 +62,10 @@ the request for that time instead of retrying. `Rdram::row_open` reports whether
 an address matches the bank's open row, and `Bus::rdram_row_miss` combines that
 with the [VI line-buffer fill](video-timing.md#framebuffer-fetches-and-rdram-rows),
 which keeps the framebuffer row open in its bank. The tracking stamps each bank
-with the RCP cycle of its latest access. VI fetch deadlines update the bank
-at their scheduled RCP cycle.
+with the RCP cycle of its latest access. Shared-clock advances apply due VI
+fetches in order with their scheduled timestamps, before the next CPU, RSP, or
+peripheral memory access. The CPU can therefore keep executing cache hits across
+VI word deadlines without losing the row effects or their timing.
 
 Uncached CPU reads add the row-open wait described in
 [CPU timing](cpu-timing.md#row-open-wait). Refresh closes every row, so the first
