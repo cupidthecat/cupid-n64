@@ -78,8 +78,8 @@ fraction of the line that has elapsed.
 deadline in the RCP event schedule and opens its framebuffer row when that
 deadline arrives. A horizontal boundary ends the current line's schedule and
 starts the next one. Register writes that change the framebuffer source or
-format rebuild the schedule; blanking stops it. The fill leaves the framebuffer row open
-in its 1 MiB bank, so an uncached CPU read of a different row in that bank
+format rebuild the schedule; blanking stops it. The fill leaves the framebuffer
+row open in its 1 MiB bank, so an uncached CPU read of a different row in that bank
 pays the row-open wait described in [CPU timing](cpu-timing.md#uncached-rdram-reads).
 A read in another bank, or of the row VI is reading, does not.
 

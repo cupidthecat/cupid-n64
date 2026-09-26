@@ -1,5 +1,31 @@
 # VI line-latching results
 
+## Scheduled framebuffer fetches
+
+The framebuffer row now opens at each VI fetch deadline. The event scheduler
+also stops at the horizontal boundary while fetching, so bulk and single-cycle
+advances agree when a fetch would otherwise cross into the next line. Register
+writes can change the selected bank or stop the fetch schedule. The CPU
+regressions cover those boundaries and a load that spans a VI fetch.
+
+At code revision `f4e319c`, the strict Windows Clang 21.1.5 Release validation
+passed all nine CTest entries and 1,451 hardware and host regressions. The
+default cartridge passed 4,637 cases. The extended cartridge passed all 6,273
+cases, including 1,604 timing cases; stepped and batched results matched. The
+64 validation-tool tests and clang-format 22.1.0 check passed. The local report
+is under `.work/build-vi/validation/`.
+
+A 240-field Super Mario 64 (USA) capture reached the title screen with no CPU
+freeze or PIF failure. It produced 120,352 stereo sample pairs. The last field
+and cumulative audio hashes matched a capture from the preceding implementation.
+On this Windows host, the new capture took 10.74 seconds for about four seconds
+of emulated fields; the paired preceding build took 9.35 seconds. This is about
+22 versus 26 fields per host second and does not meet the full-speed gameplay
+target. The capture does not check audible playback, controls, or saving.
+
+The earlier measurements below describe the line-latching change before VI
+fetches entered the event schedule.
+
 The VI timing change preserves the duration selected at the start of a line.
 Previously, a register write or video-type change could replace that duration
 while the line was in progress. RI refresh now follows the latched boundary.

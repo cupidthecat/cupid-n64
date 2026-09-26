@@ -160,5 +160,5 @@ a dirty row, detailed RAS/minimum-interval timing, multibank overlap, and the
 optimize bit are not modeled. Coalescing requests under unusually short
 horizontal periods is not hardware-validated. Unexpected negative
 acknowledgements caused by deliberately desynchronizing RI and the chips are also
-not modeled. See [CPU timing](cpu-timing.md) for the remaining optional timing
-failures.
+not modeled. See [CPU timing](cpu-timing.md) for the limits of the current
+response model.
