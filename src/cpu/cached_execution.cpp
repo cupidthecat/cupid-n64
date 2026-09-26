@@ -166,9 +166,13 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
         case 0x05:
             direct(CachedDirect::None);
             break;
+        case 0x08:
+            if (rt < 2U)
+                direct(CachedDirect::None);
+            break;
         case 0x10:
         case 0x11:
-            if ((instruction & 63U) <= 3U || (instruction & 63U) >= 0x30U)
+            if ((instruction & 63U) <= 7U || (instruction & 63U) >= 0x30U)
                 direct(CachedDirect::None);
             break;
         default:

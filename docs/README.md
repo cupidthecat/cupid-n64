@@ -41,6 +41,8 @@ results from different test binaries need separate records.
 ## CPU, memory, and system clocks
 
 [CPU timing](hardware/cpu-timing.md) covers instruction costs and memory waits.
+[Cached COP1 results](testing/cached-cop1-results.md) record execution-path
+comparisons, cartridge validation, and a Super Mario 64 introduction replay.
 [Instruction fetch ordering](hardware/instruction-fetch.md) explains fetches,
 exceptions, and cache interactions. Separate guides cover
 [floating-point execution](hardware/floating-point.md), [COP2](hardware/cop2.md),
