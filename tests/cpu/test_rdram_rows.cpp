@@ -173,6 +173,61 @@ TEST(cpu_rdram_vi_fetch_settlement_is_independent_of_tick_size) {
     CHECK_EQ(bulk.cpu.cycles, single.cpu.cycles);
 }
 
+TEST(cpu_rdram_vi_fetch_keeps_its_line_boundary_in_bulk_ticks) {
+    System bulk;
+    System single;
+    for (System* system : {&bulk, &single}) {
+        prepare(*system, 0xffffffffa0300000ULL);
+        enable_framebuffer(*system, 0x310000);
+    }
+    const u64 line = (3094ULL * 62500000 + bulk.video_frequency() - 1) / bulk.video_frequency();
+    const u64 elapsed = line + fetch_interval(bulk) + 8;
+    bulk.bus.tick(elapsed);
+    for (u64 cycle = 0; cycle < elapsed; ++cycle)
+        single.bus.tick(1);
+    CHECK_EQ(bulk.bus.memory.bank_access_clock(0x310000), single.bus.memory.bank_access_clock(0x310000));
+    CHECK_EQ(bulk.bus.read(BankStatus, 4), single.bus.read(BankStatus, 4));
+}
+
+TEST(cpu_rdram_vi_fetch_switches_banks_and_stops_when_disabled) {
+    System system;
+    prepare(system, 0xffffffffa0300000ULL);
+    enable_framebuffer(system, 0x310000);
+    const u64 interval = fetch_interval(system);
+    system.bus.tick(interval);
+    const u64 first_bank_clock = system.bus.memory.bank_access_clock(0x310000);
+    CHECK_EQ(first_bank_clock, interval);
+
+    system.bus.write(ViOrigin, 4, 0x410000);
+    system.bus.tick(interval);
+    const u64 second_bank_clock = system.bus.memory.bank_access_clock(0x410000);
+    CHECK_EQ(second_bank_clock, interval * 2);
+    CHECK_EQ(system.bus.memory.bank_access_clock(0x310000), first_bank_clock);
+
+    system.bus.write(ViControl, 4, 0);
+    system.bus.tick(interval * 3);
+    CHECK_EQ(system.bus.memory.bank_access_clock(0x410000), second_bank_clock);
+    system.bus.write(ViControl, 4, 2);
+    system.bus.tick(interval - 1);
+    CHECK_EQ(system.bus.memory.bank_access_clock(0x410000), second_bank_clock);
+    system.bus.tick(1);
+    CHECK_EQ(system.bus.memory.bank_access_clock(0x410000), interval * 6);
+}
+
+TEST(cpu_rdram_uncached_read_completes_across_a_vi_fetch) {
+    System system;
+    const u32 physical = 0x300000;
+    prepare(system, 0xffffffffa0000000ULL | physical);
+    enable_framebuffer(system, 0x310000);
+    system.bus.write(physical, 4, 0x12345678);
+    system.bus.tick(fetch_interval(system) - 2);
+    CHECK(!system.bus.rdram_row_miss(physical));
+    system.cpu.step();
+    CHECK_EQ(system.cpu.gpr[2], 0x12345678U);
+    CHECK_EQ(system.cpu.cycles, 32U);
+    CHECK_EQ(system.bus.memory.bank_access_clock(physical), system.bus.memory.clock());
+}
+
 TEST(cpu_rdram_reset_restarts_the_row_clock_with_every_row_closed) {
     System system;
     prepare(system, 0xffffffffa0300000ULL);

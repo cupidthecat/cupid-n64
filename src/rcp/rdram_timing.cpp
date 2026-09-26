@@ -17,22 +17,7 @@ bool Bus::rdram_row_miss(u32 physical) const {
     if (physical >= 0x00800000U || !memory.bus_active())
         return false;
     settle_system();
-    settle_vi_fetch(physical);
     return !memory.row_open(physical);
-}
-
-// VI fetches are not scheduled as bus events. Apply the fetches that fell
-// between the bank's previous access and the current request, so the bank
-// holds VI's row when the requester arrives.
-void Bus::settle_vi_fetch(u32 physical) const {
-    const auto fetch = vi_fetch_address();
-    if (!fetch || (*fetch >> 20) != (physical >> 20))
-        return;
-    const u64 interval = vi_fetch_interval();
-    const u64 previous = memory.bank_access_clock(physical);
-    if (memory.clock() / interval == previous / interval)
-        return;
-    memory.open_row(*fetch);
 }
 
 } // namespace cupid

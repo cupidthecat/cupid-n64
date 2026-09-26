@@ -56,6 +56,7 @@ void Bus::reset() {
     vi_counter_ = 0;
     vi_line_period_.reset();
     vi_clock_fraction_ = 0;
+    vi_fetch_deadline_.reset();
     reset_ai_clock();
     ai_address_carry_ = false;
     pi_dma_counter_ = 0;
@@ -405,6 +406,7 @@ void Bus::tick_clocks(u64 rcp_cycles) {
 void Bus::tick_peripherals(u64 rcp_cycles) {
     ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
     tick_vi(rcp_cycles);
+    service_vi_fetch();
     if (rcp_cycles == 0)
         return;
     pif_boot.tick(rcp_cycles);

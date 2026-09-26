@@ -107,8 +107,10 @@ void Bus::write_ri(u32 offset, u32 value) {
         ri_[index] = value;
         if (index == 2)
             ri_current_loaded_ = true;
-        if (index == 2 || index == 3)
+        if (index == 2 || index == 3) {
             memory.set_bus_active(ri_current_loaded_ && ri_[3] == 0x14);
+            rebuild_vi_fetch_schedule();
+        }
     }
 }
 

@@ -45,4 +45,25 @@ u64 Bus::vi_fetch_interval() const {
     return std::max<u64>(1, vi_line_rcp_cycles() * 8 / line_bytes);
 }
 
+void Bus::rebuild_vi_fetch_schedule() {
+    vi_fetch_deadline_.reset();
+    if (vi_fetch_address())
+        vi_fetch_deadline_ = memory.clock() + vi_fetch_interval();
+    schedule_dirty_ = true;
+}
+
+void Bus::service_vi_fetch() {
+    if (!vi_fetch_deadline_ || *vi_fetch_deadline_ > memory.clock())
+        return;
+
+    const auto address = vi_fetch_address();
+    if (!address) {
+        rebuild_vi_fetch_schedule();
+        return;
+    }
+
+    memory.open_row(*address);
+    vi_fetch_deadline_ = memory.clock() + vi_fetch_interval();
+}
+
 } // namespace cupid
