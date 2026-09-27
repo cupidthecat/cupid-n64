@@ -30,11 +30,11 @@ The next instruction computes its address again, including when a load changed
 its own base register. Alignment faults and the external-memory doubleword load
 restriction are checked before a cached access can be accepted.
 
-COP1 register transfers, comparisons, and bounded binary arithmetic can also
+COP1 register transfers, comparisons, and bounded arithmetic can also
 use the slice. CU1 is checked before an FP data-cache access. FP loads and
 stores use the FPU's transfer register mapping, including paired registers when
-FR is clear; FPR0 remains an ordinary floating-point register. CTC1, FP branches,
-conversions, and arithmetic outside the preflight domain continue through
+FR is clear; FPR0 remains an ordinary floating-point register. CTC1, likely FP
+branches, conversions, and arithmetic outside the preflight domain continue through
 `Cpu::step`.
 
 A comparison is accepted only when its live operands and FCSR cannot raise an
@@ -61,6 +61,21 @@ fall back. Multiplication also falls back when its product could select a shorte
 underflow latency that the operand bits do not already determine. Accepted
 operations use the ordinary FPU implementation for results, flags, rounding, and
 latency; preflight includes the same source-register aliases and timing shortcuts.
+
+MOV, ABS, NEG, and SQRT also use the slice. MOV copies the full source payload
+and preserves FCSR causes, including NaN and subnormal bit patterns. ABS and NEG
+accept normal values, zeros, and infinities; NaNs and subnormals use ordinary
+stepping. SQRT requires the inexact exception to be disabled and rejects negative
+nonzero inputs when invalid-operation traps are enabled. Its preflight accounts
+for the short zero, infinity, and negative-input paths and the normal 29-cycle
+single or 58-cycle double operation. Each accepted operation still executes
+through the ordinary FPU implementation.
+
+BC1F and BC1T preserve the condition test, cause clearing, and branch delay slot
+inside a slice. Their likely forms use ordinary stepping so an annulled delay
+slot retains its fetch and exception behavior. Unary and branch regressions
+compare register aliases, exception destinations, cycle budgets, timer interrupts,
+SP DMA, RSP execution, and audio callback timestamps with instruction stepping.
 
 Before entering a slice, the decoder classifies the already-cached successor.
 An unsupported successor keeps the first instruction on ordinary stepping to

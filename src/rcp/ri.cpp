@@ -35,7 +35,7 @@ void Bus::start_rdram_refresh() {
     ri_refresh_counter_ = (ri_[4] >> (dirty ? 8 : 0)) & 0xffU;
 }
 
-void Rdram::track_access(u32 address, bool write) const {
+void Rdram::track_access(u32 address, bool write, u64 access_clock) const {
     if (address >= 0x00800000U) {
         if (address < 0x03f00000U)
             errors_ |= 4U;
@@ -57,20 +57,20 @@ void Rdram::track_access(u32 address, bool write) const {
                 bank.dirty = false;
             }
             bank.dirty |= write;
-            bank.last_access = clock_;
+            bank.last_access = access_clock;
             return;
         }
     }
     auto& bank = banks_[address >> 20];
     if (bank.valid && bank.row == row) {
         bank.dirty |= write;
-        bank.last_access = clock_;
+        bank.last_access = access_clock;
         return;
     }
     bank.row = row;
     bank.valid = true;
     bank.dirty = write;
-    bank.last_access = clock_;
+    bank.last_access = access_clock;
 }
 
 bool Rdram::row_open(u32 address) const {
@@ -107,8 +107,12 @@ void Bus::write_ri(u32 offset, u32 value) {
         ri_[index] = value;
         if (index == 2)
             ri_current_loaded_ = true;
-        if (index == 2 || index == 3)
+        if (index == 2 || index == 3) {
+            const bool previously_active = memory.bus_active();
             memory.set_bus_active(ri_current_loaded_ && ri_[3] == 0x14);
+            if (previously_active != memory.bus_active())
+                rebuild_vi_fetch_schedule();
+        }
     }
 }
 

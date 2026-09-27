@@ -56,6 +56,8 @@ void Bus::reset() {
     vi_counter_ = 0;
     vi_line_period_.reset();
     vi_clock_fraction_ = 0;
+    vi_settled_clock_ = 0;
+    vi_fetch_deadline_.reset();
     reset_ai_clock();
     ai_address_carry_ = false;
     pi_dma_counter_ = 0;
@@ -400,10 +402,12 @@ void Bus::tick_clocks(u64 rcp_cycles) {
         ai_clock_started_ = true;
     rdp.tick(rcp_cycles);
     memory.advance_clock(rcp_cycles);
+    service_vi_fetch();
 }
 
 void Bus::tick_peripherals(u64 rcp_cycles) {
     ri_refresh_counter_ -= std::min(ri_refresh_counter_, rcp_cycles);
+    vi_settled_clock_ = memory.clock();
     tick_vi(rcp_cycles);
     if (rcp_cycles == 0)
         return;

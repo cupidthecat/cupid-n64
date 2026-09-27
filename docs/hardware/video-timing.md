@@ -74,12 +74,16 @@ on the last one. Within the window the source line follows Y_OFFSET and Y_SCALE
 as in [field output](video-scanout.md), and the word address advances with the
 fraction of the line that has elapsed.
 
-These fetches are not scheduled as separate bus events. `src/vi/fetch.cpp`
-computes the current fetch address and interval; `Bus::rdram_row_miss` applies
-the fetches that fell between a bank's previous access and the current request
-before deciding whether the requested row is open. The result is the same for
-bulk and single-cycle clock advances. The fill leaves the framebuffer row open
-in its 1 MiB bank, so an uncached CPU read of a different row in that bank
+`src/vi/fetch.cpp` computes the fetch address and interval. Each fetch has an
+RCP deadline and opens its framebuffer row at that cycle. Shared-clock advances
+apply every due fetch in order, retaining its individual bank timestamp before
+another memory requester runs. These row updates do not end a cached CPU slice;
+they cannot raise an interrupt or deliver output. The scheduler still stops at
+horizontal boundaries. A boundary cancels any coincident fetch from the old line
+and starts the next line's schedule. Source-address writes take effect at the next
+fetch without moving its deadline. A pixel-format or width change rebuilds the
+schedule; blanking stops it. The fill leaves the framebuffer row open in its
+1 MiB bank, so an uncached CPU read of a different row in that bank
 pays the row-open wait described in [CPU timing](cpu-timing.md#uncached-rdram-reads).
 A read in another bank, or of the row VI is reading, does not.
 
@@ -89,5 +93,9 @@ occupancy, and the extra lines fetched in the anti-aliasing modes are not
 measured; the model does not charge VI transfers against CPU or DMA bus time.
 Updated measurements after line-duration latching are recorded in the
 [VI timing results](../testing/vi-timing-results.md). `tests/cpu/test_rdram_rows.cpp`
-covers the same-bank, other-bank, same-row, interval, disabled-type, and
-tick-size cases.
+covers the same-bank, other-bank, same-row, interval, disabled-type, bank
+switch, unchanged fetch deadlines across unrelated register writes,
+line-boundary, and bulk versus single-cycle cases. Clock-batch checks cover both
+regions, both pixel sizes, row and bank crossings, dirty flags, refresh-edge
+ordering, and AI DMA observations. Cached-execution checks compare all row states
+and timestamps with ordinary CPU stepping while the RSP executes and transfers DMA.

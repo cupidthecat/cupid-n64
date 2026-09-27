@@ -206,10 +206,32 @@ void Fpu::write_doubleword(unsigned index, u64 value) {
 unsigned Fpu::nontrapping_arithmetic_cycles(u32 instruction) const {
     const unsigned format = (instruction >> 21U) & 31U;
     const unsigned function = instruction & 63U;
-    if ((instruction >> 26U) != 0x11U || (format != 0x10U && format != 0x11U) || function > 3U ||
-        (control & (1U << 24U)) == 0 || (control & 0x0780U) != 0)
+    if ((instruction >> 26U) != 0x11U || (format != 0x10U && format != 0x11U) || function > 7U)
         return 0;
     const unsigned fs = (instruction >> 11U) & 31U;
+    // MOV transfers all 64 bits without checking the operand or changing FCSR.
+    if (function == 6U)
+        return 1;
+    if (function >= 4U) {
+        const auto unary = [&]<class T>(typename FloatBits<T>::UInt bits) -> unsigned {
+            if (is_nan_bits<T>(bits) || is_subnormal_bits<T>(bits))
+                return 0;
+            if (function != 4U)
+                return 1;
+            // Normal square roots cannot underflow or overflow. Inexact and
+            // negative-input invalid exceptions still need ordinary stepping.
+            if ((control & (1U << 7U)) != 0)
+                return 0;
+            const bool negative = (bits & FloatBits<T>::sign_mask) != 0;
+            if (negative && (bits & ~FloatBits<T>::sign_mask) != 0 && (control & (1U << 11U)) != 0)
+                return 0;
+            return arithmetic_shortcut<T>(bits) || negative ? 2U : sizeof(T) == 4 ? 29U : 58U;
+        };
+        return format == 0x10U ? unary.template operator()<float>(source_word(fs))
+                               : unary.template operator()<double>(source_doubleword(fs));
+    }
+    if ((control & (1U << 24U)) == 0 || (control & 0x0780U) != 0)
+        return 0;
     const unsigned ft = (instruction >> 16U) & 31U;
     const bool invalid_enabled = (control & (1U << 11U)) != 0;
     return format == 0x10U ? nontrapping_binary_cycles<float>(function, source_word(fs),

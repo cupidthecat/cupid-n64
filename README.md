@@ -5,6 +5,10 @@ Cupid-N64 is a Nintendo 64 hardware emulator written in C++20. The SDL3 desktop 
 ## Build
 
 The project requires CMake 3.22 or newer and a C++20 compiler. Compiler warnings are treated as errors by default.
+Native RSP execution on x86-64 also builds the bundled C code generator. Set
+`-DCUPID_NATIVE_RSP=OFF` to use portable block execution; the
+[native RSP guide](docs/hardware/rsp-native.md) describes its timing and memory
+boundaries.
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

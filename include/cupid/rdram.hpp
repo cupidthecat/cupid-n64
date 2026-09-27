@@ -45,6 +45,11 @@ class Rdram {
     void open_row(u32 address) const {
         track_access(address, false);
     }
+    // Scheduled requests retain their individual timestamps when the shared
+    // clock advances over several accesses before another requester runs.
+    void open_row(u32 address, u64 access_clock) const {
+        track_access(address, false, access_clock);
+    }
 
     [[nodiscard]] u32 read_register(u32 address) const;
     void write_register(u32 address, u32 value, unsigned repeat_length = 0);
@@ -132,7 +137,10 @@ class Rdram {
     mutable std::atomic<unsigned> active_scopes_{0};
 
     void refresh_mapping();
-    void track_access(u32 address, bool write) const;
+    void track_access(u32 address, bool write) const {
+        track_access(address, write, clock_);
+    }
+    void track_access(u32 address, bool write, u64 access_clock) const;
     [[nodiscard]] std::optional<unsigned> select_chip(u32 address) const;
     [[nodiscard]] std::optional<u32> translate(u32 address) const;
     [[nodiscard]] u64 read_reliability(u64 value, unsigned chip) const;

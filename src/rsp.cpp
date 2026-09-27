@@ -41,6 +41,8 @@ void Rsp::reset() {
     branch_pending_ = false;
     pipeline_.reset();
     local_blocks_.reset();
+    native_cache_.reset();
+    native_block_instructions_ = 0;
     lead_cycles_ = 0;
     lead_elapsed_ = 0;
 }

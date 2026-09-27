@@ -26,7 +26,7 @@ add_executable(cupid-desktop src/desktop/main.cpp)
 target_link_libraries(cupid-desktop PRIVATE cupid_desktop_frontend)
 
 file(GLOB CUPID_DESKTOP_TEST_SOURCES CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/tests/desktop/test_*.cpp")
-list(FILTER CUPID_DESKTOP_TEST_SOURCES EXCLUDE REGEX "/test_(audio|dialogs)\\.cpp$")
+list(FILTER CUPID_DESKTOP_TEST_SOURCES EXCLUDE REGEX "/test_(audio|audio_demand|dialogs)\\.cpp$")
 add_executable(cupid-desktop-tests tests/main.cpp ${CUPID_DESKTOP_TEST_SOURCES})
 target_include_directories(cupid-desktop-tests PRIVATE tests src/desktop)
 target_link_libraries(cupid-desktop-tests PRIVATE cupid_desktop_frontend)
@@ -47,6 +47,14 @@ set_tests_properties(desktop_audio_failure PROPERTIES
     ENVIRONMENT "SDL_AUDIO_DRIVER=cupid-invalid-audio-driver"
     LABELS "desktop")
 
+# Script device consumption independently of frontend submissions.
+add_executable(cupid-desktop-audio-demand-tests tests/main.cpp tests/desktop/test_audio_demand.cpp src/desktop/audio.cpp)
+target_include_directories(cupid-desktop-audio-demand-tests PRIVATE tests include)
+target_compile_definitions(cupid-desktop-audio-demand-tests PRIVATE SDL_BUILDING_LIBRARY)
+target_link_libraries(cupid-desktop-audio-demand-tests PRIVATE SDL3::Headers Threads::Threads)
+add_test(NAME desktop_audio_demand COMMAND cupid-desktop-audio-demand-tests)
+set_tests_properties(desktop_audio_demand PROPERTIES TIMEOUT 30 LABELS "desktop")
+
 # This executable supplies the two SDL dialog symbols to drive completion on demand.
 add_executable(cupid-desktop-dialog-tests tests/main.cpp tests/desktop/test_dialogs.cpp src/desktop/dialogs.cpp)
 target_include_directories(cupid-desktop-dialog-tests PRIVATE tests include)
@@ -61,7 +69,7 @@ add_test(NAME desktop_runner
         -P ${PROJECT_SOURCE_DIR}/tests/desktop/runner.cmake)
 set_tests_properties(desktop_runner PROPERTIES TIMEOUT 60 LABELS "desktop")
 
-set(CUPID_DESKTOP_EXECUTABLES cupid-desktop cupid-desktop-tests cupid-desktop-audio-tests cupid-desktop-dialog-tests)
+set(CUPID_DESKTOP_EXECUTABLES cupid-desktop cupid-desktop-tests cupid-desktop-audio-tests cupid-desktop-audio-demand-tests cupid-desktop-dialog-tests)
 foreach(target cupid_desktop_frontend ${CUPID_DESKTOP_EXECUTABLES})
     cupid_configure_target(${target})
 endforeach()

@@ -114,7 +114,7 @@ TEST(fpu_nontrapping_arithmetic_preflight_rejects_only_the_bounded_fault_and_var
     CHECK_EQ(preflight(0x10U, 0, one_s, one_s, 0), 0U);
     for (unsigned bit = 7; bit <= 10; ++bit)
         CHECK_EQ(preflight(0x10U, 0, one_s, one_s, fs_mode | (1U << bit)), 0U);
-    CHECK_EQ(preflight(0x10U, 4, one_s, one_s), 0U);
+    CHECK_EQ(preflight(0x10U, 4, one_s, one_s, fs_mode | (1U << 7U)), 0U);
     CHECK_EQ(preflight(0x12U, 0, one_s, one_s), 0U);
 
     CHECK_EQ(preflight(0x10U, 0, 0x7fc00000U, one_s), 0U);
@@ -213,4 +213,46 @@ TEST(fpu_nontrapping_arithmetic_preflight_is_observation_only_and_preserves_host
     CHECK_EQ(system.cpu.instruction_count, instruction_count);
     CHECK_EQ(system.cpu.exception_pending, exception_pending);
     CHECK_EQ(system.cpu.frozen, frozen);
+}
+
+TEST(fpu_unary_preflight_preserves_formats_rounding_and_register_aliases) {
+    for (bool full_registers : {false, true})
+        for (unsigned format : {0x10U, 0x11U})
+            for (unsigned rounding = 0; rounding < 4U; ++rounding)
+                for (unsigned function = 4; function <= 7U; ++function) {
+                    const u64 input = format == 0x10U ? 0x41100000ULL : 0x4022000000000000ULL;
+                    cost_matches_step(format, function, input, 0, rounding, full_registers);
+                    cost_matches_step(format, function, 0, 0, rounding, full_registers);
+                    cost_matches_step(format, function,
+                                      format == 0x10U ? 0x80000000ULL : 0x8000000000000000ULL, 0, rounding,
+                                      full_registers);
+                }
+}
+
+TEST(fpu_unary_preflight_rejects_traps_and_keeps_move_bit_patterns) {
+    for (unsigned format : {0x10U, 0x11U}) {
+        const u64 normal = format == 0x10U ? 0x41100000ULL : 0x4022000000000000ULL;
+        const u64 sign = format == 0x10U ? 0x80000000ULL : 0x8000000000000000ULL;
+        const u64 infinity = format == 0x10U ? 0x7f800000ULL : 0x7ff0000000000000ULL;
+        const u64 nan = infinity | 1U;
+        CHECK_EQ(preflight(format, 4, normal, 0, 0), format == 0x10U ? 29U : 58U);
+        CHECK_EQ(preflight(format, 4, normal | sign, 0, 1U << 11U), 0U);
+        CHECK_EQ(preflight(format, 4, normal | sign, 0, 0), 2U);
+        CHECK_EQ(preflight(format, 4, normal, 0, 1U << 7U), 0U);
+        cost_matches_step(format, 4, normal | sign, 0, 0, true);
+        cost_matches_step(format, 4, infinity, 0, 1U << 11U, true);
+        for (unsigned function : {4U, 5U, 7U}) {
+            CHECK_EQ(preflight(format, function, 1U, 0, 0), 0U);
+            CHECK_EQ(preflight(format, function, nan, 0, 0), 0U);
+            CHECK_EQ(preflight(format, function, nan, 0, 1U << 11U), 0U);
+        }
+        for (u64 bits : {normal, sign, infinity, nan, u64{1}}) {
+            CHECK_EQ(preflight(format, 6, bits, 0, 0x0003ffffU), 1U);
+            cost_matches_step(format, 6, bits, 0, 0x0003ffffU, false);
+        }
+        for (unsigned function : {5U, 7U}) {
+            CHECK_EQ(preflight(format, function, normal | sign, 0, 0x0f80U), 1U);
+            cost_matches_step(format, function, infinity | sign, 0, 0x0f80U, true);
+        }
+    }
 }

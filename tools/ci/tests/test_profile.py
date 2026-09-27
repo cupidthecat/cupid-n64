@@ -201,6 +201,22 @@ class ProfilePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"new profiled source: include/cupid/new\.hpp"):
             self.verify(manifest)
 
+    def test_native_codegen_dependency_changes_invalidate_profile(self):
+        name = "third_party/sljit/sljit_src/sljitLir.c"
+        self.write(name, "int emit_code(void) { return 1; }\n")
+        manifest = self.manifest()
+        self.write(name, "int emit_code(void) { return 2; }\n")
+        with self.assertRaisesRegex(ValueError, r"changed profiled source: third_party/sljit/sljit_src/sljitLir\.c"):
+            self.verify(manifest)
+
+    def test_native_codegen_header_changes_invalidate_profile(self):
+        name = "third_party/sljit/sljit_src/sljitConfig.h"
+        self.write(name, "#define CODEGEN_SETTING 1\n")
+        manifest = self.manifest()
+        self.write(name, "#define CODEGEN_SETTING 2\n")
+        with self.assertRaisesRegex(ValueError, r"changed profiled source: third_party/sljit/sljit_src/sljitConfig\.h"):
+            self.verify(manifest)
+
     def test_removed_profiled_header_rejected(self):
         manifest = self.manifest()
         (self.root / "src/rcp/detail.hpp").unlink()

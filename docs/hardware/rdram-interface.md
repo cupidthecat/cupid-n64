@@ -62,7 +62,10 @@ the request for that time instead of retrying. `Rdram::row_open` reports whether
 an address matches the bank's open row, and `Bus::rdram_row_miss` combines that
 with the [VI line-buffer fill](video-timing.md#framebuffer-fetches-and-rdram-rows),
 which keeps the framebuffer row open in its bank. The tracking stamps each bank
-with the RCP cycle of its latest access so the fill can be applied lazily.
+with the RCP cycle of its latest access. Shared-clock advances apply due VI
+fetches in order with their scheduled timestamps, before the next CPU, RSP, or
+peripheral memory access. The CPU can therefore keep executing cache hits across
+VI word deadlines without losing the row effects or their timing.
 
 Uncached CPU reads add the row-open wait described in
 [CPU timing](cpu-timing.md#row-open-wait). Refresh closes every row, so the first
@@ -150,7 +153,7 @@ in-flight refresh, Compare, and tick-partition coverage for blocking CPU
 transfers.
 
 `tests/cpu/test_rdram_rows.cpp` covers the row-open wait, VI fetches, and
-tick-size independence of the lazily applied fill.
+tick-size independence across fetch and horizontal deadlines.
 
 Shared-memory arbitration remains incomplete: requesters do not wait for each
 other's bus time. Buffered stores and DMA transfers do not yet wait for refresh
@@ -159,5 +162,5 @@ a dirty row, detailed RAS/minimum-interval timing, multibank overlap, and the
 optimize bit are not modeled. Coalescing requests under unusually short
 horizontal periods is not hardware-validated. Unexpected negative
 acknowledgements caused by deliberately desynchronizing RI and the chips are also
-not modeled. See [CPU timing](cpu-timing.md) for the remaining optional timing
-failures.
+not modeled. See [CPU timing](cpu-timing.md) for the limits of the current
+response model.

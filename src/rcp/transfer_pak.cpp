@@ -52,8 +52,6 @@ void TransferPak::write(u16 address, u8 value) {
             reset_ = 0;
         } else if (value == 0xfe) {
             enabled_ = false;
-            if (cartridge_)
-                cartridge_->power();
         }
         return;
     }

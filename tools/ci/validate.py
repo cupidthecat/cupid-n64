@@ -29,6 +29,8 @@ def main():
     parser.add_argument("--generator", default="Ninja")
     parser.add_argument("--config", default="Release")
     parser.add_argument("--sanitizers", action="store_true")
+    parser.add_argument("--no-native-rsp", dest="native_rsp", action="store_false",
+                        help="Validate the portable RSP execution path without native code generation")
     parser.add_argument("--desktop", action="store_true", help="Build and test the SDL desktop application")
     parser.add_argument("--sdl-source", type=Path, help="Use an existing SDL 3.4.16 source directory")
     parser.add_argument("--rom", type=Path)
@@ -66,6 +68,7 @@ def main():
         "build_directory": str(build), "generator": args.generator,
         "configuration": args.config, "requested_compiler": args.compiler,
         "strict": True, "sanitizers": args.sanitizers, "jobs": args.jobs,
+        "native_rsp_requested": args.native_rsp,
         "desktop": args.desktop,
         "asan_options": os.environ.get("ASAN_OPTIONS"),
         "ubsan_options": os.environ.get("UBSAN_OPTIONS"),
@@ -125,6 +128,7 @@ def validate(args, root, build, evidence, caller_cwd=None):
         "cmake", "-S", root, "-B", build, "-G", args.generator,
         f"-DCMAKE_BUILD_TYPE={args.config}", "-DCUPID_STRICT=ON",
         f"-DCUPID_SANITIZERS={'ON' if args.sanitizers else 'OFF'}",
+        f"-DCUPID_NATIVE_RSP={'ON' if args.native_rsp else 'OFF'}",
         f"-DCUPID_DESKTOP={'ON' if args.desktop else 'OFF'}",
         f"-DCUPID_TEST_ROM={args.rom.resolve() if args.rom else ''}",
         f"-DCUPID_PIF_ROM={args.pif.resolve() if args.pif else ''}",

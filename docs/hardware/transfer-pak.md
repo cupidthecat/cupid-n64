@@ -30,6 +30,9 @@ Address bit 15 is ignored inside the adapter:
 
 The corresponding lower-half addresses are mirrors. The adapter starts disabled.
 Writing `0x84` enables it; `0xfe` disables it. Other values leave power unchanged.
+Disabling the adapter preserves the cartridge's mapper registers and RAM-enable
+state. Repeated disable writes have the same effect. The mapper resets when
+cartridge access next transitions from disabled to enabled.
 A disabled-to-enabled transition selects bank three, disables cartridge access,
 and clears the reset state. Identification reads return `0x84` while enabled.
 Reads while disabled return zero, and only power-control writes take effect.

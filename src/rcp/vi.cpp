@@ -33,7 +33,10 @@ void Bus::write_vi(u32 offset, u32 value) {
         0x0001ffffU, 0x00ffffffU, 0x00000fffU, 0x000003ffU, 0,           0x3fffffffU, 0x000003ffU,
         0x001f0fffU, 0x0fff0fffU, 0x03ff03ffU, 0x03ff03ffU, 0x03ff03ffU, 0x0fff0fffU, 0x0fff0fffU,
     };
+    const u32 previous = vi_[index];
     vi_[index] = value & masks[index];
+    if ((index == 0 && ((previous ^ vi_[index]) & 3U) != 0) || (index == 2 && previous != vi_[index]))
+        rebuild_vi_fetch_schedule();
 }
 
 u64 Bus::vi_line_cycles() const {
@@ -78,6 +81,7 @@ void Bus::tick_vi(u64 rcp_cycles) {
         if ((vi_[0] & 3U) == 0) {
             vi_current_ &= 1U;
             vi_line_period_ = vi_line_cycles();
+            rebuild_vi_fetch_schedule();
             continue;
         }
 
@@ -103,6 +107,7 @@ void Bus::tick_vi(u64 rcp_cycles) {
         if (interrupt)
             set_interrupt(3, true);
         vi_line_period_ = vi_line_cycles();
+        rebuild_vi_fetch_schedule();
         if (video_output_ && (vi_current_ >> 1) == (vi_[10] >> 17)) {
             const auto output = video_output_;
             pending_outputs_.emplace_back([this, output, field = scan_video()]() mutable {

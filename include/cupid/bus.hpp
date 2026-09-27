@@ -155,17 +155,20 @@ class Bus {
     bool ri_current_loaded_{};
     u64 ri_refresh_counter_{};
     void start_rdram_refresh();
-    void settle_vi_fetch(u32 physical) const;
+    void rebuild_vi_fetch_schedule();
+    void service_vi_fetch();
     [[nodiscard]] u64 vi_line_cycles() const;
     [[nodiscard]] u64 next_vi_line() const;
     [[nodiscard]] u64 vi_line_rcp_cycles() const;
     [[nodiscard]] u32 vi_line_bytes() const;
-    [[nodiscard]] std::optional<u32> vi_fetch_address() const;
+    [[nodiscard]] std::optional<u32> vi_fetch_address(u64 counter) const;
     [[nodiscard]] u64 vi_fetch_interval() const;
 
     u64 vi_counter_{};
     std::optional<u64> vi_line_period_;
     u64 vi_clock_fraction_{};
+    u64 vi_settled_clock_{};
+    std::optional<u64> vi_fetch_deadline_;
     u64 ai_counter_{};
     u64 ai_clock_rate_{};
     u64 ai_clock_period_{};

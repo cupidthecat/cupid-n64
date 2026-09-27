@@ -514,3 +514,138 @@ TEST(cpu_cached_cop1_preserves_device_and_local_rsp_boundaries) {
     compare_slice(rsp_batched, rsp_stepped, 16);
     CHECK_EQ(rsp_batched.cpu.batched_cached_instructions(), 16U);
 }
+
+TEST(cpu_cached_cop1_unary_keeps_bits_causes_aliases_and_result_interlocks) {
+    for (bool full_registers : {false, true})
+        for (unsigned format : {16U, 17U})
+            for (unsigned rounding = 0; rounding < 4U; ++rounding) {
+                System batched, stepped;
+                for (auto* system : {&batched, &stepped}) {
+                    prepare(*system,
+                            {0U, cop1_format(format, 0, 3, 6, 6), cop1_format(format, 0, 6, 8, 5),
+                             cop1_format(format, 0, 8, 10, 7), cop1_format(format, 0, 10, 12, 5),
+                             cop1_format(format, 0, 12, 14, 4), 0U, 0U},
+                            full_registers);
+                    warm_instruction_cache_line(*system, code);
+                    system->cpu.fpu.registers[full_registers ? 3U : 2U] =
+                        format == 16U ? 0xdeadbeefc1100000ULL : 0xc022000000000000ULL;
+                    system->cpu.fpu.control = 0x0083f000U | rounding;
+                    system->cpu.step();
+                }
+                compare_slice(batched, stepped, 5);
+                CHECK_EQ(batched.cpu.batched_cached_instructions(), 5U);
+                CHECK_EQ(batched.cpu.fpu.registers[6],
+                         format == 16U ? 0xdeadbeefc1100000ULL : 0xc022000000000000ULL);
+                CHECK_EQ(batched.cpu.fpu.read_doubleword(14),
+                         format == 16U ? 0x40400000ULL : 0x4008000000000000ULL);
+                CHECK_EQ(batched.cpu.fpu.control, 0x00800000U | rounding);
+                compare_slice(batched, stepped, 2);
+            }
+}
+
+TEST(cpu_cached_cop1_unary_keeps_cycle_budgets_and_floating_exceptions) {
+    for (unsigned format : {16U, 17U})
+        for (u32 control : {0U, 1U << 7U, 1U << 11U})
+            for (u64 budget : {1ULL, 2ULL, 3ULL, 28ULL, 29ULL, 57ULL, 58ULL, 60ULL}) {
+                System batched, stepped;
+                for (auto* system : {&batched, &stepped}) {
+                    prepare(*system,
+                            {0U, cop1_format(format, 0, 2, 4, 6), cop1_format(format, 0, 4, 6, 4), 0U, 0U});
+                    warm_instruction_cache_line(*system, code);
+                    system->cpu.fpu.registers[2] = format == 16U ? 0xc0000000ULL : 0xc000000000000000ULL;
+                    system->cpu.fpu.control = control;
+                    system->cpu.step();
+                }
+                compare_slice(batched, stepped, 3, budget);
+            }
+}
+
+TEST(cpu_cached_cop1_condition_branches_keep_delay_slots_and_clear_causes) {
+    for (unsigned condition = 0; condition < 2U; ++condition)
+        for (unsigned branch = 0; branch < 4U; ++branch) {
+            System batched, stepped;
+            for (auto* system : {&batched, &stepped}) {
+                prepare(*system, {0U, cop1_transfer(8, branch, 0) | 2U, immediate(0x09, 2, 2, 1),
+                                  immediate(0x09, 3, 3, 1), immediate(0x09, 4, 4, 1), 0U, 0U, 0U});
+                warm_instruction_cache_line(*system, code);
+                system->cpu.fpu.control = (condition << 23U) | 0x0003f07cU;
+                system->cpu.step();
+            }
+            compare_slice(batched, stepped, 2);
+            const bool taken = condition == (branch & 1U);
+            CHECK_EQ(batched.cpu.gpr[2], taken || branch < 2U ? 1U : 0U);
+            CHECK_EQ(batched.cpu.fpu.control, (condition << 23U) | 0x7cU);
+            if (branch < 2U)
+                CHECK_EQ(batched.cpu.batched_cached_instructions(), 2U);
+            compare_slice(batched, stepped, 2);
+        }
+}
+
+TEST(cpu_cached_cop1_unary_fallback_preserves_exception_destinations_and_move_payloads) {
+    for (bool full_registers : {false, true})
+        for (unsigned format : {16U, 17U})
+            for (unsigned function : {4U, 5U, 6U, 7U})
+                for (u64 bits : {0ULL, 1ULL, 0x7fc00001ULL, 0x7ff8000000000001ULL}) {
+                    System batched, stepped;
+                    for (auto* system : {&batched, &stepped}) {
+                        prepare(*system, {0U, cop1_format(format, 0, 3, 7, function), 0U, 0U},
+                                full_registers);
+                        warm_instruction_cache_line(*system, code);
+                        system->cpu.fpu.registers[full_registers ? 3U : 2U] = bits;
+                        system->cpu.fpu.registers[7] = 0x123456789abcdef0ULL;
+                        system->cpu.fpu.control = 0x0003ffffU;
+                        system->cpu.step();
+                    }
+                    compare_slice(batched, stepped, 2);
+                    if (function == 6U) {
+                        CHECK_EQ(batched.cpu.fpu.registers[7], bits);
+                        CHECK_EQ(batched.cpu.fpu.control, 0x0003ffffU);
+                        CHECK_EQ(batched.cpu.batched_cached_instructions(), 2U);
+                    }
+                }
+}
+
+TEST(cpu_cached_cop1_unary_and_branches_keep_rsp_dma_and_output_boundaries) {
+    for (unsigned format : {16U, 17U})
+        for (unsigned phase = 0; phase < 3U; ++phase) {
+            System batched, stepped;
+            std::vector<Observation> first, second;
+            const auto configure = [&](System& system, std::vector<Observation>& output) {
+                prepare(system, {0U, cop1_format(format, 0, 2, 4, 4), cop1_format(format, 0, 4, 6, 6),
+                                 cop1_format(format, 0, 6, 8, 7), cop1_format(format, 0, 8, 10, 5),
+                                 cop1_transfer(8, 0, 0) | 0xfffbU, 0U, 0U});
+                warm_instruction_cache_line(system, code);
+                system.cpu.fpu.registers[2] = format == 16U ? 0x40000000ULL : 0x4000000000000000ULL;
+                system.cpu.fpu.control = 0;
+                system.cpu.step();
+                system.advance(phase);
+                const std::array<u32, 8> rsp_words{0x24210001U, 0xac010080U, 0x24420001U, 0xac020084U,
+                                                   0x40036000U, 0xac030088U, 0x1000fff9U, 0U};
+                for (unsigned index = 0; index < rsp_words.size(); ++index)
+                    write_be32(system.rsp.memory.data() + 0x1000U + index * 4U, rsp_words[index]);
+                system.rsp.write_pc(0);
+                system.rsp.write_register(0x10, 1U);
+                system.rsp.write_register(0x00, 0x300U);
+                system.rsp.write_register(0x04, 0x1000U);
+                system.rsp.write_register(0x08, 31U);
+                short_video(system);
+                system.bus.set_audio_sample_output([&system, &output](const AudioSample& sample) {
+                    output.push_back({sample.rcp_cycle, system.cpu.cycles, system.cpu.instruction_count,
+                                      system.cpu.pc, system.rsp.pc});
+                });
+            };
+            configure(batched, first);
+            configure(stepped, second);
+            compare_slice(batched, stepped, 512);
+            CHECK(!first.empty());
+            CHECK(first == second);
+            CHECK(read_be32(batched.rsp.memory.data() + 0x80U) != 0U);
+            for (auto* system : {&batched, &stepped}) {
+                system->cpu.cp0[11] = static_cast<u32>(system->cpu.cp0[9] + 3U);
+                system->cpu.write_cop0(12, 0x34008001U);
+            }
+            compare_slice(batched, stepped, 8);
+            CHECK((batched.cpu.cp0[13] & 0x8000U) != 0U);
+            CHECK((batched.cpu.cp0[12] & 2U) != 0U);
+        }
+}

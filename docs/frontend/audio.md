@@ -29,10 +29,19 @@ counted in `AudioStatus::dropped_frames`. Queue reporting uses SDL's input-byte
 count, so `queued_frames` remains meaningful even when the host device uses a
 different output format.
 
-Playback waits for a 960-frame, 20 ms prefill. If a running stream drains before
-the next submission, the wrapper records an underrun, pauses the device, and
-returns to the same prefill requirement before playback resumes. This limits
-recovery to queueing policy; it never changes the core or resampler rate.
+Playback starts after a 960-frame, 20 ms prefill. Once running, the device stays
+active when the input queue empties: a completed device read can empty that
+queue while its samples are still playing. Later submissions become available
+to the next device request without an additional prefill pause.
+
+The SDL stream's [get callback](https://wiki.libsdl.org/SDL3/SDL_SetAudioStreamGetCallback)
+records requests that need more input than is
+available. Consecutive short requests count as one underrun episode, ending
+when a request can be satisfied. This reports demand for samples, including
+SDL's resampling requirements; it does not measure the physical device buffer
+or prove that a listener heard a gap. The callback uses atomic state and never
+takes the frontend mutex, so stream locking cannot invert the submission lock.
+Neither shortage detection nor recovery changes the core or resampler rate.
 
 `set_running(false)` pauses playback and clears queued PCM. `clear()` also
 pauses an active stream before discarding queued PCM, which is suitable for
@@ -57,6 +66,10 @@ error.
 
 `cupid-desktop-audio-tests` uses SDL's dummy playback driver for device
 lifecycle, prefill/underrun recovery, queue capacity, volume/mute, clear/pause,
-reopen, and open-failure coverage. A native Windows device-open smoke can be
+reopen, and open-failure coverage. `cupid-desktop-audio-demand-tests` controls
+device consumption explicitly to cover complete and short requests, producer
+polling, pause/clear/close callbacks, moves, and a separate consumer thread.
+Four of its five regressions fail with the preceding playback implementation.
+A native Windows device-open smoke can be
 run separately with `CUPID_AUDIO_NATIVE_SMOKE=1`; it establishes that the
 default device opens, not that audible output was heard.

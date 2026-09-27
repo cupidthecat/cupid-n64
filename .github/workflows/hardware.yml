@@ -42,6 +42,30 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  ordinary:
+    name: Portable RSP execution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install formatter
+        run: |
+          python3 -m venv .work/format
+          .work/format/bin/python -m pip install clang-format==22.1.0
+      - name: Validate without native code generation
+        run: >-
+          python3 tools/ci/validate.py --build-dir build-ordinary --compiler clang++ --jobs 2
+          --no-native-rsp --clang-format .work/format/bin/clang-format
+      - name: Retain validation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ordinary-rsp-validation
+          path: build-ordinary/validation/
+          if-no-files-found: error
+          retention-days: 14
+
   windows:
     name: Windows MSVC
     runs-on: windows-2022
