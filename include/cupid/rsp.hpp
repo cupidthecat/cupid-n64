@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cupid/rsp/memory.hpp"
+#include "cupid/rsp/native.hpp"
 #include "cupid/rsp/pipeline.hpp"
 #include "cupid/types.hpp"
 
@@ -26,12 +27,17 @@ class Rsp {
     [[nodiscard]] u32 read_register(u32 byte_offset);
     void write_register(u32 byte_offset, u32 value);
     void write_pc(u32 value);
+    void set_native_execution(bool enabled);
+    [[nodiscard]] u64 native_block_instructions() const {
+        return native_block_instructions_;
+    }
 
     RspMemory memory{};
     u32 pc{};
 
   private:
     friend class System;
+    friend class RspNativeCode;
     [[nodiscard]] u64 next_dma_event() const;
     [[nodiscard]] bool local_execution_ready() const;
     [[nodiscard]] u64 run_local(u64 maximum_cycles);
@@ -125,6 +131,8 @@ class Rsp {
         unsigned cycles{};
         bool single_issue{};
         bool valid{};
+        std::shared_ptr<const RspNativeCode> native;
+        bool native_attempted{};
     };
     struct LocalBlocks {
         std::unique_ptr<std::array<LocalBlock, 1024>> ptr;
@@ -160,6 +168,9 @@ class Rsp {
         }
     };
     LocalBlocks local_blocks_;
+    RspNativeCache native_cache_;
+    bool native_execution_{true};
+    u64 native_block_instructions_{};
     [[nodiscard]] u64 execute_local_block(u64 revision, u64 maximum_cycles);
     void prepare_local_block(LocalBlock& block, u64 revision);
 
@@ -260,6 +271,7 @@ class Rsp {
     void execute_vector_op(u32 instruction);
     void execute_vector_op_scalar(u32 instruction);
     [[nodiscard]] bool execute_vector_op_sse2(u32 instruction);
+    template <unsigned Function> [[nodiscard]] bool execute_vector_op_known(u32 instruction);
     void execute_vector_load(u32 instruction);
     void execute_vector_store(u32 instruction);
 

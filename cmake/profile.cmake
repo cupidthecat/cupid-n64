@@ -102,7 +102,9 @@ file(GLOB_RECURSE profile_headers CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/include/*.inl"
     "${PROJECT_SOURCE_DIR}/src/*.hpp" "${PROJECT_SOURCE_DIR}/src/*.h"
     "${PROJECT_SOURCE_DIR}/src/*.hh" "${PROJECT_SOURCE_DIR}/src/*.inc"
-    "${PROJECT_SOURCE_DIR}/src/*.inl")
+    "${PROJECT_SOURCE_DIR}/src/*.inl"
+    "${PROJECT_SOURCE_DIR}/third_party/sljit/sljit_src/*.c"
+    "${PROJECT_SOURCE_DIR}/third_party/sljit/sljit_src/*.h")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     ${profile_sources} ${profile_headers} "${PROJECT_SOURCE_DIR}/tools/ci/profile.py" "${CMAKE_CXX_COMPILER}")
 

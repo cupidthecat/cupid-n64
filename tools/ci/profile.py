@@ -58,6 +58,9 @@ def source_files(root: Path) -> list[str]:
     for path in source.rglob("*"):
         if path.is_file() and path.suffix.lower() in HEADER_SUFFIXES and desktop_source not in path.parents:
             files.add(path.relative_to(root).as_posix())
+    for path in (root / "third_party" / "sljit" / "sljit_src").rglob("*"):
+        if path.is_file() and path.suffix.lower() in HEADER_SUFFIXES | {".c"}:
+            files.add(path.relative_to(root).as_posix())
     return sorted(files)
 
 

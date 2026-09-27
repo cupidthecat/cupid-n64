@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## Native RSP blocks and desktop audio demand (2026-09-27)
+
+The [native RSP and audio results](native-rsp-results.md) record the compiled
+microcode path, corrected playback shortage detection, complete local compiler
+and cartridge checks, and a Super Mario 64 replay. The replay preserves video,
+audio, EEPROM, and execution output. Sustained full-speed and audible-playback
+acceptance remain open.
+
 ## PI halfword reads and idle audio DAC output (2026-09-24)
 
 PI reads each cartridge-bound RDRAM halfword as one transaction, including its

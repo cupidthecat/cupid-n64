@@ -106,7 +106,7 @@ TEST(desktop_audio_dummy_device_opens_paused_and_closes_cleanly) {
     CHECK_EQ(closed.queued_frames, std::size_t{0});
 }
 
-TEST(desktop_audio_prefills_before_start_and_recovers_after_underrun) {
+TEST(desktop_audio_prefills_before_start_and_keeps_playing_after_underrun) {
     DummyAudio environment;
     AudioOutput output;
     std::string error;
@@ -121,12 +121,14 @@ TEST(desktop_audio_prefills_before_start_and_recovers_after_underrun) {
     CHECK(output.submit(final_frame, error));
     CHECK(output.status().running);
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    for (unsigned attempt = 0; attempt < 100 && output.status().underruns == 0; ++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    CHECK_EQ(output.status().underruns, std::size_t{1});
+    CHECK(output.status().running);
     CHECK(output.submit(final_frame, error));
     const auto recovered = output.status();
     CHECK_EQ(recovered.underruns, std::size_t{1});
-    CHECK(!recovered.running);
-    CHECK_EQ(recovered.queued_frames, std::size_t{1});
+    CHECK(recovered.running);
 
     const auto refill = silence(AudioOutput::prefill_frames - 1);
     CHECK(output.submit(refill, error));

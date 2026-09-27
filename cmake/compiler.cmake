@@ -1,4 +1,15 @@
 function(cupid_configure_target target)
+    if(TARGET cupid_sljit)
+        get_target_property(target_type ${target} TYPE)
+        if(target_type STREQUAL "EXECUTABLE")
+            add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E make_directory "$<TARGET_FILE_DIR:${target}>/licenses"
+                COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${PROJECT_SOURCE_DIR}/third_party/sljit/LICENSE"
+                    "$<TARGET_FILE_DIR:${target}>/licenses/sljit.txt"
+                VERBATIM)
+        endif()
+    endif()
     if(CUPID_IPO_SUPPORTED)
         set_target_properties(${target} PROPERTIES
             INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE

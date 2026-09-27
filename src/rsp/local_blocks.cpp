@@ -4,6 +4,10 @@ namespace cupid {
 
 void Rsp::prepare_local_block(LocalBlock& block, u64 revision) {
     const auto incoming = pipeline_.snapshot();
+    const auto previous_instructions = block.instructions;
+    const unsigned previous_count = block.count;
+    const bool previous_attempted = block.native_attempted;
+    auto previous_native = std::move(block.native);
     block = {};
     block.incoming = incoming.previous;
     block.single_issue = incoming.single_issue;
@@ -37,6 +41,13 @@ void Rsp::prepare_local_block(LocalBlock& block, u64 revision) {
     block.next_pc = address;
     block.outgoing = pipeline_.snapshot();
     pipeline_.restore(incoming);
+    bool same_instructions = block.count == previous_count;
+    for (unsigned index = 0; same_instructions && index < block.count; ++index)
+        same_instructions = block.instructions[index].word == previous_instructions[index].word;
+    if (same_instructions) {
+        block.native = std::move(previous_native);
+        block.native_attempted = previous_attempted;
+    }
 }
 
 u64 Rsp::execute_local_block(u64 revision, u64 maximum_cycles) {
@@ -50,9 +61,23 @@ u64 Rsp::execute_local_block(u64 revision, u64 maximum_cycles) {
     if (block.count < 4U || block.cycles > maximum_cycles)
         return 0;
 
-    for (unsigned index = 0; index < block.count; ++index) {
-        const auto& instruction = block.instructions[index];
-        execute_decoded(instruction.word, instruction.operation, instruction.operands);
+    if (native_execution_ && RspNativeCode::available() && !block.native_attempted) {
+        std::array<RspNativeInstruction, 16> instructions{};
+        for (unsigned index = 0; index < block.count; ++index)
+            instructions[index] = {block.instructions[index].word, block.instructions[index].operation};
+        auto lookup = native_cache_.lookup(std::span(instructions).first(block.count));
+        block.native = std::move(lookup.code);
+        block.native_attempted = lookup.complete;
+    }
+    if (native_execution_ && block.native) {
+        RspNativeState state{this, gpr_.data(), memory.internal_data()};
+        block.native->execute(state);
+        native_block_instructions_ += block.count;
+    } else {
+        for (unsigned index = 0; index < block.count; ++index) {
+            const auto& instruction = block.instructions[index];
+            execute_decoded(instruction.word, instruction.operation, instruction.operands);
+        }
     }
     gpr_[0] = 0;
     // These instructions cannot observe the PC or enter a shared register handler.
@@ -61,6 +86,10 @@ u64 Rsp::execute_local_block(u64 revision, u64 maximum_cycles) {
     next_pc_ = (pc + 4U) & 0x0ffcU;
     pipeline_.restore(block.outgoing);
     return block.cycles;
+}
+
+void Rsp::set_native_execution(bool enabled) {
+    native_execution_ = enabled;
 }
 
 } // namespace cupid

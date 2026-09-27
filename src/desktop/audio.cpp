@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -31,12 +32,25 @@ struct AudioOutput::Impl {
     bool running_requested{};
     bool running{};
     bool muted{};
-    bool ever_started{};
+    std::atomic<bool> observe_demand{};
+    std::atomic<bool> starved{};
     float gain{1.0F};
     std::size_t dropped_frames{};
-    std::size_t underruns{};
+    std::atomic<std::size_t> underruns{};
     std::string last_error;
     mutable std::mutex mutex;
+
+    static void SDLCALL requested(void* userdata, SDL_AudioStream*, int additional, int total) {
+        auto& self = *static_cast<Impl*>(userdata);
+        // SDL holds its stream lock here. Avoid the frontend mutex and observe
+        // demand before the device consumes the available samples.
+        if (!self.observe_demand.load(std::memory_order_relaxed))
+            return;
+        const bool missing = additional > 0 && total > 0;
+        const bool previously_missing = self.starved.exchange(missing, std::memory_order_relaxed);
+        if (missing && !previously_missing)
+            self.underruns.fetch_add(1, std::memory_order_relaxed);
+    }
 
     ~Impl() {
         destroy_stream();
@@ -61,6 +75,7 @@ struct AudioOutput::Impl {
         if (stream == nullptr)
             return fail("audio output is not open", error);
         if (SDL_GetAudioStreamDevice(stream) == 0) {
+            observe_demand.store(false, std::memory_order_relaxed);
             running = false;
             return fail("audio device is unavailable; call open() to reopen", error);
         }
@@ -76,21 +91,29 @@ struct AudioOutput::Impl {
     }
 
     bool pause(std::string& error) {
-        if (!SDL_PauseAudioStreamDevice(stream))
+        observe_demand.store(false, std::memory_order_relaxed);
+        if (!SDL_PauseAudioStreamDevice(stream)) {
+            observe_demand.store(running, std::memory_order_relaxed);
             return fail_sdl("pause audio device", error);
+        }
+        starved.store(false, std::memory_order_relaxed);
         running = false;
         return true;
     }
 
     bool resume(std::string& error) {
-        if (!SDL_ResumeAudioStreamDevice(stream))
+        starved.store(false, std::memory_order_relaxed);
+        observe_demand.store(true, std::memory_order_relaxed);
+        if (!SDL_ResumeAudioStreamDevice(stream)) {
+            observe_demand.store(false, std::memory_order_relaxed);
             return fail_sdl("resume audio device", error);
+        }
         running = true;
-        ever_started = true;
         return true;
     }
 
     void destroy_stream() {
+        observe_demand.store(false, std::memory_order_relaxed);
         if (stream != nullptr) {
             SDL_DestroyAudioStream(stream);
             stream = nullptr;
@@ -138,7 +161,8 @@ bool AudioOutput::open(std::string& error) {
     input.format = SDL_AUDIO_S16;
     input.channels = static_cast<int>(channels);
     input.freq = static_cast<int>(sample_rate);
-    impl_->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &input, nullptr, nullptr);
+    impl_->stream =
+        SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &input, &Impl::requested, impl_.get());
     if (impl_->stream == nullptr) {
         impl_->release_sdl();
         return impl_->fail_sdl("open default playback device", error);
@@ -152,7 +176,7 @@ bool AudioOutput::open(std::string& error) {
     }
 
     impl_->running = false;
-    impl_->ever_started = false;
+    impl_->starved.store(false, std::memory_order_relaxed);
     impl_->last_error.clear();
     return true;
 }
@@ -172,12 +196,6 @@ bool AudioOutput::submit(std::span<const s16> samples, std::string& error) {
     std::size_t queued = 0;
     if (!impl_->queued_frames(queued, error))
         return false;
-
-    if (impl_->running && impl_->ever_started && queued == 0) {
-        ++impl_->underruns;
-        if (!impl_->pause(error))
-            return false;
-    }
 
     const std::size_t frames = samples.size() / channels;
     const std::size_t room = queued < max_queue_frames ? max_queue_frames - queued : 0;
@@ -234,9 +252,6 @@ bool AudioOutput::set_running(bool running, std::string& error) {
     if (queued >= prefill_frames) {
         if (!impl_->resume(error))
             return false;
-    } else if (impl_->running) {
-        if (!impl_->pause(error))
-            return false;
     }
     impl_->last_error.clear();
     return true;
@@ -268,6 +283,8 @@ void AudioOutput::clear() {
     std::lock_guard lock(impl_->mutex);
     if (impl_->stream == nullptr)
         return;
+    impl_->observe_demand.store(false, std::memory_order_relaxed);
+    impl_->starved.store(false, std::memory_order_relaxed);
     if (impl_->running && !SDL_PauseAudioStreamDevice(impl_->stream))
         impl_->last_error = sdl_error("pause audio device before clearing");
     impl_->running = false;
@@ -282,7 +299,7 @@ void AudioOutput::close() {
     impl_->destroy_stream();
     impl_->release_sdl();
     impl_->running_requested = false;
-    impl_->ever_started = false;
+    impl_->starved.store(false, std::memory_order_relaxed);
 }
 
 AudioStatus AudioOutput::status() const {
@@ -295,7 +312,7 @@ AudioStatus AudioOutput::status() const {
     result.running = impl_->running && result.available;
     result.muted = impl_->muted;
     result.dropped_frames = impl_->dropped_frames;
-    result.underruns = impl_->underruns;
+    result.underruns = impl_->underruns.load(std::memory_order_relaxed);
     result.gain = impl_->gain;
     result.error = impl_->last_error;
     if (impl_->stream != nullptr) {
