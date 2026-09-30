@@ -24,8 +24,12 @@ big-endian DMEM byte order, sign extension, unaligned accesses, and 4 KiB wrappi
 Loads that cross the DMEM boundary use the same wrapped read helpers as portable
 execution. Stores use the existing write helpers so speculative local execution
 can restore every affected DMEM block when another device observes the RSP.
-Compiled vector blocks emit SSE2 instructions for VMUDL, VMUDM, VMUDN, VMUDH,
-VMADH, VSAR, and the six logical operations. Register offsets and element
+Compiled vector blocks emit SSE2 instructions for VMULF, VMULU, VMUDL, VMUDM,
+VMUDN, VMUDH, VMACF, VMACU, VMADL, VMADM, VMADN, VMADH, VSAR, and the six
+logical operations. Fractional products retain the rounding bias and positive
+endpoint. Accumulating operations propagate both low- and middle-slice carries;
+unsigned destinations retain their distinct saturation rules.
+Register offsets and element
 selections are fixed when compiling. Both operands are loaded before an aliased
 destination is written. Mixed signedness, 48-bit accumulator wrapping, carry
 between the middle and high slices, and signed destination saturation follow
@@ -56,7 +60,8 @@ an independent scalar oracle. It checks all 16 element selections, aliased
 inputs and destinations, every vector register, all accumulator slices, and
 unchanged control flags. Repeated products cross the 32-bit saturation and
 48-bit wrapping boundaries. Mixed blocks consume accumulator changes made by
-an ordinary helper. Output stores use an explicit base register so their
+an ordinary VMULQ helper. Input patterns seed nontrivial upper slices and the
+48-bit sign boundary. Output stores use an explicit base register so their
 signed seven-bit displacements stay within range.
 
 `tests/rsp/test_local_blocks.cpp` compares terminal branches with individual

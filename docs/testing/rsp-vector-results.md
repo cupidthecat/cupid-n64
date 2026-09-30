@@ -1,9 +1,14 @@
 # Native RSP vector results
 
-Date: 2026-09-30. Parent revision: `ea7a397e6550e957aa5a303eb2a4c19e7432e4b4`.
+Date: 2026-09-30. Initial parent: `ea7a397e6550e957aa5a303eb2a4c19e7432e4b4`.
+Additional multiply operations were validated after `f99041c`.
 
-Compiled blocks now emit SSE2 instructions for VMUDL, VMUDM, VMUDN, VMUDH,
-VMADH, VSAR, and the six vector logical operations. The
+Compiled blocks now emit SSE2 instructions for VMULF, VMULU, VMUDL, VMUDM,
+VMUDN, VMUDH, VMACF, VMACU, VMADL, VMADM, VMADN, VMADH, VSAR, and the six
+vector logical operations. Fractional products retain rounding and the positive
+endpoint; accumulating operations propagate carries through all three slices.
+Signed middle, unsigned middle, and unsigned low destinations retain their
+distinct saturation rules. The
 [execution guide](../hardware/rsp-native.md) describes register storage, helper
 boundaries, accumulator behavior, and the portable fallback.
 
@@ -21,18 +26,20 @@ both new scalar-oracle cases failed. The fault is absent from production code.
 This establishes that the corrected fixture observes register corruption that
 the original fixture missed.
 
-The new oracle checks all 12 emitted operations, all 16 element selections,
-four register-alias arrangements, and three input patterns. It compares every
+The oracle checks all 19 emitted operations, all 16 element selections,
+four register-alias arrangements, and five input patterns. It compares every
 vector register, each accumulator slice, and all control flags. Repeated
-products cross saturation and 48-bit wrapping boundaries. A mixed block also
-checks accumulator dependencies and temporary-register reuse across C++ calls.
+products cross saturation and 48-bit wrapping boundaries. Seeds include
+nontrivial upper slices and the 48-bit sign boundary. A 16-instruction mixed
+block checks accumulator dependencies and temporary-register reuse across a
+VMULQ helper call.
 
 ## Complete validation
 
-All four configurations passed the same 527-file source snapshot, with hash
-`a7fddd3290d6bf90ccf1a5083fd1ef5311d88536a39c7cc7ad11f56190aa9e60`.
-This results page and its index links were added after that snapshot; tested
-implementation and regression files are unchanged. Source and input integrity
+All four configurations passed the same 528-file source snapshot, with hash
+`e0a3b8737d28ac44e502c97a716c85a82f23732423742eea57791ff9e93f2cae`.
+This results page was updated after that snapshot; tested implementation and
+regression files are unchanged. Source and input integrity
 checks passed in every report.
 
 | Check | Clang Release | Clang portable | Clang ASan/UBSan | MSVC desktop Release |
@@ -52,10 +59,15 @@ original-image acceptance remains open in #5 and #39.
 
 Reports are retained under `.work/reports/`:
 
-- `inline-vectors-native/ef76b3a60e364f17a27ab6580d37e6cb/report.json`
-- `inline-vectors-portable/64f6acf1b30e4fa6922618c277ae3d56/report.json`
-- `inline-vectors-sanitize/ba7fd828eeb14557a0a050fc4d462c72/report.json`
-- `inline-vectors-msvc-desktop/ab423dc4afa049688dd8e09a868ee8a4/report.json`
+- `vector-products-native/d02aea829e9f4403a7820fe8d13fec27/report.json`
+- `vector-products-portable/ec09501a59c141d9bce4940c407f04c1/report.json`
+- `vector-products-sanitize/7756049679424c888489b10db4e5817f/report.json`
+- `vector-products-msvc/52e9ba2c9f904843a8f7cc06f178e559/report.json`
+
+The initial 12-operation implementation also passed all four configurations,
+using the 527-file source snapshot
+`a7fddd3290d6bf90ccf1a5083fd1ef5311d88536a39c7cc7ad11f56190aa9e60`.
+Those reports remain under `inline-vectors-*` in the same report directory.
 
 ## Super Mario 64
 
@@ -68,14 +80,16 @@ hardware accuracy or normal audible playback.
 
 | Replay | Fields | Host time | VI fields per host second |
 | --- | ---: | ---: | ---: |
-| Controller | 3,000 | 66.446 s | 45.2 |
-| Courtyard movement | 7,200 | 190.628 s | 37.8 |
+| Controller | 3,000 | 81.919 s | 36.6 |
+| Courtyard movement | 7,200 | 193.233 s | 37.3 |
 
 Both runs explicitly connected a gamepad, started with a fresh EEPROM file,
 and used the same input scripts as their retained comparisons. The Windows
 Intel Core i7-13700H host applied performance-core affinity and process priority.
-No builds or test suites ran concurrently. Separate capture times and host
-variation limit performance comparisons. A preceding paired controller
+The controller run had no concurrent builds or test suites. The courtyard
+capture overlapped a brief private build and focused tests; its timing is not
+an isolated performance measurement. Separate capture times and host variation
+also limit performance comparisons. A preceding paired controller
 experiment took 82.492 seconds with emitted vectors and 82.061 seconds without
 them, so the measurements do not establish a consistent whole-game speed gain.
 Full-speed gameplay and audible-playback acceptance remain open in #48 and #47.

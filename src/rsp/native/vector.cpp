@@ -8,6 +8,7 @@ namespace {
 
 enum class Packed : u8 {
     And = 0xdb,
+    AndNot = 0xdf,
     Or = 0xeb,
     Xor = 0xef,
     Move = 0x6f,
@@ -104,8 +105,8 @@ class VectorEmitter {
 } // namespace
 
 bool supports_vector(unsigned function) {
-    return (function >= 4U && function <= 7U) || function == 15U || function == 29U ||
-           (function >= 0x28U && function <= 0x2dU);
+    return function <= 1U || (function >= 4U && function <= 9U) || (function >= 12U && function <= 15U) ||
+           function == 29U || (function >= 0x28U && function <= 0x2dU);
 }
 
 void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live) {
@@ -115,6 +116,73 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live)
     const unsigned destination = (word >> 6U) & 31U;
     constexpr auto vectors = VectorEmitter::vector_base;
     constexpr auto accumulator = VectorEmitter::accumulator_base;
+    const auto bias = [&] {
+        if (!comparison_bias_live) {
+            emit.operation(Packed::Equal, 4, 4);
+            emit.shift(4, 6, 15);
+            comparison_bias_live = true;
+        }
+    };
+    const auto signed_middle = [&] {
+        emit.operation(Packed::Move, 0, 2);
+        emit.operation(Packed::Move, 1, 2);
+        emit.operation(Packed::UnpackLow, 0, 3);
+        emit.operation(Packed::UnpackHigh, 1, 3);
+        emit.operation(Packed::PackSigned, 0, 1);
+    };
+    const auto unsigned_middle = [&] {
+        emit.operation(Packed::Move, 1, 3);
+        emit.shift(1, 4, 15);
+        emit.operation(Packed::Move, 0, 2);
+        emit.shift(0, 4, 15);
+        emit.operation(Packed::Or, 2, 0);
+        emit.operation(Packed::Xor, 0, 0);
+        emit.operation(Packed::Greater, 3, 0);
+        emit.operation(Packed::AndNot, 1, 2);
+        emit.operation(Packed::Or, 1, 3);
+        emit.operation(Packed::Move, 0, 1);
+    };
+    const auto unsigned_low = [&] {
+        emit.operation(Packed::Move, 1, 2);
+        emit.shift(1, 4, 15);
+        emit.operation(Packed::Equal, 1, 3);
+        emit.operation(Packed::Move, 2, 3);
+        emit.shift(2, 4, 15);
+        emit.operation(Packed::Xor, 3, 3);
+        emit.operation(Packed::Equal, 2, 3);
+        emit.operation(Packed::And, 0, 1);
+        emit.operation(Packed::AndNot, 1, 2);
+        emit.operation(Packed::Or, 0, 1);
+    };
+    // Product slices occupy 0, 2, and 3. Register 1 holds carry masks.
+    const auto add_accumulator = [&] {
+        bias();
+        emit.load(1, accumulator, 0);
+        emit.operation(Packed::Add, 0, 1);
+        emit.store(0, accumulator, 0);
+        emit.operation(Packed::Xor, 1, 4);
+        emit.operation(Packed::Xor, 0, 4);
+        emit.operation(Packed::Greater, 1, 0);
+        emit.operation(Packed::Subtract, 2, 1);
+        // A low carry can wrap the product's middle slice before its addition.
+        emit.operation(Packed::Xor, 0, 0);
+        emit.operation(Packed::Equal, 0, 2);
+        emit.operation(Packed::And, 0, 1);
+        emit.operation(Packed::Subtract, 3, 0);
+        emit.load(1, accumulator, 16);
+        emit.operation(Packed::Add, 2, 1);
+        emit.store(2, accumulator, 16);
+        emit.operation(Packed::Xor, 1, 4);
+        emit.operation(Packed::Move, 0, 2);
+        emit.operation(Packed::Xor, 0, 4);
+        emit.operation(Packed::Greater, 1, 0);
+        emit.load(0, accumulator, 32);
+        emit.operation(Packed::Add, 3, 0);
+        emit.operation(Packed::Subtract, 3, 1);
+        emit.store(3, accumulator, 32);
+        if (function == 12U || function == 14U)
+            emit.load(0, accumulator, 0);
+    };
 
     if (function == 29U) {
         if (element >= 8U && element <= 10U)
@@ -124,7 +192,6 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live)
         emit.store(0, vectors, destination * 16U);
         return;
     }
-
     emit.operands((word >> 11U) & 31U, (word >> 16U) & 31U, element);
     if (function >= 0x28U && function <= 0x2dU) {
         emit.operation(function < 0x2aU ? Packed::And : function < 0x2cU ? Packed::Or : Packed::Xor, 0, 1);
@@ -136,51 +203,111 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live)
         emit.store(0, vectors, destination * 16U);
         return;
     }
-
-    if (function == 4U) {
-        emit.operation(Packed::MultiplyHighUnsigned, 0, 1);
-        emit.operation(Packed::Xor, 1, 1);
+    if (function <= 1U) {
+        // Fractional multiply rounds the doubled signed product by 0x8000.
+        // Equal negative operands identify the positive 0x80000000 endpoint.
+        emit.operation(Packed::Move, 3, 0);
+        emit.operation(Packed::Equal, 3, 1);
+        emit.operation(Packed::Move, 2, 0);
+        emit.operation(Packed::MultiplyHighSigned, 2, 1);
+        emit.operation(Packed::MultiplyLow, 0, 1);
+        emit.operation(Packed::Move, 1, 0);
+        emit.shift(1, 2, 15);
+        emit.shift(0, 6, 1);
+        emit.operation(Packed::Move, 4, 0);
+        emit.shift(4, 2, 15);
+        emit.operation(Packed::Add, 1, 4);
+        comparison_bias_live = false;
+        bias();
+        emit.operation(Packed::Add, 0, 4);
         emit.store(0, accumulator, 0);
-        emit.store(1, accumulator, 16);
-        emit.store(1, accumulator, 32);
+        emit.shift(2, 6, 1);
+        emit.operation(Packed::Add, 2, 1);
+        emit.store(2, accumulator, 16);
+        emit.operation(Packed::Move, 1, 2);
+        emit.shift(1, 4, 15);
+        emit.operation(Packed::Move, 0, 3);
+        emit.operation(Packed::And, 0, 1);
+        emit.operation(Packed::AndNot, 3, 1);
+        emit.store(3, accumulator, 32);
+        if (function == 0U) {
+            emit.operation(Packed::Add, 2, 0);
+            emit.store(2, vectors, destination * 16U);
+        } else {
+            emit.operation(Packed::Or, 2, 1);
+            emit.operation(Packed::AndNot, 3, 2);
+            emit.store(3, vectors, destination * 16U);
+        }
+        return;
+    }
+    if (function == 4U || function == 12U) {
+        emit.operation(Packed::MultiplyHighUnsigned, 0, 1);
+        emit.operation(Packed::Xor, 2, 2);
+        emit.operation(Packed::Xor, 3, 3);
+        if (function == 4U) {
+            emit.store(0, accumulator, 0);
+            emit.store(2, accumulator, 16);
+            emit.store(3, accumulator, 32);
+        } else {
+            add_accumulator();
+            unsigned_low();
+        }
         emit.store(0, vectors, destination * 16U);
         return;
     }
-
     emit.operation(Packed::Move, 2, 0);
-    if (function == 5U || function == 6U) {
+    if (function == 5U || function == 6U || function == 13U || function == 14U) {
+        const bool signed_left = function == 5U || function == 13U;
         emit.operation(Packed::MultiplyHighUnsigned, 2, 1);
-        emit.operation(Packed::Move, 3, function == 5U ? 0U : 1U);
-        emit.shift(3, 4, 15); // PSRAW forms the signed operand's mask.
-        emit.operation(Packed::And, 3, function == 5U ? 1U : 0U);
+        emit.operation(Packed::Move, 3, signed_left ? 0U : 1U);
+        emit.shift(3, 4, 15);
+        emit.operation(Packed::And, 3, signed_left ? 1U : 0U);
         emit.operation(Packed::Subtract, 2, 3);
         emit.operation(Packed::MultiplyLow, 0, 1);
         emit.operation(Packed::Move, 3, 2);
         emit.shift(3, 4, 15);
-        emit.store(0, accumulator, 0);
-        emit.store(2, accumulator, 16);
-        emit.store(3, accumulator, 32);
-        emit.store(function == 5U ? 2U : 0U, vectors, destination * 16U);
+        if (function < 8U) {
+            emit.store(0, accumulator, 0);
+            emit.store(2, accumulator, 16);
+            emit.store(3, accumulator, 32);
+            emit.store(function == 5U ? 2U : 0U, vectors, destination * 16U);
+            return;
+        }
+        add_accumulator();
+        if (function == 13U)
+            signed_middle();
+        else
+            unsigned_low();
+        emit.store(0, vectors, destination * 16U);
         return;
     }
-
     emit.operation(Packed::MultiplyHighSigned, 2, 1);
     emit.operation(Packed::MultiplyLow, 0, 1);
+    if (function == 8U || function == 9U) {
+        emit.operation(Packed::Move, 3, 2);
+        emit.shift(3, 4, 15);
+        emit.operation(Packed::Move, 1, 0);
+        emit.shift(1, 2, 15);
+        emit.shift(0, 6, 1);
+        emit.shift(2, 6, 1);
+        emit.operation(Packed::Or, 2, 1);
+        add_accumulator();
+        if (function == 8U)
+            signed_middle();
+        else
+            unsigned_middle();
+        emit.store(0, vectors, destination * 16U);
+        return;
+    }
     if (function == 7U) {
         emit.operation(Packed::Xor, 1, 1);
         emit.store(1, accumulator, 0);
     } else {
-        // VMADH adds the signed product to bits 16..47. The low slice
-        // survives, and an unsigned middle-slice carry reaches the high slice.
         emit.load(1, accumulator, 16);
         emit.operation(Packed::Add, 0, 1);
         emit.load(3, accumulator, 32);
         emit.operation(Packed::Add, 2, 3);
-        if (!comparison_bias_live) {
-            emit.operation(Packed::Equal, 4, 4);
-            emit.shift(4, 6, 15); // PSLLW produces the unsigned comparison bias.
-            comparison_bias_live = true;
-        }
+        bias();
         emit.operation(Packed::Xor, 1, 4);
         emit.operation(Packed::Move, 3, 0);
         emit.operation(Packed::Xor, 3, 4);

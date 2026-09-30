@@ -82,21 +82,42 @@ struct Oracle {
                 result[lane] = value;
                 accumulator[lane] = (accumulator[lane] & ~u64{0xffffU}) | value;
             } else {
-                const s64 product =
-                    (function == 4U || function == 6U ? static_cast<s64>(a)
-                                                      : static_cast<s64>(std::bit_cast<s16>(a))) *
-                    (function == 4U || function == 5U ? static_cast<s64>(b)
-                                                      : static_cast<s64>(std::bit_cast<s16>(b)));
+                const s64 product = (function == 4U || function == 6U || function == 12U || function == 14U
+                                         ? static_cast<s64>(a)
+                                         : static_cast<s64>(std::bit_cast<s16>(a))) *
+                                    (function == 4U || function == 5U || function == 12U || function == 13U
+                                         ? static_cast<s64>(b)
+                                         : static_cast<s64>(std::bit_cast<s16>(b)));
+
                 const u64 shifted = static_cast<u64>(product) << 16U;
-                const u64 bits = function == 0U                     ? static_cast<u64>(product * 2 + 0x8000)
-                                 : function == 4U                   ? static_cast<u64>(product) >> 16U
-                                 : function == 5U || function == 6U ? static_cast<u64>(product)
-                                 : function == 7U                   ? shifted
-                                                                    : accumulator[lane] + shifted;
+                if (function == 3U) {
+                    const s64 rounded = product + (product < 0 ? 31 : 0);
+                    accumulator[lane] = (static_cast<u64>(rounded) << 16U) & accumulator_mask;
+                    const s64 half = rounded >> 1U;
+                    const s64 clamped = half < -32768 ? -32768 : half > 32767 ? 32767 : half;
+                    result[lane] = static_cast<u16>(clamped) & 0xfff0U;
+                    continue;
+                }
+                const u64 bits =
+                    function <= 1U                     ? static_cast<u64>(product * 2 + 0x8000)
+                    : function == 4U                   ? static_cast<u64>(product) >> 16U
+                    : function == 5U || function == 6U ? static_cast<u64>(product)
+                    : function == 7U                   ? shifted
+                    : function == 8U || function == 9U ? accumulator[lane] + static_cast<u64>(product * 2)
+                    : function == 12U ? accumulator[lane] + (static_cast<u64>(product) >> 16U)
+                    : function == 13U || function == 14U ? accumulator[lane] + static_cast<u64>(product)
+                                                         : accumulator[lane] + shifted;
                 accumulator[lane] = bits & accumulator_mask;
-                result[lane] = function == 4U || function == 6U ? static_cast<u16>(bits)
-                               : function == 5U                 ? static_cast<u16>(bits >> 16U)
-                                                                : saturated_middle(bits);
+                const s64 upper = signed_accumulator(bits) >> 16U;
+                const u16 low_result = upper >= -32768 && upper <= 32767 ? static_cast<u16>(bits)
+                                       : upper < 0                       ? 0
+                                                                         : 0xffffU;
+                const u16 middle_result = upper < 0 ? 0 : upper > 32767 ? 0xffffU : static_cast<u16>(upper);
+                result[lane] = function == 4U || function == 6U     ? static_cast<u16>(bits)
+                               : function == 5U                     ? static_cast<u16>(bits >> 16U)
+                               : function == 1U || function == 9U   ? middle_result
+                               : function == 12U || function == 14U ? low_result
+                                                                    : saturated_middle(bits);
             }
         }
     }
@@ -107,17 +128,23 @@ void seed(Rsp& rsp, Oracle& oracle, unsigned pattern) {
     std::vector<u32> words{0x24020200U};
     for (unsigned reg = 0; reg < 32U; ++reg) {
         for (unsigned lane = 0; lane < 8U; ++lane) {
-            const u16 value = pattern == 0U   ? boundaries[(lane + reg) & 7U]
-                              : pattern == 1U ? u16{0x8000U}
-                                              : static_cast<u16>((reg * 0x7654U + lane * 0x3211U) ^ 0xa5a5U);
+            const u16 value = pattern == 0U || pattern == 3U ? boundaries[(lane + reg + pattern) & 7U]
+                              : pattern == 1U || pattern == 4U
+                                  ? u16{0x8000U}
+                                  : static_cast<u16>((reg * 0x7654U + lane * 0x3211U) ^ 0xa5a5U);
             oracle.vectors[reg][lane] = value;
             write_be16(rsp.memory.data() + 0x200U + reg * 16U + lane * 2U, value);
         }
         words.push_back(vector_memory(0x32U, reg, 0x200U + reg * 16U, 0x200U));
     }
-    const u32 initial = vector_word(5U, 30U, 28U, 29U, 0);
+    const u32 initial = vector_word(pattern >= 3U ? 7U : 5U, 30U, 28U, 29U, 0);
     words.push_back(initial);
     oracle.execute(initial);
+    if (pattern == 4U) {
+        const u32 wrap = vector_word(15U, 30U, 28U, 29U, 0);
+        words.push_back(wrap);
+        oracle.execute(wrap);
+    }
     for (unsigned flag = 0; flag < 3U; ++flag) {
         constexpr std::array<u16, 3> values{0x5aa5U, 0xa55aU, 0x96U};
         words.push_back(0x34010000U | values[flag]);
@@ -155,7 +182,8 @@ void verify(Rsp& rsp, const Oracle& oracle) {
 } // namespace
 
 TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elements_and_aliases) {
-    for (unsigned function : {4U, 5U, 6U, 7U, 15U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
+    for (unsigned function :
+         {0U, 1U, 4U, 5U, 6U, 7U, 8U, 9U, 12U, 13U, 14U, 15U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
         for (unsigned element = 0; element < 16U; ++element) {
             for (unsigned alias = 0; alias < 4U; ++alias) {
                 const unsigned source = (function + element) & 31U;
@@ -169,7 +197,7 @@ TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elemen
                 CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
                 if (!code)
                     continue;
-                for (unsigned pattern = 0; pattern < 3U; ++pattern) {
+                for (unsigned pattern = 0; pattern < 5U; ++pattern) {
                     auto machine = std::make_unique<System>();
                     machine->rsp.set_native_execution(false);
                     Oracle oracle;
@@ -190,8 +218,9 @@ TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elemen
 
 TEST(rsp_native_vector_arithmetic_keeps_accumulator_dependencies_across_helper_calls) {
     for (unsigned element = 0; element < 16U; ++element) {
-        std::array<RspNativeInstruction, 9> instructions{};
-        constexpr std::array<unsigned, 9> functions{7U, 15U, 44U, 0U, 15U, 41U, 15U, 29U, 45U};
+        std::array<RspNativeInstruction, 16> instructions{};
+        constexpr std::array<unsigned, 16> functions{7U, 15U, 44U, 0U,  15U, 3U, 15U, 41U,
+                                                     8U, 13U, 15U, 12U, 14U, 1U, 29U, 45U};
         for (unsigned index = 0; index < instructions.size(); ++index)
             instructions[index] = {vector_word(functions[index], index + 1U, index, index + 1U, element),
                                    RspPipeline::Operation::Cop2};
@@ -199,7 +228,7 @@ TEST(rsp_native_vector_arithmetic_keeps_accumulator_dependencies_across_helper_c
         CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
         if (!code)
             continue;
-        for (unsigned pattern = 0; pattern < 3U; ++pattern) {
+        for (unsigned pattern = 0; pattern < 5U; ++pattern) {
             auto machine = std::make_unique<System>();
             machine->rsp.set_native_execution(false);
             Oracle oracle;
