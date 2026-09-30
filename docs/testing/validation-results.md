@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## Super Mario 64 profile build (2026-09-29)
+
+The [profile validation results](sm64-profile-results.md) record complete desktop
+and prepared cartridge checks, unchanged replay output, profile hashes, and host
+execution costs. The title capture improves, while the controller replay remains
+below full speed. Gameplay and audible-playback acceptance remain open.
+
 ## Cached CPU and rendering boundaries (2026-09-29)
 
 The [CPU store and conversion results](cpu-store-results.md) record the latest
