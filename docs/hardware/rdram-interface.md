@@ -55,6 +55,12 @@ accesses, including an incomplete halfword after the backing memory is resized.
 
 ## Open rows and request timing
 
+Parallel raster tasks record bank effects in a local summary and merge their
+summaries in raster order. Each host thread starts with an empty scope pointer;
+constant initialization avoids a lazy-initialization check on every scoped
+access. Scope restoration, independent machines, row changes, dirty bits, and
+RCP timestamps retain the same tracking rules.
+
 A chip answers a request to its open row directly. A request to a closed or
 different row makes the chip close the current row and load the requested one
 before it can answer. RI knows the tracked row state in advance, so it holds

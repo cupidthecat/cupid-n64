@@ -2,7 +2,7 @@
 
 namespace cupid {
 
-thread_local Rdram::BankAccessScope* Rdram::BankAccessScope::current_ = nullptr;
+constinit thread_local Rdram::BankAccessScope* Rdram::BankAccessScope::current_ = nullptr;
 
 Rdram::BankAccessScope::BankAccessScope(const Rdram& memory, BankAccessSummary& summary)
     : memory_(memory), summary_(summary), previous_(current_) {

@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## RDRAM scope initialization (2026-09-30)
+
+The [scope initialization results](rdram-scope-results.md) record unchanged bank
+effects, the focused parallel-memory checks, complete compiler and cartridge
+validation, and retained SM64 output. The tracking path removes its host-thread
+initialization check; production gameplay remains below full speed.
+
 ## RGB combiner arithmetic (2026-09-30)
 
 The [combiner product results](combiner-product-results.md) record exact packed
