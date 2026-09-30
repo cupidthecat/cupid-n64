@@ -1,10 +1,13 @@
 #include "cupid/rsp/native.hpp"
 
 #include "cupid/rsp.hpp"
+#include "native/vector.hpp"
 #include "vector_operations.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
+#include <type_traits>
 #include <utility>
 
 #if defined(CUPID_RSP_NATIVE)
@@ -12,6 +15,7 @@
 #endif
 
 namespace cupid {
+static_assert(std::is_standard_layout_v<RspNativeState>);
 
 bool RspNativeCode::available() {
 #if defined(CUPID_RSP_NATIVE)
@@ -34,6 +38,14 @@ RspNativeCode::~RspNativeCode() {
 __attribute__((no_sanitize("function")))
 #endif
 void RspNativeCode::execute(RspNativeState& state) const {
+    static_assert(sizeof(Rsp::Vector) == 16U);
+    static_assert(std::is_standard_layout_v<Rsp::Accumulator>);
+    static_assert(offsetof(Rsp::Accumulator, middle) == 16U);
+    static_assert(offsetof(Rsp::Accumulator, high) == 32U);
+    if (inline_vectors_) {
+        state.vectors = state.rsp->vr_[0].lane.data();
+        state.accumulator = state.rsp->accumulator_.low.data();
+    }
     using Entry = void (*)(RspNativeState*);
     reinterpret_cast<Entry>(code_)(&state);
 }
@@ -103,10 +115,21 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     if (compiler == nullptr)
         return {};
 
-    sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4, 3, 0);
+    const bool inline_vectors = std::any_of(instructions.begin(), instructions.end(), [](auto instruction) {
+        return instruction.operation == RspPipeline::Operation::Cop2 &&
+               (instruction.word & (1U << 25U)) != 0U && rsp_native::supports_vector(instruction.word & 63U);
+    });
+    sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_VECTOR(inline_vectors ? 5 : 0),
+                     inline_vectors ? 5 : 3, 0);
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(RspNativeState, scalar));
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S2, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, dmem));
+    if (inline_vectors) {
+        sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S3, 0, SLJIT_MEM1(SLJIT_S0),
+                       offsetof(RspNativeState, vectors));
+        sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S4, 0, SLJIT_MEM1(SLJIT_S0),
+                       offsetof(RspNativeState, accumulator));
+    }
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S0, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, rsp));
 
     const auto read = [&](sljit_s32 target, unsigned source) {
@@ -119,7 +142,9 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         if (target != 0U)
             sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_MEM1(SLJIT_S1), target * 4U, source, 0);
     };
+    bool comparison_bias_live = false;
     const auto call = [&](void (*helper)(Rsp*, u32), u32 word) {
+        comparison_bias_live = false;
         sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
         sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, static_cast<sljit_sw>(word));
         sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
@@ -282,6 +307,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
             const auto helper = instruction.operation == Op::Sb   ? store_byte
                                 : instruction.operation == Op::Sh ? store_halfword
                                                                   : store_word;
+            comparison_bias_live = false;
             sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3V(P, 32, 32), SLJIT_IMM,
                              reinterpret_cast<sljit_sw>(helper));
             break;
@@ -289,7 +315,10 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         case Op::Cop2: {
             const unsigned function = word & 63U;
             const unsigned element = (word >> 21U) & 15U;
-            call((word & (1U << 25U)) != 0U ? vectors[element * 64U + function] : cop2, word);
+            if ((word & (1U << 25U)) != 0U && rsp_native::supports_vector(function))
+                rsp_native::emit_vector(compiler, word, comparison_bias_live);
+            else
+                call((word & (1U << 25U)) != 0U ? vectors[element * 64U + function] : cop2, word);
             break;
         }
         case Op::VectorLoad:
@@ -305,7 +334,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     sljit_emit_return_void(compiler);
     if (sljit_get_compiler_error(compiler) != SLJIT_SUCCESS)
         return {};
-    auto result = std::shared_ptr<RspNativeCode>(new RspNativeCode(nullptr));
+    auto result = std::shared_ptr<RspNativeCode>(new RspNativeCode(nullptr, inline_vectors));
     result->code_ = sljit_generate_code(compiler, 0, nullptr);
     if (result->code_ == nullptr)
         return {};

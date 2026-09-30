@@ -24,12 +24,22 @@ big-endian DMEM byte order, sign extension, unaligned accesses, and 4 KiB wrappi
 Loads that cross the DMEM boundary use the same wrapped read helpers as portable
 execution. Stores use the existing write helpers so speculative local execution
 can restore every affected DMEM block when another device observes the RSP.
-Vector instructions call a helper selected from the decoded opcode and element
-field. Fixing the element selection when compiling removes repeated lane-selection
-branches from graphics and audio microcode. The packed arithmetic implementation
-is shared with portable dispatch. Transfers,
-accumulator updates, control flags, and unsupported packed operations retain the
-existing C++ behavior.
+Compiled vector blocks emit SSE2 instructions for VMUDL, VMUDM, VMUDN, VMUDH,
+VMADH, VSAR, and the six logical operations. Register offsets and element
+selections are fixed when compiling. Both operands are loaded before an aliased
+destination is written. Mixed signedness, 48-bit accumulator wrapping, carry
+between the middle and high slices, and signed destination saturation follow
+the architectural equations. Logical operations replace only the low
+accumulator slice. These operations preserve vector control flags.
+
+Other vector instructions call a helper selected from the decoded opcode and
+element field. Transfers and vector memory accesses retain the existing C++
+behavior. Five volatile SIMD registers hold the emitted operation's temporary
+values; none survive a helper call. The compiler declares these as vector
+registers and preserves the additional scalar base registers across calls.
+Scalar-only blocks retain three saved base registers and skip vector pointer
+setup. The unsigned comparison bias is reused between emitted VMADH operations
+and rebuilt after a helper call.
 
 Native code receives the current RSP and register-storage pointers at entry.
 It contains no pointer to the machine that first compiled it. Copies of local
@@ -40,6 +50,14 @@ state and compilation bookkeeping.
 against independently seeded machines. It checks every element selection,
 aliased destinations, all vector registers, accumulator slices, and control flags
 against ordinary execution.
+
+`tests/rsp/test_native_vector_arithmetic.cpp` compares compiled operations with
+an independent scalar oracle. It checks all 16 element selections, aliased
+inputs and destinations, every vector register, all accumulator slices, and
+unchanged control flags. Repeated products cross the 32-bit saturation and
+48-bit wrapping boundaries. Mixed blocks consume accumulator changes made by
+an ordinary helper. Output stores use an explicit base register so their
+signed seven-bit displacements stay within range.
 
 `tests/rsp/test_local_blocks.cpp` compares terminal branches with individual
 stepping, including taken and untaken conditions, aliased link registers,

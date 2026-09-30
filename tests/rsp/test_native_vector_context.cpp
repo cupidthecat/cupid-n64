@@ -16,8 +16,9 @@ constexpr u32 vector_word(unsigned function, unsigned destination, unsigned sour
            function;
 }
 
-constexpr u32 vector_memory(unsigned opcode, unsigned target, unsigned address) {
-    return (opcode << 26U) | (target << 16U) | (4U << 11U) | (address / 16U);
+constexpr u32 vector_memory(unsigned opcode, unsigned target, unsigned address, unsigned base = 0U) {
+    return (opcode << 26U) | ((base == 0U ? 0U : 2U) << 21U) | (target << 16U) | (4U << 11U) |
+           ((address - base) / 16U);
 }
 
 void execute(System& system, std::span<const u32> words) {
@@ -41,12 +42,12 @@ void seed(System& system, unsigned instance) {
 }
 
 void observe(System& system) {
-    std::vector<u32> program;
+    std::vector<u32> program{0x24020400U};
     for (unsigned reg = 0; reg < 32; ++reg)
-        program.push_back(vector_memory(0x3a, reg, 0x400U + reg * 16U));
+        program.push_back(vector_memory(0x3a, reg, 0x400U + reg * 16U, 0x400U));
     for (unsigned slice = 0; slice < 3; ++slice) {
         program.push_back(vector_word(0x1d, 29U + slice, 0, 0, 8U + slice));
-        program.push_back(vector_memory(0x3a, 29U + slice, 0x600U + slice * 16U));
+        program.push_back(vector_memory(0x3a, 29U + slice, 0x600U + slice * 16U, 0x400U));
         program.push_back(0x48410000U | (slice << 11U));
         program.push_back(0xac010630U + slice * 4U);
     }
@@ -74,6 +75,7 @@ TEST(rsp_native_vector_code_uses_the_current_machine_for_each_element_and_alias)
         for (unsigned instance = 1; instance <= 2; ++instance) {
             auto machines = std::make_unique<std::array<System, 2>>();
             auto& [native, ordinary] = *machines;
+            ordinary.rsp.set_native_execution(false);
             seed(native, instance);
             seed(ordinary, instance);
             RspNativeState state{&native.rsp, nullptr, nullptr};
@@ -83,6 +85,7 @@ TEST(rsp_native_vector_code_uses_the_current_machine_for_each_element_and_alias)
             execute(ordinary, program);
             observe(native);
             observe(ordinary);
+            CHECK(native.bus.read(0x04000400U, 4) != 0U);
             for (u32 address = 0x04000400U; address < 0x0400063cU; address += 4U)
                 CHECK_EQ(native.bus.read(address, 4), ordinary.bus.read(address, 4));
         }

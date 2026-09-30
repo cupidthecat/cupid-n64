@@ -9,6 +9,7 @@ if((CUPID_NATIVE_RSP OR CUPID_NATIVE_CPU) AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND
     target_compile_definitions(cupid_sljit PUBLIC SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
     target_link_libraries(cupid_core PRIVATE cupid_sljit)
     if(CUPID_NATIVE_RSP)
+        target_sources(cupid_core PRIVATE src/rsp/native/vector.cpp)
         target_compile_definitions(cupid_core PRIVATE CUPID_RSP_NATIVE=1)
         if(MSVC)
             # Instrumented vector specializations exceed the ordinary COFF section limit.

@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## Native RSP vector emission (2026-09-30)
+
+The [vector results](rsp-vector-results.md) record direct SSE2 arithmetic,
+the corrected DMEM observation addresses, independent scalar-oracle checks,
+and complete compiler and cartridge validation. Both production gameplay
+captures retain every field, complete PCM stream, EEPROM byte, and execution
+counter. Full-speed gameplay remains unresolved.
+
 ## Nested RDRAM summaries (2026-09-30)
 
 The [nested summary results](rdram-nested-summary-results.md) record three
