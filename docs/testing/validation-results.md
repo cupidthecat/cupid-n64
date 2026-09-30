@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## Nested RDRAM summaries (2026-09-30)
+
+The [nested summary results](rdram-nested-summary-results.md) record three
+failures on the preceding core, preserved serial bank effects after the fix,
+and complete compiler and cartridge validation. Inner task summaries remain
+deferred in the nearest enclosing scope for their own memory.
+
 ## RDRAM scope initialization (2026-09-30)
 
 The [scope initialization results](rdram-scope-results.md) record unchanged bank

@@ -17,6 +17,28 @@ Rdram::BankAccessScope::~BankAccessScope() {
 }
 
 void Rdram::merge_bank_accesses(const BankAccessSummary& summary) const {
+    for (auto* scope = BankAccessScope::current_; scope != nullptr; scope = scope->previous_) {
+        if (&scope->memory_ != this)
+            continue;
+        for (unsigned index = 0; index < banks_.size(); ++index) {
+            const auto& child = summary.banks[index];
+            if (!child.visited)
+                continue;
+            auto& bank = scope->summary_.banks[index];
+            if (!bank.visited) {
+                bank = child;
+                continue;
+            }
+            if (bank.last_row != child.first_row || child.changed_row) {
+                bank.changed_row = true;
+                bank.dirty = false;
+            }
+            bank.last_row = child.last_row;
+            bank.dirty |= child.dirty;
+            bank.last_access = child.last_access;
+        }
+        return;
+    }
     for (unsigned index = 0; index < banks_.size(); ++index) {
         const auto& recorded = summary.banks[index];
         if (!recorded.visited)
