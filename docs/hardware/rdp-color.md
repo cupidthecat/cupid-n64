@@ -30,6 +30,14 @@ by the plan. `SetKeyR`, `SetKeyGB`, `SetConvert`, `SetPrimColor`,
 `SetEnvColor`, and `SetCombine` invalidate it. The next one- or two-cycle
 draw rebuilds the plan before evaluating any pixels.
 
+On SSE2 hosts, full RGB equations without color keying evaluate their channels
+together. The expanded A/B difference fits signed 10 bits, and C fits signed
+nine bits, so packed 16-bit operands produce exact 32-bit products. The path
+adds 128 before the arithmetic shift by eight and then adds expanded D. Alpha
+is resolved separately. Direct-D equations, color keying, and hosts without
+SSE2 use the scalar equations. Intermediate expansion, cycle feedback, final
+clamping, and texture dependencies retain their existing behavior.
+
 Texture dependency tracking uses the prepared plan rather than the raw mux.
 Full equations keep all referenced texture terms. A reduced-to-D equation keeps
 only D unless final-cycle keying also needs RGB A for the keyed bypass. In
@@ -164,6 +172,10 @@ dead DirectD texture terms, keyed A bypass, second-cycle texel remapping, live
 and dead LOD fractions, and texture-LOD tile selection. A randomized check
 zeros every texture input marked dead across one- and two-cycle modes, keying,
 and texture LOD, then verifies identical color, coverage, and alpha-test output.
+`tests/rdp/test_combiner_products.cpp` compares all signed differences from -511
+through 511 and all nine-bit multipliers with the raw scalar equation. Its
+3,142,656 cases use additive boundary values, distinct RGB lanes, coverage,
+and alpha dithering to check multiplication, rounding, overflow, and clamping.
 `tests/rdp/test_color_rectangle.cpp`
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, keyed alpha rejection/depth ordering, keyed blending,

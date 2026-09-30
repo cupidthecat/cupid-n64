@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## RGB combiner arithmetic (2026-09-30)
+
+The [combiner product results](combiner-product-results.md) record exact packed
+RGB arithmetic, exhaustive signed-product comparisons, the scalar fallback,
+full compiler and cartridge checks, and retained SM64 output comparisons.
+The arithmetic experiment reduces host costs modestly; production courtyard
+timings still fall short of full-speed gameplay.
+
 ## CPU code reuse (2026-09-30)
 
 The [code reuse results](cpu-code-cache-results.md) record bounded lookup

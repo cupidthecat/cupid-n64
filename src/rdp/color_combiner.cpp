@@ -1,3 +1,4 @@
+#include "combiner_arithmetic.hpp"
 #include "cupid/rdp/color_pipeline.hpp"
 
 #include <algorithm>
@@ -400,6 +401,8 @@ void evaluate_prepared_rgb(CycleResult& result, const RdpCombinerPlan& plan, con
     const auto a = resolve_prepared_rgb(terms[0], inputs, combined, cycle);
     const auto b = resolve_prepared_rgb(terms[1], inputs, combined, cycle);
     const auto c = resolve_prepared_rgb(terms[2], inputs, combined, cycle);
+    if (!key_enabled && rdp_combiner::evaluate_rgb_product(result.color, a, b, c, d))
+        return;
     for (unsigned channel = 0; channel < 3; ++channel) {
         const s32 expanded_d = expand(d[channel]);
         const s32 multiplied = (expand(a[channel]) - expand(b[channel])) * signed_nine(c[channel]) + 128;
