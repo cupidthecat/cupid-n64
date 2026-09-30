@@ -62,7 +62,9 @@ Horizontal guard bands discard the first eight and final seven output pixels
 when the corresponding programmed endpoint lies within the visible interval.
 An endpoint beyond that interval is clipped without adding its guard band.
 Clipping preserves the source coordinates, so an offscreen start still advances
-the X or Y sample position. Empty and reversed windows produce black.
+the X or Y sample position. When the vertical window begins above the display,
+the visible output starts at row zero and keeps the programmed row count unless
+the field bottom clips it. Empty and reversed windows produce black.
 
 Resampling takes the high five fractional bits of each coordinate. It rounds
 the vertical interpolation of both source columns first, then rounds their
@@ -146,7 +148,9 @@ correlations and the repeated-row behavior independently.
 borders, guard bands, clipping, fixed-point offsets, zero scales, replication,
 interpolation order and rounding, origin alignment, 4/8 MiB wrapping, source
 stride, field metadata, independent snapshots, and preservation of VI and
-memory-bank state. These tests exercise the core API without a frontend.
+memory-bank state. Top-clipped windows retain their programmed output height
+while skipping the corresponding source rows. These tests exercise the core API
+without a frontend.
 
 `test_filter.cpp` checks coverage weighting, neighbor eligibility, hidden bits,
 negative corrections, divot medians, restoration, repeated rows, gamma-table

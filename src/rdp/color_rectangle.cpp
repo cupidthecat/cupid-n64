@@ -23,10 +23,7 @@ void Rdp::color_rectangle(u64 command, bool flipped) {
         (other_modes_ & 4U) != 0
             ? RdpDepth{static_cast<u32>(primitive_depth_ & 0x7fffU) << 3U, primitive_delta_depth_}
             : RdpDepth{};
-    unsigned texture_inputs =
-        rdp_combiner_texture_inputs(color_state_.combine, ((other_modes_ >> 52U) & 3U) == 1U);
-    if ((other_modes_ & (1ULL << 48U)) != 0)
-        texture_inputs |= 4U;
+    const unsigned texture_inputs = rdp_combiner_texture_inputs(combiner_plan_, other_modes_);
     const u32 ds = static_cast<u32>(static_cast<s32>(std::bit_cast<s16>(static_cast<u16>(attributes >> 16U))))
                    << 11U;
     const u32 dt = static_cast<u32>(static_cast<s32>(std::bit_cast<s16>(static_cast<u16>(attributes))))

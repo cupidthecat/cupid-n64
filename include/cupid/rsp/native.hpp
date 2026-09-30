@@ -37,7 +37,7 @@ class RspNativeCode {
     explicit RspNativeCode(void* code) : code_(code) {}
     void* code_{};
 
-    template <unsigned Function> static void vector(Rsp* rsp, u32 word);
+    template <unsigned Function, unsigned Element> static void vector(Rsp* rsp, u32 word);
     static void cop2(Rsp* rsp, u32 word);
     static void load_vector(Rsp* rsp, u32 word);
     static void store_vector(Rsp* rsp, u32 word);

@@ -53,9 +53,7 @@ void Rdp::color_triangle() {
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     const bool early_depth_test =
         compare_depth && !image_read && !alpha_compare && (other_modes_ & (1ULL << 12U)) == 0;
-    unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
-    if ((other_modes_ & (1ULL << 48U)) != 0)
-        texture_inputs |= 4U;
+    const unsigned texture_inputs = rdp_combiner_texture_inputs(combiner_plan_, other_modes_);
     const bool lod_needed = (texture_inputs & 4U) != 0;
     const bool one_cycle_texel1_needed = !two_cycles && (texture_inputs & 2U) != 0;
     const unsigned tile = static_cast<unsigned>(command >> 48U) & 7U;

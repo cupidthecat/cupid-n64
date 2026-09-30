@@ -38,8 +38,8 @@ void RspNativeCode::execute(RspNativeState& state) const {
     reinterpret_cast<Entry>(code_)(&state);
 }
 
-template <unsigned Function> void RspNativeCode::vector(Rsp* rsp, u32 word) {
-    if (!rsp->execute_vector_op_known<Function>(word))
+template <unsigned Function, unsigned Element> void RspNativeCode::vector(Rsp* rsp, u32 word) {
+    if (!rsp->execute_vector_op_known<Function, Element>(word))
         rsp->execute_vector_op_scalar(word);
 }
 
@@ -107,6 +107,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(RspNativeState, scalar));
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S2, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, dmem));
+    sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S0, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, rsp));
 
     const auto read = [&](sljit_s32 target, unsigned source) {
         if (source == 0U)
@@ -119,15 +120,16 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
             sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_MEM1(SLJIT_S1), target * 4U, source, 0);
     };
     const auto call = [&](void (*helper)(Rsp*, u32), u32 word) {
-        sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S0),
-                       offsetof(RspNativeState, rsp));
+        sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
         sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, static_cast<sljit_sw>(word));
         sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
                          reinterpret_cast<sljit_sw>(helper));
     };
     static constexpr auto vectors = []<std::size_t... Indices>(std::index_sequence<Indices...>) {
-        return std::array{&RspNativeCode::vector<static_cast<unsigned>(Indices)>...};
-    }(std::make_index_sequence<64>{});
+        return std::array<void (*)(Rsp*, u32), sizeof...(Indices)>{
+            &RspNativeCode::vector<static_cast<unsigned>(Indices & 63U),
+                                   static_cast<unsigned>(Indices >> 6U)>...};
+    }(std::make_index_sequence<64U * 16U>{});
 
     using Op = RspPipeline::Operation;
     for (const auto instruction : instructions) {
@@ -276,8 +278,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
             read(SLJIT_R1, rs);
             sljit_emit_op2(compiler, SLJIT_ADD32, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, immediate);
             read(SLJIT_R2, rt);
-            sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_S0),
-                           offsetof(RspNativeState, rsp));
+            sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
             const auto helper = instruction.operation == Op::Sb   ? store_byte
                                 : instruction.operation == Op::Sh ? store_halfword
                                                                   : store_word;
@@ -285,9 +286,12 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
                              reinterpret_cast<sljit_sw>(helper));
             break;
         }
-        case Op::Cop2:
-            call((word & (1U << 25U)) != 0U ? vectors[word & 63U] : cop2, word);
+        case Op::Cop2: {
+            const unsigned function = word & 63U;
+            const unsigned element = (word >> 21U) & 15U;
+            call((word & (1U << 25U)) != 0U ? vectors[element * 64U + function] : cop2, word);
             break;
+        }
         case Op::VectorLoad:
             call(load_vector, word);
             break;

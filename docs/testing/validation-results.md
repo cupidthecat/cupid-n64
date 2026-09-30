@@ -1,5 +1,14 @@
 # Recorded validation results
 
+## Cached CPU and rendering boundaries (2026-09-29)
+
+The [CPU and rendering results](cpu-rendering-results.md) record native integer
+and cache-hit load execution, branch-likely and DMA boundaries, local RSP branch
+groups, combiner dependencies, and VI top clipping. Strict core, desktop,
+sanitizer, and portable runs passed both prepared cartridge suites. The retained
+Super Mario 64 captures match their comparison output; full-speed and audible
+playback acceptance remain open.
+
 ## Native RSP blocks and desktop audio demand (2026-09-27)
 
 The [native RSP and audio results](native-rsp-results.md) record the compiled

@@ -129,6 +129,7 @@ class Rsp {
         u32 next_pc{};
         unsigned count{};
         unsigned cycles{};
+        unsigned terminal_count{};
         bool single_issue{};
         bool valid{};
         std::shared_ptr<const RspNativeCode> native;
@@ -271,7 +272,8 @@ class Rsp {
     void execute_vector_op(u32 instruction);
     void execute_vector_op_scalar(u32 instruction);
     [[nodiscard]] bool execute_vector_op_sse2(u32 instruction);
-    template <unsigned Function> [[nodiscard]] bool execute_vector_op_known(u32 instruction);
+    template <unsigned Function, unsigned Element = 16>
+    [[nodiscard]] bool execute_vector_op_known(u32 instruction);
     void execute_vector_load(u32 instruction);
     void execute_vector_store(u32 instruction);
 

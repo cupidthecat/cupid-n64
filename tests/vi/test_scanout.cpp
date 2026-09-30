@@ -2,6 +2,7 @@
 #include "test.hpp"
 
 #include <algorithm>
+#include <array>
 
 namespace {
 using namespace cupid;
@@ -142,6 +143,25 @@ TEST(vi_snapshot_clipped_windows_preserve_source_coordinates) {
     CHECK_EQ(at(field, 0), 0xabcdefffU);
     CHECK_EQ(at(field, 639), 0x123456ffU);
     CHECK_EQ(at(field, 0, 3), 255U);
+}
+
+TEST(vi_snapshot_top_clipping_preserves_programmed_height_and_skips_source_rows) {
+    constexpr std::array<u32, 5> colors{
+        0x11223300U, 0x22334400U, 0x33445500U, 0x44556600U, 0x55667700U,
+    };
+    for (const auto standard : {VideoStandard::Ntsc, VideoStandard::Pal}) {
+        System system(standard);
+        configure(system);
+        const u32 vertical = standard == VideoStandard::Pal ? 44U : 34U;
+        reg(system.bus, 10, ((vertical - 4U) << 16U) | (vertical + 6U));
+        for (unsigned row = 0; row < colors.size(); ++row)
+            pixel(system.bus, 8, row + 2U, colors[row]);
+
+        const auto field = system.bus.scan_video();
+        for (unsigned row = 0; row < colors.size(); ++row)
+            CHECK_EQ(at(field, 8, row), colors[row] | 0xffU);
+        CHECK_EQ(at(field, 8, static_cast<unsigned>(colors.size())), 255U);
+    }
 }
 
 TEST(vi_snapshot_guard_bands_depend_on_unclipped_horizontal_endpoints) {

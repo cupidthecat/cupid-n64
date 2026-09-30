@@ -44,6 +44,7 @@ void System::reset() {
     event_valid_ = false;
     deferred_rcp_ = 0;
     peripheral_debt_ = 0;
+    coupled_clock_debt_ = 0;
     defer_limit_ = 0;
     settling_ = false;
     bus.reset();
@@ -198,11 +199,13 @@ void System::finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced) {
     const u64 rcp_cycles = whole * 2 + fraction / 3;
     rcp_fraction_ = fraction % 3;
 
-    // Slice entry settled the machine and bounded execution before every peripheral
-    // edge. Cached CPU slices advanced shared clocks at each RSP tick; local idle
-    // spans catch those clocks up here. Peripheral clocks advance once in either case.
+    // Slice entry bounded execution before every peripheral edge. Shared RSP
+    // operations saw their clocks before issue; local lead clocks can catch up
+    // here. Peripheral clocks advance once in either case.
     settling_ = true;
-    if (!clocks_advanced)
+    if (clocks_advanced)
+        flush_cached_rsp_clocks();
+    else
         bus.tick_clocks(rcp_cycles);
     bus.tick_peripherals(peripheral_debt_ + rcp_cycles);
     peripheral_debt_ = 0;

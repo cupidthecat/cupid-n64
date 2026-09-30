@@ -19,6 +19,7 @@ class System {
     // while the System is still under construction.
     u64 deferred_rcp_{};
     u64 peripheral_debt_{};
+    u64 coupled_clock_debt_{};
     u64 defer_limit_{};
     bool settling_{};
 
@@ -38,6 +39,8 @@ class System {
     void settle() {
         if (settling_)
             return;
+        if (coupled_clock_debt_ != 0)
+            flush_cached_rsp_clocks();
         if (deferred_rcp_ != 0)
             settle_deferred();
         if (peripheral_debt_ != 0)
@@ -76,6 +79,8 @@ class System {
     [[nodiscard]] u64 cached_private_event_cycles();
     [[nodiscard]] u64 run_local_rsp_for_idle(u64 maximum_cpu_cycles);
     void advance_cached_rsp_ticks(u64 rcp_cycles);
+    void flush_cached_rsp_clocks();
+    [[nodiscard]] bool consume_cached_rsp_lead(u64 rcp_cycles);
     void finish_rsp_slice(u64 cpu_cycles, bool clocks_advanced = false);
     bool pif_loaded_{};
 };

@@ -145,11 +145,23 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
         case 0x01:
             direct(CachedDirect::Bgez);
             break;
+        case 0x02:
+            direct(CachedDirect::Bltzl);
+            break;
+        case 0x03:
+            direct(CachedDirect::Bgezl);
+            break;
         case 0x10:
             direct(CachedDirect::Bltzal);
             break;
         case 0x11:
             direct(CachedDirect::Bgezal);
+            break;
+        case 0x12:
+            direct(CachedDirect::Bltzall);
+            break;
+        case 0x13:
+            direct(CachedDirect::Bgezall);
             break;
         default:
             break;
@@ -223,6 +235,18 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
         break;
     case 0x19:
         direct(CachedDirect::Daddiu);
+        break;
+    case 0x14:
+        direct(CachedDirect::Beql);
+        break;
+    case 0x15:
+        direct(CachedDirect::Bnel);
+        break;
+    case 0x16:
+        direct(CachedDirect::Blezl);
+        break;
+    case 0x17:
+        direct(CachedDirect::Bgtzl);
         break;
     case 0x20:
     case 0x21:
@@ -384,6 +408,19 @@ void Cpu::execute_cached_direct(const CachedDecode& decoded) {
         branch(signed64(a) >= 0, target);
         write(31, sign_extend32(static_cast<u32>(next_pc + 4)));
         return;
+    case CachedDirect::Bltzl:
+        branch(signed64(a) < 0, target, true);
+        return;
+    case CachedDirect::Bgezl:
+        branch(signed64(a) >= 0, target, true);
+        return;
+    case CachedDirect::Bltzall:
+    case CachedDirect::Bgezall:
+        write(31, sign_extend32(static_cast<u32>(next_pc + 4)));
+        branch(decoded.direct == CachedDirect::Bgezall ? signed64(gpr[decoded.rs]) >= 0
+                                                       : signed64(gpr[decoded.rs]) < 0,
+               target, true);
+        return;
     case CachedDirect::J:
         branch(true, (next_pc & ~0x0fffffffULL) | (static_cast<u64>(decoded.word & 0x03ffffffU) << 2));
         return;
@@ -402,6 +439,18 @@ void Cpu::execute_cached_direct(const CachedDecode& decoded) {
         return;
     case CachedDirect::Bgtz:
         branch(signed64(a) > 0, target);
+        return;
+    case CachedDirect::Beql:
+        branch(a == b, target, true);
+        return;
+    case CachedDirect::Bnel:
+        branch(a != b, target, true);
+        return;
+    case CachedDirect::Blezl:
+        branch(signed64(a) <= 0, target, true);
+        return;
+    case CachedDirect::Bgtzl:
+        branch(signed64(a) > 0, target, true);
         return;
     case CachedDirect::Addiu:
         write(decoded.rt, sign_extend32(static_cast<u32>(a + immediate)));
@@ -483,10 +532,31 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
             return &plan;
 
         plan.valid = false;
+        plan.native.fill({});
         const unsigned decode_base = line_index * 8U;
         for (unsigned slot = 0; slot < 8U; ++slot)
             cached_decode_[decode_base + slot] =
                 decode_cached_instruction(read_be32(line.data.data() + slot * 4U));
+        unsigned native_length = 0;
+        for (unsigned index = CpuNativeCode::maximum_instructions; index-- != 0;) {
+            native_length =
+                CpuNativeCode::supports(cached_decode_[decode_base + index].word) ? native_length + 1U : 0U;
+            plan.native[index].count = static_cast<u8>(native_length);
+        }
+        for (unsigned index = 0; index < CpuNativeCode::maximum_instructions; ++index) {
+            auto& block = plan.native[index];
+            unsigned pending_load = 0;
+            for (unsigned offset = 0; offset < block.count; ++offset) {
+                const auto& decoded = cached_decode_[decode_base + index + offset];
+                const bool issue_wait =
+                    pending_load != 0 && (decoded.integer_reads & (1U << pending_load)) != 0;
+                block.extra_cycles += static_cast<u8>(issue_wait);
+                block.last_cycles = static_cast<u8>(1U + static_cast<unsigned>(issue_wait));
+                block.has_load = block.has_load || decoded.kind == CachedKind::Load;
+                pending_load = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
+            }
+            block.pending_load = static_cast<u8>(pending_load);
+        }
         plan.image = line.data;
         plan.tag = tag;
         plan.valid = true;
@@ -527,6 +597,22 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
 
     const auto operation_cycles = [&](const CachedDecode& decoded) -> unsigned {
         const unsigned op = decoded.word >> 26;
+        if (op == 1U && (decoded.rt == 2U || decoded.rt == 3U || decoded.rt == 18U || decoded.rt == 19U)) {
+            const u64 value = decoded.rs == 31U && decoded.rt >= 16U
+                                  ? sign_extend32(static_cast<u32>(next_pc + 4U))
+                                  : gpr[decoded.rs];
+            const bool condition = (decoded.rt & 1U) != 0U ? signed64(value) >= 0 : signed64(value) < 0;
+            return condition ? 1U : 2U;
+        }
+        if (op >= 0x14U && op <= 0x17U) {
+            const u64 left = gpr[decoded.rs];
+            const u64 right = gpr[decoded.rt];
+            const bool condition = op == 0x14U   ? left == right
+                                   : op == 0x15U ? left != right
+                                   : op == 0x16U ? signed64(left) <= 0
+                                                 : signed64(left) > 0;
+            return condition ? 1U : 2U;
+        }
         if (op != 0x11 && !decoded.floating_memory)
             return 1;
         if ((status() & (1U << 29U)) == 0)
@@ -621,62 +707,165 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     const CachedDecode* accepted = &settled_first;
     unsigned steps = 0;
     for (;;) {
-        const auto& decoded = *accepted;
-        // Both issue interlocks wait only while the instruction is still in its
-        // first cycle. If both encoded fields match, they share that one wait.
-        const bool issue_wait =
-            fpu_issue_hazard(decoded) ||
-            (pending_load_register_ != 0 && (decoded.integer_reads & (1U << pending_load_register_)) != 0);
-        const unsigned cost = accepted_cycles + static_cast<unsigned>(issue_wait);
-        if (cost > 1U && cost > cycle_limit - steps - extra_cycles)
-            break;
-        u64 next_rcp_phase = shadow_rcp_phase;
-        u64 rsp_ticks = 0;
-        if (run_rsp_coupled) {
-            if (cost == 1U) {
-                const u64 phase_sum = shadow_rcp_phase + 2U;
-                rsp_ticks = static_cast<u64>(phase_sum >= 3U);
-                next_rcp_phase = phase_sum - rsp_ticks * 3U;
+        const unsigned slot = static_cast<unsigned>((pc >> 2U) & 7U);
+        const auto* native_block =
+            slot < CpuNativeCode::maximum_instructions ? &active_plan->native[slot] : nullptr;
+        const bool native_candidate =
+            native_execution_ && native_block != nullptr && native_block->count >= 3U;
+        std::optional<std::array<u64, 32>> native_registers;
+        const u64 native_pc = pc;
+        const unsigned native_steps =
+            native_candidate
+                ? execute_cached_native(*active_plan, slot, static_cast<unsigned>(amount - steps),
+                                        cycle_limit - steps - extra_cycles,
+                                        run_rsp_coupled ? &native_registers : nullptr)
+                : 0U;
+        if (native_steps != 0) {
+            unsigned native_extra_cycles = 0;
+            if (run_rsp_coupled) {
+                unsigned committed = 0;
+                unsigned pending_load = 0;
+                const u64 block_phase = shadow_rcp_phase + (native_steps + native_block->extra_cycles) * 2U;
+                const u64 block_ticks = block_phase / 3U;
+                // Already executed local RSP work cannot raise an interrupt or
+                // observe CPU registers. Consume that time once for the block.
+                if (system_.consume_cached_rsp_lead(block_ticks)) {
+                    shadow_rcp_phase = block_phase % 3U;
+                    coupled_rsp_ticks += block_ticks;
+                    native_extra_cycles = native_block->extra_cycles;
+                    committed = native_steps;
+                }
+                while (committed < native_steps) {
+                    const auto& decoded = cached_decode_[active_line_index * 8U + slot + committed];
+                    const bool issue_wait =
+                        pending_load != 0 && (decoded.integer_reads & (1U << pending_load)) != 0;
+                    const unsigned cost = 1U + static_cast<unsigned>(issue_wait);
+                    const u64 phase_sum = shadow_rcp_phase + static_cast<u64>(cost) * 2U;
+                    const u64 rsp_ticks = phase_sum / 3U;
+                    shadow_rcp_phase = phase_sum % 3U;
+                    if (rsp_ticks != 0)
+                        system_.advance_cached_rsp_ticks(rsp_ticks);
+                    coupled_rsp_ticks += rsp_ticks;
+                    native_extra_cycles += static_cast<unsigned>(issue_wait);
+                    pending_load = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
+                    ++committed;
+                    if (system_.bus.interrupt_pending())
+                        break;
+                }
+                if (committed != native_steps) {
+                    // Generated loads only read the private D-cache. The RSP and shared
+                    // clocks cannot observe or change GPRs or those cached bytes, so a
+                    // newly raised interrupt can restore and replay the committed prefix.
+                    assert(native_registers.has_value());
+                    gpr = *native_registers;
+                    native_block_instructions_ -= native_steps;
+                    pending_load_register_ = 0;
+                    pending_fpu_register_ = 32;
+                    unsigned replay_pending_load = 0;
+                    for (unsigned index = 0; index < committed; ++index) {
+                        const auto& replay = cached_decode_[active_line_index * 8U + slot + index];
+                        assert(CpuNativeCode::supports(replay.word));
+                        const bool issue_wait = replay_pending_load != 0 &&
+                                                (replay.integer_reads & (1U << replay_pending_load)) != 0;
+                        instruction_cycles_ = 1U + static_cast<unsigned>(issue_wait);
+                        if (replay.kind == CachedKind::Load) {
+                            [[maybe_unused]] const bool hit = data_hit(replay);
+                            assert(hit);
+                            execute_cached_memory(replay, *data_line, data_offset);
+                        } else {
+                            assert(replay.kind == CachedKind::Private);
+                            execute_cached_direct(replay);
+                        }
+                        replay_pending_load =
+                            replay.load_target < 32 ? static_cast<unsigned>(replay.load_target) : 0U;
+                    }
+                    pending_load_register_ = replay_pending_load;
+                    pc = native_pc + committed * 4U;
+                    next_pc = following_pc_ = pc + 4U;
+                    following_delay_slot_ = annul_next_ = false;
+                    fetched_instruction_ = {
+                        pc, cached_decode_[active_line_index * 8U + slot + committed].word, true};
+                    steps += committed;
+                    extra_cycles += native_extra_cycles;
+                    break;
+                }
+                assert(native_extra_cycles == native_block->extra_cycles);
             } else {
-                const u64 phase_sum = shadow_rcp_phase + static_cast<u64>(cost) * 2U;
-                rsp_ticks = phase_sum / 3U;
-                next_rcp_phase = phase_sum % 3U;
+                native_extra_cycles = native_block->extra_cycles;
             }
-        }
-
-        instruction_cycles_ = 1U + static_cast<unsigned>(issue_wait);
-        pending_load_register_ = 0;
-        pending_fpu_register_ = 32;
-        following_pc_ = next_pc + 4;
-        following_delay_slot_ = annul_next_ = false;
-        fetched_instruction_.valid = false;
-        if (decoded.kind == CachedKind::Load || decoded.kind == CachedKind::Store)
-            execute_cached_memory(decoded, *data_line, data_offset);
-        else if (decoded.kind == CachedKind::Private && decoded.direct != CachedDirect::None)
-            execute_cached_direct(decoded);
-        else
-            execute(current_word);
-        // Live operand preflight proves the exact latency and excludes traps and
-        // internal synchronization. Arithmetic still uses the ordinary FPU path.
-        assert(!exception_pending && !redirected_ && !frozen && !annul_next_ && instruction_cycles_ == cost &&
-               synchronized_instruction_cycles_ == 0);
-        pending_load_register_ = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
-        if ((decoded.word >> 26U) == 0x11U && ((decoded.word >> 21U) & 31U) >= 16U &&
-            (decoded.word & 63U) < 0x30U)
-            pending_fpu_register_ = (decoded.word >> 6U) & 31U;
-        pc = next_pc;
-        next_pc = following_pc_;
-        in_delay_slot_ = following_delay_slot_;
-        fetched_instruction_ = {pc, prefetched_word, true};
-        if (rsp_ticks != 0)
-            system_.advance_cached_rsp_ticks(rsp_ticks);
-        coupled_rsp_ticks += rsp_ticks;
-        shadow_rcp_phase = next_rcp_phase;
-        if (cost > 1U) {
-            extra_cycles += cost - 1U;
+            steps += native_steps;
+            extra_cycles += native_extra_cycles;
             amount = std::min(step_limit, cycle_limit - extra_cycles);
+        } else {
+            const auto& decoded = *accepted;
+            // Both issue interlocks wait only while the instruction is still in its
+            // first cycle. If both encoded fields match, they share that one wait.
+            const bool issue_wait =
+                fpu_issue_hazard(decoded) || (pending_load_register_ != 0 &&
+                                              (decoded.integer_reads & (1U << pending_load_register_)) != 0);
+            const unsigned cost = accepted_cycles + static_cast<unsigned>(issue_wait);
+            if (cost > 1U && cost > cycle_limit - steps - extra_cycles)
+                break;
+            u64 next_rcp_phase = shadow_rcp_phase;
+            u64 rsp_ticks = 0;
+            if (run_rsp_coupled) {
+                if (cost == 1U) {
+                    const u64 phase_sum = shadow_rcp_phase + 2U;
+                    rsp_ticks = static_cast<u64>(phase_sum >= 3U);
+                    next_rcp_phase = phase_sum - rsp_ticks * 3U;
+                } else {
+                    const u64 phase_sum = shadow_rcp_phase + static_cast<u64>(cost) * 2U;
+                    rsp_ticks = phase_sum / 3U;
+                    next_rcp_phase = phase_sum % 3U;
+                }
+            }
+
+            instruction_cycles_ = 1U + static_cast<unsigned>(issue_wait);
+            pending_load_register_ = 0;
+            pending_fpu_register_ = 32;
+            following_pc_ = next_pc + 4;
+            following_delay_slot_ = annul_next_ = false;
+            fetched_instruction_.valid = false;
+            if (decoded.kind == CachedKind::Load || decoded.kind == CachedKind::Store)
+                execute_cached_memory(decoded, *data_line, data_offset);
+            else if (decoded.kind == CachedKind::Private && decoded.direct != CachedDirect::None)
+                execute_cached_direct(decoded);
+            else
+                execute(current_word);
+            if (annul_next_)
+                ++instruction_cycles_;
+            // Live operand preflight proves the exact latency and excludes traps and
+            // internal synchronization. Arithmetic still uses the ordinary FPU path.
+            assert(!exception_pending && !redirected_ && !frozen && instruction_cycles_ == cost &&
+                   synchronized_instruction_cycles_ == 0);
+            pending_load_register_ =
+                decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
+            if ((decoded.word >> 26U) == 0x11U && ((decoded.word >> 21U) & 31U) >= 16U &&
+                (decoded.word & 63U) < 0x30U)
+                pending_fpu_register_ = (decoded.word >> 6U) & 31U;
+            if (annul_next_) {
+                pending_load_register_ = 0;
+                pending_fpu_register_ = 32;
+                fetched_instruction_ = {next_pc, prefetched_word, true};
+                pc = next_pc + 4U;
+                next_pc = pc + 4U;
+                in_delay_slot_ = false;
+            } else {
+                pc = next_pc;
+                next_pc = following_pc_;
+                in_delay_slot_ = following_delay_slot_;
+                fetched_instruction_ = {pc, prefetched_word, true};
+            }
+            if (rsp_ticks != 0)
+                system_.advance_cached_rsp_ticks(rsp_ticks);
+            coupled_rsp_ticks += rsp_ticks;
+            shadow_rcp_phase = next_rcp_phase;
+            if (cost > 1U) {
+                extra_cycles += cost - 1U;
+                amount = std::min(step_limit, cycle_limit - extra_cycles);
+            }
+            ++steps;
         }
-        ++steps;
         // An interrupt raised and cleared during one multicycle instruction is
         // sampled only after that entire instruction's RSP time has elapsed.
         if (steps == amount || (run_rsp_coupled && system_.bus.interrupt_pending()))

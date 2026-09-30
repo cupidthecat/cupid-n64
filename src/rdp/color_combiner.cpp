@@ -345,6 +345,27 @@ bool zero_alpha_multiplier(const RdpCombinerTermPlan& term) {
     return term.alpha == RdpCombinerSource::Constant && signed_nine(term.constant[3]) == 0;
 }
 
+unsigned texture_input(RdpCombinerSource source, unsigned cycle, bool two_cycles) {
+    unsigned texel = 0;
+    switch (source) {
+    case RdpCombinerSource::Texel0Rgb:
+    case RdpCombinerSource::Texel0Alpha:
+        texel = 1;
+        break;
+    case RdpCombinerSource::Texel1Rgb:
+    case RdpCombinerSource::Texel1Alpha:
+        texel = 2;
+        break;
+    case RdpCombinerSource::LodFraction:
+        return two_cycles ? 4U : 0U;
+    default:
+        return 0;
+    }
+    if (two_cycles && cycle == 1U)
+        texel = 3U - texel;
+    return 1U << (texel - 1U);
+}
+
 RdpColor resolve_prepared_rgb(const RdpCombinerTermPlan& term, const RdpColorInputs& inputs,
                               const RdpColor& combined, unsigned cycle) {
     RdpColor value = term.constant;
@@ -534,6 +555,27 @@ unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles) {
                 result |= 4U;
         }
     }
+    return result;
+}
+
+unsigned rdp_combiner_texture_inputs(const RdpCombinerPlan& plan, u64 modes) {
+    const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
+    const bool key_enabled = (modes & (1ULL << 40U)) != 0;
+    unsigned result = 0;
+    for (unsigned cycle = two_cycles ? 0U : 1U; cycle < 2; ++cycle) {
+        const bool full_rgb = plan.rgb_expression[cycle] == RdpCombinerExpression::Full;
+        const bool full_alpha = plan.alpha_expression[cycle] == RdpCombinerExpression::Full;
+        for (unsigned term = 0; term < plan.cycles[cycle].size(); ++term) {
+            const bool rgb_live = full_rgb || term == 3U || (key_enabled && cycle == 1U && term == 0U);
+            const bool alpha_live = full_alpha || term == 3U;
+            if (rgb_live)
+                result |= texture_input(plan.cycles[cycle][term].rgb, cycle, two_cycles);
+            if (alpha_live)
+                result |= texture_input(plan.cycles[cycle][term].alpha, cycle, two_cycles);
+        }
+    }
+    if ((modes & (1ULL << 48U)) != 0)
+        result |= 4U;
     return result;
 }
 

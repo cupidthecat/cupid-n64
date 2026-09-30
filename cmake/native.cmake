@@ -1,11 +1,17 @@
 option(CUPID_NATIVE_RSP "Compile local RSP instruction blocks to native code" ON)
+option(CUPID_NATIVE_CPU "Compile cached CPU integer blocks to native code" ON)
 
-if(CUPID_NATIVE_RSP AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND
+if((CUPID_NATIVE_RSP OR CUPID_NATIVE_CPU) AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND
    CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|amd64|x86_64)$")
     enable_language(C)
     add_library(cupid_sljit STATIC third_party/sljit/sljit_src/sljitLir.c)
     target_include_directories(cupid_sljit SYSTEM PUBLIC third_party/sljit/sljit_src)
     target_compile_definitions(cupid_sljit PUBLIC SLJIT_WX_EXECUTABLE_ALLOCATOR=1)
     target_link_libraries(cupid_core PRIVATE cupid_sljit)
-    target_compile_definitions(cupid_core PRIVATE CUPID_RSP_NATIVE=1)
+    if(CUPID_NATIVE_RSP)
+        target_compile_definitions(cupid_core PRIVATE CUPID_RSP_NATIVE=1)
+    endif()
+    if(CUPID_NATIVE_CPU)
+        target_compile_definitions(cupid_core PRIVATE CUPID_CPU_NATIVE=1)
+    endif()
 endif()

@@ -3,24 +3,31 @@
 On x86-64 hosts, the core can compile frequently executed local RSP blocks to
 native code. `CUPID_NATIVE_RSP` enables this at build time and defaults to `ON`.
 Other host architectures retain the portable block executor. Set the option to
-`OFF`, or pass `--no-native-rsp` to `tools/ci/validate.py`, to validate without
-native code generation.
+`OFF`, or pass `--no-native-rsp` to `tools/ci/validate.py`, to validate portable
+RSP execution. CPU compilation has its own
+[build option and execution boundaries](cpu-native.md).
 
 ## Execution boundaries
 
 The existing local-block planner decides instruction pairing, dependency stalls,
 and the available cycle budget. A compiled block contains at most 16 instructions.
-Branches, BREAK, shared COP0 accesses, single-step execution, and blocks that do
-not fit the remaining budget use the existing execution paths. DMA row visibility
-and the final cycle's device ordering remain controlled by the shared scheduler.
+A block may end with a branch issue group. Native code executes the preceding
+instructions, and the ordinary branch handler retires that final group. The
+delay slot remains in the next group, with its pairing restriction and taken
+branch bubble. BREAK, shared COP0 accesses, single-step execution, and blocks
+that do not fit the remaining budget use the existing execution paths. DMA row
+visibility and the final cycle's device ordering remain controlled by the shared
+scheduler.
 
 Scalar arithmetic and logical instructions operate on 32-bit values. Loads retain
 big-endian DMEM byte order, sign extension, unaligned accesses, and 4 KiB wrapping.
 Loads that cross the DMEM boundary use the same wrapped read helpers as portable
 execution. Stores use the existing write helpers so speculative local execution
 can restore every affected DMEM block when another device observes the RSP.
-Vector instructions call a helper selected from the decoded opcode. Its packed
-arithmetic implementation is shared with portable dispatch. Transfers,
+Vector instructions call a helper selected from the decoded opcode and element
+field. Fixing the element selection when compiling removes repeated lane-selection
+branches from graphics and audio microcode. The packed arithmetic implementation
+is shared with portable dispatch. Transfers,
 accumulator updates, control flags, and unsupported packed operations retain the
 existing C++ behavior.
 
@@ -28,6 +35,15 @@ Native code receives the current RSP and register-storage pointers at entry.
 It contains no pointer to the machine that first compiled it. Copies of local
 blocks may share immutable executable code while retaining separate machine
 state and compilation bookkeeping.
+
+`tests/rsp/test_native_vector_context.cpp` executes one compiled vector sequence
+against independently seeded machines. It checks every element selection,
+aliased destinations, all vector registers, accumulator slices, and control flags
+against ordinary execution.
+
+`tests/rsp/test_local_blocks.cpp` compares terminal branches with individual
+stepping, including taken and untaken conditions, aliased link registers,
+instruction-memory wrapping, delay-slot stores, and fragmented cycle budgets.
 
 ## Code reuse and lifetime
 

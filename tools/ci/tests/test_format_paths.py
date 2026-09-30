@@ -40,7 +40,7 @@ class FormatPathTests(unittest.TestCase):
         self.formatter = self.caller / "formatter tools" / "clang-format.exe"
         self.args = SimpleNamespace(
             clang_format=str(Path("formatter tools") / "clang-format.exe"),
-            config="Release", generator="Ninja", sanitizers=False, native_rsp=True, desktop=False,
+            config="Release", generator="Ninja", sanitizers=False, native_rsp=True, native_cpu=True, desktop=False,
             sdl_source=None, compiler="clang++", rom=None, pif=None, extended_rom=None, jobs=2,
             profile_generate=None, profile_use=None, profile_manifest=None,
         )

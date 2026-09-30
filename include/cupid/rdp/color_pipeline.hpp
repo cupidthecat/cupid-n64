@@ -59,6 +59,7 @@ struct RdpCombinerTermPlan {
 enum class RdpCombinerExpression : u8 {
     Full,
     DirectD,
+    Dirty,
 };
 
 struct RdpCombinerPlan {
@@ -71,6 +72,7 @@ struct RdpCombinerPlan {
 [[nodiscard]] RdpColor rdp_unpack_color(u32 value);
 [[nodiscard]] RdpCombinerPlan rdp_prepare_combiner(const RdpColorState& state);
 [[nodiscard]] unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles);
+[[nodiscard]] unsigned rdp_combiner_texture_inputs(const RdpCombinerPlan& plan, u64 modes);
 [[nodiscard]] RdpCombinedPixel rdp_combine(const RdpColorState& state, u64 modes, RdpColorInputs inputs,
                                            unsigned coverage, unsigned alpha_dither);
 [[nodiscard]] RdpCombinedPixel rdp_combine_prepared(const RdpColorState& state, const RdpCombinerPlan& plan,

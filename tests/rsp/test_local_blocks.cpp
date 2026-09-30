@@ -159,6 +159,66 @@ TEST(rsp_local_blocks_preserve_branch_target_single_issue_restriction) {
     CHECK(!batched.rsp.running());
 }
 
+TEST(rsp_local_blocks_retire_terminal_branches_before_delay_slots_and_wrapped_links) {
+    constexpr std::array branches{
+        special(1, 0, 0, 0, 0x08), special(1, 0, 1, 0, 0x09), immediate(1, 1, 0, 0), immediate(1, 1, 1, 0),
+        immediate(1, 1, 16, 0),    immediate(1, 1, 17, 0),    0x08000040U,           0x0c000040U,
+        immediate(4, 1, 2, 0),     immediate(5, 1, 2, 0),     immediate(6, 1, 0, 0), immediate(7, 1, 0, 0),
+    };
+    for (const bool native : {false, true}) {
+        for (const u32 start : {0xfd0U, 0xfe0U}) {
+            for (const int operand : {-1, 0, 1}) {
+                for (const u32 branch : branches) {
+                    auto machines = std::make_unique<std::array<System, 2>>();
+                    auto& [batched, stepped] = *machines;
+                    const unsigned opcode = branch >> 26U;
+                    const int source = opcode == 0U ? 0x100 : operand;
+                    const int displacement = (0x100 - static_cast<int>(start + 28U)) / 4;
+                    const u32 word = opcode == 0U || opcode == 2U || opcode == 3U
+                                         ? branch
+                                         : branch | static_cast<u16>(displacement);
+                    for (auto* system : {&batched, &stepped}) {
+                        system->rsp.set_native_execution(native);
+                        const std::array program{
+                            immediate(9, 0, 1, source),
+                            immediate(9, 0, 2, 1),
+                            immediate(9, 0, 31, -1),
+                            immediate(9, 3, 3, 1),
+                            immediate(9, 4, 4, 1),
+                            immediate(9, 5, 5, 1),
+                            word,
+                            immediate(0x2b, 0, 31, 0x80),
+                        };
+                        for (unsigned index = 0; index < program.size(); ++index)
+                            system->bus.write(0x04001000U + ((start + index * 4U) & 0xfffU), 4,
+                                              program[index]);
+                        const u32 fallthrough = (start + 32U) & 0xfffU;
+                        system->bus.write(0x04001000U + fallthrough, 4, immediate(0x2b, 0, 1, 0x84));
+                        system->bus.write(0x04001000U + ((fallthrough + 4U) & 0xfffU), 4, 0x0000000dU);
+                        system->bus.write(0x04001100U, 4, immediate(0x2b, 0, 1, 0x84));
+                        system->bus.write(0x04001104U, 4, 0x0000000dU);
+                    }
+                    for (unsigned repetition = 0; repetition < 6; ++repetition) {
+                        for (auto* system : {&batched, &stepped}) {
+                            system->rsp.write_pc(start);
+                            system->rsp.write_register(0x10U, 0x105U);
+                        }
+                        if (repetition < 5)
+                            compare(batched, stepped, 192);
+                        else
+                            for (const u64 budget : {1U, 2U, 3U, 7U, 17U, 31U, 128U})
+                                compare(batched, stepped, budget);
+                        CHECK(!batched.rsp.running());
+                        CHECK_EQ(batched.rsp.read_register(0x10U) & 3U, 3U);
+                    }
+                    CHECK_EQ(batched.rsp.native_block_instructions() != 0,
+                             native && RspNativeCode::available());
+                }
+            }
+        }
+    }
+}
+
 TEST(rsp_local_blocks_cache_scalar_shift_arithmetic_and_logical_operands) {
     constexpr std::array program{
         immediate(0x09, 0, 1, -8),     // ADDIU at,zero,-8.

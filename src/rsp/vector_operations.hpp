@@ -11,8 +11,9 @@
 
 namespace cupid {
 
-template <unsigned KnownFunction> bool Rsp::execute_vector_op_known(u32 instruction) {
+template <unsigned KnownFunction, unsigned KnownElement> bool Rsp::execute_vector_op_known(u32 instruction) {
     static_assert(KnownFunction <= 64U);
+    static_assert(KnownElement <= 16U);
 #if !CUPID_RSP_HAS_SSE2
     (void)instruction;
     return false;
@@ -26,7 +27,7 @@ template <unsigned KnownFunction> bool Rsp::execute_vector_op_known(u32 instruct
     };
 
     const unsigned function = KnownFunction < 64U ? KnownFunction : instruction & 63U;
-    const unsigned element = (instruction >> 21U) & 15U;
+    const unsigned element = KnownElement < 16U ? KnownElement : (instruction >> 21U) & 15U;
     auto& destination = vr_[(instruction >> 6U) & 31U].lane;
     const __m128i zero = _mm_setzero_si128();
     const auto snapshot_operands = [&]() -> Operands {

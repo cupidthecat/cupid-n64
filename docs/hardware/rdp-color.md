@@ -25,9 +25,21 @@ classified independently. When the multiplier is a constant signed nine-bit
 zero, or A and B resolve to the same input or expanded constant, the equation
 reduces to expanded D. The pixel path then skips the unused terms. Color keying
 still reads A for its RGB bypass and retains the signed 17-bit key result.
-Draw preparation runs again after state changes, so changing a constant does
-not require another `SetCombine` command. Texture and noise input selection
-retains the programmed selectors even when an equation simplifies.
+The prepared plan is retained across draws until a command changes state used
+by the plan. `SetKeyR`, `SetKeyGB`, `SetConvert`, `SetPrimColor`,
+`SetEnvColor`, and `SetCombine` invalidate it. The next one- or two-cycle
+draw rebuilds the plan before evaluating any pixels.
+
+Texture dependency tracking uses the prepared plan rather than the raw mux.
+Full equations keep all referenced texture terms. A reduced-to-D equation keeps
+only D unless final-cycle keying also needs RGB A for the keyed bypass. In
+two-cycle mode, second-cycle logical texel selectors are mapped through the
+hardware texel swap before deciding which physical sample is required. LOD
+fraction is tracked when a live two-cycle term consumes it, and texture-LOD mode
+still forces LOD evaluation so mip tile selection does not change when the
+combiner itself does not consume the fraction. Noise selection remains
+conservative because its sampling also participates in the deterministic noise
+sequence.
 
 When color keying is enabled, the RGB combiner still evaluates the programmed
 `(A - CENTER) * SCALE` expression at its normal fixed-point precision. Alpha
@@ -147,7 +159,11 @@ blend factors, divider edge cases, and a checksum of all 32,768 divider inputs.
 `tests/rdp/test_combiner_plan.cpp` compares prepared execution with the scalar
 equation for every raw selector and randomized states. It also checks equal
 and unequal constants, signed D expansion, key bypass, two-cycle feedback,
-texture swapping, and constants changed between draws.
+texture swapping, and constants changed between draws. Dependency tests cover
+dead DirectD texture terms, keyed A bypass, second-cycle texel remapping, live
+and dead LOD fractions, and texture-LOD tile selection. A randomized check
+zeros every texture input marked dead across one- and two-cycle modes, keying,
+and texture LOD, then verifies identical color, coverage, and alpha-test output.
 `tests/rdp/test_color_rectangle.cpp`
 checks encoded commands, framebuffer bytes, hidden coverage, clipping, fields,
 state changes, reset, keyed alpha rejection/depth ordering, keyed blending,

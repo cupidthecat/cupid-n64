@@ -362,7 +362,7 @@ TEST(cpu_cached_rsp_preserves_latched_shared_ops_dma_single_step_and_raw_pc_rewr
         }
         const u64 previously_batched = batched.cpu.batched_cached_instructions();
         compare_slice(batched, stepped, 2);
-        CHECK_EQ(batched.cpu.batched_cached_instructions() - previously_batched, mode == 0 ? 0U : 2U);
+        CHECK_EQ(batched.cpu.batched_cached_instructions() - previously_batched, 2U);
         future_steps(batched, stepped);
     }
 }
