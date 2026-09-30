@@ -19,8 +19,15 @@ matching kseg0 data-cache lines. Each read checks the address, alignment, cache
 validity, and tag before touching the cached bytes. LD retains the physical
 address restriction used by the ordinary cached path. A failed guard restores
 the block's GPR state and returns to ordinary execution. A load into GPR zero
-still checks the access and discards its result. Stores and cache misses keep
-their existing paths.
+still checks the access and discards its result. Cache misses keep their existing
+paths.
+
+Aligned SB, SH, SW, and SD writes use the same live kseg0 cache checks. Generated
+code stages each destination and value; it commits the writes in instruction
+order only after every address guard passes. Overlapping stores preserve byte
+order and mark the line dirty. Loads after a store end the native block so the
+ordinary cached path reads the committed bytes. Stores remain private to the
+CPU cache until the ordinary writeback path transfers them to backing memory.
 
 Compilation uses the existing cached-slice entry checks: kernel mode, big-endian
 kseg0 execution, matching instruction-cache tags, and a clean pipeline. Branches,
@@ -43,12 +50,13 @@ Count/Compare, and peripheral-event budgets.
 
 Pending integer or FPU load interlocks and branch-delay execution prevent entry.
 A running RSP with enabled RCP interrupts still advances at each CPU instruction
-boundary. Native blocks update GPRs and read private data-cache bytes, which the
+boundary. Native blocks update GPRs and private data-cache bytes, which the
 RSP and shared clocks do not observe. The CPU can execute a block before advancing
-those RSP boundaries. If the RSP raises an interrupt before the block is complete, the CPU
-restores the saved GPRs and replays only the prefix that retired before that
-boundary. Compiled blocks cannot access the physical bus, deliver a callback,
-or raise an exception. Already completed local RSP cycles can be consumed
+those RSP boundaries. If the RSP raises an interrupt before the block is complete,
+the CPU restores the saved GPRs, reverses cache stores and dirty flags, and replays
+only the prefix that retired before that boundary. Compiled blocks cannot access
+the physical bus, deliver a callback, or raise an exception. Already completed
+local RSP cycles can be consumed
 together for a whole CPU block; other RSP work retains instruction boundaries.
 On return, the existing slice code accounts for retired instructions,
 Random, Count, and device clocks. Host callbacks see the same machine state at
@@ -84,6 +92,11 @@ classes and the block-size limit.
 `tests/cpu/test_native_loads.cpp` checks load widths, signed and unsigned results,
 big-endian lanes, guard failures, zero destinations, address aliases, internal
 and final load-use waits, and register rollback at RSP interrupt boundaries.
+
+`tests/cpu/test_native_stores.cpp` checks store widths, overlapping writes, zero
+sources, address aliases, failed guards after staged writes, reverse rollback,
+following loads, partial budgets, clock phases, Count/Compare and RSP interrupt
+boundaries, and DMA visibility before cache writeback.
 
 `tests/cpu/test_native_execution.cpp` compares complete slices with individual
 stepping across short budgets, all CPU/RCP clock phases, Count/Compare edges,

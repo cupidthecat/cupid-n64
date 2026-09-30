@@ -199,12 +199,19 @@ template <unsigned KnownFunction, unsigned KnownElement> bool Rsp::execute_vecto
     }
     case 0x1d: {
         __m128i result = zero;
-        if (element == 8U)
+        switch (element) {
+        case 8U:
             result = load_bytes(accumulator_.high.data());
-        else if (element == 9U)
+            break;
+        case 9U:
             result = load_bytes(accumulator_.middle.data());
-        else if (element == 10U)
+            break;
+        case 10U:
             result = load_bytes(accumulator_.low.data());
+            break;
+        default:
+            break;
+        }
         store_vector(destination, result);
         return true;
     }

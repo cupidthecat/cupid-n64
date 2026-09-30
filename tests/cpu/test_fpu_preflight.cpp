@@ -106,6 +106,37 @@ TEST(fpu_nontrapping_arithmetic_preflight_matches_step_cycles_across_rounding_fr
     cost_matches_step(0x11U, 2, 0x0010000000000001ULL, std::bit_cast<u64>(0.5), 1U << 24U, true);
 }
 
+TEST(fpu_conversion_preflight_keeps_fixed_rounding_exact_traps_and_long_input_limits) {
+    for (const bool full_registers : {false, true}) {
+        for (u32 rounding = 0; rounding < 4U; ++rounding) {
+            for (unsigned function : {8U, 9U, 10U, 11U, 12U, 13U, 14U, 15U, 0x24U, 0x25U}) {
+                cost_matches_step(0x10U, function, std::bit_cast<u32>(-2.5f), 0, rounding, full_registers);
+                cost_matches_step(0x11U, function, std::bit_cast<u64>(-2.5), 0, rounding, full_registers);
+                cost_matches_step(0x10U, function, std::bit_cast<u32>(2.0f), 0, rounding | 0x0f80U,
+                                  full_registers);
+                CHECK_EQ(preflight(0x10U, function, std::bit_cast<u32>(2.5f), 0, rounding | 0x80U), 0U);
+                CHECK_EQ(preflight(0x10U, function, 1U, 0, rounding), 0U);
+                CHECK_EQ(preflight(0x11U, function, 0x7ff0000000000000ULL, 0, rounding), 0U);
+            }
+            for (unsigned function : {0x20U, 0x21U}) {
+                for (unsigned format : {0x14U, 0x15U}) {
+                    cost_matches_step(format, function, 0, 0, rounding | 0x0f80U, full_registers);
+                    cost_matches_step(format, function, 123, 0, rounding | 0x0f80U, full_registers);
+                    cost_matches_step(format, function, 16777217, 0, rounding, full_registers);
+                }
+                cost_matches_step(0x15U, function, 0xff80000000000000ULL, 0, rounding, full_registers);
+                CHECK_EQ(preflight(0x15U, function, 0x0080000000000000ULL, 0, rounding), 0U);
+                CHECK_EQ(preflight(0x15U, function, 0xff7fffffffffffffULL, 0, rounding), 0U);
+            }
+        }
+    }
+    CHECK_EQ(preflight(0x14U, 0x20U, 16777217, 0, 0x80U), 0U);
+    CHECK_EQ(preflight(0x15U, 0x21U, 0x0020000000000001ULL, 0, 0x80U), 0U);
+    CHECK_EQ(preflight(0x14U, 0x21U, 16777217, 0, 0x80U), 5U);
+    CHECK_EQ(preflight(0x14U, 0x24U, 123, 0), 0U);
+    CHECK_EQ(preflight(0x10U, 0x20U, 0, 0), 0U);
+}
+
 TEST(fpu_nontrapping_arithmetic_preflight_rejects_only_the_bounded_fault_and_variable_latency_domain) {
     constexpr u32 fs_mode = 1U << 24U;
     const u32 one_s = std::bit_cast<u32>(1.0f);

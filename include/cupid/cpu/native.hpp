@@ -2,14 +2,32 @@
 
 #include "cupid/types.hpp"
 
+#include <array>
 #include <memory>
 #include <span>
 
 namespace cupid {
 
 struct CpuNativeState {
+    struct Store {
+        void* line;
+        u64 value;
+        u64 previous;
+        unsigned offset;
+        unsigned width;
+        bool previous_dirty;
+    };
+
+    CpuNativeState(u64* selected_registers, void* selected_cache)
+        : registers(selected_registers), data_cache(selected_cache) {}
+
     u64* registers{};
     void* data_cache{};
+    unsigned store_count{};
+    std::array<Store, 7> stores;
+
+    void commit_stores();
+    void rollback_stores();
 };
 
 class CpuNativeCode {

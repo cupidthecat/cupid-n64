@@ -184,7 +184,13 @@ Cpu::CachedDecode Cpu::decode_cached_instruction(u32 instruction) const {
             break;
         case 0x10:
         case 0x11:
-            if ((instruction & 63U) <= 7U || (instruction & 63U) >= 0x30U)
+            if ((instruction & 63U) <= 0x0fU || (instruction & 63U) == 0x24U ||
+                (instruction & 63U) == 0x25U || (instruction & 63U) >= 0x30U)
+                direct(CachedDirect::None);
+            break;
+        case 0x14:
+        case 0x15:
+            if ((instruction & 63U) == 0x20U || (instruction & 63U) == 0x21U)
                 direct(CachedDirect::None);
             break;
         default:
@@ -537,14 +543,16 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         for (unsigned slot = 0; slot < 8U; ++slot)
             cached_decode_[decode_base + slot] =
                 decode_cached_instruction(read_be32(line.data.data() + slot * 4U));
-        unsigned native_length = 0;
-        for (unsigned index = CpuNativeCode::maximum_instructions; index-- != 0;) {
-            native_length =
-                CpuNativeCode::supports(cached_decode_[decode_base + index].word) ? native_length + 1U : 0U;
-            plan.native[index].count = static_cast<u8>(native_length);
-        }
         for (unsigned index = 0; index < CpuNativeCode::maximum_instructions; ++index) {
             auto& block = plan.native[index];
+            bool stored = false;
+            for (unsigned next = index; next < CpuNativeCode::maximum_instructions; ++next) {
+                const auto& decoded = cached_decode_[decode_base + next];
+                if (!CpuNativeCode::supports(decoded.word) || (stored && decoded.kind == CachedKind::Load))
+                    break;
+                stored = stored || decoded.kind == CachedKind::Store;
+                ++block.count;
+            }
             unsigned pending_load = 0;
             for (unsigned offset = 0; offset < block.count; ++offset) {
                 const auto& decoded = cached_decode_[decode_base + index + offset];
@@ -553,6 +561,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                 block.extra_cycles += static_cast<u8>(issue_wait);
                 block.last_cycles = static_cast<u8>(1U + static_cast<unsigned>(issue_wait));
                 block.has_load = block.has_load || decoded.kind == CachedKind::Load;
+                block.has_store = block.has_store || decoded.kind == CachedKind::Store;
                 pending_load = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
             }
             block.pending_load = static_cast<u8>(pending_load);
@@ -713,12 +722,13 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         const bool native_candidate =
             native_execution_ && native_block != nullptr && native_block->count >= 3U;
         std::optional<std::array<u64, 32>> native_registers;
+        CpuNativeState native_state{gpr.data(), data_cache.data()};
         const u64 native_pc = pc;
         const unsigned native_steps =
             native_candidate
                 ? execute_cached_native(*active_plan, slot, static_cast<unsigned>(amount - steps),
                                         cycle_limit - steps - extra_cycles,
-                                        run_rsp_coupled ? &native_registers : nullptr)
+                                        run_rsp_coupled ? &native_registers : nullptr, native_state)
                 : 0U;
         if (native_steps != 0) {
             unsigned native_extra_cycles = 0;
@@ -753,10 +763,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                         break;
                 }
                 if (committed != native_steps) {
-                    // Generated loads only read the private D-cache. The RSP and shared
-                    // clocks cannot observe or change GPRs or those cached bytes, so a
-                    // newly raised interrupt can restore and replay the committed prefix.
+                    // The RSP cannot observe private D-cache bytes or GPRs. Restore
+                    // generated writes and replay only the interrupt's retired prefix.
                     assert(native_registers.has_value());
+                    native_state.rollback_stores();
                     gpr = *native_registers;
                     native_block_instructions_ -= native_steps;
                     pending_load_register_ = 0;
@@ -768,7 +778,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                         const bool issue_wait = replay_pending_load != 0 &&
                                                 (replay.integer_reads & (1U << replay_pending_load)) != 0;
                         instruction_cycles_ = 1U + static_cast<unsigned>(issue_wait);
-                        if (replay.kind == CachedKind::Load) {
+                        if (replay.kind == CachedKind::Load || replay.kind == CachedKind::Store) {
                             [[maybe_unused]] const bool hit = data_hit(replay);
                             assert(hit);
                             execute_cached_memory(replay, *data_line, data_offset);

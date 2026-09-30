@@ -2,6 +2,9 @@
 
 ## Cached CPU and rendering boundaries (2026-09-29)
 
+The [CPU store and conversion results](cpu-store-results.md) record the latest
+cache-write, conversion, strict compiler, cartridge, sanitizer, and SM64 checks.
+
 The [CPU and rendering results](cpu-rendering-results.md) record native integer
 and cache-hit load execution, branch-likely and DMA boundaries, local RSP branch
 groups, combiner dependencies, and VI top clipping. Strict core, desktop,

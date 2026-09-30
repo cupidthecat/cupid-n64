@@ -271,6 +271,7 @@ class Cpu {
             u8 pending_load{};
             u8 last_cycles{1};
             bool has_load{};
+            bool has_store{};
         };
         std::array<u8, 32> image{};
         std::array<NativeBlock, CpuNativeCode::maximum_instructions> native{};
@@ -302,8 +303,8 @@ class Cpu {
     [[nodiscard]] CachedDecode decode_cached_instruction(u32 instruction) const;
     void execute_cached_direct(const CachedDecode& decoded);
     unsigned execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigned maximum_steps,
-                                   u64 maximum_cycles,
-                                   std::optional<std::array<u64, 32>>* rollback_registers);
+                                   u64 maximum_cycles, std::optional<std::array<u64, 32>>* rollback_registers,
+                                   CpuNativeState& state);
     void execute_cached_memory(const CachedDecode& decoded, CacheLine<16>& line, unsigned offset);
     void update_interrupt_inputs();
     void synchronize();

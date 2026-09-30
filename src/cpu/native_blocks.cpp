@@ -6,7 +6,8 @@ namespace cupid {
 
 unsigned Cpu::execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigned maximum_steps,
                                     u64 maximum_cycles,
-                                    std::optional<std::array<u64, 32>>* rollback_registers) {
+                                    std::optional<std::array<u64, 32>>* rollback_registers,
+                                    CpuNativeState& state) {
     if (!native_execution_ || slot >= CpuNativeCode::maximum_instructions || maximum_steps < 3U ||
         next_pc != pc + 4U || in_delay_slot_ || pending_load_register_ != 0 || pending_fpu_register_ != 32)
         return 0;
@@ -24,14 +25,13 @@ unsigned Cpu::execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigne
         return 0;
 
     std::optional<std::array<u64, 32>> local_rollback;
-    auto* rollback = rollback_registers != nullptr ? rollback_registers
-                     : block.has_load              ? &local_rollback
-                                                   : nullptr;
+    auto* rollback = rollback_registers != nullptr       ? rollback_registers
+                     : block.has_load || block.has_store ? &local_rollback
+                                                         : nullptr;
     if (rollback != nullptr)
         rollback->emplace(gpr);
-    CpuNativeState state{gpr.data(), data_cache.data()};
     if (!block.code->execute(state)) {
-        assert(block.has_load && rollback != nullptr && rollback->has_value());
+        assert((block.has_load || block.has_store) && rollback != nullptr && rollback->has_value());
         gpr = **rollback;
         return 0;
     }

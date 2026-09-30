@@ -71,7 +71,11 @@ bool CpuNativeCode::supports(u32 instruction) {
     case 0x24:
     case 0x25:
     case 0x27:
+    case 0x28:
+    case 0x29:
+    case 0x2b:
     case 0x37:
+    case 0x3f:
         return true;
     default:
         return false;
@@ -91,7 +95,11 @@ __attribute__((no_sanitize("function")))
 #endif
 bool CpuNativeCode::execute(CpuNativeState& state) const {
     using Entry = std::intptr_t (*)(CpuNativeState*);
-    return reinterpret_cast<Entry>(code_)(&state) != 0;
+    state.store_count = 0;
+    if (reinterpret_cast<Entry>(code_)(&state) == 0)
+        return false;
+    state.commit_stores();
+    return true;
 }
 
 bool CpuNativeCode::execute(std::span<u64, 32> registers) const {
@@ -116,9 +124,19 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
     static_assert(std::is_standard_layout_v<CacheLine<16>>);
     static_assert(offsetof(CacheLine<16>, data) == 0);
     std::array<unsigned, 32> uses{};
+    bool has_memory = false;
+    bool has_store = false;
     for (const u32 instruction : instructions) {
         const unsigned opcode = instruction >> 26U;
         const unsigned function = instruction & 63U;
+        const bool load = opcode == 0x20U || opcode == 0x21U || opcode == 0x23U || opcode == 0x24U ||
+                          opcode == 0x25U || opcode == 0x27U || opcode == 0x37U;
+        const bool store = opcode == 0x28U || opcode == 0x29U || opcode == 0x2bU || opcode == 0x3fU;
+        // Loads after a staged store need forwarding and retain ordinary execution.
+        if (has_store && load)
+            return {};
+        has_memory = has_memory || load || store;
+        has_store = has_store || store;
         if (opcode == 0U && function == 0x0fU)
             continue;
         const bool fixed_shift = opcode == 0U && (function <= 3U || function >= 0x38U);
@@ -129,35 +147,43 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
             ++uses[(instruction >> 11U) & 31U];
     }
     uses[0] = 0;
-    constexpr unsigned cache_capacity = SLJIT_NUMBER_OF_SAVED_REGISTERS - 3U;
+    constexpr sljit_s32 gpr_base = SLJIT_S0;
+    constexpr sljit_s32 cache_base = SLJIT_S1;
+    constexpr sljit_s32 state_base = SLJIT_S2;
+    const unsigned base_registers = has_store ? 3U : has_memory ? 2U : 1U;
+    const unsigned cache_capacity = SLJIT_NUMBER_OF_SAVED_REGISTERS - base_registers;
     std::array<sljit_s32, 32> cached{};
     std::array<bool, 32> initialized{};
     std::array<bool, 32> dirty{};
     unsigned cache_count = 0;
     while (cache_count < cache_capacity) {
         const auto most_used = std::max_element(uses.begin(), uses.end());
-        if (*most_used < 3U)
+        if (*most_used < 5U)
             break;
         const auto reg = static_cast<unsigned>(most_used - uses.begin());
-        cached[reg] = SLJIT_S3 - static_cast<sljit_s32>(cache_count++);
+        cached[reg] = SLJIT_S0 - static_cast<sljit_s32>(base_registers + cache_count++);
         *most_used = 0;
     }
-    sljit_emit_enter(compiler, 0, SLJIT_ARGS1(W, P), 4, static_cast<sljit_s32>(3U + cache_count), 0);
-    sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
+    sljit_emit_enter(compiler, 0, SLJIT_ARGS1(W, P), has_memory ? 4 : 2,
+                     static_cast<sljit_s32>(base_registers + cache_count), 0);
+    if (has_store)
+        sljit_emit_op1(compiler, SLJIT_MOV_P, state_base, 0, SLJIT_S0, 0);
+    if (has_memory)
+        sljit_emit_op1(compiler, SLJIT_MOV_P, cache_base, 0, SLJIT_MEM1(SLJIT_S0),
+                       offsetof(CpuNativeState, data_cache));
+    sljit_emit_op1(compiler, SLJIT_MOV_P, gpr_base, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(CpuNativeState, registers));
-    sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S2, 0, SLJIT_MEM1(SLJIT_S0),
-                   offsetof(CpuNativeState, data_cache));
     const auto read = [&](sljit_s32 destination, unsigned source) {
         if (source == 0U) {
             sljit_emit_op1(compiler, SLJIT_MOV, destination, 0, SLJIT_IMM, 0);
         } else if (cached[source] != 0) {
             if (!initialized[source]) {
-                sljit_emit_op1(compiler, SLJIT_MOV, cached[source], 0, SLJIT_MEM1(SLJIT_S1), source * 8U);
+                sljit_emit_op1(compiler, SLJIT_MOV, cached[source], 0, SLJIT_MEM1(gpr_base), source * 8U);
                 initialized[source] = true;
             }
             sljit_emit_op1(compiler, SLJIT_MOV, destination, 0, cached[source], 0);
         } else {
-            sljit_emit_op1(compiler, SLJIT_MOV, destination, 0, SLJIT_MEM1(SLJIT_S1), source * 8U);
+            sljit_emit_op1(compiler, SLJIT_MOV, destination, 0, SLJIT_MEM1(gpr_base), source * 8U);
         }
     };
     const auto write = [&](unsigned destination, bool word_result = false) {
@@ -169,7 +195,7 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
             sljit_emit_op1(compiler, SLJIT_MOV, cached[destination], 0, SLJIT_R0, 0);
             initialized[destination] = dirty[destination] = true;
         } else {
-            sljit_emit_op1(compiler, SLJIT_MOV, SLJIT_MEM1(SLJIT_S1), destination * 8U, SLJIT_R0, 0);
+            sljit_emit_op1(compiler, SLJIT_MOV, SLJIT_MEM1(gpr_base), destination * 8U, SLJIT_R0, 0);
         }
     };
     const auto compare = [&](unsigned destination, bool signed_compare, sljit_s32 right, sljit_sw value) {
@@ -183,17 +209,19 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
                              sljit_sw right_value) {
         failed_loads.push_back(sljit_emit_cmp(compiler, condition, left, left_value, right, right_value));
     };
-    const auto emit_load = [&](u32 instruction, unsigned rs, unsigned rt, sljit_sw immediate) {
+    unsigned store_count = 0;
+    const auto emit_memory = [&](u32 instruction, unsigned rs, unsigned rt, sljit_sw immediate) {
         const unsigned opcode = instruction >> 26U;
-        const unsigned width = opcode == 0x20U || opcode == 0x24U   ? 1U
-                               : opcode == 0x21U || opcode == 0x25U ? 2U
-                               : opcode == 0x37U                    ? 8U
-                                                                    : 4U;
+        const bool store = opcode == 0x28U || opcode == 0x29U || opcode == 0x2bU || opcode == 0x3fU;
+        const unsigned width = opcode == 0x20U || opcode == 0x24U || opcode == 0x28U   ? 1U
+                               : opcode == 0x21U || opcode == 0x25U || opcode == 0x29U ? 2U
+                               : opcode == 0x37U || opcode == 0x3fU                    ? 8U
+                                                                                       : 4U;
         const bool signed_load = opcode == 0x20U || opcode == 0x21U || opcode == 0x23U;
 
         read(SLJIT_R0, rs);
         sljit_emit_op2(compiler, SLJIT_ADD, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_IMM, immediate);
-        fail_if(SLJIT_EQUAL, SLJIT_S2, 0, SLJIT_IMM, 0);
+        fail_if(SLJIT_EQUAL, cache_base, 0, SLJIT_IMM, 0);
         if (width > 1U) {
             sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R1, 0, SLJIT_R0, 0, SLJIT_IMM, width - 1U);
             fail_if(SLJIT_NOT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, 0);
@@ -204,7 +232,7 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
         fail_if(SLJIT_NOT_EQUAL, SLJIT_R1, 0, SLJIT_IMM, kseg0);
 
         sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R1, 0, SLJIT_R0, 0, SLJIT_IMM, 0x1fffffffU);
-        if (width == 8U) {
+        if (!store && width == 8U) {
             sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R2, 0, SLJIT_R1, 0, SLJIT_IMM, 0x1c000000U);
             fail_if(SLJIT_NOT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0);
         }
@@ -212,7 +240,7 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
         sljit_emit_op2(compiler, SLJIT_LSHR, SLJIT_R3, 0, SLJIT_R1, 0, SLJIT_IMM, 4);
         sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_IMM, 511);
         sljit_emit_op2(compiler, SLJIT_MUL, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_IMM, sizeof(CacheLine<16>));
-        sljit_emit_op2(compiler, SLJIT_ADD, SLJIT_R3, 0, SLJIT_S2, 0, SLJIT_R3, 0);
+        sljit_emit_op2(compiler, SLJIT_ADD, SLJIT_R3, 0, cache_base, 0, SLJIT_R3, 0);
 
         sljit_emit_op1(compiler, SLJIT_MOV_U8, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R3),
                        offsetof(CacheLine<16>, valid));
@@ -221,9 +249,27 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
                        offsetof(CacheLine<16>, tag));
         fail_if(SLJIT_NOT_EQUAL, SLJIT_R0, 0, SLJIT_R2, 0);
 
+        sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, 15);
+        if (store) {
+            const auto record = static_cast<sljit_sw>(offsetof(CpuNativeState, stores) +
+                                                      store_count++ * sizeof(CpuNativeState::Store));
+            sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_MEM1(state_base),
+                           record + static_cast<sljit_sw>(offsetof(CpuNativeState::Store, line)), SLJIT_R3,
+                           0);
+            sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_MEM1(state_base),
+                           record + static_cast<sljit_sw>(offsetof(CpuNativeState::Store, offset)), SLJIT_R1,
+                           0);
+            sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_MEM1(state_base),
+                           record + static_cast<sljit_sw>(offsetof(CpuNativeState::Store, width)), SLJIT_IMM,
+                           width);
+            read(SLJIT_R0, rt);
+            sljit_emit_op1(compiler, SLJIT_MOV, SLJIT_MEM1(state_base),
+                           record + static_cast<sljit_sw>(offsetof(CpuNativeState::Store, value)), SLJIT_R0,
+                           0);
+            return;
+        }
         if (rt == 0U)
             return;
-        sljit_emit_op2(compiler, SLJIT_AND, SLJIT_R1, 0, SLJIT_R1, 0, SLJIT_IMM, 15);
         sljit_emit_op2(compiler, SLJIT_ADD, SLJIT_R3, 0, SLJIT_R3, 0, SLJIT_R1, 0);
         if (width == 1U) {
             sljit_emit_op1(compiler, signed_load ? SLJIT_MOV_S8 : SLJIT_MOV_U8, SLJIT_R0, 0,
@@ -251,8 +297,9 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
 
         if (opcode != 0) {
             if (opcode == 0x20U || opcode == 0x21U || opcode == 0x23U || opcode == 0x24U || opcode == 0x25U ||
-                opcode == 0x27U || opcode == 0x37U) {
-                emit_load(instruction, rs, rt, immediate);
+                opcode == 0x27U || opcode == 0x37U || opcode == 0x28U || opcode == 0x29U || opcode == 0x2bU ||
+                opcode == 0x3fU) {
+                emit_memory(instruction, rs, rt, immediate);
                 continue;
             }
             if (rt == 0U)
@@ -366,8 +413,11 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
 
     for (unsigned reg = 1; reg < cached.size(); ++reg) {
         if (dirty[reg])
-            sljit_emit_op1(compiler, SLJIT_MOV, SLJIT_MEM1(SLJIT_S1), reg * 8U, cached[reg], 0);
+            sljit_emit_op1(compiler, SLJIT_MOV, SLJIT_MEM1(gpr_base), reg * 8U, cached[reg], 0);
     }
+    if (store_count != 0U)
+        sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_MEM1(state_base), offsetof(CpuNativeState, store_count),
+                       SLJIT_IMM, store_count);
     sljit_emit_return(compiler, SLJIT_MOV, SLJIT_IMM, 1);
     if (!failed_loads.empty()) {
         auto* failed = sljit_emit_label(compiler);

@@ -10,6 +10,10 @@ if((CUPID_NATIVE_RSP OR CUPID_NATIVE_CPU) AND CMAKE_SIZEOF_VOID_P EQUAL 8 AND
     target_link_libraries(cupid_core PRIVATE cupid_sljit)
     if(CUPID_NATIVE_RSP)
         target_compile_definitions(cupid_core PRIVATE CUPID_RSP_NATIVE=1)
+        if(MSVC)
+            # Instrumented vector specializations exceed the ordinary COFF section limit.
+            set_property(SOURCE src/rsp/native.cpp APPEND PROPERTY COMPILE_OPTIONS /bigobj)
+        endif()
     endif()
     if(CUPID_NATIVE_CPU)
         target_compile_definitions(cupid_core PRIVATE CUPID_CPU_NATIVE=1)
