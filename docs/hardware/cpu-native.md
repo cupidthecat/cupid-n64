@@ -69,11 +69,23 @@ Changing either releases that plan's compiled entries. A backing RDRAM write
 does not invalidate an unchanged instruction cache. This preserves the stale
 code visible to the hardware until software invalidates or replaces the line.
 
-A candidate compiles on its fifth eligible use. If the code generator cannot
-allocate or compile a block, it stays on the portable path until the plan changes.
-The 512 line plans each
-hold at most seven entries; reset releases them all. Generated code receives the
-current register-array pointer at entry and embeds no machine pointer.
+A candidate requests code on its fifth eligible use. A CPU-owned lookup cache
+reuses immutable programs with exactly the same instruction words and length.
+Hardware cache tags and bytes still decide which line plan can execute; lookup
+reuse changes no fetch, warmup, access guard, or clock boundary.
+
+The lookup holds at most 4,096 entries, including failed compilation attempts.
+When it fills, the next new sequence clears the lookup generation. The 512 line
+plans can retain at most seven code owners each, so clearing the lookup does not
+invalidate a program in use. A failed compilation keeps ordinary execution until
+a new lookup generation or reset permits another attempt. Reset releases both
+lookup and line-plan ownership. Copies start with independent lookup storage;
+existing line-plan copies can share immutable programs. Portable builds allocate
+no lookup storage.
+
+Generated code receives the current register-array and data-cache pointers at
+entry and embeds no machine pointer or program address. Identical sequences can
+therefore reuse code after instruction-cache replacement or at another address.
 
 The CPU shares the vendored SLJIT generator and write-or-execute allocator with
 the RSP. Redistribution must retain `third_party/sljit/LICENSE`. C++ planning,
@@ -83,6 +95,10 @@ carry compiler-generated sanitizer instrumentation. The entry call omits only
 the UBSan function-signature check required for generated entry points.
 
 ## Regression coverage
+
+`tests/cpu/test_native_cache.cpp` checks complete instruction keys, lengths,
+changed bytes, failed compilation reuse, bounded generations, retained programs
+after eviction, reset, copy and move ownership, and portable allocation behavior.
 
 `tests/cpu/test_native_integers.cpp` compares emitted operations with the
 interpreter over wide values, shift limits, immediate limits, overlapping

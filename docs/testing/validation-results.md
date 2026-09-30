@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## CPU code reuse (2026-09-30)
+
+The [code reuse results](cpu-code-cache-results.md) record bounded lookup
+ownership, full compiler and cartridge checks, sanitizer coverage, and retained
+SM64 comparisons. Repeated compilation decreases; host timing still falls short
+of full-speed gameplay.
+
 ## Super Mario 64 profile build (2026-09-29)
 
 The [profile validation results](sm64-profile-results.md) record complete desktop

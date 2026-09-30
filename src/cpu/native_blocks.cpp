@@ -19,7 +19,7 @@ unsigned Cpu::execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigne
         std::array<u32, CpuNativeCode::maximum_instructions> instructions{};
         for (unsigned index = 0; index < block.count; ++index)
             instructions[index] = read_be32(plan.image.data() + (slot + index) * 4U);
-        block.code = CpuNativeCode::compile(std::span(instructions).first(block.count));
+        block.code = native_cache_.lookup(std::span(instructions).first(block.count));
     }
     if (!block.code)
         return 0;

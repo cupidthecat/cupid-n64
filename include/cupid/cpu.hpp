@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cupid/cpu/native.hpp"
+#include "cupid/cpu/native_cache.hpp"
 #include "cupid/fpu.hpp"
 #include "cupid/types.hpp"
 
@@ -279,6 +280,7 @@ class Cpu {
         bool valid{};
     };
     std::vector<CachedLinePlan> cached_line_plans_ = std::vector<CachedLinePlan>(512);
+    CpuNativeCache native_cache_;
 
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);
