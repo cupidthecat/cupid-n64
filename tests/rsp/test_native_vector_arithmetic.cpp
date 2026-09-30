@@ -1,6 +1,7 @@
 #include "cupid/system.hpp"
 #include "test.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <memory>
@@ -60,6 +61,7 @@ u16 saturated_middle(u64 bits) {
 struct Oracle {
     std::array<Lanes, 32> vectors{};
     std::array<u64, 8> accumulator{};
+    u8 carry_low{0xa5U}, carry_high{0x5aU};
 
     void execute(u32 word) {
         const unsigned function = word & 63U;
@@ -67,12 +69,30 @@ struct Oracle {
         const auto left = vectors[(word >> 11U) & 31U];
         const auto right = vectors[(word >> 16U) & 31U];
         auto& result = vectors[(word >> 6U) & 31U];
+        u8 next_carry = 0, next_high = 0;
         for (unsigned lane = 0; lane < 8U; ++lane) {
             const u16 a = left[lane], b = right[selected_lane(element, lane)];
             if (function == 0x1dU) {
                 result[lane] = element >= 8U && element <= 10U
                                    ? static_cast<u16>(accumulator[lane] >> ((10U - element) * 16U))
                                    : 0;
+            } else if (function == 16U || function == 17U || function == 20U || function == 21U) {
+                s32 value = 0;
+                if (function == 16U || function == 17U) {
+                    const s32 carry = (carry_low >> lane) & 1U;
+                    value = function == 16U
+                                ? static_cast<s32>(std::bit_cast<s16>(a)) + std::bit_cast<s16>(b) + carry
+                                : static_cast<s32>(std::bit_cast<s16>(a)) - std::bit_cast<s16>(b) - carry;
+                    result[lane] = static_cast<u16>(std::clamp(value, -32768, 32767));
+                } else {
+                    value = function == 20U ? static_cast<s32>(a) + b : static_cast<s32>(a) - b;
+                    result[lane] = static_cast<u16>(value);
+                    if (function == 20U ? value > 65535 : value < 0)
+                        next_carry |= static_cast<u8>(1U << lane);
+                    if (function == 21U && value != 0)
+                        next_high |= static_cast<u8>(1U << lane);
+                }
+                accumulator[lane] = (accumulator[lane] & ~u64{0xffffU}) | static_cast<u16>(value);
             } else if (function >= 0x28U && function <= 0x2dU) {
                 u16 value = function < 0x2aU   ? static_cast<u16>(a & b)
                             : function < 0x2cU ? static_cast<u16>(a | b)
@@ -133,6 +153,10 @@ struct Oracle {
                                                                     : saturated_middle(bits);
             }
         }
+        if (function == 16U || function == 17U || function == 20U || function == 21U) {
+            carry_low = next_carry;
+            carry_high = next_high;
+        }
     }
 };
 
@@ -187,7 +211,9 @@ void verify(Rsp& rsp, const Oracle& oracle) {
         for (unsigned lane = 0; lane < 8U; ++lane)
             CHECK_EQ(read_be16(rsp.memory.data() + 0x600U + slice * 16U + lane * 2U),
                      static_cast<u16>(oracle.accumulator[lane] >> ((2U - slice) * 16U)));
-    CHECK_EQ(read_be32(rsp.memory.data() + 0x630U), 0x5aa5U);
+    const auto vco = static_cast<u16>((static_cast<unsigned>(oracle.carry_high) << 8U) | oracle.carry_low);
+    CHECK_EQ(read_be32(rsp.memory.data() + 0x630U),
+             static_cast<u32>(static_cast<s32>(std::bit_cast<s16>(vco))));
     CHECK_EQ(read_be32(rsp.memory.data() + 0x634U), 0xffffa55aU);
     CHECK_EQ(read_be32(rsp.memory.data() + 0x638U), 0x96U);
 }
@@ -195,8 +221,8 @@ void verify(Rsp& rsp, const Oracle& oracle) {
 } // namespace
 
 TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elements_and_aliases) {
-    for (unsigned function :
-         {0U, 1U, 4U, 5U, 6U, 7U, 8U, 9U, 12U, 13U, 14U, 15U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
+    for (unsigned function : {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U,
+                              16U, 17U, 20U, 21U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
         for (unsigned element = 0; element < 16U; ++element) {
             for (unsigned alias = 0; alias < 4U; ++alias) {
                 const unsigned source = (function + element) & 31U;
@@ -258,8 +284,8 @@ TEST(rsp_native_vector_arithmetic_keeps_accumulator_dependencies_across_helper_c
 }
 
 TEST(rsp_native_vector_overwritten_results_keep_accumulators_consumers_and_block_exit_state) {
-    for (unsigned function :
-         {0U, 1U, 4U, 5U, 6U, 7U, 8U, 9U, 12U, 13U, 14U, 15U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
+    for (unsigned function : {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U,
+                              16U, 17U, 20U, 21U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
         for (unsigned element = 0; element < 16U; ++element) {
             for (unsigned consumer = 0; consumer < 3U; ++consumer) {
                 std::array<RspNativeInstruction, 16> instructions{};
@@ -365,6 +391,60 @@ TEST(rsp_native_vector_cached_accumulators_reach_helpers_after_fast_and_wrapped_
             for (const auto instruction : instructions)
                 if (instruction.operation == RspPipeline::Operation::Cop2)
                     oracle.execute(instruction.word);
+            verify(machine->rsp, oracle);
+        }
+    }
+}
+
+TEST(rsp_native_vector_add_and_subtract_consume_every_carry_mask_and_clear_both_carry_flags) {
+    for (const unsigned function : {16U, 17U}) {
+        for (unsigned element = 0; element < 16U; ++element) {
+            const u32 word = vector_word(function, 22U, 1U, 31U, element);
+            const std::array instructions{RspNativeInstruction{word, RspPipeline::Operation::Cop2}};
+            const auto code = RspNativeCode::compile(instructions);
+            CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+            if (!code)
+                continue;
+            for (unsigned mask = 0; mask < 256U; ++mask) {
+                auto machine = std::make_unique<System>();
+                machine->rsp.set_native_execution(false);
+                Oracle oracle;
+                seed(machine->rsp, oracle, mask % 5U);
+                oracle.carry_low = static_cast<u8>(mask);
+                oracle.carry_high = static_cast<u8>(mask ^ 0xa5U);
+                const unsigned flags = mask | (static_cast<unsigned>(oracle.carry_high) << 8U);
+                const std::array words{0x34010000U | flags, 0x48c10000U, 13U};
+                run(machine->rsp, words);
+                RspNativeState state{&machine->rsp, nullptr, nullptr};
+                code->execute(state);
+                oracle.execute(word);
+                verify(machine->rsp, oracle);
+            }
+        }
+    }
+}
+
+TEST(rsp_native_vector_carry_results_and_accumulator_slices_remain_coherent_inside_cached_chains) {
+    for (unsigned element = 0; element < 16U; ++element) {
+        constexpr std::array<unsigned, 16> functions{7U,  15U, 20U, 16U, 15U, 21U, 17U, 8U,
+                                                     12U, 20U, 16U, 13U, 21U, 17U, 29U, 45U};
+        std::array<RspNativeInstruction, 16> instructions{};
+        for (unsigned index = 0; index < instructions.size(); ++index)
+            instructions[index] = {vector_word(functions[index], 22U, (index & 7U) + 1U, 31U, element),
+                                   RspPipeline::Operation::Cop2};
+        const auto code = RspNativeCode::compile(instructions);
+        CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+        if (!code)
+            continue;
+        for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+            auto machine = std::make_unique<System>();
+            machine->rsp.set_native_execution(false);
+            Oracle oracle;
+            seed(machine->rsp, oracle, pattern);
+            RspNativeState state{&machine->rsp, nullptr, nullptr};
+            code->execute(state);
+            for (const auto instruction : instructions)
+                oracle.execute(instruction.word);
             verify(machine->rsp, oracle);
         }
     }

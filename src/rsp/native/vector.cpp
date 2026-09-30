@@ -1,5 +1,8 @@
 #include "vector.hpp"
 
+#include "cupid/rsp/native.hpp"
+#include <cstddef>
+
 #if defined(CUPID_RSP_NATIVE)
 #include <array>
 
@@ -22,6 +25,11 @@ enum class Packed : u8 {
     UnpackLow = 0x61,
     UnpackHigh = 0x69,
     PackSigned = 0x6b,
+    PackBytes = 0x63,
+    AddSigned = 0xed,
+    SubtractSigned = 0xe9,
+    MinimumSigned = 0xea,
+    MaximumSigned = 0xee,
 };
 
 class VectorEmitter {
@@ -90,6 +98,37 @@ class VectorEmitter {
         cache_.dirty |= bit;
     }
 
+    void carry_values(unsigned index) {
+        static constexpr std::array<u16, 8> bits{1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
+        sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                       offsetof(RspNativeState, carry_low));
+        sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R3), 0);
+        sljit_emit_simd_replicate(compiler_, type, SLJIT_VR(static_cast<sljit_s32>(index)), SLJIT_R0, 0);
+        sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_IMM,
+                       reinterpret_cast<sljit_sw>(bits.data()));
+        load(3, SLJIT_R3, 0);
+        operation(Packed::And, index, 3);
+        operation(Packed::Xor, 3, 3);
+        operation(Packed::Greater, index, 3);
+        shift(index, 2, 15);
+    }
+
+    void carry_flag(unsigned index, bool high) {
+        // Each signed mask becomes one byte; its lower eight sign bits encode lanes.
+        operation(Packed::PackBytes, index, index);
+        sljit_emit_simd_sign(compiler_, SLJIT_SIMD_REG_128 | SLJIT_SIMD_ELEM_8 | SLJIT_SIMD_STORE | SLJIT_32,
+                             SLJIT_VR(static_cast<sljit_s32>(index)), SLJIT_R0, 0);
+        sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                       high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
+        sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_R0, 0);
+    }
+
+    void clear_carry(bool high) {
+        sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                       high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
+        sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_IMM, 0);
+    }
+
     void flush() {
         for (unsigned slice = 0; slice < 3U; ++slice)
             if ((cache_.dirty & (1U << slice)) != 0)
@@ -147,7 +186,8 @@ void flush_accumulator(sljit_compiler* compiler, AccumulatorCache& cache) {
 
 bool supports_vector(unsigned function) {
     return function <= 1U || (function >= 4U && function <= 9U) || (function >= 12U && function <= 15U) ||
-           function == 29U || (function >= 0x28U && function <= 0x2dU);
+           function == 16U || function == 17U || function == 20U || function == 21U || function == 29U ||
+           (function >= 0x28U && function <= 0x2dU);
 }
 
 void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live, bool destination_live,
@@ -285,6 +325,68 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live,
         emit.store(0, accumulator, 0);
         if (destination_live)
             emit.store(0, vectors, destination * 16U);
+        return;
+    }
+    if (function == 16U || function == 17U) {
+        emit.carry_values(2);
+        if (function == 16U) {
+            emit.operation(Packed::Move, 3, 0);
+            emit.operation(Packed::Add, 3, 1);
+            emit.operation(Packed::Add, 3, 2);
+            emit.store(3, accumulator, 0);
+            if (destination_live) {
+                emit.operation(Packed::Move, 3, 0);
+                // Adding carry to the smaller operand preserves both saturation endpoints.
+                emit.operation(Packed::MinimumSigned, 3, 1);
+                emit.operation(Packed::MaximumSigned, 0, 1);
+                emit.operation(Packed::AddSigned, 3, 2);
+                emit.operation(Packed::AddSigned, 3, 0);
+                emit.store(3, vectors, destination * 16U);
+            }
+        } else {
+            emit.operation(Packed::Move, 3, 1);
+            emit.operation(Packed::Add, 1, 2);
+            emit.operation(Packed::AddSigned, 3, 2);
+            emit.operation(Packed::Move, 2, 0);
+            emit.operation(Packed::Subtract, 2, 1);
+            emit.store(2, accumulator, 0);
+            if (destination_live) {
+                emit.operation(Packed::Move, 2, 3);
+                // Recover the extra unit when VT + carry wrapped past signed positive range.
+                emit.operation(Packed::Greater, 2, 1);
+                emit.operation(Packed::SubtractSigned, 0, 3);
+                emit.operation(Packed::AddSigned, 0, 2);
+                emit.store(0, vectors, destination * 16U);
+            }
+        }
+        emit.clear_carry(false);
+        emit.clear_carry(true);
+        return;
+    }
+    if (function == 20U || function == 21U) {
+        emit.operation(Packed::Move, 2, function == 20U ? 0U : 1U);
+        emit.operation(Packed::Move, 3, 0);
+        emit.operation(function == 20U ? Packed::Add : Packed::Subtract, 0, 1);
+        emit.store(0, accumulator, 0);
+        if (destination_live)
+            emit.store(0, vectors, destination * 16U);
+        bias();
+        if (function == 20U)
+            emit.operation(Packed::Move, 3, 0);
+        emit.operation(Packed::Xor, 2, 4);
+        emit.operation(Packed::Xor, 3, 4);
+        emit.operation(Packed::Greater, 2, 3);
+        emit.carry_flag(2, false);
+        if (function == 20U) {
+            emit.clear_carry(true);
+        } else {
+            emit.operation(Packed::Move, 3, 0);
+            emit.operation(Packed::Xor, 1, 1);
+            emit.operation(Packed::Equal, 3, 1);
+            emit.operation(Packed::Equal, 1, 1);
+            emit.operation(Packed::Xor, 3, 1);
+            emit.carry_flag(3, true);
+        }
         return;
     }
     if (function <= 1U) {

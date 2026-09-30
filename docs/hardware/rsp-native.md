@@ -26,7 +26,7 @@ execution. Stores use the existing write helpers so speculative local execution
 can restore every affected DMEM block when another device observes the RSP.
 Compiled vector blocks emit SSE2 instructions for VMULF, VMULU, VMUDL, VMUDM,
 VMUDN, VMUDH, VMACF, VMACU, VMADL, VMADM, VMADN, VMADH, VSAR, and the six
-logical operations. Fractional products retain the rounding bias and positive
+logical operations, plus VADD, VSUB, VADDC, and VSUBC. Fractional products retain the rounding bias and positive
 endpoint. Accumulating operations propagate both low- and middle-slice carries;
 unsigned destinations retain their distinct saturation rules.
 Register offsets and element
@@ -34,7 +34,12 @@ selections are fixed when compiling. Both operands are loaded before an aliased
 destination is written. Mixed signedness, 48-bit accumulator wrapping, carry
 between the middle and high slices, and signed destination saturation follow
 the architectural equations. Logical operations replace only the low
-accumulator slice. These operations preserve vector control flags.
+accumulator slice. Products, VSAR, and logical operations preserve vector
+control flags. VADD and VSUB consume the eight low carry flags, retain wrapped
+low accumulator results, saturate their signed destinations, and clear both
+carry groups. VADDC reports unsigned overflow; VSUBC reports unsigned borrow
+and a nonzero difference in their separate carry groups. These four operations
+preserve the upper accumulator slices and the comparison and extension flags.
 
 The compiler omits a vector destination write only when a later emitted
 operation overwrites it before any reader, helper, or block exit. Accumulator
@@ -51,6 +56,10 @@ retain arithmetic results between operations, and flush before helpers and
 block exit. Wrapped scalar loads flush before their conditional branch so both
 the direct and helper paths see coherent accumulator memory. Cached slices are
 invalidated at each helper boundary.
+
+Carry operations receive the current machine's low and high carry pointers
+through a sixth saved scalar base. Other vector blocks retain five saved bases.
+Their packed mask extraction maps each architectural lane to its flag bit.
 
 The compiler declares every used SIMD register, including registers that
 Windows requires the function to preserve. Scalar-only blocks retain three
@@ -70,12 +79,14 @@ against ordinary execution.
 `tests/rsp/test_native_vector_arithmetic.cpp` compares compiled operations with
 an independent scalar oracle. It checks all 16 element selections, aliased
 inputs and destinations, every vector register, all accumulator slices, and
-unchanged control flags. Repeated products cross the 32-bit saturation and
+expected control flags. Repeated products cross the 32-bit saturation and
 48-bit wrapping boundaries. Mixed blocks consume accumulator changes made by
 ordinary VMULQ and VMACQ helpers. Overwritten-result chains retain late
 consumers, all exit registers, and accumulator effects. Memory stores and COP2
 transfers observe intermediate results. Fast and wrapped scalar loads retain
-cached accumulator changes before a consuming helper. Input patterns seed nontrivial upper slices and the
+cached accumulator changes before a consuming helper. Add/subtract checks cover
+every carry mask, all element selections, signed endpoints, unsigned overflow
+and borrow, aliased operands, and carries inside cached accumulator chains. Input patterns seed nontrivial upper slices and the
 48-bit sign boundary. Output stores use an explicit base register so their
 signed seven-bit displacements stay within range.
 

@@ -47,6 +47,10 @@ void RspNativeCode::execute(RspNativeState& state) const {
         state.vectors = state.rsp->vr_[0].lane.data();
         state.accumulator = state.rsp->accumulator_.low.data();
     }
+    if (inline_carry_) {
+        state.carry_low = &state.rsp->vcol_;
+        state.carry_high = &state.rsp->vcoh_;
+    }
     using Entry = void (*)(RspNativeState*);
     reinterpret_cast<Entry>(code_)(&state);
 }
@@ -120,11 +124,17 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         return instruction.operation == RspPipeline::Operation::Cop2 &&
                (instruction.word & (1U << 25U)) != 0U && rsp_native::supports_vector(instruction.word & 63U);
     });
+    const bool inline_carry = std::any_of(instructions.begin(), instructions.end(), [](auto instruction) {
+        const unsigned function = instruction.word & 63U;
+        return instruction.operation == RspPipeline::Operation::Cop2 &&
+               (instruction.word & (1U << 25U)) != 0U &&
+               (function == 16U || function == 17U || function == 20U || function == 21U);
+    });
     const auto vector_plan = rsp_native::plan_vectors(instructions);
     rsp_native::AccumulatorCache accumulator_cache{vector_plan.cache_accumulator};
     sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P),
                      4 | SLJIT_ENTER_VECTOR(inline_vectors ? accumulator_cache.enabled ? 8 : 5 : 0),
-                     inline_vectors ? 5 : 3, 0);
+                     inline_vectors ? inline_carry ? 6 : 5 : 3, 0);
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(RspNativeState, scalar));
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S2, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, dmem));
@@ -134,6 +144,8 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S4, 0, SLJIT_MEM1(SLJIT_S0),
                        offsetof(RspNativeState, accumulator));
     }
+    if (inline_carry)
+        sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S5, 0, SLJIT_S0, 0);
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S0, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, rsp));
 
     const auto read = [&](sljit_s32 target, unsigned source) {
@@ -348,7 +360,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     sljit_emit_return_void(compiler);
     if (sljit_get_compiler_error(compiler) != SLJIT_SUCCESS)
         return {};
-    auto result = std::shared_ptr<RspNativeCode>(new RspNativeCode(nullptr, inline_vectors));
+    auto result = std::shared_ptr<RspNativeCode>(new RspNativeCode(nullptr, inline_vectors, inline_carry));
     result->code_ = sljit_generate_code(compiler, 0, nullptr);
     if (result->code_ == nullptr)
         return {};
