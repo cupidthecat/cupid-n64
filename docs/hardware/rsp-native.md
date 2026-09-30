@@ -36,14 +36,26 @@ between the middle and high slices, and signed destination saturation follow
 the architectural equations. Logical operations replace only the low
 accumulator slice. These operations preserve vector control flags.
 
+The compiler omits a vector destination write only when a later emitted
+operation overwrites it before any reader, helper, or block exit. Accumulator
+updates still execute, including wrapping and carries. Aliased source reads
+keep the preceding destination value live. Transfers, vector memory operations,
+and unsupported vector operations form barriers for this analysis.
+
 Other vector instructions call a helper selected from the decoded opcode and
 element field. Transfers and vector memory accesses retain the existing C++
-behavior. Five volatile SIMD registers hold the emitted operation's temporary
-values; none survive a helper call. The compiler declares these as vector
-registers and preserves the additional scalar base registers across calls.
-Scalar-only blocks retain three saved base registers and skip vector pointer
-setup. The unsigned comparison bias is reused between emitted VMADH operations
-and rebuilt after a helper call.
+behavior. Five SIMD registers hold temporary values. Blocks with at least three
+emitted vector operations and two accumulations in a helper-free chain declare
+three more registers for the accumulator's slices. Those slices load lazily,
+retain arithmetic results between operations, and flush before helpers and
+block exit. Wrapped scalar loads flush before their conditional branch so both
+the direct and helper paths see coherent accumulator memory. Cached slices are
+invalidated at each helper boundary.
+
+The compiler declares every used SIMD register, including registers that
+Windows requires the function to preserve. Scalar-only blocks retain three
+saved base registers and skip vector pointer setup. The unsigned comparison
+bias is reused between emitted operations and rebuilt after a helper call.
 
 Native code receives the current RSP and register-storage pointers at entry.
 It contains no pointer to the machine that first compiled it. Copies of local
@@ -60,7 +72,10 @@ an independent scalar oracle. It checks all 16 element selections, aliased
 inputs and destinations, every vector register, all accumulator slices, and
 unchanged control flags. Repeated products cross the 32-bit saturation and
 48-bit wrapping boundaries. Mixed blocks consume accumulator changes made by
-an ordinary VMULQ helper. Input patterns seed nontrivial upper slices and the
+ordinary VMULQ and VMACQ helpers. Overwritten-result chains retain late
+consumers, all exit registers, and accumulator effects. Memory stores and COP2
+transfers observe intermediate results. Fast and wrapped scalar loads retain
+cached accumulator changes before a consuming helper. Input patterns seed nontrivial upper slices and the
 48-bit sign boundary. Output stores use an explicit base register so their
 signed seven-bit displacements stay within range.
 

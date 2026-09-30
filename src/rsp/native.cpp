@@ -1,6 +1,7 @@
 #include "cupid/rsp/native.hpp"
 
 #include "cupid/rsp.hpp"
+#include "native/plan.hpp"
 #include "native/vector.hpp"
 #include "vector_operations.hpp"
 
@@ -119,7 +120,10 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         return instruction.operation == RspPipeline::Operation::Cop2 &&
                (instruction.word & (1U << 25U)) != 0U && rsp_native::supports_vector(instruction.word & 63U);
     });
-    sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_VECTOR(inline_vectors ? 5 : 0),
+    const auto vector_plan = rsp_native::plan_vectors(instructions);
+    rsp_native::AccumulatorCache accumulator_cache{vector_plan.cache_accumulator};
+    sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P),
+                     4 | SLJIT_ENTER_VECTOR(inline_vectors ? accumulator_cache.enabled ? 8 : 5 : 0),
                      inline_vectors ? 5 : 3, 0);
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(RspNativeState, scalar));
@@ -144,6 +148,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     };
     bool comparison_bias_live = false;
     const auto call = [&](void (*helper)(Rsp*, u32), u32 word) {
+        rsp_native::flush_accumulator(compiler, accumulator_cache);
         comparison_bias_live = false;
         sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R0, 0, SLJIT_S0, 0);
         sljit_emit_op1(compiler, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, static_cast<sljit_sw>(word));
@@ -157,13 +162,19 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
     }(std::make_index_sequence<64U * 16U>{});
 
     using Op = RspPipeline::Operation;
-    for (const auto instruction : instructions) {
+    for (std::size_t instruction_index = 0; instruction_index < instructions.size(); ++instruction_index) {
+        const auto instruction = instructions[instruction_index];
         const u32 word = instruction.word;
         const unsigned rs = (word >> 21U) & 31U;
         const unsigned rt = (word >> 16U) & 31U;
         const unsigned rd = (word >> 11U) & 31U;
         const unsigned sa = (word >> 6U) & 31U;
         const auto immediate = static_cast<sljit_sw>(std::bit_cast<s16>(static_cast<u16>(word)));
+        // Both arms of a wrapped-load branch must start with coherent memory.
+        // A slow-path-only flush would clear dirty bookkeeping for the fast arm.
+        if (instruction.operation == Op::Lh || instruction.operation == Op::Lhu ||
+            instruction.operation == Op::Lw)
+            rsp_native::flush_accumulator(compiler, accumulator_cache);
         switch (instruction.operation) {
         case Op::None:
             break;
@@ -308,6 +319,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
                                 : instruction.operation == Op::Sh ? store_halfword
                                                                   : store_word;
             comparison_bias_live = false;
+            rsp_native::flush_accumulator(compiler, accumulator_cache);
             sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3V(P, 32, 32), SLJIT_IMM,
                              reinterpret_cast<sljit_sw>(helper));
             break;
@@ -316,7 +328,8 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
             const unsigned function = word & 63U;
             const unsigned element = (word >> 21U) & 15U;
             if ((word & (1U << 25U)) != 0U && rsp_native::supports_vector(function))
-                rsp_native::emit_vector(compiler, word, comparison_bias_live);
+                rsp_native::emit_vector(compiler, word, comparison_bias_live,
+                                        vector_plan.destination_live[instruction_index], accumulator_cache);
             else
                 call((word & (1U << 25U)) != 0U ? vectors[element * 64U + function] : cop2, word);
             break;
@@ -331,6 +344,7 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
             return {};
         }
     }
+    rsp_native::flush_accumulator(compiler, accumulator_cache);
     sljit_emit_return_void(compiler);
     if (sljit_get_compiler_error(compiler) != SLJIT_SUCCESS)
         return {};

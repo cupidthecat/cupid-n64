@@ -89,6 +89,19 @@ struct Oracle {
                                          ? static_cast<s64>(b)
                                          : static_cast<s64>(std::bit_cast<s16>(b)));
 
+                if (function == 11U) {
+                    s64 adjusted = std::bit_cast<s32>(static_cast<u32>(accumulator[lane] >> 16U));
+                    if (adjusted < 0 && (adjusted & 32) == 0)
+                        adjusted += 32;
+                    else if (adjusted >= 32 && (adjusted & 32) == 0)
+                        adjusted -= 32;
+                    accumulator[lane] = (accumulator[lane] & 0xffffU) |
+                                        ((static_cast<u64>(adjusted) << 16U) & accumulator_mask);
+                    const s64 half = adjusted >> 1U;
+                    const s64 clamped = half < -32768 ? -32768 : half > 32767 ? 32767 : half;
+                    result[lane] = static_cast<u16>(clamped) & 0xfff0U;
+                    continue;
+                }
                 const u64 shifted = static_cast<u64>(product) << 16U;
                 if (function == 3U) {
                     const s64 rounded = product + (product < 0 ? 31 : 0);
@@ -217,26 +230,141 @@ TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elemen
 }
 
 TEST(rsp_native_vector_arithmetic_keeps_accumulator_dependencies_across_helper_calls) {
-    for (unsigned element = 0; element < 16U; ++element) {
-        std::array<RspNativeInstruction, 16> instructions{};
-        constexpr std::array<unsigned, 16> functions{7U, 15U, 44U, 0U,  15U, 3U, 15U, 41U,
-                                                     8U, 13U, 15U, 12U, 14U, 1U, 29U, 45U};
-        for (unsigned index = 0; index < instructions.size(); ++index)
-            instructions[index] = {vector_word(functions[index], index + 1U, index, index + 1U, element),
-                                   RspPipeline::Operation::Cop2};
-        const auto code = RspNativeCode::compile(instructions);
-        CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
-        if (!code)
-            continue;
+    for (const unsigned helper : {3U, 11U}) {
+        for (unsigned element = 0; element < 16U; ++element) {
+            std::array<RspNativeInstruction, 16> instructions{};
+            const std::array<unsigned, 16> functions{7U, 15U, 44U, 0U,  15U, helper, 15U, 41U,
+                                                     8U, 13U, 15U, 12U, 14U, 1U,     29U, 45U};
+            for (unsigned index = 0; index < instructions.size(); ++index)
+                instructions[index] = {vector_word(functions[index], index + 1U, index, index + 1U, element),
+                                       RspPipeline::Operation::Cop2};
+            const auto code = RspNativeCode::compile(instructions);
+            CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+            if (!code)
+                continue;
+            for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+                auto machine = std::make_unique<System>();
+                machine->rsp.set_native_execution(false);
+                Oracle oracle;
+                seed(machine->rsp, oracle, pattern);
+                RspNativeState state{&machine->rsp, nullptr, nullptr};
+                code->execute(state);
+                for (const auto instruction : instructions)
+                    oracle.execute(instruction.word);
+                verify(machine->rsp, oracle);
+            }
+        }
+    }
+}
+
+TEST(rsp_native_vector_overwritten_results_keep_accumulators_consumers_and_block_exit_state) {
+    for (unsigned function :
+         {0U, 1U, 4U, 5U, 6U, 7U, 8U, 9U, 12U, 13U, 14U, 15U, 29U, 40U, 41U, 42U, 43U, 44U, 45U}) {
+        for (unsigned element = 0; element < 16U; ++element) {
+            for (unsigned consumer = 0; consumer < 3U; ++consumer) {
+                std::array<RspNativeInstruction, 16> instructions{};
+                for (unsigned index = 0; index < instructions.size(); ++index) {
+                    const unsigned source = consumer == 1U && index == 8U ? 22U : (index & 7U) + 1U;
+                    const unsigned target = consumer == 2U && index == 8U ? 22U : 31U;
+                    instructions[index] = {
+                        vector_word(function, index == 15U ? 23U : 22U, source, target, element),
+                        RspPipeline::Operation::Cop2};
+                }
+                const auto code = RspNativeCode::compile(instructions);
+                CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+                if (!code)
+                    continue;
+                for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+                    auto machine = std::make_unique<System>();
+                    machine->rsp.set_native_execution(false);
+                    Oracle oracle;
+                    seed(machine->rsp, oracle, pattern);
+                    RspNativeState state{&machine->rsp, nullptr, nullptr};
+                    code->execute(state);
+                    for (auto instruction : instructions)
+                        oracle.execute(instruction.word);
+                    verify(machine->rsp, oracle);
+                }
+            }
+        }
+    }
+}
+
+TEST(rsp_native_vector_intermediate_results_remain_visible_to_memory_and_cop2_helpers) {
+    for (unsigned kind = 0; kind < 3U; ++kind) {
+        for (unsigned element = 0; element < 16U; ++element) {
+            for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+                std::vector<RspNativeInstruction> instructions{
+                    {vector_word(4U, 22U, 1U, 31U, element), RspPipeline::Operation::Cop2}};
+                if (kind == 0U) {
+                    instructions.push_back(
+                        {vector_memory(0x3aU, 22U, 0x400U, 0x200U), RspPipeline::Operation::VectorStore});
+                } else if (kind == 1U) {
+                    instructions.push_back({0x4801b000U, RspPipeline::Operation::Cop2});
+                    instructions.push_back({0x4881b800U, RspPipeline::Operation::Cop2});
+                } else {
+                    instructions.push_back(
+                        {vector_word(3U, 23U, 22U, 31U, element), RspPipeline::Operation::Cop2});
+                }
+                instructions.push_back(
+                    {vector_word(7U, 22U, 3U, 31U, element), RspPipeline::Operation::Cop2});
+                instructions.push_back(
+                    {vector_word(15U, 22U, 4U, 31U, element), RspPipeline::Operation::Cop2});
+                const auto code = RspNativeCode::compile(instructions);
+                CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+                if (!code)
+                    continue;
+                auto machine = std::make_unique<System>();
+                machine->rsp.set_native_execution(false);
+                Oracle oracle;
+                seed(machine->rsp, oracle, pattern);
+                oracle.execute(instructions.front().word);
+                const auto observed = oracle.vectors[22];
+                if (kind == 1U)
+                    oracle.vectors[23][0] = observed[0];
+                else if (kind == 2U)
+                    oracle.execute(instructions[1].word);
+                oracle.execute(instructions[instructions.size() - 2U].word);
+                oracle.execute(instructions.back().word);
+                RspNativeState state{&machine->rsp, nullptr, nullptr};
+                code->execute(state);
+                if (kind == 0U)
+                    for (unsigned lane = 0; lane < 8U; ++lane)
+                        CHECK_EQ(read_be16(machine->rsp.memory.data() + 0x400U + lane * 2U), observed[lane]);
+                verify(machine->rsp, oracle);
+            }
+        }
+    }
+}
+
+TEST(rsp_native_vector_cached_accumulators_reach_helpers_after_fast_and_wrapped_scalar_reads) {
+    for (const unsigned address : {0x210U, 0xfffU}) {
         for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+            const std::array<RspNativeInstruction, 7> instructions{
+                RspNativeInstruction{vector_word(15U, 22U, 1U, 31U, 8U), RspPipeline::Operation::Cop2},
+                {vector_word(15U, 22U, 2U, 31U, 9U), RspPipeline::Operation::Cop2},
+                {vector_word(15U, 22U, 3U, 31U, 10U), RspPipeline::Operation::Cop2},
+                {0x84410000U | (address - 0x200U), RspPipeline::Operation::Lh},
+                {vector_word(11U, 23U, 0U, 0U, 0U), RspPipeline::Operation::Cop2},
+                {vector_word(15U, 22U, 4U, 31U, 11U), RspPipeline::Operation::Cop2},
+                {vector_word(29U, 24U, 0U, 0U, 10U), RspPipeline::Operation::Cop2}};
+            const auto code = RspNativeCode::compile(instructions);
+            CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+            if (!code)
+                continue;
             auto machine = std::make_unique<System>();
             machine->rsp.set_native_execution(false);
             Oracle oracle;
             seed(machine->rsp, oracle, pattern);
-            RspNativeState state{&machine->rsp, nullptr, nullptr};
+            // The loaded scalar target is not consumed by later vector operations.
+            std::array<u32, 32> registers{};
+            registers[1] = 0x96U;
+            registers[2] = 0x200U;
+            RspNativeState state{&machine->rsp, registers.data(), machine->rsp.memory.data()};
             code->execute(state);
             for (const auto instruction : instructions)
-                oracle.execute(instruction.word);
+                if (instruction.operation == RspPipeline::Operation::Cop2)
+                    oracle.execute(instruction.word);
             verify(machine->rsp, oracle);
         }
     }
