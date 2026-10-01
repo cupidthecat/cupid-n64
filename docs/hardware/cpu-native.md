@@ -79,10 +79,12 @@ Changing either releases that plan's compiled entries. A backing RDRAM write
 does not invalidate an unchanged instruction cache. This preserves the stale
 code visible to the hardware until software invalidates or replaces the line.
 
-A candidate requests code on its fifth eligible use. A CPU-owned lookup cache
-reuses immutable programs with exactly the same instruction words and length.
-Hardware cache tags and bytes still decide which line plan can execute; lookup
-reuse changes no fetch, warmup, access guard, or clock boundary.
+A candidate checks the CPU-owned lookup on its first eligible use. If a program
+with exactly the same instruction words and length already exists, the replaced
+line plan can execute it immediately. This check neither compiles new code nor
+changes the lookup generation. A missing program retains the five-use threshold
+before compilation. Hardware cache tags and bytes still decide which line plan
+can execute; reuse preserves fetches, access guards, and guest clock boundaries.
 
 The lookup holds at most 4,096 entries, including failed compilation attempts.
 When it fills, the next new sequence clears the lookup generation. The 512 line
@@ -111,7 +113,8 @@ the UBSan function-signature check required for generated entry points.
 
 `tests/cpu/test_native_cache.cpp` checks complete instruction keys, lengths,
 changed bytes, failed compilation reuse, bounded generations, retained programs
-after eviction, reset, copy and move ownership, and portable allocation behavior.
+after eviction, reset, copy and move ownership, portable allocation behavior,
+and nonallocating misses in a full lookup generation.
 
 `tests/cpu/test_native_integers.cpp` compares emitted operations with the
 interpreter over wide values, shift limits, immediate limits, overlapping
@@ -127,8 +130,11 @@ sources, address aliases, failed guards after staged writes, reverse rollback,
 following loads, partial budgets, clock phases, Count/Compare and RSP interrupt
 boundaries, and DMA visibility before cache writeback.
 
-`tests/cpu/test_native_execution.cpp` compares complete slices with individual
-stepping across short budgets, all CPU/RCP clock phases, Count/Compare edges,
+`tests/cpu/test_native_execution.cpp` also checks first-use reuse after a tag
+replacement or a changed last word outside the compiled sequence. The first
+seven instructions execute through the retained program while individual
+stepping checks complete machine state and clocks. It compares complete slices
+with individual stepping across short budgets, all CPU/RCP clock phases, Count/Compare edges,
 instruction-cache changes, stale backing code, tag replacement, load interlocks,
 branches, COP2 memory transfers, audio callbacks, interruptible local RSP work,
 RSP interrupt boundaries, reset, and runtime selection. Tests

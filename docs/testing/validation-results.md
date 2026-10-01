@@ -1,5 +1,14 @@
 # Recorded validation results
 
+## CPU first-use code reuse (2026-10-01)
+
+The [code reuse results](cpu-code-cache-results.md#first-eligible-reuse-2026-10-01)
+record nonallocating lookup misses, immediate reuse after hardware cache
+replacement, the regression failure on the preceding core, and complete compiler
+and cartridge validation. Short controller replays improve in the recorded pair;
+the longer courtyard comparison is unchanged. Video, complete PCM, EEPROM,
+and guest clocks match.
+
 ## VI channel reconstruction (2026-10-01)
 
 The [VI reconstruction results](vi-reconstruction-results.md) record SIMD

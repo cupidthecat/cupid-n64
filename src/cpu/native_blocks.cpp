@@ -16,11 +16,17 @@ unsigned Cpu::execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigne
     if (block.count < minimum || block.count > maximum_steps ||
         static_cast<u64>(block.count) + block.extra_cycles > maximum_cycles)
         return 0;
-    if (!block.code && block.visits < 5U && ++block.visits == 5U) {
-        std::array<u32, CpuNativeCode::maximum_instructions> instructions{};
-        for (unsigned index = 0; index < block.count; ++index)
-            instructions[index] = read_be32(plan.image.data() + (slot + index) * 4U);
-        block.code = native_cache_.lookup(std::span(instructions).first(block.count));
+    if (!block.code && block.visits < 5U) {
+        ++block.visits;
+        if (block.visits == 1U || block.visits == 5U) {
+            std::array<u32, CpuNativeCode::maximum_instructions> instructions{};
+            for (unsigned index = 0; index < block.count; ++index)
+                instructions[index] = read_be32(plan.image.data() + (slot + index) * 4U);
+            const auto words = std::span(instructions).first(block.count);
+            // A replaced hardware line can reuse code without repeating compilation warmup.
+            // A miss still waits for five eligible visits before creating a program.
+            block.code = block.visits == 1U ? native_cache_.find(words) : native_cache_.lookup(words);
+        }
     }
     if (!block.code)
         return 0;

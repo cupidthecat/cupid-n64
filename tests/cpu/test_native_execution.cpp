@@ -338,3 +338,28 @@ TEST(cpu_native_execution_releases_cached_code_on_reset_and_obeys_runtime_select
     compare(native, ordinary, 1024);
     CHECK_EQ(native.cpu.native_block_instructions() != 0, CpuNativeCode::available());
 }
+
+TEST(cpu_native_execution_reuses_immutable_code_on_the_first_eligible_replacement_visit) {
+    for (const bool replaced_tag : {false, true}) {
+        auto systems = std::make_unique<std::array<System, 2>>();
+        auto& [native, ordinary] = *systems;
+        prepare(native);
+        prepare(ordinary);
+        warm(native, ordinary);
+        const u64 entry = replaced_tag ? code + 0x4000U : code;
+        for (auto* system : {&native, &ordinary}) {
+            auto& line = system->cpu.instruction_cache[(code >> 5U) & 511U];
+            if (replaced_tag)
+                line.tag = static_cast<u32>(entry) & 0x1ffff000U;
+            else
+                replace_cached_word(*system, code + 28U, 0x0007f803U); // Change the last word only.
+            // Prefetch the replaced line before the first eligible block visit.
+            system->cpu.set_pc(entry - 4U);
+            system->cpu.step();
+            CHECK_EQ(system->cpu.pc, entry);
+        }
+        const u64 before = native.cpu.native_block_instructions();
+        compare(native, ordinary, 7U);
+        CHECK_EQ(native.cpu.native_block_instructions() - before, CpuNativeCode::available() ? 7U : 0U);
+    }
+}

@@ -15,6 +15,7 @@ class CpuNativeCache {
     CpuNativeCache(CpuNativeCache&&) noexcept;
     CpuNativeCache& operator=(CpuNativeCache&&) noexcept;
 
+    [[nodiscard]] std::shared_ptr<const CpuNativeCode> find(std::span<const u32> instructions) const;
     [[nodiscard]] std::shared_ptr<const CpuNativeCode> lookup(std::span<const u32> instructions);
     [[nodiscard]] std::size_t size() const;
     void reset();

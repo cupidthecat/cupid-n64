@@ -114,3 +114,35 @@ TEST(cpu_native_cache_copies_keep_independent_owners_and_moves_transfer_lookup_s
     CHECK_EQ(moved.size(), 0U);
     CHECK_EQ(assigned.lookup(immediate(1U)), first);
 }
+
+TEST(cpu_native_cache_find_does_not_allocate_compile_or_evict_a_lookup_generation) {
+    CpuNativeCache cache;
+    CHECK(!cache.find({}));
+    CHECK(!cache.find(immediate(1U)));
+    const std::array<u32, CpuNativeCode::maximum_instructions + 1U> oversized{};
+    CHECK(!cache.find(oversized));
+    CHECK_EQ(cache.size(), 0U);
+    if (!CpuNativeCode::available())
+        return;
+    const std::array first{0x24010001U, 0x24220002U, 0x0041182dU};
+    auto changed = first;
+    changed[1] = 0x24220003U;
+    const auto retained = cache.lookup(first);
+    CHECK(retained != nullptr);
+    CHECK_EQ(cache.find(first), retained);
+    CHECK(!cache.find(changed));
+    CHECK(!cache.find(std::span(first).first(2U)));
+    const std::array unsupported{0x20010001U};
+    CHECK(!cache.lookup(unsupported));
+    CHECK(!cache.find(unsupported));
+    CHECK_EQ(cache.size(), 2U);
+    for (unsigned index = 2; index < CpuNativeCache::capacity; ++index)
+        CHECK(cache.lookup(immediate(index)) != nullptr);
+    CHECK_EQ(cache.size(), CpuNativeCache::capacity);
+    CHECK(!cache.find(immediate(static_cast<unsigned>(CpuNativeCache::capacity))));
+    CHECK_EQ(cache.size(), CpuNativeCache::capacity);
+    CHECK_EQ(cache.find(first), retained);
+    cache.reset();
+    CHECK(!cache.find(first));
+    CHECK_EQ(cache.size(), 0U);
+}

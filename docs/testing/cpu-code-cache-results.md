@@ -91,3 +91,64 @@ This record, its index link, and the ownership guide were added after validation
 Implementation and regression-test bytes were unchanged. The preceding
 [profile results](sm64-profile-results.md) describe a different core revision;
 their source-bound profile package cannot be reused for this implementation.
+
+## First eligible reuse (2026-10-01)
+
+A replacement line plan now checks for an existing program on its first eligible
+use. It reuses code only when every instruction word and the length match.
+The lookup neither allocates storage nor compiles or evicts programs on a miss;
+new sequences retain the five-use compilation threshold. Hardware instruction
+bytes, tags, access guards, pipeline state, and guest budgets still control entry.
+
+Two new regressions check a nonallocating miss in a full lookup generation and
+immediate execution after tag or unrelated last-word replacement. The first-use
+check fails on the preceding compiled core: it retires zero compiled instructions
+where seven were expected. It passes with the change. All 47 focused native CPU
+checks pass.
+
+The same 536-file snapshot passes Clang 21.1.5 Release, Clang with both native
+backends disabled, Clang ASan/UBSan, and MSVC 19.43.34809 desktop Release. Each
+configuration passes all 1,567 hardware and host regressions, all 4,637 prepared
+default and 6,273 prepared extended cartridge cases, stepped/batched comparisons,
+and default cold/warm boots. Clang configurations pass all nine CTest groups;
+MSVC passes all 15, including desktop audio lifecycle checks. All 67 tooling
+checks and clang-format 22.1.0 pass. Source and input integrity checks pass,
+and sanitizer logs contain no diagnostics. The source fingerprint is
+`7bed151aceb9712e02cfd612c1eb2bb6b365602d43bb0ae7918ebc580a1f9787`.
+
+Retained reports:
+
+- `.work/reports/cpu-hot-reuse-native/d4a2d6488db74f4391e85c8382f9b768/report.json`
+- `.work/reports/cpu-hot-reuse-portable/78cdb4d4ca014826b38fe17aa7dd6f2b/report.json`
+- `.work/reports/cpu-hot-reuse-sanitize/8be45a6122a342d2bcc274f1c84ee1fe/report.json`
+- `.work/reports/cpu-hot-reuse-msvc/6705b797afb24c119cb2b4ffcfb5c3fa/report.json`
+
+### Gameplay comparison
+
+Four 3,000-field controller captures ran in the following order, with matching
+compiler settings, performance-core affinity, and no concurrent local build or
+validation. Every field record, complete PCM stream, EEPROM byte, guest clock,
+and guest instruction count matches. RSP compiled instruction totals also match.
+The CPU compiled total rises from 139,503,792 to 165,950,608.
+
+| Capture | Wall time | Fields per host second |
+| --- | ---: | ---: |
+| Preceding core A | 71.136 s | 42.2 |
+| First eligible reuse A | 65.731 s | 45.6 |
+| First eligible reuse B | 65.962 s | 45.5 |
+| Preceding core B | 77.560 s | 38.7 |
+
+Both candidate captures are faster than both baselines in this batch. A separate
+7,200-field courtyard comparison is effectively unchanged: 197.625 seconds with
+first-use reuse and 197.876 seconds on the preceding core, about 36.4 fields per
+host second each. Both preserve every field, complete PCM, EEPROM, guest clock,
+and instruction count. The CPU compiled total rises from 299,295,536 to
+377,939,254; the RSP total remains 2,055,901,330. The final inspected frame retains
+Mario, the bridge, water, depth, textures, and HUD.
+
+The short-sequence gain does not establish a sustained 3D speed improvement.
+Full-speed gameplay and normal audible playback remain open in #48 and #47.
+Initial private captures used different compiler settings and are excluded from
+these timing comparisons. This result section and its index entry were finalized
+after the complete matrix; implementation, regression tests, and ownership-guide
+bytes were unchanged.

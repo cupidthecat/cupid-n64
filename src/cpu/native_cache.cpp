@@ -12,6 +12,12 @@ struct CpuNativeCache::Storage {
         std::size_t count{};
         bool operator==(const Key&) const = default;
     };
+    static Key key(std::span<const u32> instructions) {
+        Key result;
+        result.count = instructions.size();
+        std::copy(instructions.begin(), instructions.end(), result.instructions.begin());
+        return result;
+    }
     struct Hash {
         std::size_t operator()(const Key& key) const {
             u64 hash = 14695981039346656037ULL ^ key.count;
@@ -34,15 +40,20 @@ CpuNativeCache& CpuNativeCache::operator=(const CpuNativeCache& other) {
 CpuNativeCache::CpuNativeCache(CpuNativeCache&&) noexcept = default;
 CpuNativeCache& CpuNativeCache::operator=(CpuNativeCache&&) noexcept = default;
 
+std::shared_ptr<const CpuNativeCode> CpuNativeCache::find(std::span<const u32> instructions) const {
+    if (!storage_ || instructions.empty() || instructions.size() > CpuNativeCode::maximum_instructions)
+        return {};
+    const auto found = storage_->entries.find(Storage::key(instructions));
+    return found == storage_->entries.end() ? nullptr : found->second;
+}
+
 std::shared_ptr<const CpuNativeCode> CpuNativeCache::lookup(std::span<const u32> instructions) {
     if (!CpuNativeCode::available() || instructions.empty() ||
         instructions.size() > CpuNativeCode::maximum_instructions)
         return {};
     if (!storage_)
         storage_ = std::make_unique<Storage>();
-    Storage::Key key;
-    key.count = instructions.size();
-    std::copy(instructions.begin(), instructions.end(), key.instructions.begin());
+    const auto key = Storage::key(instructions);
     auto& entries = storage_->entries;
     if (const auto found = entries.find(key); found != entries.end())
         return found->second;
