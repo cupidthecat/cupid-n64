@@ -13,7 +13,7 @@ import sys
 
 
 SCHEMA = 1
-SOURCE_SCHEMA = 1
+SOURCE_SCHEMA = 2
 CODEGEN_SCHEMA = "clang-release-ipo-strict-fp-v1"
 STRICT_FP_FLAGS = ["-fno-fast-math", "-frounding-math"]
 PROFILED_SOURCE_DIRECTORIES = (
@@ -48,6 +48,9 @@ def compiled_sources(root: Path) -> list[str]:
 def source_files(root: Path) -> list[str]:
     root = root.resolve()
     files = set(compiled_sources(root))
+    for directory in PROFILED_SOURCE_DIRECTORIES:
+        files.update(path.relative_to(root).as_posix()
+                     for path in (root / "src" / directory).rglob("*.cpp"))
     include = root / "include"
     desktop_include = include / "cupid" / "desktop"
     for path in include.rglob("*"):
@@ -64,7 +67,7 @@ def source_files(root: Path) -> list[str]:
     return sorted(files)
 
 
-def source_identity(root: Path) -> dict:
+def source_identity(root: Path, membership: list[str] | None = None) -> dict:
     root = root.resolve()
     files = {name: file_digest(root / name) for name in source_files(root)}
     encoded = json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -72,7 +75,7 @@ def source_identity(root: Path) -> dict:
         "schema": SOURCE_SCHEMA,
         "sha256": hashlib.sha256(encoded).hexdigest(),
         "files": files,
-        "compiled_sources": compiled_sources(root),
+        "compiled_sources": sorted(membership) if membership is not None else compiled_sources(root),
     }
 
 
@@ -157,15 +160,16 @@ def verify_package(manifest: dict, root: Path, profile: Path, actual_build: dict
     if actual_profile != expected_profile:
         raise ValueError("Profile payload does not match its manifest")
     expected_source = manifest.get("source", {})
-    actual_source = source_identity(root)
     if not isinstance(expected_source, dict) or expected_source.get("schema") != SOURCE_SCHEMA:
         raise ValueError("Unsupported profile source schema")
+    expected_compiled = expected_source.get("compiled_sources")
+    if not isinstance(expected_compiled, list) or any(not isinstance(name, str) for name in expected_compiled) or \
+            expected_compiled != sorted(set(expected_compiled)):
+        raise ValueError("Unsupported profile source membership")
+    actual_source = source_identity(root, expected_compiled)
     if expected_source != actual_source:
         detail = first_source_difference(expected_source.get("files", {}), actual_source["files"])
         raise ValueError(f"Profile source is stale: {detail}")
-    expected_compiled = expected_source.get("compiled_sources", [])
-    if expected_compiled != actual_source["compiled_sources"]:
-        raise ValueError("Profile source membership is stale")
     if actual_compiled_sources is not None and expected_compiled != sorted(actual_compiled_sources):
         raise ValueError("Current CMake core/host source membership does not match the profile")
     if manifest.get("build") != actual_build:
@@ -189,7 +193,10 @@ def create_manifest(args) -> dict:
     context = json.loads(context_path.read_text(encoding="utf-8"))
     if not isinstance(context, dict) or context.get("schema") != SCHEMA:
         raise ValueError("Unsupported training context schema")
-    source = source_identity(root)
+    membership_file = Path(cache.get("CUPID_PROFILE_COMPILED_SOURCES_FILE") or
+                           args.build_cache.resolve().parent / "cupid-profile-compiled-sources.txt")
+    membership = read_compiled_sources(membership_file)
+    source = source_identity(root, membership)
     if context.get("source") != source:
         raise ValueError("Profile training source changed; collect a fresh profile")
     context_build = context.get("build")
@@ -220,7 +227,8 @@ def create_manifest(args) -> dict:
                        capture_output=True)
         manifest["provenance"]["llvm_profdata_version"] = match[1]
         manifest["provenance"]["llvm_profdata_sha256"] = file_digest(profdata_tool)
-    if source_identity(root) != source or file_digest(profile) != manifest["profile"]["sha256"]:
+    if source_identity(root, read_compiled_sources(membership_file)) != source or \
+            file_digest(profile) != manifest["profile"]["sha256"]:
         raise ValueError("Source or profile changed while creating the package")
     return manifest
 
@@ -270,11 +278,14 @@ def command_verify(args) -> None:
 
 
 def command_snapshot(args) -> None:
-    source = source_identity(args.source_root)
-    if source["compiled_sources"] != read_compiled_sources(args.compiled_sources):
+    membership = read_compiled_sources(args.compiled_sources)
+    available = {name for name in source_files(args.source_root) if name.endswith(".cpp")}
+    if not set(compiled_sources(args.source_root)).issubset(membership) or \
+            not set(membership).issubset(available) or len(membership) != len(set(membership)):
         raise ValueError("CMake and profile tooling disagree about core/host source membership")
+    source = source_identity(args.source_root, membership)
     snapshot = {"schema": SCHEMA, "source": source, "build": current_build(args)}
-    if source_identity(args.source_root) != source:
+    if source_identity(args.source_root, read_compiled_sources(args.compiled_sources)) != source:
         raise ValueError("Source changed while recording the training context")
     if args.manifest.exists():
         if json.loads(args.manifest.read_text(encoding="utf-8")) != snapshot:

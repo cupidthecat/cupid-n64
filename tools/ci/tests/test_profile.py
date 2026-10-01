@@ -217,6 +217,78 @@ class ProfilePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"changed profiled source: third_party/sljit/sljit_src/sljitConfig\.h"):
             self.verify(manifest)
 
+    def test_nested_rsp_implementation_changes_invalidate_profile(self):
+        for name in ("src/rsp/native/clip.cpp", "src/rsp/native/detail/load.cpp"):
+            with self.subTest(name=name):
+                self.write(name, "int emit_vector() { return 1; }\n")
+                manifest = self.manifest()
+                self.write(name, "int emit_vector() { return 2; }\n")
+                with self.assertRaisesRegex(ValueError, "changed profiled source: " + name):
+                    self.verify(manifest)
+
+    def test_added_nested_cpu_implementation_invalidates_profile(self):
+        manifest = self.manifest()
+        self.write("src/cpu/native/load.cpp", "int emit_load() { return 1; }\n")
+        with self.assertRaisesRegex(ValueError, "new profiled source: src/cpu/native/load.cpp"):
+            self.verify(manifest)
+
+    def test_removed_nested_implementation_invalidates_profile(self):
+        native = self.write("src/rsp/native/clip.cpp", "int emit_vector() { return 1; }\n")
+        manifest = self.manifest()
+        native.unlink()
+        with self.assertRaisesRegex(ValueError, "missing profiled source: src/rsp/native/clip.cpp"):
+            self.verify(manifest)
+
+    def test_training_snapshot_records_enabled_nested_implementations(self):
+        native = "src/rsp/native/clip.cpp"
+        self.write(native, "int emit_vector() { return 1; }\n")
+        membership = sorted([*self.expected_compiled, native])
+        self.compiled_sources_file.write_text("\n".join(membership) + "\n", encoding="utf-8")
+        context = self.root / ".work/training/context.json"
+        args = SimpleNamespace(source_root=self.root, compiled_sources=self.compiled_sources_file,
+                               manifest=context)
+        with patch.object(profile, "current_build", return_value=copy.deepcopy(self.build)):
+            profile.command_snapshot(args)
+        snapshot = json.loads(context.read_text(encoding="utf-8"))
+        self.assertEqual(snapshot["source"]["compiled_sources"], membership)
+        self.assertIn(native, snapshot["source"]["files"])
+        with patch.object(profile, "compiler_identity", return_value=copy.deepcopy(self.compiler)):
+            manifest = profile.create_manifest(self.create_args(context))
+        self.verify(manifest, compiled_sources=membership)
+
+    def test_training_snapshot_rejects_missing_unknown_and_duplicate_sources(self):
+        context = self.root / ".work/training/context.json"
+        args = SimpleNamespace(source_root=self.root, compiled_sources=self.compiled_sources_file,
+                               manifest=context)
+        for membership in (self.expected_compiled[:-1], [*self.expected_compiled, "src/unknown.cpp"],
+                           [*self.expected_compiled, self.expected_compiled[0]]):
+            with self.subTest(membership=membership):
+                self.compiled_sources_file.write_text("\n".join(membership) + "\n", encoding="utf-8")
+                with patch.object(profile, "current_build", return_value=copy.deepcopy(self.build)):
+                    with self.assertRaisesRegex(ValueError, "disagree about core/host source membership"):
+                        profile.command_snapshot(args)
+                self.assertFalse(context.exists())
+
+    def test_training_membership_change_rejects_package_creation(self):
+        self.write("src/rsp/native/clip.cpp", "int emit_vector() { return 1; }\n")
+        context = self.write_training_context()
+        membership = sorted([*self.expected_compiled, "src/rsp/native/clip.cpp"])
+        self.compiled_sources_file.write_text("\n".join(membership) + "\n", encoding="utf-8")
+        with patch.object(profile, "compiler_identity", return_value=copy.deepcopy(self.compiler)):
+            with self.assertRaisesRegex(ValueError, "Profile training source changed"):
+                profile.create_manifest(self.create_args(context))
+
+    def test_package_uses_membership_path_recorded_by_nested_cmake_build(self):
+        context = self.write_training_context()
+        nested = self.root / ".work/build/core/cupid-profile-compiled-sources.txt"
+        nested.parent.mkdir(parents=True)
+        self.compiled_sources_file.rename(nested)
+        with self.build_cache.open("a", encoding="utf-8") as cache:
+            cache.write(f"CUPID_PROFILE_COMPILED_SOURCES_FILE:INTERNAL={nested}\n")
+        with patch.object(profile, "compiler_identity", return_value=copy.deepcopy(self.compiler)):
+            manifest = profile.create_manifest(self.create_args(context))
+        self.verify(manifest)
+
     def test_removed_profiled_header_rejected(self):
         manifest = self.manifest()
         (self.root / "src/rcp/detail.hpp").unlink()
@@ -227,6 +299,16 @@ class ProfilePackageTests(unittest.TestCase):
         with self.assertRaisesRegex(
                 ValueError, "Current CMake core/host source membership does not match the profile"):
             self.verify(compiled_sources=self.expected_compiled[:-1])
+
+    def test_malformed_source_schema_and_membership_are_rejected(self):
+        for source in (None, [], {"schema": profile.SOURCE_SCHEMA, "compiled_sources": None},
+                       {"schema": profile.SOURCE_SCHEMA, "compiled_sources": [None]},
+                       {"schema": profile.SOURCE_SCHEMA, "compiled_sources": ["src/core.cpp"] * 2}):
+            with self.subTest(source=source):
+                manifest = self.manifest()
+                manifest["source"] = source
+                with self.assertRaisesRegex(ValueError, "Unsupported profile source"):
+                    self.verify(manifest)
 
     def test_compiler_binary_identity_mismatch_rejected(self):
         actual = copy.deepcopy(self.build)

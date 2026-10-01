@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## Optimized build source validation (2026-10-01)
+
+The [source binding results](profile-source-results.md) record nested
+implementation invalidation, actual library source membership, malformed-input
+checks, and complete ordinary hardware and cartridge validation. Older profile
+source identities require fresh training.
+
 ## RSP compiled clipping (2026-10-01)
 
 The [clipping results](rsp-clipping-results.md) record VCH, VCL, and VCR flag
