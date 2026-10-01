@@ -98,11 +98,17 @@ class VectorEmitter {
         cache_.dirty |= bit;
     }
 
-    void carry_values(unsigned index) {
+    void flag_masks(unsigned index, std::size_t offset, std::size_t second = 0) {
         static constexpr std::array<u16, 8> bits{1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U};
         sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
-                       offsetof(RspNativeState, carry_low));
+                       static_cast<sljit_sw>(offset));
         sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R3), 0);
+        if (second != 0) {
+            sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                           static_cast<sljit_sw>(second));
+            sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_R1, 0, SLJIT_MEM1(SLJIT_R3), 0);
+            sljit_emit_op2(compiler_, SLJIT_AND | SLJIT_32, SLJIT_R0, 0, SLJIT_R0, 0, SLJIT_R1, 0);
+        }
         sljit_emit_simd_replicate(compiler_, type, SLJIT_VR(static_cast<sljit_s32>(index)), SLJIT_R0, 0);
         sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_IMM,
                        reinterpret_cast<sljit_sw>(bits.data()));
@@ -110,23 +116,35 @@ class VectorEmitter {
         operation(Packed::And, index, 3);
         operation(Packed::Xor, 3, 3);
         operation(Packed::Greater, index, 3);
+    }
+
+    void carry_values(unsigned index) {
+        flag_masks(index, offsetof(RspNativeState, carry_low));
         shift(index, 2, 15);
     }
 
-    void carry_flag(unsigned index, bool high) {
+    void flag(unsigned index, std::size_t offset) {
         // Each signed mask becomes one byte; its lower eight sign bits encode lanes.
         operation(Packed::PackBytes, index, index);
         sljit_emit_simd_sign(compiler_, SLJIT_SIMD_REG_128 | SLJIT_SIMD_ELEM_8 | SLJIT_SIMD_STORE | SLJIT_32,
                              SLJIT_VR(static_cast<sljit_s32>(index)), SLJIT_R0, 0);
         sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
-                       high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
+                       static_cast<sljit_sw>(offset));
         sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_R0, 0);
     }
 
-    void clear_carry(bool high) {
+    void carry_flag(unsigned index, bool high) {
+        flag(index, high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
+    }
+
+    void clear_flag(std::size_t offset) {
         sljit_emit_op1(compiler_, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
-                       high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
+                       static_cast<sljit_sw>(offset));
         sljit_emit_op1(compiler_, SLJIT_MOV_U8, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_IMM, 0);
+    }
+
+    void clear_carry(bool high) {
+        clear_flag(high ? offsetof(RspNativeState, carry_high) : offsetof(RspNativeState, carry_low));
     }
 
     void flush() {
@@ -138,9 +156,10 @@ class VectorEmitter {
         cache_.valid = cache_.dirty = 0;
     }
 
-    void operands(unsigned source, unsigned target, unsigned element) {
+    void operands(unsigned source, unsigned target, unsigned element, bool read_source = true) {
         // Snapshot both inputs before storing an aliased destination.
-        load(0, vector_base, source * 16U);
+        if (read_source)
+            load(0, vector_base, source * 16U);
         if (element >= 8U) {
             sljit_emit_simd_replicate(compiler_, type, SLJIT_VR1, SLJIT_MEM1(vector_base),
                                       target * 16U + (element - 8U) * 2U);
@@ -186,8 +205,9 @@ void flush_accumulator(sljit_compiler* compiler, AccumulatorCache& cache) {
 
 bool supports_vector(unsigned function) {
     return function <= 1U || (function >= 4U && function <= 9U) || (function >= 12U && function <= 15U) ||
-           function == 16U || function == 17U || function == 20U || function == 21U || function == 29U ||
-           (function >= 0x28U && function <= 0x2dU);
+           function == 16U || function == 17U || function == 19U || function == 20U || function == 21U ||
+           function == 29U || (function >= 32U && function <= 35U) || function == 39U || function == 50U ||
+           function == 51U || function == 54U || (function >= 0x28U && function <= 0x2dU);
 }
 
 void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live, bool destination_live,
@@ -315,7 +335,39 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live,
         emit.store(0, vectors, destination * 16U);
         return;
     }
-    emit.operands((word >> 11U) & 31U, (word >> 16U) & 31U, element);
+    const bool partial = function == 50U || function == 51U || function == 54U;
+    emit.operands((word >> 11U) & 31U, (word >> 16U) & 31U, element, !partial);
+    if (partial) {
+        const unsigned lane = (word >> 11U) & 7U;
+        emit.store(1, accumulator, 0);
+        if (function == 51U) {
+            if (destination_live) {
+                sljit_emit_simd_lane_mov(
+                    compiler, SLJIT_SIMD_REG_128 | SLJIT_SIMD_ELEM_16 | SLJIT_SIMD_STORE | SLJIT_32,
+                    SLJIT_VR1, static_cast<sljit_s32>(lane), SLJIT_R0, 0);
+                sljit_emit_op1(compiler, SLJIT_MOV_U16, SLJIT_MEM1(vectors), destination * 16U + lane * 2U,
+                               SLJIT_R0, 0);
+            }
+        } else {
+            // Read the raw input element before an aliased destination lane changes it.
+            sljit_emit_op1(compiler, SLJIT_MOV_U16, SLJIT_R0, 0, SLJIT_MEM1(vectors),
+                           ((word >> 16U) & 31U) * 16U + (element & 7U) * 2U);
+            sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                           offsetof(RspNativeState, divider_input));
+            sljit_emit_op1(compiler, SLJIT_MOV_U16, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_R0, 0);
+            sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                           offsetof(RspNativeState, divider_high));
+            sljit_emit_op1(compiler, SLJIT_MOV_U8, SLJIT_MEM1(SLJIT_R3), 0, SLJIT_IMM, 1);
+            if (destination_live) {
+                sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_MEM1(SLJIT_S5),
+                               offsetof(RspNativeState, divider_output));
+                sljit_emit_op1(compiler, SLJIT_MOV_U16, SLJIT_R0, 0, SLJIT_MEM1(SLJIT_R3), 0);
+                sljit_emit_op1(compiler, SLJIT_MOV_U16, SLJIT_MEM1(vectors), destination * 16U + lane * 2U,
+                               SLJIT_R0, 0);
+            }
+        }
+        return;
+    }
     if (function >= 0x28U && function <= 0x2dU) {
         emit.operation(function < 0x2aU ? Packed::And : function < 0x2cU ? Packed::Or : Packed::Xor, 0, 1);
         if ((function & 1U) != 0U) {
@@ -325,6 +377,65 @@ void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live,
         emit.store(0, accumulator, 0);
         if (destination_live)
             emit.store(0, vectors, destination * 16U);
+        return;
+    }
+    if (function == 19U) {
+        emit.operation(Packed::Move, 3, 0);
+        emit.shift(3, 4, 15);
+        emit.operation(Packed::Xor, 2, 2);
+        emit.operation(Packed::Greater, 0, 2);
+        emit.operation(Packed::Move, 2, 1);
+        emit.operation(Packed::And, 2, 0);
+        emit.operation(Packed::Xor, 0, 0);
+        emit.operation(Packed::Subtract, 0, 1);
+        emit.operation(Packed::And, 0, 3);
+        emit.operation(Packed::Or, 0, 2);
+        emit.store(0, accumulator, 0);
+        if (destination_live) {
+            emit.operation(Packed::Xor, 0, 0);
+            emit.operation(Packed::SubtractSigned, 0, 1);
+            emit.operation(Packed::And, 0, 3);
+            emit.operation(Packed::Or, 0, 2);
+            emit.store(0, vectors, destination * 16U);
+        }
+        return;
+    }
+    if ((function >= 32U && function <= 35U) || function == 39U) {
+        if (function == 39U) {
+            emit.flag_masks(2, offsetof(RspNativeState, compare_low));
+        } else {
+            emit.flag_masks(2, offsetof(RspNativeState, carry_high),
+                            function == 32U || function == 35U ? offsetof(RspNativeState, carry_low) : 0);
+            emit.operation(Packed::Move, 3, 0);
+            emit.operation(Packed::Equal, 3, 1);
+            if (function == 32U) {
+                emit.operation(Packed::And, 2, 3);
+                emit.operation(Packed::Move, 3, 1);
+                emit.operation(Packed::Greater, 3, 0);
+                emit.operation(Packed::Or, 2, 3);
+            } else {
+                emit.operation(Packed::AndNot, 2, 3);
+                if (function == 34U) {
+                    emit.operation(Packed::Xor, 3, 3);
+                    emit.operation(Packed::Equal, 2, 3);
+                } else if (function == 35U) {
+                    emit.operation(Packed::Move, 3, 0);
+                    emit.operation(Packed::Greater, 3, 1);
+                    emit.operation(Packed::Or, 2, 3);
+                }
+            }
+            emit.operation(Packed::Move, 3, 2);
+            emit.flag(3, offsetof(RspNativeState, compare_low));
+            emit.clear_flag(offsetof(RspNativeState, compare_high));
+        }
+        emit.operation(Packed::And, 0, 2);
+        emit.operation(Packed::AndNot, 2, 1);
+        emit.operation(Packed::Or, 0, 2);
+        emit.store(0, accumulator, 0);
+        if (destination_live)
+            emit.store(0, vectors, destination * 16U);
+        emit.clear_carry(false);
+        emit.clear_carry(true);
         return;
     }
     if (function == 16U || function == 17U) {

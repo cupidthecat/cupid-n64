@@ -42,11 +42,14 @@ VectorPlan plan_vectors(std::span<const RspNativeInstruction> instructions) {
                 continue;
             }
             const unsigned destination = (word >> 6U) & 31U;
+            const bool partial = function == 50U || function == 51U || function == 54U;
             plan.destination_live[index - 1U] = live[destination];
-            live[destination] = false;
+            if (!partial)
+                live[destination] = false;
             // VSAR reads only the accumulator, ignoring encoded VS and VT.
             if (function != 29U) {
-                live[(word >> 11U) & 31U] = true;
+                if (!partial)
+                    live[(word >> 11U) & 31U] = true;
                 live[(word >> 16U) & 31U] = true;
             }
         }
