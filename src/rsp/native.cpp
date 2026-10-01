@@ -52,6 +52,7 @@ void RspNativeCode::execute(RspNativeState& state) const {
         state.carry_high = &state.rsp->vcoh_;
         state.compare_low = &state.rsp->vccl_;
         state.compare_high = &state.rsp->vcch_;
+        state.compare_extension = &state.rsp->vce_;
     }
     if (inline_divider_) {
         state.divider_input = &state.rsp->div_input_;
@@ -136,7 +137,12 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
         return instruction.operation == RspPipeline::Operation::Cop2 &&
                (instruction.word & (1U << 25U)) != 0U &&
                (function == 16U || function == 17U || function == 20U || function == 21U ||
-                (function >= 32U && function <= 35U) || function == 39U);
+                (function >= 32U && function <= 39U));
+    });
+    const bool inline_clip = std::any_of(instructions.begin(), instructions.end(), [](auto instruction) {
+        const unsigned function = instruction.word & 63U;
+        return instruction.operation == RspPipeline::Operation::Cop2 &&
+               (instruction.word & (1U << 25U)) != 0U && function >= 36U && function <= 38U;
     });
     const auto vector_plan = rsp_native::plan_vectors(instructions);
     const bool inline_divider = std::any_of(instructions.begin(), instructions.end(), [](auto instruction) {
@@ -145,9 +151,10 @@ RspNativeCode::compile(std::span<const RspNativeInstruction> instructions) {
                (instruction.word & (1U << 25U)) != 0U && (function == 50U || function == 54U);
     });
     rsp_native::AccumulatorCache accumulator_cache{vector_plan.cache_accumulator};
-    sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P),
-                     4 | SLJIT_ENTER_VECTOR(inline_vectors ? accumulator_cache.enabled ? 8 : 5 : 0),
-                     inline_vectors ? inline_flags || inline_divider ? 6 : 5 : 3, 0);
+    sljit_emit_enter(
+        compiler, 0, SLJIT_ARGS1V(P),
+        4 | SLJIT_ENTER_VECTOR(inline_vectors ? accumulator_cache.enabled || inline_clip ? 8 : 5 : 0),
+        inline_vectors ? inline_flags || inline_divider ? 6 : 5 : 3, 0);
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S1, 0, SLJIT_MEM1(SLJIT_S0),
                    offsetof(RspNativeState, scalar));
     sljit_emit_op1(compiler, SLJIT_MOV_P, SLJIT_S2, 0, SLJIT_MEM1(SLJIT_S0), offsetof(RspNativeState, dmem));

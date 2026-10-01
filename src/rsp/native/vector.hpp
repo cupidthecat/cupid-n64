@@ -13,6 +13,8 @@ struct AccumulatorCache {
 };
 void flush_accumulator(sljit_compiler* compiler, AccumulatorCache& cache);
 
+void emit_clip(sljit_compiler* compiler, u32 word, bool destination_live, AccumulatorCache& cache);
+
 [[nodiscard]] bool supports_vector(unsigned function);
 void emit_vector(sljit_compiler* compiler, u32 word, bool& comparison_bias_live, bool destination_live,
                  AccumulatorCache& cache);

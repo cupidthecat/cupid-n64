@@ -60,10 +60,10 @@ void observe(System& system) {
 TEST(rsp_native_vector_code_uses_the_current_machine_for_each_element_and_alias) {
     for (unsigned element = 0; element < 16; ++element) {
         const std::array words{
-            vector_word(0x00, 1, 3, 4, element),
-            vector_word(0x0f, 5, 1, 6, element),
-            vector_word(0x2c, 7, 5, 7, element),
-            vector_word(0x15, 9, 7, 8, element),
+            vector_word(0x00, 1, 3, 4, element),   vector_word(0x0f, 5, 1, 6, element),
+            vector_word(0x2c, 7, 5, 7, element),   vector_word(0x15, 9, 7, 8, element),
+            vector_word(0x25, 10, 9, 11, element), vector_word(0x24, 9, 9, 11, element),
+            vector_word(0x26, 11, 9, 11, element),
         };
         std::array<RspNativeInstruction, words.size()> instructions{};
         for (unsigned index = 0; index < words.size(); ++index)

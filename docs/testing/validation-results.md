@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## RSP compiled clipping (2026-10-01)
+
+The [clipping results](rsp-clipping-results.md) record VCH, VCL, and VCR flag
+and accumulator checks, independent scalar equations, mixed-chain measurements,
+and complete SM64 replay equality. All four compiler configurations, prepared
+cartridge suites, and sanitizer checks pass. Full-speed gameplay and live audio
+acceptance remain open.
+
 ## CPU decoded line reuse (2026-10-01)
 
 The [returning line results](cpu-code-cache-results.md#returning-decoded-line-contents-2026-10-01)

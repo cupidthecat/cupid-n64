@@ -26,6 +26,7 @@ struct RspNativeState {
     u8* carry_high{};
     u8* compare_low{};
     u8* compare_high{};
+    u8* compare_extension{};
     s16* divider_input{};
     s16* divider_output{};
     bool* divider_high{};

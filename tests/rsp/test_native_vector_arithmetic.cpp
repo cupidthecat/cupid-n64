@@ -63,6 +63,7 @@ struct Oracle {
     std::array<u64, 8> accumulator{};
     u8 carry_low{0xa5U}, carry_high{0x5aU};
     u8 compare_low{0x5aU}, compare_high{0xa5U};
+    u8 compare_extension{0x96U};
     u16 divider_input{}, divider_output{};
     bool divider_high{};
 
@@ -88,7 +89,59 @@ struct Oracle {
         u8 next_carry = 0, next_high = 0, next_compare = 0;
         for (unsigned lane = 0; lane < 8U; ++lane) {
             const u16 a = left[lane], b = right[selected_lane(element, lane)];
-            if (function == 0x1dU) {
+            if (function >= 36U && function <= 38U) {
+                const auto bit = static_cast<u8>(1U << lane);
+                const auto read_flag = [&](u8 flags) { return (flags & bit) != 0; };
+                const auto write_flag = [&](u8& flags, bool value) {
+                    flags =
+                        value ? static_cast<u8>(flags | bit) : static_cast<u8>(flags & static_cast<u8>(~bit));
+                };
+                const s32 left_signed = std::bit_cast<s16>(a), right_signed = std::bit_cast<s16>(b);
+                u16 value = a;
+                if (function == 36U) {
+                    if (read_flag(carry_low)) {
+                        if (!read_flag(carry_high)) {
+                            const u32 full = static_cast<u32>(a) + b;
+                            const bool zero = static_cast<u16>(full) == 0;
+                            const bool no_carry = full <= 65535U;
+                            write_flag(compare_low,
+                                       read_flag(compare_extension) ? zero || no_carry : zero && no_carry);
+                        }
+                        value = read_flag(compare_low) ? static_cast<u16>(0U - b) : a;
+                    } else {
+                        if (!read_flag(carry_high))
+                            write_flag(compare_high, a >= b);
+                        value = read_flag(compare_high) ? b : a;
+                    }
+                } else {
+                    const bool opposite = (left_signed < 0) != (right_signed < 0);
+                    if (opposite) {
+                        const s32 sum = left_signed + right_signed;
+                        write_flag(compare_low, function == 37U ? sum <= 0 : sum < 0);
+                        write_flag(compare_high, right_signed < 0);
+                        value = read_flag(compare_low)
+                                    ? function == 37U ? static_cast<u16>(0U - b) : static_cast<u16>(~b)
+                                    : a;
+                        if (function == 37U) {
+                            write_flag(carry_high, sum != 0 && a != static_cast<u16>(~b));
+                            write_flag(compare_extension, sum == -1);
+                        }
+                    } else {
+                        const s32 difference = left_signed - right_signed;
+                        write_flag(compare_low, right_signed < 0);
+                        write_flag(compare_high, difference >= 0);
+                        value = read_flag(compare_high) ? b : a;
+                        if (function == 37U) {
+                            write_flag(carry_high, difference != 0 && a != static_cast<u16>(~b));
+                            write_flag(compare_extension, false);
+                        }
+                    }
+                    if (function == 37U)
+                        write_flag(carry_low, opposite);
+                }
+                result[lane] = value;
+                accumulator[lane] = (accumulator[lane] & ~u64{0xffffU}) | value;
+            } else if (function == 0x1dU) {
                 result[lane] = element >= 8U && element <= 10U
                                    ? static_cast<u16>(accumulator[lane] >> ((10U - element) * 16U))
                                    : 0;
@@ -198,6 +251,8 @@ struct Oracle {
             compare_low = next_compare;
             compare_high = 0;
         }
+        if (function == 36U || function == 38U)
+            carry_low = carry_high = compare_extension = 0;
     }
 };
 
@@ -259,15 +314,15 @@ void verify(Rsp& rsp, const Oracle& oracle) {
         static_cast<u16>((static_cast<unsigned>(oracle.compare_high) << 8U) | oracle.compare_low);
     CHECK_EQ(read_be32(rsp.memory.data() + 0x634U),
              static_cast<u32>(static_cast<s32>(std::bit_cast<s16>(vcc))));
-    CHECK_EQ(read_be32(rsp.memory.data() + 0x638U), 0x96U);
+    CHECK_EQ(read_be32(rsp.memory.data() + 0x638U), oracle.compare_extension);
 }
 
 } // namespace
 
 TEST(rsp_native_vector_arithmetic_matches_scalar_oracle_for_all_registers_elements_and_aliases) {
     for (unsigned function :
-         {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U, 16U, 17U, 19U, 20U,
-          21U, 29U, 32U, 33U, 34U, 35U, 39U, 40U, 41U, 42U, 43U, 44U, 45U, 50U, 51U, 54U}) {
+         {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U, 16U, 17U, 19U, 20U, 21U, 29U,
+          32U, 33U, 34U, 35U, 36U, 37U, 38U, 39U, 40U, 41U, 42U, 43U, 44U, 45U, 50U, 51U, 54U}) {
         for (unsigned element = 0; element < 16U; ++element) {
             for (unsigned alias = 0; alias < 4U; ++alias) {
                 const unsigned source = (function + element) & 31U;
@@ -330,8 +385,8 @@ TEST(rsp_native_vector_arithmetic_keeps_accumulator_dependencies_across_helper_c
 
 TEST(rsp_native_vector_overwritten_results_keep_accumulators_consumers_and_block_exit_state) {
     for (unsigned function :
-         {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U, 16U, 17U, 19U, 20U,
-          21U, 29U, 32U, 33U, 34U, 35U, 39U, 40U, 41U, 42U, 43U, 44U, 45U, 50U, 51U, 54U}) {
+         {0U,  1U,  4U,  5U,  6U,  7U,  8U,  9U,  12U, 13U, 14U, 15U, 16U, 17U, 19U, 20U, 21U, 29U,
+          32U, 33U, 34U, 35U, 36U, 37U, 38U, 39U, 40U, 41U, 42U, 43U, 44U, 45U, 50U, 51U, 54U}) {
         for (unsigned element = 0; element < 16U; ++element) {
             for (unsigned consumer = 0; consumer < 3U; ++consumer) {
                 std::array<RspNativeInstruction, 16> instructions{};
@@ -666,6 +721,79 @@ TEST(rsp_native_divider_high_instructions_snapshot_aliases_and_share_the_input_o
                              observed == lane ? 0x7fffU : 0U);
                 }
             }
+        }
+    }
+}
+
+namespace {
+void seed_clip_flags(Rsp& rsp, Oracle& oracle, const std::array<u8, 5>& flags) {
+    oracle.carry_low = flags[0];
+    oracle.carry_high = flags[1];
+    oracle.compare_low = flags[2];
+    oracle.compare_high = flags[3];
+    oracle.compare_extension = flags[4];
+    const std::array words{0x34010000U | flags[0] | (static_cast<u32>(flags[1]) << 8U),
+                           0x48c10000U,
+                           0x34010000U | flags[2] | (static_cast<u32>(flags[3]) << 8U),
+                           0x48c10800U,
+                           0x34010000U | flags[4],
+                           0x48c11000U,
+                           13U};
+    run(rsp, words);
+}
+} // namespace
+
+TEST(rsp_native_vector_clipping_consumes_every_lane_flag_combination_and_preserves_other_slices) {
+    for (unsigned function : {36U, 37U, 38U}) {
+        for (unsigned element = 0; element < 16U; ++element) {
+            const u32 word = vector_word(function, element % 3U + 1U, 1U, 2U, element);
+            const std::array instructions{RspNativeInstruction{word, RspPipeline::Operation::Cop2}};
+            const auto code = RspNativeCode::compile(instructions);
+            CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+            if (!code)
+                continue;
+            for (unsigned pattern = 0; pattern < 32U; ++pattern) {
+                auto machine = std::make_unique<System>();
+                machine->rsp.set_native_execution(false);
+                Oracle oracle;
+                seed(machine->rsp, oracle, pattern % 5U);
+                std::array<u8, 5> flags{};
+                for (unsigned lane = 0; lane < 8U; ++lane)
+                    for (unsigned group = 0; group < flags.size(); ++group)
+                        flags[group] |= static_cast<u8>((((pattern + lane * 13U) >> group) & 1U) << lane);
+                seed_clip_flags(machine->rsp, oracle, flags);
+                RspNativeState state{&machine->rsp, nullptr, nullptr};
+                code->execute(state);
+                oracle.execute(word);
+                verify(machine->rsp, oracle);
+            }
+        }
+    }
+}
+
+TEST(rsp_native_vector_clipping_keeps_accumulators_and_flags_across_compiled_chains) {
+    for (unsigned element = 0; element < 16U; ++element) {
+        constexpr std::array<unsigned, 16> functions{7U,  15U, 15U, 37U, 36U, 8U,  15U, 38U,
+                                                     39U, 29U, 21U, 20U, 7U,  15U, 36U, 29U};
+        std::array<RspNativeInstruction, 16> instructions{};
+        for (unsigned index = 0; index < instructions.size(); ++index)
+            instructions[index] = {
+                vector_word(functions[index], index % 3U == 0U ? 1U : 22U, (index & 7U) + 1U, 31U, element),
+                RspPipeline::Operation::Cop2};
+        const auto code = RspNativeCode::compile(instructions);
+        CHECK_EQ(static_cast<bool>(code), RspNativeCode::available());
+        if (!code)
+            continue;
+        for (unsigned pattern = 0; pattern < 5U; ++pattern) {
+            auto machine = std::make_unique<System>();
+            machine->rsp.set_native_execution(false);
+            Oracle oracle;
+            seed(machine->rsp, oracle, pattern);
+            RspNativeState state{&machine->rsp, nullptr, nullptr};
+            code->execute(state);
+            for (const auto instruction : instructions)
+                oracle.execute(instruction.word);
+            verify(machine->rsp, oracle);
         }
     }
 }

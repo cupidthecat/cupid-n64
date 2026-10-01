@@ -27,7 +27,7 @@ can restore every affected DMEM block when another device observes the RSP.
 Compiled vector blocks emit SSE2 instructions for VMULF, VMULU, VMUDL, VMUDM,
 VMUDN, VMUDH, VMACF, VMACU, VMADL, VMADM, VMADN, VMADH, VSAR, and the six
 logical operations, plus VADD, VSUB, VADDC, VSUBC, VABS, VLT, VEQ, VNE, VGE,
-VMRG, VMOV, VRCPH, and VRSQH. Fractional products retain the rounding bias and positive
+VMRG, VCH, VCL, VCR, VMOV, VRCPH, and VRSQH. Fractional products retain the rounding bias and positive
 endpoint. Accumulating operations propagate both low- and middle-slice carries;
 unsigned destinations retain their distinct saturation rules.
 Register offsets and element
@@ -46,6 +46,14 @@ carry groups. VADDC reports unsigned overflow; VSUBC reports unsigned borrow
 and a nonzero difference in their separate carry groups. These four operations
 preserve the upper accumulator slices and the comparison and extension flags.
 
+VCH writes both carry groups, both comparison groups, and the extension flags.
+Its opposite-sign lanes select a wrapped negation of VT. VCR uses one's
+complement in those lanes and clears carry and extension flags. VCL consumes
+all five incoming flag groups, updates the selected comparison group with
+unsigned sum/carry or unsigned ordering rules, and clears carry and extension
+flags. All three replace only the low accumulator slice. Their destination
+writes follow the same alias and liveness rules as other emitted operations.
+
 The compiler omits a vector destination write only when a later emitted
 operation overwrites it before any reader, helper, or block exit. Accumulator
 updates still execute, including wrapping and carries. Aliased source reads
@@ -61,6 +69,12 @@ retain arithmetic results between operations, and flush before helpers and
 block exit. Wrapped scalar loads flush before their conditional branch so both
 the direct and helper paths see coherent accumulator memory. Cached slices are
 invalidated at each helper boundary.
+
+Clipping blocks also declare eight SIMD registers. A clipping operation flushes
+cached accumulator slices before using those registers as temporaries; subsequent
+operations reload the current slices. The unsigned comparison bias is rebuilt
+after clipping. These boundaries preserve the upper slices and each flag's
+architectural lifetime.
 
 Control and divider operations receive the current machine's storage pointers
 through a sixth saved scalar base. Other vector blocks retain five saved bases.
@@ -100,7 +114,9 @@ cached accumulator changes before a consuming helper. Add/subtract checks cover
 every carry mask, all element selections, signed endpoints, unsigned overflow
 and borrow, aliased operands, and carries inside cached accumulator chains.
 Comparison checks cover equality with every carry combination, every VCC mask
-for merge, and flag updates inside cached chains. Partial-write regressions
+for merge, and flag updates inside cached chains. Clipping checks cover
+every lane's five-flag combination, unsigned ordering, signed endpoints,
+wrapped negation, one's complement, and accumulator chains. Partial-write regressions
 observe surviving lanes from previous full destinations. Divider-high tests
 use reciprocal results for zero, one, and 65536 to observe shared input and
 output latches across ordinary helpers. Input patterns seed nontrivial upper slices and the
