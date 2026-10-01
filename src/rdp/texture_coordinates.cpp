@@ -4,6 +4,7 @@
 #include <bit>
 
 namespace cupid {
+s32 rdp_perspective_coordinate_wide(s16, s16, bool&);
 namespace {
 
 // The divider ROM uses quantized reciprocals, including its rounding irregularities.
@@ -15,8 +16,8 @@ constexpr std::array<s32, 65> reciprocals{
     0x234f, 0x2302, 0x22b6, 0x226c, 0x2222, 0x21da, 0x2193, 0x214d, 0x2108, 0x20c5, 0x2082, 0x2041, 0x2000};
 
 struct Divider {
-    s32 reciprocal;
-    unsigned shift;
+    u16 reciprocal;
+    u8 shift;
     u32 mask;
 };
 
@@ -28,8 +29,15 @@ Divider prepare_divider(s16 w) {
     const s32 reciprocal =
         reciprocals[index] + (((reciprocals[index + 1] - reciprocals[index]) * fraction) >> 8);
     const u32 mask = 0x3fffffffU & (0U - (1U << (29U - shift)));
-    return {reciprocal, shift, mask};
+    return {static_cast<u16>(reciprocal), static_cast<u8>(shift), mask};
 }
+
+const std::array<Divider, 32768> dividers = [] {
+    std::array<Divider, 32768> result{};
+    for (unsigned w = 1; w < result.size(); ++w)
+        result[w] = prepare_divider(static_cast<s16>(w));
+    return result;
+}();
 
 s32 divide_coordinate(s16 coordinate, const Divider& divider, bool& overflow) {
     const s32 product = static_cast<s32>(coordinate) * divider.reciprocal;
@@ -55,7 +63,7 @@ s32 rdp_perspective_coordinate_wide(s16 coordinate, s16 w, bool& overflow) {
         overflow = true;
         return 0x7fff;
     }
-    return divide_coordinate(coordinate, prepare_divider(w), overflow);
+    return divide_coordinate(coordinate, dividers[static_cast<u16>(w)], overflow);
 }
 
 std::array<s32, 2> rdp_perspective_point(s16 s, s16 t, s16 w, bool& overflow) {
@@ -63,7 +71,7 @@ std::array<s32, 2> rdp_perspective_point(s16 s, s16 t, s16 w, bool& overflow) {
         overflow = true;
         return {0x7fff, 0x7fff};
     }
-    const auto divider = prepare_divider(w);
+    const auto divider = dividers[static_cast<u16>(w)];
     return {divide_coordinate(s, divider, overflow), divide_coordinate(t, divider, overflow)};
 }
 

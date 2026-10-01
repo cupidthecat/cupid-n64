@@ -2,7 +2,8 @@
 
 #include "cupid/rdp/color_pipeline.hpp"
 
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if !defined(CUPID_RDP_FORCE_SCALAR) &&                                                                      \
+    (defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
 #include <emmintrin.h>
 #endif
 
@@ -10,7 +11,8 @@ namespace cupid::rdp_combiner {
 
 inline bool evaluate_rgb_product(RdpColor& color, const RdpColor& a, const RdpColor& b, const RdpColor& c,
                                  const RdpColor& d) {
-#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#if !defined(CUPID_RDP_FORCE_SCALAR) &&                                                                      \
+    (defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
     const auto mask = _mm_set1_epi32(511);
     const auto bias = _mm_set1_epi32(128);
     const auto sign = _mm_set1_epi32(256);
@@ -30,7 +32,7 @@ inline bool evaluate_rgb_product(RdpColor& color, const RdpColor& a, const RdpCo
     const auto product =
         _mm_madd_epi16(_mm_unpacklo_epi16(differences16, zero), _mm_unpacklo_epi16(multipliers16, zero));
     const auto value = _mm_add_epi32(_mm_srai_epi32(_mm_add_epi32(product, bias), 8), expanded(d));
-    // Alpha is resolved separately after this RGB equation.
+    // Callers replace the fourth lane when alpha uses a separate equation.
     _mm_storeu_si128(reinterpret_cast<__m128i*>(color.data()), value);
     return true;
 #else

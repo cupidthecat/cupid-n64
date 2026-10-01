@@ -68,6 +68,13 @@ to a halfword, wraps within TMEM, and exchanges word halves on odd rows.
 Enabling TLUT on an RGBA16 tile selects palette reads instead, including each
 tap's palette-bank address.
 
+RGBA16 words and RGBA16 palette entries share a read-only 65,536-entry color
+decode table. Each entry retains five-bit replication and one-bit alpha.
+Perspective division retains the divider ROM's quantized interpolation,
+normalization shifts, overflow mask, and signed rounding. Positive W values
+select one of 32,767 precomputed divider descriptions; nonpositive W still
+sets overflow and returns positive saturation.
+
 The per-cycle filter-enable bits also select texture conversion. Clearing a
 filter bit applies the programmed conversion factors, including for non-YUV
 formats. `convert_one` can convert the preceding texture sample directly, or
@@ -109,6 +116,10 @@ midpoint across TMEM wrap and odd-row exchange, plus the TLUT selection guard.
 `test_texture_tap_selection.cpp` adds literal YUV cases where
 chroma and luma select different triangles, base samples, or mid-texel paths,
 including `convert_one` and negative intermediate channels.
+`test_texture_lookup.cpp` checks every RGBA16 word through direct and TLUT
+sampling. An independent ROM-slope oracle checks every positive W with signed
+coordinate edges, generated coordinates, two-coordinate division, and sticky
+overflow, totaling 1,310,680 comparisons.
 
 [Triangles](rdp-triangles.md) interpolate S/T/W, retain 17-bit perspective
 coordinates for LOD, and supply the packet's maximum mip level. Their command

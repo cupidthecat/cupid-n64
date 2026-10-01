@@ -67,6 +67,8 @@ struct RdpCombinerPlan {
     std::array<RdpCombinerExpression, 2> rgb_expression{};
     std::array<RdpCombinerExpression, 2> alpha_expression{};
     std::array<bool, 2> uses_noise{};
+    std::array<bool, 2> rgba_product{};
+    std::array<bool, 2> rgb_product{}, rgba_direct{};
 };
 
 [[nodiscard]] RdpColor rdp_unpack_color(u32 value);

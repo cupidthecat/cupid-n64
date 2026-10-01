@@ -69,9 +69,13 @@ depth-stage result.
 
 Alpha rejection and failed depth comparison preserve both buffers. An
 alpha-rejected triangle pixel also leaves depth-memory bank state untouched.
-Early depth testing is used only with destination-image reads, alpha comparison,
-and alpha-modulated coverage disabled. In that case it rejects occluded pixels
-before evaluating texture samples or combiner inputs. Passing pixels write color first, then
+Early depth testing requires alpha comparison and alpha-modulated coverage
+to be disabled. With image reads enabled, it reads framebuffer color and
+coverage before depth, then retains that color for passing pixels. The pixel
+stage consumes the retained color without repeating the read. This preserves
+RDRAM row order even when color and depth share an address or bank.
+Occluded pixels are rejected before texture sampling and color arithmetic.
+Passing pixels write color first, then
 depth if depth updates are enabled. When an RGBA16 color buffer shares its
 address with the depth buffer, the depth word and its hidden bits are the
 final stored value.
@@ -87,6 +91,10 @@ CPU/SP DMA overwrites, color/depth aliasing, clipping and fields, alpha
 rejection, and textured draws in both directions and cycle modes.
 `tests/rdp/test_triangle_depth_read_order.cpp` checks that alpha rejection leaves
 the depth bank closed and that passing alpha still performs the depth read.
+`tests/rdp/test_triangle_depth_reuse.cpp` compares 512 image-read scenes with
+depth testing forced through the ordinary pixel path. Both color sizes, all
+depth modes, all stored coverage values, depth boundaries, shared addresses,
+visible bytes, hidden bits, and every bank-summary field match.
 
 [Triangle interpolation](rdp-triangles.md) supplies depth and normalized depth
 gradients, or uses the primitive depth override. Arbitrary partial

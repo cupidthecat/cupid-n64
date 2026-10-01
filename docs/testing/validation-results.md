@@ -1,5 +1,12 @@
 # Recorded validation results
 
+## RDP shared inputs (2026-10-01)
+
+The [RDP shared-input results](rdp-shared-input-results.md) record color and
+divider lookup oracles, fused combiner comparisons, framebuffer/depth read
+ordering, and complete SM64 output comparisons. Both long replay pairs show
+a modest elapsed-time reduction; full-speed gameplay remains unresolved.
+
 ## CPU first-use code reuse (2026-10-01)
 
 The [code reuse results](cpu-code-cache-results.md#first-eligible-reuse-2026-10-01)

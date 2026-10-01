@@ -33,10 +33,13 @@ draw rebuilds the plan before evaluating any pixels.
 On SSE2 hosts, full RGB equations without color keying evaluate their channels
 together. The expanded A/B difference fits signed 10 bits, and C fits signed
 nine bits, so packed 16-bit operands produce exact 32-bit products. The path
-adds 128 before the arithmetic shift by eight and then adds expanded D. Alpha
-is resolved separately. Direct-D equations, color keying, and hosts without
-SSE2 use the scalar equations. Intermediate expansion, cycle feedback, final
-clamping, and texture dependencies retain their existing behavior.
+adds 128 before the arithmetic shift by eight and then adds expanded D. When
+each alpha term comes from the same RGBA source as its RGB term, the fourth
+lane supplies alpha too. Other equations resolve alpha separately. Shared
+RGBA direct-D terms expand their four channels together. Color keying and
+hosts without SSE2 retain the scalar equations. Intermediate expansion, cycle
+feedback, final clamping, and texture dependencies retain their existing behavior.
+`CUPID_RDP_FORCE_SCALAR` lets comparison builds exercise the scalar fallback.
 
 Texture dependency tracking uses the prepared plan rather than the raw mux.
 Full equations keep all referenced texture terms. A reduced-to-D equation keeps
@@ -81,6 +84,8 @@ time. Pixel blending indexes this read-only table, retaining the same input
 masking and quotient bits without repeating the eight divider stages.
 
 Full-alpha rejection and disabled blending select the first color directly.
+The blender decodes the selected color before returning; it decodes the
+other color only when the weighted equation consumes it.
 Color-on-coverage selects the second color until accumulated coverage wraps.
 Framebuffer RGB remains available when image reads are disabled; that mode
 replaces the memory coverage with seven and memory alpha with 224. A deferred

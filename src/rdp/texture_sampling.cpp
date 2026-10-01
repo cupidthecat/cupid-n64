@@ -1,4 +1,5 @@
 #include "cupid/rdp/texture_sampling.hpp"
+#include "texture/rgba16_decode.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -44,13 +45,7 @@ s32 masked(s32 value, unsigned mask, bool mirror) {
 }
 
 RdpColor rgba16(unsigned value) {
-    RdpColor result{};
-    for (unsigned channel = 0; channel < 3; ++channel) {
-        const unsigned component = (value >> (11U - channel * 5U)) & 31U;
-        result[channel] = static_cast<s32>((component << 3U) | (component >> 2U));
-    }
-    result[3] = static_cast<s32>((value & 1U) * 255U);
-    return result;
+    return rdp_texture::decode_rgba16(static_cast<u16>(value));
 }
 
 RdpColor texel_rgba16(const std::array<u8, 4096>& memory, const RdpTile& tile, s32 s, s32 t) {

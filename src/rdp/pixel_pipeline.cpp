@@ -1,3 +1,4 @@
+#include "coverage_count.hpp"
 #include "cupid/bus.hpp"
 #include "cupid/rdp/noise.hpp"
 
@@ -6,7 +7,7 @@
 
 namespace cupid {
 void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
-                            RdpDepth depth, const RdpDepthResult* pre_tested) {
+                            RdpDepth depth, const RdpDepthResult* pre_tested, const RdpColor* pre_memory) {
     const unsigned rgb_mode = static_cast<unsigned>(other_modes_ >> 38U) & 3U;
     const unsigned alpha_mode = static_cast<unsigned>(other_modes_ >> 36U) & 3U;
     const bool two_cycles = ((other_modes_ >> 52U) & 3U) == 1U;
@@ -27,10 +28,10 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
                 noise_inputs.noise[1] = rdp_combiner_noise(sample);
             }
             return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, noise_inputs,
-                                        static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+                                        rdp::sample_count(static_cast<u8>(coverage_mask)), alpha_dither);
         }
         return rdp_combine_prepared(color_state_, combiner_plan_, other_modes_, inputs,
-                                    static_cast<unsigned>(std::popcount(coverage_mask)), alpha_dither);
+                                    rdp::sample_count(static_cast<u8>(coverage_mask)), alpha_dither);
     }();
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
     if (antialias ? combined.coverage == 0U : (coverage_mask & 1U) == 0U)
@@ -49,7 +50,7 @@ void Rdp::write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, cons
     RdpColor memory{0, 0, 0, 224};
     unsigned old_coverage = 7U;
     if (image_read) {
-        memory = read_framebuffer_color(address);
+        memory = pre_memory != nullptr ? *pre_memory : read_framebuffer_color(address);
         old_coverage = static_cast<unsigned>(memory[3]) >> 5U;
     }
     const auto tested = [&] {
