@@ -120,6 +120,10 @@ including `convert_one` and negative intermediate channels.
 sampling. An independent ROM-slope oracle checks every positive W with signed
 coordinate edges, generated coordinates, two-coordinate division, and sticky
 overflow, totaling 1,310,680 comparisons.
+`test_texture_filter.cpp` compares 524,288 RGBA footprints against independent
+barycentric weights. It covers all 1,024 S/T fraction pairs, midpoint enabled
+and disabled, every combination of zero/full-intensity tap edges, and generated
+channel values.
 
 [Triangles](rdp-triangles.md) interpolate S/T/W, retain 17-bit perspective
 coordinates for LOD, and supply the packet's maximum mip level. Their command

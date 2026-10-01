@@ -11,7 +11,7 @@ unsigned Cpu::execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigne
     if (!native_execution_ || slot >= CpuNativeCode::maximum_instructions || maximum_steps < 2U ||
         next_pc != pc + 4U || in_delay_slot_ || pending_load_register_ != 0 || pending_fpu_register_ != 32)
         return 0;
-    auto& block = plan.native[slot];
+    auto& block = plan.contents->native[slot];
     const unsigned minimum = block.ends_branch ? 2U : 3U;
     if (block.count < minimum || block.count > maximum_steps ||
         static_cast<u64>(block.count) + block.extra_cycles > maximum_cycles)

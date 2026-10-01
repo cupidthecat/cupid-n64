@@ -53,8 +53,7 @@ a host callback or expose these temporary values to another device.
 Each compiled block contains three to seven instructions from one 32-byte
 instruction-cache line. A block ending with a supported branch or jump can also
 contain two instructions. Control instructions close the block. The last word
-of the cache line is left to ordinary execution
-so prefetching across the next line retains its cache-miss and exception behavior.
+of the cache line is left to ordinary execution so prefetching across the next line retains its cache-miss and exception behavior.
 The planner requires the entire block to fit the remaining instruction, CPU-cycle,
 Count/Compare, and peripheral-event budgets.
 
@@ -75,7 +74,7 @@ the same clock as individual stepping.
 ## Code ownership
 
 A line plan retains its instruction-cache tag and all 32 instruction bytes.
-Changing either releases that plan's compiled entries. A backing RDRAM write
+Changing either reselects that plan's decoded contents. A backing RDRAM write
 does not invalidate an unchanged instruction cache. This preserves the stale
 code visible to the hardware until software invalidates or replaces the line.
 
@@ -86,14 +85,25 @@ changes the lookup generation. A missing program retains the five-use threshold
 before compilation. Hardware cache tags and bytes still decide which line plan
 can execute; reuse preserves fetches, access guards, and guest clock boundaries.
 
-The lookup holds at most 4,096 entries, including failed compilation attempts.
-When it fills, the next new sequence clears the lookup generation. The 512 line
-plans can retain at most seven code owners each, so clearing the lookup does not
-invalidate a program in use. A failed compilation keeps ordinary execution until
-a new lookup generation or reset permits another attempt. Reset releases both
-lookup and line-plan ownership. Copies start with independent lookup storage;
-existing line-plan copies can share immutable programs. Portable builds allocate
-no lookup storage.
+The program lookup holds at most 4,096 entries, including failed compilation
+attempts. When it fills, the next new sequence clears its generation. Referenced
+line contents retain their programs, so clearing the lookup does not invalidate
+code in use. A failed compilation keeps ordinary execution until a new line
+generation or reset permits another attempt. Portable builds allocate no native
+program lookup storage.
+
+Decoded line contents have a separate CPU-owned lookup with at most 4,096
+entries. Its key includes all 32 instruction bytes, including the final word
+outside compiled prefixes. Returning bytes reuse decoded operands, block
+lengths, load-use waits, and compilation warmup. The lookup clears when a new
+image reaches its capacity; the 512 hardware line plans retain their current
+contents until replacement. Each contents entry owns at most seven programs.
+Reset releases both lookups and all line owners.
+
+Lookup reuse does not validate a hardware fetch. Every entry still requires a
+valid instruction-cache line with the current physical tag and matching bytes,
+followed by the ordinary pipeline, mode, operand, and event-budget checks.
+Backing-memory writes remain invisible until the hardware cache changes.
 
 Generated code receives the current register-array and data-cache pointers at
 entry and embeds no machine pointer or executing PC. Direct jump literals come
@@ -139,4 +149,7 @@ instruction-cache changes, stale backing code, tag replacement, load interlocks,
 branches, COP2 memory transfers, audio callbacks, interruptible local RSP work,
 RSP interrupt boundaries, reset, and runtime selection. Tests
 require the native instruction counter to advance on supported builds. Cartridge
-validation continues to compare stepped and batched execution.
+validation continues to compare stepped and batched execution. Returning complete
+line images retain compilation warmup after intervening byte replacement.
+Another comparison changes 4,100 line images, including their eighth words,
+then executes a replaced load with its live cache miss and load-use interlock.

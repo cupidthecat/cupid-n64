@@ -152,3 +152,86 @@ Initial private captures used different compiler settings and are excluded from
 these timing comparisons. This result section and its index entry were finalized
 after the complete matrix; implementation, regression tests, and ownership-guide
 bytes were unchanged.
+
+## Returning decoded line contents (2026-10-01)
+
+Complete 32-byte instruction images now retain their decoded operands, native
+block lengths, load-use waits, and compilation warmup in a bounded lookup.
+Returning images reuse that work after hardware cache replacement. The live
+cache tag, all instruction bytes, latched fetch, operands, and clock budgets
+still control execution. The [ownership guide](../hardware/cpu-native.md)
+describes the 4,096-entry limit and retained owners when a generation is cleared.
+
+The warmup regression fails on the preceding core: replacing and restoring an
+image restarts its eligible-use count and retires no compiled instructions.
+The retained count permits compilation on the fifth eligible use. A second
+regression compares 4,100 distinct images with ordinary stepping, including
+changes to the eighth word, lookup eviction, and a subsequent load interlock.
+The texture sampler also passes 524,288 RGBA32 cases against independently
+weighted barycentric interpolation and midpoint averaging.
+
+| Configuration | Hardware and host checks | Prepared default | Prepared extended | CTest groups |
+| --- | ---: | ---: | ---: | ---: |
+| Clang 21.1.5 Release | 1,574 | 4,637 | 6,273 | 9/9 |
+| Clang 21.1.5, both native backends disabled | 1,574 | 4,637 | 6,273 | 9/9 |
+| MSVC 19.43.34809 desktop Release | 1,574 | 4,637 | 6,273 | 15/15 |
+| Clang 22.1.8 ASan/UBSan RelWithDebInfo | 1,574 | 4,637 | 6,273 | 9/9 |
+
+All four configurations pass the complete validator, including 67 tooling
+checks, clang-format 22.1.0, default cold/warm boots, and stepped/batched
+comparisons. Source and input integrity checks pass. The successful sanitizer
+report contains no diagnostics. The three ordinary reports cover the 544-file
+snapshot `36ee7ea3297356203dec45c67b01e520ee99e5452be4e41ad8747b38fba78412`.
+The sanitizer snapshot is
+`da31efc9ce5b65795f7ef6ce58ff6f4a82affcc1b8ca6133b5305cec1ca8783b`;
+only guide wording changed between these snapshots.
+
+Retained reports:
+
+- `.work/reports/line-plans-native/6c4a2b4fe2b141aa90a9b01571b0425e/report.json`
+- `.work/reports/line-plans-portable/49be66547a6a4fc49c5313ef5ad1d419/report.json`
+- `.work/reports/line-plans-msvc/dae317e421d0401fba431c1c6133b547/report.json`
+- `.work/reports/line-plans-sanitize22/d06cc4ecd7c74509a581a6093f2b564d/report.json`
+
+The prepared default ROM SHA-256 is
+`2a3171a342edeeef9c86acf92ee4dcaf689211d884a624b0147aaebbc43588de`;
+the extended ROM is
+`083cd13005b4706e1128946d49059f3222f93df23f7084ce038dd271e48ba824`.
+They retain the documented [fixture corrections](cartridge-fixtures.md).
+Original-image acceptance remains open in #5 and #39.
+
+The initial Clang 21.1.5 Windows sanitizer run passes the emulation and cartridge
+checks but fails the capture's existing-directory error path. A six-line program
+that only throws and catches `std::runtime_error` reproduces the corrupted catch
+reference. Clang 22.1.8 handles it correctly and passes the complete validator.
+The [upstream sanitizer correction](https://github.com/llvm/llvm-project/pull/159618)
+addresses Windows catch-parameter instrumentation. The failed local report is
+retained at
+`.work/reports/line-plans-sanitize/a593bb51031f4071a39d3229d4d577e1/report.json`.
+No emulation checks or sanitizer options were removed to obtain the passing run.
+
+### Controller replay
+
+A 3,600-field SM64 replay uses the supplied USA cartridge and PIF, NTSC timing,
+8 MiB RDRAM, EEPROM-4Kbit configuration, and scripted gamepad input. Returning
+line contents take 75.973 seconds, or 47.4 VI fields per host second. The following
+preceding-core run takes 77.498 seconds, or 46.5 fields per host second. Both use
+Clang 21.1.5 Release with interprocedural optimization, performance-core affinity,
+and no concurrent local build or validation. Earlier host timings varied
+substantially; this single pair does not establish a sustained speed gain.
+
+Every field record and complete PCM byte matches the preceding core. Both
+execute 3,803,738,562 instructions and 5,673,215,336 CPU cycles, producing
+1,908,539 stereo sample pairs. Compiled CPU instructions rise from 193,920,136
+to 208,565,852; compiled RSP instructions remain 941,396,671. Complete PCM SHA-256
+is `0b1d2b81bfb44ddd9e6d0a9a8cd2ca1884f932df2461df31cc9c1e70bec0998e`.
+The inspected final image retains Mario, outdoor terrain, textures, depth,
+shadow, and HUD.
+
+A separate replay using the desktop's 65,536-instruction/93,750-cycle quantum
+preserves every field record and all PCM through field 3,600. Completing that
+last quantum produces 22 additional stereo sample pairs; the raw files therefore
+differ only by this suffix. Its measured rate is 38.4 fields per host second.
+Sustained full-speed gameplay and normal audible playback remain open in #48
+and #47. This section and its index were added after validation; implementation
+and regression-test bytes are unchanged.

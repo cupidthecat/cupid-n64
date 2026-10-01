@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## CPU decoded line reuse (2026-10-01)
+
+The [returning line results](cpu-code-cache-results.md#returning-decoded-line-contents-2026-10-01)
+record retained compilation warmup, cache-byte replacement and eviction checks,
+texture interpolation oracles, complete compiler and cartridge validation,
+and identical SM64 output. The record includes the reproduced Clang 21 Windows
+sanitizer failure and the passing Clang 22 run. Full-speed playback remains open.
+
 ## RDP shared inputs (2026-10-01)
 
 The [RDP shared-input results](rdp-shared-input-results.md) record color and

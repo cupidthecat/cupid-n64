@@ -60,6 +60,7 @@ void Cpu::reset() {
     native_block_instructions_ = 0;
     std::fill(cached_decode_.begin(), cached_decode_.end(), CachedDecode{});
     std::fill(cached_line_plans_.begin(), cached_line_plans_.end(), CachedLinePlan{});
+    cached_line_contents_.clear();
     native_cache_.reset();
     speculative_fetch_ = false;
     speculative_refill_bases_.fill(0);

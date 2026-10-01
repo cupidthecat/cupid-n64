@@ -97,8 +97,10 @@ avoids repeating the first instruction's preflight while retaining the checks
 needed after a host callback or a preceding load changes its operands.
 
 The cached decoder is derived from the instruction cache. A line plan records
-the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
-when that image changes. The instruction at `pc` must also match the word already
+the line tag and all 32 instruction bytes. A bounded lookup retains all eight
+decoded words and the native block timing for returning complete byte images.
+New images are decoded once per lookup generation. The instruction at `pc` must
+also match the word already
 latched by the preceding fetch. Portable execution repeats that comparison after
 device clocks are settled and before every retired instruction.
 [Native integer blocks](cpu-native.md) validate the complete cache image at entry

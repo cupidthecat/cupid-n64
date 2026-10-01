@@ -363,3 +363,58 @@ TEST(cpu_native_execution_reuses_immutable_code_on_the_first_eligible_replacemen
         CHECK_EQ(native.cpu.native_block_instructions() - before, CpuNativeCode::available() ? 7U : 0U);
     }
 }
+
+TEST(cpu_native_execution_retains_line_warmup_across_replaced_instruction_bytes) {
+    auto systems = std::make_unique<std::array<System, 2>>();
+    auto& [native, ordinary] = *systems;
+    prepare(native);
+    prepare(ordinary);
+    const auto enter = [&] {
+        for (auto* system : {&native, &ordinary}) {
+            system->cpu.set_pc(code - 4U);
+            system->cpu.step();
+        }
+    };
+    for (unsigned visit = 0; visit < 4U; ++visit) {
+        enter();
+        compare(native, ordinary, 7U);
+    }
+    CHECK_EQ(native.cpu.native_block_instructions(), 0U);
+    for (auto* system : {&native, &ordinary})
+        replace_cached_word(*system, code, 0x24210002U);
+    enter();
+    compare(native, ordinary, 7U);
+    CHECK_EQ(native.cpu.native_block_instructions(), 0U);
+    for (auto* system : {&native, &ordinary})
+        replace_cached_word(*system, code, program[0]);
+    enter();
+    compare(native, ordinary, 7U);
+    CHECK_EQ(native.cpu.native_block_instructions() != 0, CpuNativeCode::available());
+}
+
+TEST(cpu_cached_line_reuse_keeps_replaced_words_and_live_load_interlocks) {
+    auto systems = std::make_unique<std::array<System, 2>>();
+    auto& [native, ordinary] = *systems;
+    prepare(native);
+    prepare(ordinary);
+    warm(native, ordinary);
+    for (unsigned visit = 0; visit < 4100U; ++visit) {
+        for (auto* system : {&native, &ordinary}) {
+            // Distinct complete images exhaust a lookup generation. The eighth
+            // word is outside compiled prefixes but remains a hardware fetch.
+            replace_cached_word(*system, code, 0x24010000U | visit);
+            replace_cached_word(*system, code + 28U, 0x24220000U | (visit ^ 0x55U));
+            system->cpu.set_pc(code - 4U);
+            system->cpu.step();
+        }
+        compare(native, ordinary, 8U);
+    }
+    for (auto* system : {&native, &ordinary}) {
+        replace_cached_word(*system, code, 0x8fa10000U); // LW at,0(sp).
+        system->cpu.gpr[29] = 0xffffffff80003000ULL;
+        system->bus.write(0x3000U, 4U, 0x12345678U);
+        system->cpu.set_pc(code - 4U);
+        system->cpu.step();
+    }
+    compare(native, ordinary, 32U);
+}

@@ -9,6 +9,7 @@
 #include <array>
 #include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace cupid {
@@ -263,7 +264,7 @@ class Cpu {
     };
     static_assert(sizeof(CachedDecode) == 16);
     std::vector<CachedDecode> cached_decode_ = std::vector<CachedDecode>(4096);
-    struct CachedLinePlan {
+    struct CachedLineContents {
         struct NativeBlock {
             std::shared_ptr<const CpuNativeCode> code;
             u8 count{};
@@ -275,11 +276,21 @@ class Cpu {
             bool has_store{};
             bool ends_branch{};
         };
-        std::array<u8, 32> image{};
+        std::array<CachedDecode, 8> decoded{};
         std::array<NativeBlock, CpuNativeCode::maximum_instructions> native{};
+    };
+    struct CachedLinePlan {
+        std::array<u8, 32> image{};
+        std::shared_ptr<CachedLineContents> contents;
         u32 tag{};
         bool valid{};
     };
+    struct CachedLineHash {
+        std::size_t operator()(const std::array<u8, 32>& image) const;
+    };
+    static constexpr std::size_t cached_line_capacity = 4096;
+    std::unordered_map<std::array<u8, 32>, std::shared_ptr<CachedLineContents>, CachedLineHash>
+        cached_line_contents_;
     std::vector<CachedLinePlan> cached_line_plans_ = std::vector<CachedLinePlan>(512);
     CpuNativeCache native_cache_;
 
@@ -304,6 +315,7 @@ class Cpu {
     unsigned batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles);
     unsigned batch_cached_private(unsigned maximum_steps, u64 maximum_cycles);
     [[nodiscard]] CachedDecode decode_cached_instruction(u32 instruction) const;
+    [[nodiscard]] std::shared_ptr<CachedLineContents> cached_line_contents(const std::array<u8, 32>& image);
     void execute_cached_direct(const CachedDecode& decoded);
     unsigned execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigned maximum_steps,
                                    u64 maximum_cycles, std::optional<std::array<u64, 32>>* rollback_registers,

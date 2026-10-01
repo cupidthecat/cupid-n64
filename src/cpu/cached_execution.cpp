@@ -538,38 +538,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
             return &plan;
 
         plan.valid = false;
-        plan.native.fill({});
+        plan.contents = cached_line_contents(line.data);
         const unsigned decode_base = line_index * 8U;
-        for (unsigned slot = 0; slot < 8U; ++slot)
-            cached_decode_[decode_base + slot] =
-                decode_cached_instruction(read_be32(line.data.data() + slot * 4U));
-        for (unsigned index = 0; index < CpuNativeCode::maximum_instructions; ++index) {
-            auto& block = plan.native[index];
-            bool stored = false;
-            for (unsigned next = index; next < CpuNativeCode::maximum_instructions; ++next) {
-                const auto& decoded = cached_decode_[decode_base + next];
-                if (!CpuNativeCode::supports(decoded.word) || (stored && decoded.kind == CachedKind::Load))
-                    break;
-                stored = stored || decoded.kind == CachedKind::Store;
-                ++block.count;
-                if (CpuNativeCode::terminal_branch(decoded.word)) {
-                    block.ends_branch = true;
-                    break;
-                }
-            }
-            unsigned pending_load = 0;
-            for (unsigned offset = 0; offset < block.count; ++offset) {
-                const auto& decoded = cached_decode_[decode_base + index + offset];
-                const bool issue_wait =
-                    pending_load != 0 && (decoded.integer_reads & (1U << pending_load)) != 0;
-                block.extra_cycles += static_cast<u8>(issue_wait);
-                block.last_cycles = static_cast<u8>(1U + static_cast<unsigned>(issue_wait));
-                block.has_load = block.has_load || decoded.kind == CachedKind::Load;
-                block.has_store = block.has_store || decoded.kind == CachedKind::Store;
-                pending_load = decoded.load_target < 32 ? static_cast<unsigned>(decoded.load_target) : 0U;
-            }
-            block.pending_load = static_cast<u8>(pending_load);
-        }
+        std::copy(plan.contents->decoded.begin(), plan.contents->decoded.end(),
+                  cached_decode_.begin() + decode_base);
         plan.image = line.data;
         plan.tag = tag;
         plan.valid = true;
@@ -722,7 +694,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
     for (;;) {
         const unsigned slot = static_cast<unsigned>((pc >> 2U) & 7U);
         const auto* native_block =
-            slot < CpuNativeCode::maximum_instructions ? &active_plan->native[slot] : nullptr;
+            slot < CpuNativeCode::maximum_instructions ? &active_plan->contents->native[slot] : nullptr;
         const bool native_candidate =
             native_execution_ && native_block != nullptr &&
             (native_block->count >= 3U || (native_block->ends_branch && native_block->count >= 2U));
