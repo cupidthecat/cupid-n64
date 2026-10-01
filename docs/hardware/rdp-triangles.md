@@ -43,8 +43,12 @@ state select the sampling tiles and LOD fraction.
 The divider normalizes W and prepares its reciprocal once for each S/T pair.
 Triangle drawing computes horizontal and vertical neighbors when LOD consumes
 them. One-cycle texel-1 also requires the horizontal neighbor and, where
-applicable, next-row lookahead. These choices depend on the draw's active texture
-inputs. LOD combines overflow from the current pixel and its required neighbors.
+applicable, next-row lookahead. These choices use the live texture dependencies
+from the prepared combiner plan after DirectD simplification. Keyed RGB A remains
+live for its final bypass, and second-cycle selectors are mapped through the
+two-cycle texel swap. Texture-LOD mode keeps the LOD neighbors even when no live
+combiner term reads the fraction because those derivatives still select the
+mipmap tile. LOD combines overflow from the current pixel and its required neighbors.
 A reused horizontal coordinate carries only its own overflow, so a preceding
 pixel's invalid W cannot keep later valid pixels at the farthest mipmap.
 
@@ -85,7 +89,10 @@ overflow regions, gradient normalization, and divider saturation.
 `test_perspective_point.cpp` checks literal reciprocal results, overflow from
 either axis, and paired-versus-separate division for every positive W value.
 `test_triangle_texture_needs.cpp` checks which neighbors reach LOD and texel-1,
-the next-row boundary, and RI bank state and clocks through real commands.
+the next-row boundary, and RI bank state and clocks through real commands. It
+also compares a DirectD triangle containing dead texture selectors with the
+equivalent clean combiner, including RGBA, depth, color hidden coverage, and
+depth hidden bits, and checks that keyed DirectD keeps texel0 live.
 `test_triangle_lod_recovery.cpp` checks that both span directions recover the
 base texture level after a nonpositive W, while preserving the initial distant
 pixel and the exclusive right edge.

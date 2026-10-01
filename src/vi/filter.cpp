@@ -1,4 +1,5 @@
 #include "cupid/vi/filter.hpp"
+#include "reconstruction.hpp"
 
 #include <algorithm>
 #include <array>
@@ -32,35 +33,13 @@ template <class ReadPixel> ViPixel reconstruct_pixel(u32 control, bool repeat_lo
             repeat_lower ? read(-2, 0) : read(-1, 1),
             repeat_lower ? read(2, 0) : read(1, 1),
         };
-        for (unsigned channel = 0; channel < 3; ++channel) {
-            u32 low = center.color[channel];
-            u32 high = low;
-            u32 second_low = low;
-            u32 second_high = low;
-            for (const auto& neighbor : neighbors) {
-                if (neighbor.coverage != 7)
-                    continue;
-                const u32 value = neighbor.color[channel];
-                second_low = std::min(second_low, std::max(value, low));
-                second_high = std::max(second_high, std::min(value, high));
-                low = std::min(low, value);
-                high = std::max(high, value);
-            }
-            const s32 correction =
-                static_cast<s32>(second_low + second_high) - 2 * static_cast<s32>(center.color[channel]);
-            const s32 delta = (correction * static_cast<s32>(7 - center.coverage) + 4) >> 3;
-            center.color[channel] = static_cast<u32>(static_cast<s32>(center.color[channel]) + delta) & 255U;
-        }
+        center.color = vi::reconstruct_edges(center, neighbors);
     } else if ((control & 0x10000U) != 0) {
         const ViColor original = center.color;
-        std::array<s32, 3> adjustment{};
+        vi::DitherRestoration restoration(original);
         const auto accumulate = [&](s32 dx, s32 dy) {
             const auto neighbor = read(dx, dy);
-            for (unsigned channel = 0; channel < 3; ++channel) {
-                const s32 difference =
-                    static_cast<s32>(neighbor.color[channel] >> 3) - static_cast<s32>(original[channel] >> 3);
-                adjustment[channel] += std::clamp<s32>(difference, -1, 1);
-            }
+            restoration.add(neighbor);
         };
         for (s32 dx = -1; dx <= 1; ++dx) {
             accumulate(dx, -1);
@@ -73,9 +52,7 @@ template <class ReadPixel> ViPixel reconstruct_pixel(u32 control, bool repeat_lo
             accumulate(-1, 0);
             accumulate(1, 0);
         }
-        for (unsigned channel = 0; channel < 3; ++channel)
-            center.color[channel] = static_cast<u32>(
-                std::clamp<s32>(static_cast<s32>(original[channel] & 248U) + adjustment[channel], 0, 255));
+        center.color = restoration.color();
     }
     return center;
 }

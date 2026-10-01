@@ -473,6 +473,120 @@ TEST(rdp_combiner_plan_keeps_live_products_full_and_noise_metadata_conservative)
     CHECK(plan.uses_noise[1]);
 }
 
+TEST(rdp_combiner_plan_texture_inputs_skip_dead_direct_terms_and_keep_key_bypass) {
+    RdpColorState state;
+    const CombineCycle direct{
+        .a = 1,
+        .b = 2,
+        .c = 16,
+        .d = 3,
+        .aa = 1,
+        .ab = 2,
+        .ac = 7,
+        .ad = 3,
+    };
+    state.combine = combine_word({}, direct);
+    const auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[1], RdpCombinerExpression::DirectD);
+    CHECK_EQ(plan.alpha_expression[1], RdpCombinerExpression::DirectD);
+
+    CHECK_EQ(rdp_combiner_texture_inputs(state.combine, false), 3U);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 0), 0U);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 1ULL << 40U), 1U);
+}
+
+TEST(rdp_combiner_plan_texture_inputs_apply_two_cycle_texel_swap_after_liveness) {
+    RdpColorState state;
+    state.combine = combine_word(zero_cycle(), {.d = 1, .ad = 1});
+    auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 1ULL << 52U), 2U);
+
+    state.combine = combine_word(zero_cycle(), {.d = 2, .ad = 2});
+    plan = rdp_prepare_combiner(state);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 1ULL << 52U), 1U);
+
+    state.combine = combine_word({.a = 1, .b = 1, .c = 16, .d = 5}, zero_cycle());
+    plan = rdp_prepare_combiner(state);
+    CHECK_EQ(rdp_combiner_texture_inputs(state.combine, true), 1U);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, (1ULL << 52U) | (1ULL << 40U)), 0U);
+}
+
+TEST(rdp_combiner_plan_texture_inputs_skip_dead_lod_but_preserve_live_and_tile_selection_lod) {
+    RdpColorState state;
+    state.combine = combine_word({.a = 3, .b = 3, .c = 13, .d = 5}, zero_cycle());
+    auto plan = rdp_prepare_combiner(state);
+    CHECK_EQ(rdp_combiner_texture_inputs(state.combine, true), 4U);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 1ULL << 52U), 0U);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, (1ULL << 52U) | (1ULL << 48U)), 4U);
+
+    state.primitive = 0x10203040U;
+    state.environment = 0x50607080U;
+    state.combine = combine_word({.a = 3, .b = 5, .c = 13, .d = 7}, zero_cycle());
+    plan = rdp_prepare_combiner(state);
+    CHECK_EQ(plan.rgb_expression[0], RdpCombinerExpression::Full);
+    CHECK_EQ(rdp_combiner_texture_inputs(plan, 1ULL << 52U), 4U);
+}
+
+TEST(rdp_combiner_plan_dead_texture_mask_preserves_prepared_results_across_modes) {
+    u32 random = 0x4ac15e37U;
+    const auto next = [&] {
+        random = random * 1664525U + 1013904223U;
+        return random;
+    };
+    const auto component = [&] { return static_cast<s32>(next() & 511U) - 128; };
+    const auto color = [&] {
+        RdpColor result;
+        for (auto& value : result)
+            value = component();
+        return result;
+    };
+
+    for (unsigned sample = 0; sample < 4096; ++sample) {
+        RdpColorState state;
+        state.combine = ((static_cast<u64>(next()) << 32U) | next()) & 0x00ffffffffffffffULL;
+        state.primitive = next();
+        state.environment = next();
+        state.primitive_lod = static_cast<u8>(next());
+        for (unsigned channel = 0; channel < 3; ++channel) {
+            state.key_width[channel] = static_cast<u16>(next() & 4095U);
+            state.key_center[channel] = static_cast<u8>(next());
+            state.key_scale[channel] = static_cast<u8>(next());
+        }
+        for (auto& value : state.convert)
+            value = static_cast<u16>(next() & 511U);
+
+        RdpColorInputs inputs;
+        inputs.texel0 = color();
+        inputs.texel1 = color();
+        inputs.shade = color();
+        inputs.lod_fraction = component();
+        inputs.noise = {component(), component()};
+        const auto plan = rdp_prepare_combiner(state);
+
+        for (const bool two_cycles : {false, true}) {
+            for (const bool key_enabled : {false, true}) {
+                for (const bool texture_lod : {false, true}) {
+                    const u64 modes = (two_cycles ? 1ULL << 52U : 0U) | (key_enabled ? 1ULL << 40U : 0U) |
+                                      (texture_lod ? 1ULL << 48U : 0U);
+                    auto full = inputs;
+                    if (!two_cycles && !texture_lod)
+                        full.lod_fraction = 0;
+                    const unsigned live = rdp_combiner_texture_inputs(plan, modes);
+                    auto trimmed = full;
+                    if ((live & 1U) == 0)
+                        trimmed.texel0 = {};
+                    if ((live & 2U) == 0)
+                        trimmed.texel1 = {};
+                    if ((live & 4U) == 0)
+                        trimmed.lod_fraction = 0;
+                    check_equal(rdp_combine_prepared(state, plan, modes, trimmed, 5, 3),
+                                rdp_combine_prepared(state, plan, modes, full, 5, 3));
+                }
+            }
+        }
+    }
+}
+
 TEST(rdp_combiner_plan_direct_d_refreshes_environment_constant_at_each_draw) {
     ColorCommands commands;
     commands.append(0x3c, combine_word({}, {.d = 5, .ad = 5}));

@@ -3,31 +3,129 @@
 On x86-64 hosts, the core can compile frequently executed local RSP blocks to
 native code. `CUPID_NATIVE_RSP` enables this at build time and defaults to `ON`.
 Other host architectures retain the portable block executor. Set the option to
-`OFF`, or pass `--no-native-rsp` to `tools/ci/validate.py`, to validate without
-native code generation.
+`OFF`, or pass `--no-native-rsp` to `tools/ci/validate.py`, to validate portable
+RSP execution. CPU compilation has its own
+[build option and execution boundaries](cpu-native.md).
 
 ## Execution boundaries
 
 The existing local-block planner decides instruction pairing, dependency stalls,
 and the available cycle budget. A compiled block contains at most 16 instructions.
-Branches, BREAK, shared COP0 accesses, single-step execution, and blocks that do
-not fit the remaining budget use the existing execution paths. DMA row visibility
-and the final cycle's device ordering remain controlled by the shared scheduler.
+A block may end with a branch issue group. Native code executes the preceding
+instructions, and the ordinary branch handler retires that final group. The
+delay slot remains in the next group, with its pairing restriction and taken
+branch bubble. BREAK, shared COP0 accesses, single-step execution, and blocks
+that do not fit the remaining budget use the existing execution paths. DMA row
+visibility and the final cycle's device ordering remain controlled by the shared
+scheduler.
 
 Scalar arithmetic and logical instructions operate on 32-bit values. Loads retain
 big-endian DMEM byte order, sign extension, unaligned accesses, and 4 KiB wrapping.
 Loads that cross the DMEM boundary use the same wrapped read helpers as portable
 execution. Stores use the existing write helpers so speculative local execution
 can restore every affected DMEM block when another device observes the RSP.
-Vector instructions call a helper selected from the decoded opcode. Its packed
-arithmetic implementation is shared with portable dispatch. Transfers,
-accumulator updates, control flags, and unsupported packed operations retain the
-existing C++ behavior.
+Compiled vector blocks emit SSE2 instructions for VMULF, VMULU, VMUDL, VMUDM,
+VMUDN, VMUDH, VMACF, VMACU, VMADL, VMADM, VMADN, VMADH, VSAR, and the six
+logical operations, plus VADD, VSUB, VADDC, VSUBC, VABS, VLT, VEQ, VNE, VGE,
+VMRG, VCH, VCL, VCR, VMOV, VRCPH, and VRSQH. Fractional products retain the rounding bias and positive
+endpoint. Accumulating operations propagate both low- and middle-slice carries;
+unsigned destinations retain their distinct saturation rules.
+Register offsets and element
+selections are fixed when compiling. Both operands are loaded before an aliased
+destination is written. Mixed signedness, 48-bit accumulator wrapping, carry
+between the middle and high slices, and signed destination saturation follow
+the architectural equations. Logical operations replace only the low
+accumulator slice. Products, VSAR, and logical operations preserve vector
+control flags. VABS preserves zero and signed endpoints separately in the
+destination and low accumulator. VLT, VEQ, VNE, and VGE select signed operands
+with the carry-dependent equality rules, update VCC, and clear VCO. VMRG consumes
+VCC without changing it. These operations preserve VCE. VADD and VSUB consume
+the eight low carry flags, retain wrapped
+low accumulator results, saturate their signed destinations, and clear both
+carry groups. VADDC reports unsigned overflow; VSUBC reports unsigned borrow
+and a nonzero difference in their separate carry groups. These four operations
+preserve the upper accumulator slices and the comparison and extension flags.
+
+VCH writes both carry groups, both comparison groups, and the extension flags.
+Its opposite-sign lanes select a wrapped negation of VT. VCR uses one's
+complement in those lanes and clears carry and extension flags. VCL consumes
+all five incoming flag groups, updates the selected comparison group with
+unsigned sum/carry or unsigned ordering rules, and clears carry and extension
+flags. All three replace only the low accumulator slice. Their destination
+writes follow the same alias and liveness rules as other emitted operations.
+
+The compiler omits a vector destination write only when a later emitted
+operation overwrites it before any reader, helper, or block exit. Accumulator
+updates still execute, including wrapping and carries. Aliased source reads
+keep the preceding destination value live. Transfers, vector memory operations,
+and unsupported vector operations form barriers for this analysis.
+
+Other vector instructions call a helper selected from the decoded opcode and
+element field. Transfers and vector memory accesses retain the existing C++
+behavior. Five SIMD registers hold temporary values. Blocks with at least three
+emitted vector operations and two accumulations in a helper-free chain declare
+three more registers for the accumulator's slices. Those slices load lazily,
+retain arithmetic results between operations, and flush before helpers and
+block exit. Wrapped scalar loads flush before their conditional branch so both
+the direct and helper paths see coherent accumulator memory. Cached slices are
+invalidated at each helper boundary.
+
+Clipping blocks also declare eight SIMD registers. A clipping operation flushes
+cached accumulator slices before using those registers as temporaries; subsequent
+operations reload the current slices. The unsigned comparison bias is rebuilt
+after clipping. These boundaries preserve the upper slices and each flag's
+architectural lifetime.
+
+Control and divider operations receive the current machine's storage pointers
+through a sixth saved scalar base. Other vector blocks retain five saved bases.
+Their packed mask extraction maps each architectural lane to its flag bit.
+
+The compiler declares every used SIMD register, including registers that
+Windows requires the function to preserve. Scalar-only blocks retain three
+saved base registers and skip vector pointer setup. The unsigned comparison
+bias is reused between emitted operations and rebuilt after a helper call.
+
+VMOV, VRCPH, and VRSQH copy the selected target lanes to the low accumulator
+and change only one destination lane. High-half operations retain the current
+divider output, replace its pending input, and set the shared high-half latch.
+Their divider pointers are refreshed at entry. Destination analysis keeps a
+preceding full vector result live across partial writes; encoded destination
+elements do not read a vector source.
 
 Native code receives the current RSP and register-storage pointers at entry.
 It contains no pointer to the machine that first compiled it. Copies of local
 blocks may share immutable executable code while retaining separate machine
 state and compilation bookkeeping.
+
+`tests/rsp/test_native_vector_context.cpp` executes one compiled vector sequence
+against independently seeded machines. It checks every element selection,
+aliased destinations, all vector registers, accumulator slices, and control flags
+against ordinary execution.
+
+`tests/rsp/test_native_vector_arithmetic.cpp` compares compiled operations with
+an independent scalar oracle. It checks all 16 element selections, aliased
+inputs and destinations, every vector register, all accumulator slices, and
+expected control flags. Repeated products cross the 32-bit saturation and
+48-bit wrapping boundaries. Mixed blocks consume accumulator changes made by
+ordinary VMULQ and VMACQ helpers. Overwritten-result chains retain late
+consumers, all exit registers, and accumulator effects. Memory stores and COP2
+transfers observe intermediate results. Fast and wrapped scalar loads retain
+cached accumulator changes before a consuming helper. Add/subtract checks cover
+every carry mask, all element selections, signed endpoints, unsigned overflow
+and borrow, aliased operands, and carries inside cached accumulator chains.
+Comparison checks cover equality with every carry combination, every VCC mask
+for merge, and flag updates inside cached chains. Clipping checks cover
+every lane's five-flag combination, unsigned ordering, signed endpoints,
+wrapped negation, one's complement, and accumulator chains. Partial-write regressions
+observe surviving lanes from previous full destinations. Divider-high tests
+use reciprocal results for zero, one, and 65536 to observe shared input and
+output latches across ordinary helpers. Input patterns seed nontrivial upper slices and the
+48-bit sign boundary. Output stores use an explicit base register so their
+signed seven-bit displacements stay within range.
+
+`tests/rsp/test_local_blocks.cpp` compares terminal branches with individual
+stepping, including taken and untaken conditions, aliased link registers,
+instruction-memory wrapping, delay-slot stores, and fragmented cycle budgets.
 
 ## Code reuse and lifetime
 

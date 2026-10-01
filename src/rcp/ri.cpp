@@ -45,7 +45,9 @@ void Rdram::track_access(u32 address, bool write, u64 access_clock) const {
         return;
     const u16 row = static_cast<u16>((address >> 11) & 0x1ffU);
     if (active_scopes_.load(std::memory_order_relaxed) != 0) {
-        if (auto* scope = BankAccessScope::current_; scope != nullptr && &scope->memory_ == this) {
+        for (auto* scope = BankAccessScope::current_; scope != nullptr; scope = scope->previous_) {
+            if (&scope->memory_ != this)
+                continue;
             auto& bank = scope->summary_.banks[address >> 20];
             if (!bank.visited) {
                 bank.visited = true;

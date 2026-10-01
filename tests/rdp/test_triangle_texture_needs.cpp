@@ -29,6 +29,13 @@ void configure_texel0_perspective(TriangleCommands& commands) {
     commands.modes(1ULL << 51U);
 }
 
+void seed_clear_depth(TriangleCommands& commands) {
+    for (unsigned y = 0; y < 2; ++y) {
+        for (unsigned x = 0; x < 16; ++x)
+            commands.system->bus.memory.write_halfword(0x9000U + (y * 16U + x) * 2U, {0xfffcU, 3U});
+    }
+}
+
 } // namespace
 
 TEST(rdp_triangle_texture_needs_no_lod_ignores_vertical_neighbor_overflow_without_changing_bank_timing) {
@@ -103,4 +110,48 @@ TEST(rdp_triangle_texture_needs_two_cycle_texel1_uses_current_point_without_neig
     // The next-X W reaches zero, but two-cycle texel1 samples the second tile
     // at the current point and does not consume that neighbor.
     CHECK_EQ(commands.pixel(), TextureCommands::expected(0, 2));
+}
+
+TEST(rdp_triangle_texture_needs_dead_direct_terms_match_untextured_rgba_depth_and_coverage) {
+    TriangleCommands baseline;
+    TriangleCommands dead_textures;
+    for (auto* commands : {&baseline, &dead_textures}) {
+        commands->system->bus.rdp.set_parallel_rasterization(false);
+        seed_clear_depth(*commands);
+        commands->append(0x3a, 0x806040ffU);
+        commands->modes((1ULL << 51U) | (1ULL << 6U) | (1ULL << 5U) | (1ULL << 4U) | (1ULL << 3U));
+    }
+    baseline.append(0x3c, combine_word({}, {.d = 3, .ad = 3}));
+    dead_textures.append(
+        0x3c, combine_word({}, {.a = 1, .b = 2, .c = 16, .d = 3, .aa = 1, .ab = 2, .ac = 7, .ad = 3}));
+    baseline.triangle(0x0f);
+    dead_textures.triangle(0x0f);
+    baseline.run();
+    dead_textures.run();
+
+    CHECK(baseline.pixel() != 0U);
+    for (unsigned y = 0; y < 2; ++y) {
+        for (unsigned x = 0; x < 16; ++x) {
+            CHECK_EQ(dead_textures.pixel(x, y), baseline.pixel(x, y));
+            CHECK_EQ(dead_textures.depth(x, y), baseline.depth(x, y));
+            const u32 color_address = baseline.address(x, y);
+            const u32 depth_address = 0x9000U + (y * 16U + x) * 2U;
+            CHECK_EQ(dead_textures.system->bus.memory.hidden_pair(color_address),
+                     baseline.system->bus.memory.hidden_pair(color_address));
+            CHECK_EQ(dead_textures.system->bus.memory.hidden_pair(depth_address),
+                     baseline.system->bus.memory.hidden_pair(depth_address));
+        }
+    }
+}
+
+TEST(rdp_triangle_texture_needs_keyed_direct_bypass_keeps_texel0_live) {
+    TriangleCommands commands;
+    commands.system->bus.rdp.set_parallel_rasterization(false);
+    commands.append(0x3b, 0xe0c0a0ffU);
+    commands.append(0x3c, combine_word({}, {.a = 1, .b = 1, .c = 16, .d = 5, .ad = 3}));
+    commands.modes(1ULL << 40U);
+    commands.triangle(0x0f);
+    commands.run();
+
+    CHECK_EQ(commands.pixel(), TextureCommands::expected(0, 0));
 }

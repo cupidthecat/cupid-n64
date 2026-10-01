@@ -237,6 +237,76 @@ TEST(cpu_cached_private_restores_zero_before_the_next_private_instruction) {
     probe_next_step(batched, stepped);
 }
 
+TEST(cpu_cached_likely_branches_preserve_annul_cycles_link_aliases_and_load_interlocks) {
+    constexpr std::array branch_words{
+        immediate(1, 0, 2, 6),    immediate(1, 0, 3, 6),    immediate(1, 0, 18, 6),
+        immediate(1, 0, 19, 6),   immediate(0x14, 0, 2, 6), immediate(0x15, 0, 2, 6),
+        immediate(0x16, 0, 0, 6), immediate(0x17, 0, 0, 6),
+    };
+    for (const bool native : {false, true}) {
+        for (unsigned phase = 0; phase < 3; ++phase) {
+            for (const bool load_interlock : {false, true}) {
+                for (unsigned source : {1U, 31U}) {
+                    for (const int value : {-1, 0, 1}) {
+                        for (const u32 branch_word : branch_words) {
+                            auto machines = std::make_unique<std::array<System, 2>>();
+                            auto& [batched, stepped] = *machines;
+                            const u32 branch = branch_word | (source << 21U);
+                            for (auto* system : {&batched, &stepped}) {
+                                prepare(*system, {
+                                                     load_interlock ? immediate(0x23, 16, source, 0) : 0U,
+                                                     branch,
+                                                     immediate(0x2b, 16, 31, 4),
+                                                     immediate(9, 3, 3, 1),
+                                                     0x08000400U,
+                                                     0U,
+                                                     0U,
+                                                     0U,
+                                                     immediate(9, 4, 4, 1),
+                                                     0x08000400U,
+                                                     0U,
+                                                 });
+                                system->cpu.set_native_execution(native);
+                                system->cpu.write_cop0(12, 0x34000401U);
+                                system->cpu.gpr[16] = data;
+                                system->cpu.gpr[2] = 1;
+                                system->cpu.gpr[source] = static_cast<u64>(static_cast<s64>(value));
+                                warm_data_cache(*system);
+                                auto& line = system->cpu.data_cache[(data >> 4U) & 511U];
+                                write_be32(line.data.data(), static_cast<u32>(value));
+                                warm_instruction_cache_line(*system, code);
+                                warm_instruction_cache_line(*system, code + 32U);
+                                system->bus.write(0x04001000U, 4, immediate(9, 1, 1, 1));
+                                system->bus.write(0x04001004U, 4, immediate(4, 0, 0, -2));
+                                system->rsp.write_register(0x10U, 1U);
+                                system->advance(phase);
+                                system->cpu.step();
+                            }
+                            const unsigned opcode = branch >> 26U;
+                            const unsigned selector = (branch >> 16U) & 31U;
+                            const s64 operand = source == 31U && opcode == 1U && selector >= 16U
+                                                    ? signed64(code + 12U)
+                                                    : value;
+                            const bool taken = opcode == 1U
+                                                   ? ((selector & 1U) != 0U ? operand >= 0 : operand < 0)
+                                               : opcode == 0x14U ? operand == 1
+                                               : opcode == 0x15U ? operand != 1
+                                               : opcode == 0x16U ? operand <= 0
+                                                                 : operand > 0;
+                            const u64 previous = batched.cpu.batched_cached_instructions();
+                            compare_slice(batched, stepped, 2);
+                            CHECK_EQ(batched.cpu.batched_cached_instructions() - previous, taken ? 2U : 1U);
+                            for (const unsigned budget : {1U, 3U, 5U, 31U, 257U})
+                                compare_slice(batched, stepped, budget);
+                            probe_next_step(batched, stepped);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 TEST(cpu_cached_private_obeys_instruction_cycle_and_compare_edges) {
     const auto program = {
         immediate(0x09, 8, 8, 1),

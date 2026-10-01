@@ -206,9 +206,36 @@ void Fpu::write_doubleword(unsigned index, u64 value) {
 unsigned Fpu::nontrapping_arithmetic_cycles(u32 instruction) const {
     const unsigned format = (instruction >> 21U) & 31U;
     const unsigned function = instruction & 63U;
-    if ((instruction >> 26U) != 0x11U || (format != 0x10U && format != 0x11U) || function > 7U)
+    if ((instruction >> 26U) != 0x11U)
         return 0;
     const unsigned fs = (instruction >> 11U) & 31U;
+    if (format == 0x14U || format == 0x15U) {
+        if (function != 0x20U && function != 0x21U)
+            return 0;
+        const s64 input =
+            format == 0x14U ? std::bit_cast<s32>(source_word(fs)) : std::bit_cast<s64>(source_doubleword(fs));
+        if (format == 0x15U && (input >= static_cast<s64>(0x0080000000000000ULL) ||
+                                input < -static_cast<s64>(0x0080000000000000ULL)))
+            return 0;
+        const auto result = function == 0x20U
+                                ? fpu_host::bits_from_integer<23, 8, 127>(input, control & 3U)
+                                : fpu_host::bits_from_integer<52, 11, 1023>(input, control & 3U);
+        return result.inexact && (control & (1U << 7U)) != 0 ? 0U : input == 0 ? 2U : 5U;
+    }
+    if (format != 0x10U && format != 0x11U)
+        return 0;
+    if ((function >= 0x08U && function <= 0x0fU) || function == 0x24U || function == 0x25U) {
+        const bool fixed_rounding = function < 0x10U;
+        const bool long_result = fixed_rounding ? function < 0x0cU : function == 0x25U;
+        const unsigned rounding = fixed_rounding ? function & 3U : control & 3U;
+        const auto result =
+            format == 0x10U
+                ? fpu_host::integer_from_bits<23, 8, 127>(source_word(fs), long_result, rounding)
+                : fpu_host::integer_from_bits<52, 11, 1023>(source_doubleword(fs), long_result, rounding);
+        return result && (!result->inexact || (control & (1U << 7U)) == 0) ? 5U : 0U;
+    }
+    if (function > 7U)
+        return 0;
     // MOV transfers all 64 bits without checking the operand or changing FCSR.
     if (function == 6U)
         return 1;
@@ -732,6 +759,29 @@ void Fpu::execute_format(u32 instruction, unsigned format) {
             else
                 write_result_word(fd, static_cast<u32>(result->bits));
             return;
+        }
+    }
+
+    if ((format == 0x14U || format == 0x15U) && (function == 0x20U || function == 0x21U)) {
+        const s64 input =
+            format == 0x14U ? std::bit_cast<s32>(source_word(fs)) : std::bit_cast<s64>(source_doubleword(fs));
+        const bool supported = format == 0x14U || (input < static_cast<s64>(0x0080000000000000ULL) &&
+                                                   input >= -static_cast<s64>(0x0080000000000000ULL));
+        if (supported) {
+            const auto result = function == 0x20U
+                                    ? fpu_host::bits_from_integer<23, 8, 127>(input, control & 3U)
+                                    : fpu_host::bits_from_integer<52, 11, 1023>(input, control & 3U);
+            if (!result.inexact || (control & (1U << 7U)) == 0) {
+                clear_causes();
+                cpu_.add_cycles(input == 0 ? 1 : 4);
+                if (result.inexact)
+                    static_cast<void>(signal_maskable(0));
+                if (function == 0x20U)
+                    write_result_word(fd, static_cast<u32>(result.bits));
+                else
+                    write_result_doubleword(fd, result.bits);
+                return;
+            }
         }
     }
 

@@ -57,8 +57,11 @@ void Cpu::reset() {
     nmi_pending_ = false;
     batched_idle_instructions_ = 0;
     batched_cached_instructions_ = 0;
+    native_block_instructions_ = 0;
     std::fill(cached_decode_.begin(), cached_decode_.end(), CachedDecode{});
     std::fill(cached_line_plans_.begin(), cached_line_plans_.end(), CachedLinePlan{});
+    cached_line_contents_.clear();
+    native_cache_.reset();
     speculative_fetch_ = false;
     speculative_refill_bases_.fill(0);
     speculative_refill_count_ = 0;
@@ -803,29 +806,6 @@ void Cpu::execute_regimm(u32 instruction) {
         return;
     default:
         raise_exception(Exception::ReservedInstruction);
-        return;
-    }
-}
-
-void Cpu::execute_cop2(u32 instruction) {
-    if (!require_coprocessor(2))
-        return;
-    const unsigned rt = (instruction >> 16) & 31U;
-    switch ((instruction >> 21) & 31U) {
-    case 0:
-    case 2:
-        gpr[rt] = sign_extend32(static_cast<u32>(cop2_latch));
-        return;
-    case 1:
-        gpr[rt] = cop2_latch;
-        return;
-    case 4:
-    case 5:
-    case 6:
-        cop2_latch = gpr[rt];
-        return;
-    default:
-        raise_exception(Exception::ReservedInstruction, 2);
         return;
     }
 }

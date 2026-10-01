@@ -91,6 +91,13 @@ configuration. Core and host source membership is checked against CMake's actual
 source list. Documentation, tests, and desktop-only source changes do not by
 themselves require retraining.
 
+Source identities include implementation files in nested subsystem folders,
+including the native RSP emitters. CMake records the sources attached to the
+core and host library targets, so enabled native implementations appear in the
+training membership. Changes to nested code invalidate a package even when that
+code is disabled in the current build. Packages with the older source identity
+schema require fresh training.
+
 Replacing a package at the same path triggers configuration again. The build uses
 a copy named with the payload's SHA-256 hash, so a changed profile also changes
 the compiler command and rebuilds the affected objects. Profile mismatch

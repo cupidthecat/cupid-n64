@@ -23,12 +23,12 @@ u64 System::cached_private_event_cycles() {
         return reusable_cycles;
 
     settle();
-    if (rsp.dma_busy_ || rsp.dma_full_ || cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
+    if (cpu.next_buffered_write() != 0 || !bus.pending_outputs_.empty())
         return 0;
-    // The cached CPU slice keeps every materialized clock strictly before Bus/VI
-    // edges. An RCP-interruptible slice advances shared RSP operations in order;
+    // The cached CPU slice stops before peripheral, VI, and SP DMA row edges.
+    // An RCP-interruptible slice advances shared RSP operations in order;
     // a masked slice catches them up through the ordinary scheduler before returning.
-    const u64 rcp_cycles = std::min(bus.next_event(), bus.next_vi_line());
+    const u64 rcp_cycles = std::min({bus.next_event(), bus.next_vi_line(), rsp.next_dma_event()});
     coupled_event_gap_ = rcp_cycles;
     return cpu_cycles_for_rcp(rcp_cycles);
 }

@@ -1,5 +1,117 @@
 # Recorded validation results
 
+## Optimized build source validation (2026-10-01)
+
+The [source binding results](profile-source-results.md) record nested
+implementation invalidation, actual library source membership, malformed-input
+checks, and complete ordinary hardware and cartridge validation. Older profile
+source identities require fresh training.
+
+## RSP compiled clipping (2026-10-01)
+
+The [clipping results](rsp-clipping-results.md) record VCH, VCL, and VCR flag
+and accumulator checks, independent scalar equations, mixed-chain measurements,
+and complete SM64 replay equality. All four compiler configurations, prepared
+cartridge suites, and sanitizer checks pass. Full-speed gameplay and live audio
+acceptance remain open.
+
+## CPU decoded line reuse (2026-10-01)
+
+The [returning line results](cpu-code-cache-results.md#returning-decoded-line-contents-2026-10-01)
+record retained compilation warmup, cache-byte replacement and eviction checks,
+texture interpolation oracles, complete compiler and cartridge validation,
+and identical SM64 output. The record includes the reproduced Clang 21 Windows
+sanitizer failure and the passing Clang 22 run. Full-speed playback remains open.
+
+## RDP shared inputs (2026-10-01)
+
+The [RDP shared-input results](rdp-shared-input-results.md) record color and
+divider lookup oracles, fused combiner comparisons, framebuffer/depth read
+ordering, and complete SM64 output comparisons. Both long replay pairs show
+a modest elapsed-time reduction; full-speed gameplay remains unresolved.
+
+## CPU first-use code reuse (2026-10-01)
+
+The [code reuse results](cpu-code-cache-results.md#first-eligible-reuse-2026-10-01)
+record nonallocating lookup misses, immediate reuse after hardware cache
+replacement, the regression failure on the preceding core, and complete compiler
+and cartridge validation. Short controller replays improve in the recorded pair;
+the longer courtyard comparison is unchanged. Video, complete PCM, EEPROM,
+and guest clocks match.
+
+## VI channel reconstruction (2026-10-01)
+
+The [VI reconstruction results](vi-reconstruction-results.md) record SIMD
+coverage and dither arithmetic, independent sample oracles, the scalar fallback,
+and complete compiler and cartridge validation. Both production SM64 replays
+preserve every field, complete PCM stream, EEPROM byte, and execution counter.
+Full-speed gameplay remains unresolved.
+
+## Native CPU control flow (2026-10-01)
+
+The [CPU control-flow results](cpu-control-results.md) record compiled terminal
+branches and jumps, live PC and link handling, delay-slot boundaries, interrupt
+retirement, and complete compiler and cartridge validation. Both SM64 replays
+preserve video, complete audio, EEPROM, and guest execution observations.
+Full-speed gameplay remains unresolved.
+
+## Native RSP vector emission (2026-09-30)
+
+The [vector results](rsp-vector-results.md) record direct SSE2 arithmetic,
+the corrected DMEM observation addresses, accumulator register caching,
+helper-boundary flushing, and independent scalar-oracle checks,
+and complete compiler and cartridge validation. Both production gameplay
+captures retain every field, complete PCM stream, EEPROM byte, and execution
+counter. Full-speed gameplay remains unresolved.
+
+## Nested RDRAM summaries (2026-09-30)
+
+The [nested summary results](rdram-nested-summary-results.md) record three
+failures on the preceding core, preserved serial bank effects after the fix,
+and complete compiler and cartridge validation. Inner task summaries remain
+deferred in the nearest enclosing scope for their own memory.
+
+## RDRAM scope initialization (2026-09-30)
+
+The [scope initialization results](rdram-scope-results.md) record unchanged bank
+effects, the focused parallel-memory checks, complete compiler and cartridge
+validation, and retained SM64 output. The tracking path removes its host-thread
+initialization check; production gameplay remains below full speed.
+
+## RGB combiner arithmetic (2026-09-30)
+
+The [combiner product results](combiner-product-results.md) record exact packed
+RGB arithmetic, exhaustive signed-product comparisons, the scalar fallback,
+full compiler and cartridge checks, and retained SM64 output comparisons.
+The arithmetic experiment reduces host costs modestly; production courtyard
+timings still fall short of full-speed gameplay.
+
+## CPU code reuse (2026-09-30)
+
+The [code reuse results](cpu-code-cache-results.md) record bounded lookup
+ownership, full compiler and cartridge checks, sanitizer coverage, and retained
+SM64 comparisons. Repeated compilation decreases; host timing still falls short
+of full-speed gameplay.
+
+## Super Mario 64 profile build (2026-09-29)
+
+The [profile validation results](sm64-profile-results.md) record complete desktop
+and prepared cartridge checks, unchanged replay output, profile hashes, and host
+execution costs. The title capture improves, while the controller replay remains
+below full speed. Gameplay and audible-playback acceptance remain open.
+
+## Cached CPU and rendering boundaries (2026-09-29)
+
+The [CPU store and conversion results](cpu-store-results.md) record the latest
+cache-write, conversion, strict compiler, cartridge, sanitizer, and SM64 checks.
+
+The [CPU and rendering results](cpu-rendering-results.md) record native integer
+and cache-hit load execution, branch-likely and DMA boundaries, local RSP branch
+groups, combiner dependencies, and VI top clipping. Strict core, desktop,
+sanitizer, and portable runs passed both prepared cartridge suites. The retained
+Super Mario 64 captures match their comparison output; full-speed and audible
+playback acceptance remain open.
+
 ## Native RSP blocks and desktop audio demand (2026-09-27)
 
 The [native RSP and audio results](native-rsp-results.md) record the compiled

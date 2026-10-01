@@ -1,3 +1,4 @@
+#include "combiner_arithmetic.hpp"
 #include "cupid/rdp/color_pipeline.hpp"
 
 #include <algorithm>
@@ -332,6 +333,36 @@ bool same_alpha_term(const RdpCombinerTermPlan& first, const RdpCombinerTermPlan
            expand(first.constant[3]) == expand(second.constant[3]);
 }
 
+bool shared_rgb_source(RdpCombinerSource source) {
+    switch (source) {
+    case RdpCombinerSource::Constant:
+    case RdpCombinerSource::CombinedRgb:
+    case RdpCombinerSource::Texel0Rgb:
+    case RdpCombinerSource::Texel1Rgb:
+    case RdpCombinerSource::ShadeRgb:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool shared_rgba_source(const RdpCombinerTermPlan& term) {
+    switch (term.rgb) {
+    case RdpCombinerSource::Constant:
+        return term.alpha == RdpCombinerSource::Constant;
+    case RdpCombinerSource::CombinedRgb:
+        return term.alpha == RdpCombinerSource::CombinedAlpha;
+    case RdpCombinerSource::Texel0Rgb:
+        return term.alpha == RdpCombinerSource::Texel0Alpha;
+    case RdpCombinerSource::Texel1Rgb:
+        return term.alpha == RdpCombinerSource::Texel1Alpha;
+    case RdpCombinerSource::ShadeRgb:
+        return term.alpha == RdpCombinerSource::ShadeAlpha;
+    default:
+        return false;
+    }
+}
+
 bool zero_rgb_multiplier(const RdpCombinerTermPlan& term) {
     if (term.rgb != RdpCombinerSource::Constant)
         return false;
@@ -343,6 +374,27 @@ bool zero_rgb_multiplier(const RdpCombinerTermPlan& term) {
 
 bool zero_alpha_multiplier(const RdpCombinerTermPlan& term) {
     return term.alpha == RdpCombinerSource::Constant && signed_nine(term.constant[3]) == 0;
+}
+
+unsigned texture_input(RdpCombinerSource source, unsigned cycle, bool two_cycles) {
+    unsigned texel = 0;
+    switch (source) {
+    case RdpCombinerSource::Texel0Rgb:
+    case RdpCombinerSource::Texel0Alpha:
+        texel = 1;
+        break;
+    case RdpCombinerSource::Texel1Rgb:
+    case RdpCombinerSource::Texel1Alpha:
+        texel = 2;
+        break;
+    case RdpCombinerSource::LodFraction:
+        return two_cycles ? 4U : 0U;
+    default:
+        return 0;
+    }
+    if (two_cycles && cycle == 1U)
+        texel = 3U - texel;
+    return 1U << (texel - 1U);
 }
 
 RdpColor resolve_prepared_rgb(const RdpCombinerTermPlan& term, const RdpColorInputs& inputs,
@@ -379,6 +431,8 @@ void evaluate_prepared_rgb(CycleResult& result, const RdpCombinerPlan& plan, con
     const auto a = resolve_prepared_rgb(terms[0], inputs, combined, cycle);
     const auto b = resolve_prepared_rgb(terms[1], inputs, combined, cycle);
     const auto c = resolve_prepared_rgb(terms[2], inputs, combined, cycle);
+    if (!key_enabled && rdp_combiner::evaluate_rgb_product(result.color, a, b, c, d))
+        return;
     for (unsigned channel = 0; channel < 3; ++channel) {
         const s32 expanded_d = expand(d[channel]);
         const s32 multiplied = (expand(a[channel]) - expand(b[channel])) * signed_nine(c[channel]) + 128;
@@ -404,9 +458,53 @@ void evaluate_prepared_alpha(CycleResult& result, const RdpCombinerPlan& plan, c
     result.color[3] = (((a - b) * c + 128) >> 8) + d;
 }
 
+const RdpColor& resolve_shared(const RdpCombinerTermPlan& term, const RdpColorInputs& inputs,
+                               const RdpColor& combined) {
+    switch (term.rgb) {
+    case RdpCombinerSource::CombinedRgb:
+        return combined;
+    case RdpCombinerSource::Texel0Rgb:
+        return inputs.texel0;
+    case RdpCombinerSource::Texel1Rgb:
+        return inputs.texel1;
+    case RdpCombinerSource::ShadeRgb:
+        return inputs.shade;
+    default:
+        return term.constant;
+    }
+}
+
 CycleResult evaluate_prepared_cycle(const RdpCombinerPlan& plan, const RdpColorInputs& inputs,
                                     const RdpColor& combined, unsigned cycle, bool key_enabled) {
     CycleResult result;
+    if (plan.rgba_direct[cycle] && !key_enabled) {
+        const auto& value = resolve_shared(plan.cycles[cycle][3], inputs, combined);
+#if !defined(CUPID_RDP_FORCE_SCALAR) &&                                                                      \
+    (defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2))
+        const auto bias = _mm_set1_epi32(128);
+        const auto expanded = _mm_sub_epi32(
+            _mm_and_si128(
+                _mm_add_epi32(_mm_loadu_si128(reinterpret_cast<const __m128i*>(value.data())), bias),
+                _mm_set1_epi32(511)),
+            bias);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(result.color.data()), expanded);
+#else
+        for (unsigned channel = 0; channel < 4U; ++channel)
+            result.color[channel] = expand(value[channel]);
+#endif
+        return result;
+    }
+    if (plan.rgb_product[cycle] && !key_enabled) {
+        const auto& terms = plan.cycles[cycle];
+        if (rdp_combiner::evaluate_rgb_product(result.color, resolve_shared(terms[0], inputs, combined),
+                                               resolve_shared(terms[1], inputs, combined),
+                                               resolve_shared(terms[2], inputs, combined),
+                                               resolve_shared(terms[3], inputs, combined))) {
+            if (!plan.rgba_product[cycle])
+                evaluate_prepared_alpha(result, plan, inputs, combined, cycle);
+            return result;
+        }
+    }
     evaluate_prepared_rgb(result, plan, inputs, combined, cycle, key_enabled);
     evaluate_prepared_alpha(result, plan, inputs, combined, cycle);
     return result;
@@ -511,6 +609,16 @@ RdpCombinerPlan rdp_prepare_combiner(const RdpColorState& state) {
                                            ? RdpCombinerExpression::DirectD
                                            : RdpCombinerExpression::Full;
         plan.uses_noise[cycle] = plan.cycles[cycle][0].rgb == RdpCombinerSource::Noise;
+        plan.rgba_product[cycle] = plan.rgb_expression[cycle] == RdpCombinerExpression::Full &&
+                                   plan.alpha_expression[cycle] == RdpCombinerExpression::Full;
+        plan.rgba_direct[cycle] = plan.rgb_expression[cycle] == RdpCombinerExpression::DirectD &&
+                                  plan.alpha_expression[cycle] == RdpCombinerExpression::DirectD &&
+                                  shared_rgba_source(plan.cycles[cycle][3]);
+        plan.rgb_product[cycle] = plan.rgb_expression[cycle] == RdpCombinerExpression::Full;
+        for (const auto& term : plan.cycles[cycle]) {
+            plan.rgb_product[cycle] = plan.rgb_product[cycle] && shared_rgb_source(term.rgb);
+            plan.rgba_product[cycle] = plan.rgba_product[cycle] && shared_rgba_source(term);
+        }
     }
     return plan;
 }
@@ -534,6 +642,27 @@ unsigned rdp_combiner_texture_inputs(u64 combine, bool two_cycles) {
                 result |= 4U;
         }
     }
+    return result;
+}
+
+unsigned rdp_combiner_texture_inputs(const RdpCombinerPlan& plan, u64 modes) {
+    const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
+    const bool key_enabled = (modes & (1ULL << 40U)) != 0;
+    unsigned result = 0;
+    for (unsigned cycle = two_cycles ? 0U : 1U; cycle < 2; ++cycle) {
+        const bool full_rgb = plan.rgb_expression[cycle] == RdpCombinerExpression::Full;
+        const bool full_alpha = plan.alpha_expression[cycle] == RdpCombinerExpression::Full;
+        for (unsigned term = 0; term < plan.cycles[cycle].size(); ++term) {
+            const bool rgb_live = full_rgb || term == 3U || (key_enabled && cycle == 1U && term == 0U);
+            const bool alpha_live = full_alpha || term == 3U;
+            if (rgb_live)
+                result |= texture_input(plan.cycles[cycle][term].rgb, cycle, two_cycles);
+            if (alpha_live)
+                result |= texture_input(plan.cycles[cycle][term].alpha, cycle, two_cycles);
+        }
+    }
+    if ((modes & (1ULL << 48U)) != 0)
+        result |= 4U;
     return result;
 }
 

@@ -16,9 +16,10 @@ memory helpers support local tests without advancing those clocks.
 returning through `Cpu::step` for every instruction. Entry is limited to cached
 kseg0 execution in kernel, big-endian state with a clean pipeline. Pending NMI,
 exceptions, redirects, annulment, Count-write holds, software-interrupt delays,
-speculative refills, wired-register writes, buffered stores, pending host output,
-and active or queued SP DMA keep the general cached path on the ordinary step
-path. Loads and stores are accepted only when the aligned kseg0 access already
+speculative refills, wired-register writes, buffered stores, and pending host
+output keep the general cached path on the ordinary step path. Active or queued
+SP DMA bounds each fresh slice at the next row transfer. Loads and stores are
+accepted only when the aligned kseg0 access already
 hits the data cache. Operations that can fault, synchronize internally, miss a
 cache, or require an unsupported pipeline effect also fall back to `Cpu::step`.
 
@@ -29,6 +30,14 @@ dirty. These accesses leave backing RDRAM and the linked-load state unchanged.
 The next instruction computes its address again, including when a load changed
 its own base register. Alignment faults and the external-memory doubleword load
 restriction are checked before a cached access can be accepted.
+
+Integer branch-likely instructions retain their delay slot when taken and charge
+the annul cycle when untaken. The slice leaves the skipped instruction fetched
+at its original address, then returns to ordinary execution for the next fetch.
+Link variants write the return address before testing an aliased source register.
+Their cycle preflight includes that alias and any preceding integer-load wait.
+The branch regressions compare both outcomes, all clock phases, short budgets,
+cached delay-slot stores, link aliases, and concurrent RSP execution.
 
 COP1 register transfers, comparisons, and bounded arithmetic can also
 use the slice. CU1 is checked before an FP data-cache access. FP loads and
@@ -88,11 +97,16 @@ avoids repeating the first instruction's preflight while retaining the checks
 needed after a host callback or a preceding load changes its operands.
 
 The cached decoder is derived from the instruction cache. A line plan records
-the line tag and all 32 instruction bytes, and all eight decoded words are rebuilt
-when that image changes. The instruction at `pc` must also match the word already
-latched by the preceding fetch. That comparison is repeated after device clocks
-are settled and before every retired instruction. The next instruction word is
-read from the live cache before it is latched. These guards preserve an older
+the line tag and all 32 instruction bytes. A bounded lookup retains all eight
+decoded words and the native block timing for returning complete byte images.
+New images are decoded once per lookup generation. The instruction at `pc` must
+also match the word already
+latched by the preceding fetch. Portable execution repeats that comparison after
+device clocks are settled and before every retired instruction.
+[Native integer blocks](cpu-native.md) validate the complete cache image at entry
+and stop before any operation or event that could change it. Their final successor
+comes from the validated image. Portable execution reads the successor from the
+live cache before latching it. These guards preserve an older
 latched word even if software or a test changes the cache line and later restores
 the same byte image. Regressions also edit both active cache lines from video
 callbacks and start an SP DMA to cached code from inside a coupled CPU slice.
@@ -124,8 +138,16 @@ and output callbacks restore the RSP to the observed clock, as described in
 `src/cpu/rsp_scheduling.cpp` advances the RDP and RDRAM clocks before each shared
 RSP tick. The tick transfers any due DMA row before issuing its RSP instruction.
 Shared-register reads and RDRAM accesses therefore retain their ordinary clock
-values. At slice exit, peripherals advance once for the elapsed span without
-repeating the shared clocks or RSP work.
+values. Consumed local lead cycles accumulate clock debt until the next shared
+RSP operation or slice exit. Those local instructions cannot observe a shared
+clock or raise an interrupt, so combining their clock updates preserves the
+per-instruction interrupt checks. At slice exit, any remaining clock debt is
+flushed, then peripherals advance once for the elapsed span without repeating
+the shared clocks or RSP work.
+
+`tests/cpu/test_cached_rsp_clocks.cpp` compares direct clock observations after
+short slice returns and RSP clock reads after long local spans. It covers all
+three CPU/RCP phases with native CPU execution enabled and disabled.
 
 MI is sampled after the complete CPU instruction's RSP quota. An SP interrupt
 raised and cleared within a divide does not interrupt it. A line that remains

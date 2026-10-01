@@ -65,6 +65,20 @@ state. The instruction keeps its five-cycle latency. Subnormals, infinities,
 NaNs, range failures, and enabled inexact exceptions use the existing exception
 path and its environment scope.
 
+Integer-to-floating conversions also construct the encoded result with integer
+operations. The leading bit sets the exponent; discarded low bits determine
+inexactness and rounding, including carries into the next exponent. Word inputs
+use signed 32-bit values. Long inputs accept `-2^55` through `2^55 - 1`; inputs
+outside that range retain the unimplemented exception path. Zero inputs retain
+their two-cycle latency, and other supported inputs retain five cycles. Enabled
+inexact exceptions keep the ordinary environment and exception path.
+
+Cached CPU slices admit these conversions only when live operands prove an
+exact latency and exclude a trap. Fixed-rounding conversions ignore FCSR's
+rounding mode. Register aliases, FCSR causes and sticky flags, and result-use
+interlocks still use the ordinary FPU implementation. A peripheral or
+Count/Compare boundary can end the slice before the conversion issues.
+
 ## Calling-thread environment
 
 Host arithmetic selects the guest rounding mode and isolates its exception
@@ -130,3 +144,8 @@ across every exponent, selected mantissa boundaries, deterministic random
 encodings, both precisions and signs, and word and long results. It also checks
 fixed rounding against FCSR, sticky flags, source/destination register aliases,
 and enabled x64 host traps with denormal controls.
+The reverse conversion checks signed integer scales, rounding boundaries, and
+deterministic random values against host conversion results and inexact flags.
+`test_fpu_preflight.cpp` checks nontrapping conversion costs and excluded inputs;
+`test_cached_arithmetic.cpp` compares conversion slices with ordinary stepping
+across register modes, clock budgets, result interlocks, and RSP DMA phases.

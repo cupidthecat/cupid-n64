@@ -95,7 +95,7 @@ class Rdram {
         const Rdram& memory_;
         BankAccessSummary& summary_;
         BankAccessScope* previous_;
-        static thread_local BankAccessScope* current_;
+        static constinit thread_local BankAccessScope* current_;
     };
 
     [[nodiscard]] bool direct_access_ready() const {

@@ -28,6 +28,7 @@ Bus::Bus(System& system) : rdram(8U * 1024U * 1024U), rdp(*this), system_(system
 void Bus::reset() {
     system_.deferred_rcp_ = 0;
     system_.peripheral_debt_ = 0;
+    system_.coupled_clock_debt_ = 0;
     system_.defer_limit_ = 0;
     joybus.reset();
     pending_outputs_.clear();

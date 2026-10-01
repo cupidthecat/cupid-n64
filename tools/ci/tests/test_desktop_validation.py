@@ -32,7 +32,7 @@ class DesktopValidationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.args = SimpleNamespace(
             clang_format="clang-format", config="Release", generator="Ninja",
-            sanitizers=False, native_rsp=True, desktop=False, sdl_source=None, compiler="clang++",
+            sanitizers=False, native_rsp=True, native_cpu=True, desktop=False, sdl_source=None, compiler="clang++",
             rom=None, pif=None, extended_rom=None, jobs=2,
             profile_generate=None, profile_use=None, profile_manifest=None,
         )
@@ -56,13 +56,15 @@ class DesktopValidationTests(unittest.TestCase):
                       commands.commands["configure"])
         self.assertIn("-DCUPID_PROFILE_GENERATE=", commands.commands["configure"])
 
-    def test_native_rsp_selection_overrides_an_existing_cache_in_both_directions(self):
-        for enabled in (False, True):
-            self.args.native_rsp = enabled
-            commands = Commands()
-            validate(self.args, self.root, self.root / "build", commands)
-            selected = "ON" if enabled else "OFF"
-            self.assertIn(f"-DCUPID_NATIVE_RSP={selected}", commands.commands["configure"])
+    def test_native_cpu_and_rsp_selections_override_the_cache_independently(self):
+        for cpu in (False, True):
+            for rsp in (False, True):
+                self.args.native_cpu, self.args.native_rsp = cpu, rsp
+                commands = Commands()
+                validate(self.args, self.root, self.root / "build", commands)
+                for name, enabled in (("CPU", cpu), ("RSP", rsp)):
+                    selected = "ON" if enabled else "OFF"
+                    self.assertIn(f"-DCUPID_NATIVE_{name}={selected}", commands.commands["configure"])
 
     def test_desktop_and_source_paths_remain_separate_literal_arguments(self):
         self.args.desktop = True

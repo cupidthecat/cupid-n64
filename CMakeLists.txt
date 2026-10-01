@@ -31,7 +31,7 @@ list(FILTER CUPID_CORE_SOURCES EXCLUDE REGEX "/main\\.cpp$")
 add_library(cupid_core STATIC ${CUPID_CORE_SOURCES})
 target_include_directories(cupid_core PUBLIC include)
 target_link_libraries(cupid_core PUBLIC Threads::Threads)
-include(cmake/rsp-native.cmake)
+include(cmake/native.cmake)
 
 file(GLOB CUPID_HOST_SOURCES CONFIGURE_DEPENDS "src/host/*.cpp" "src/storage/*.cpp")
 add_library(cupid_host STATIC ${CUPID_HOST_SOURCES})

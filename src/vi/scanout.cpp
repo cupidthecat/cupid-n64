@@ -41,7 +41,7 @@ VideoField Bus::scan_video(VideoScanMode mode) const {
     const s32 first_x = std::max<s32>(0, left < 0 ? left : left + 8);
     const s32 last_x = std::min<s32>(640, right > 640 ? right : right - 7);
     const s32 first_y = std::max<s32>(0, top);
-    const s32 last_y = std::min<s32>(static_cast<s32>(output.height), top + rows);
+    const s32 last_y = std::min<s32>(static_cast<s32>(output.height), first_y + rows);
     if (first_x >= last_x || first_y >= last_y)
         return output;
     const ViFilter filter(rdram, memory.hidden_memory(), vi_);

@@ -1,11 +1,15 @@
 #pragma once
 
+#include "cupid/cpu/native.hpp"
+#include "cupid/cpu/native_cache.hpp"
 #include "cupid/fpu.hpp"
 #include "cupid/types.hpp"
 
 #include <algorithm>
 #include <array>
+#include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace cupid {
@@ -63,6 +67,12 @@ class Cpu {
     }
     [[nodiscard]] u64 batched_cached_instructions() const {
         return batched_cached_instructions_;
+    }
+    [[nodiscard]] u64 native_block_instructions() const {
+        return native_block_instructions_;
+    }
+    void set_native_execution(bool enabled) {
+        native_execution_ = enabled && CpuNativeCode::available();
     }
     // Standalone instruction and memory helpers are untimed; step advances the hardware clocks.
     void execute(u32 instruction);
@@ -124,6 +134,8 @@ class Cpu {
     u64 cop0_latch_{};
     u64 batched_idle_instructions_{};
     u64 batched_cached_instructions_{};
+    u64 native_block_instructions_{};
+    bool native_execution_{CpuNativeCode::available()};
     struct FetchedInstruction {
         u64 address{};
         u32 instruction{};
@@ -212,12 +224,20 @@ class Cpu {
         Bgez,
         Bltzal,
         Bgezal,
+        Bltzl,
+        Bgezl,
+        Bltzall,
+        Bgezall,
         J,
         Jal,
         Beq,
         Bne,
         Blez,
         Bgtz,
+        Beql,
+        Bnel,
+        Blezl,
+        Bgtzl,
         Addiu,
         Slti,
         Sltiu,
@@ -244,12 +264,35 @@ class Cpu {
     };
     static_assert(sizeof(CachedDecode) == 16);
     std::vector<CachedDecode> cached_decode_ = std::vector<CachedDecode>(4096);
+    struct CachedLineContents {
+        struct NativeBlock {
+            std::shared_ptr<const CpuNativeCode> code;
+            u8 count{};
+            u8 visits{};
+            u8 extra_cycles{};
+            u8 pending_load{};
+            u8 last_cycles{1};
+            bool has_load{};
+            bool has_store{};
+            bool ends_branch{};
+        };
+        std::array<CachedDecode, 8> decoded{};
+        std::array<NativeBlock, CpuNativeCode::maximum_instructions> native{};
+    };
     struct CachedLinePlan {
         std::array<u8, 32> image{};
+        std::shared_ptr<CachedLineContents> contents;
         u32 tag{};
         bool valid{};
     };
+    struct CachedLineHash {
+        std::size_t operator()(const std::array<u8, 32>& image) const;
+    };
+    static constexpr std::size_t cached_line_capacity = 4096;
+    std::unordered_map<std::array<u8, 32>, std::shared_ptr<CachedLineContents>, CachedLineHash>
+        cached_line_contents_;
     std::vector<CachedLinePlan> cached_line_plans_ = std::vector<CachedLinePlan>(512);
+    CpuNativeCache native_cache_;
 
     void begin_instruction_timing(u32 instruction);
     void finish_instruction_timing(u32 instruction);
@@ -272,7 +315,11 @@ class Cpu {
     unsigned batch_idle_loop(unsigned maximum_steps, u64 maximum_cycles);
     unsigned batch_cached_private(unsigned maximum_steps, u64 maximum_cycles);
     [[nodiscard]] CachedDecode decode_cached_instruction(u32 instruction) const;
+    [[nodiscard]] std::shared_ptr<CachedLineContents> cached_line_contents(const std::array<u8, 32>& image);
     void execute_cached_direct(const CachedDecode& decoded);
+    unsigned execute_cached_native(CachedLinePlan& plan, unsigned slot, unsigned maximum_steps,
+                                   u64 maximum_cycles, std::optional<std::array<u64, 32>>* rollback_registers,
+                                   CpuNativeState& state);
     void execute_cached_memory(const CachedDecode& decoded, CacheLine<16>& line, unsigned offset);
     void update_interrupt_inputs();
     void synchronize();

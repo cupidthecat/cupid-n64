@@ -6,6 +6,7 @@
 #include <array>
 #include <bit>
 #include <cmath>
+#include <limits>
 #include <memory>
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -45,6 +46,25 @@ void check_conversion(std::conditional_t<sizeof(T) == 4, u32, u64> bits) {
     }
 }
 
+void check_integer_to_float(s64 value, unsigned rounding) {
+    constexpr std::array<int, 4> modes{FE_TONEAREST, FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD};
+    const fpu_host::ScopedEnvironment environment(modes[rounding]);
+    const volatile s64 input = value;
+    CHECK_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+    const volatile float single = static_cast<float>(input);
+    const bool single_inexact = (std::fetestexcept(FE_INEXACT) & FE_INEXACT) != 0;
+    const auto single_result = fpu_host::bits_from_integer<23, 8, 127>(value, rounding);
+    CHECK_EQ(single_result.bits, std::bit_cast<u32>(static_cast<float>(single)));
+    CHECK_EQ(single_result.inexact, single_inexact);
+
+    CHECK_EQ(std::feclearexcept(FE_ALL_EXCEPT), 0);
+    const volatile double wide = static_cast<double>(input);
+    const bool wide_inexact = (std::fetestexcept(FE_INEXACT) & FE_INEXACT) != 0;
+    const auto wide_result = fpu_host::bits_from_integer<52, 11, 1023>(value, rounding);
+    CHECK_EQ(wide_result.bits, std::bit_cast<u64>(static_cast<double>(wide)));
+    CHECK_EQ(wide_result.inexact, wide_inexact);
+}
+
 } // namespace
 
 TEST(fpu_integer_bit_conversion_covers_every_exponent_and_rounding_boundary) {
@@ -79,6 +99,63 @@ TEST(fpu_integer_bit_conversion_covers_every_exponent_and_rounding_boundary) {
         random ^= random << 17U;
         check_conversion<double, 52, 11, 1023>(random);
         check_conversion<float, 23, 8, 127>(static_cast<u32>(random));
+    }
+}
+
+TEST(fpu_integer_to_float_bits_match_host_rounding_at_every_integer_scale) {
+    for (unsigned rounding = 0; rounding < 4U; ++rounding) {
+        check_integer_to_float(0, rounding);
+        check_integer_to_float(std::numeric_limits<s64>::min(), rounding);
+        check_integer_to_float(std::numeric_limits<s64>::max(), rounding);
+        for (unsigned exponent = 0; exponent < 63U; ++exponent) {
+            const u64 magnitude = 1ULL << exponent;
+            for (u64 input : {magnitude, magnitude - 1U, magnitude + 1U, magnitude + magnitude / 2U,
+                              magnitude + magnitude / 2U + 1U}) {
+                const auto value = static_cast<s64>(input);
+                check_integer_to_float(value, rounding);
+                check_integer_to_float(-value, rounding);
+            }
+        }
+        u64 random = 0x6841937a259df0beULL;
+        for (unsigned index = 0; index < 2000U; ++index) {
+            random ^= random << 13U;
+            random ^= random >> 7U;
+            random ^= random << 17U;
+            check_integer_to_float(std::bit_cast<s64>(random), rounding);
+        }
+    }
+}
+
+TEST(fpu_integer_to_float_keeps_flags_rounding_and_paired_source_aliases) {
+    auto system = std::make_unique<System>();
+    for (const bool full_registers : {false, true}) {
+        system->cpu.write_cop0(12, full_registers ? 0x34000000U : 0x30000000U);
+        for (unsigned format : {0x14U, 0x15U}) {
+            for (unsigned function : {0x20U, 0x21U}) {
+                for (unsigned rounding = 0; rounding < 4U; ++rounding) {
+                    for (s64 input : {s64{0}, s64{1}, s64{-1}, s64{16777217}, s64{-16777217}, s64{2147483647},
+                                      s64{-2147483648}}) {
+                        auto& fpu = system->cpu.fpu;
+                        fpu.registers.fill(0xdeadbeef11112222ULL);
+                        fpu.registers[full_registers ? 3 : 2] = std::bit_cast<u64>(input);
+                        fpu.control = rounding | 0x0003f000U | (1U << 5U) | (1U << 23U) | 0x0f00U;
+                        system->cpu.exception_pending = false;
+                        const u32 instruction =
+                            0x44000000U | (format << 21U) | (3U << 11U) | (3U << 6U) | function;
+                        const auto result = function == 0x20U
+                                                ? fpu_host::bits_from_integer<23, 8, 127>(input, rounding)
+                                                : fpu_host::bits_from_integer<52, 11, 1023>(input, rounding);
+                        fpu.execute(instruction);
+                        CHECK_EQ(fpu.registers[3], result.bits);
+                        CHECK_EQ(fpu.control, rounding | (1U << 5U) | (1U << 23U) | 0x0f00U |
+                                                  (result.inexact ? (1U << 12U) | (1U << 2U) : 0U));
+                        CHECK(!system->cpu.exception_pending);
+                        if (!full_registers)
+                            CHECK_EQ(fpu.registers[2], std::bit_cast<u64>(input));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -132,6 +209,29 @@ TEST(fpu_integer_conversion_preserves_enabled_host_traps_and_denormal_controls) 
         CHECK_EQ(fpu.registers[4], 1U);
         CHECK_EQ(fpu.control, 2U | (1U << 12U) | (1U << 2U));
         CHECK(!system->cpu.exception_pending);
+    }
+}
+
+TEST(fpu_integer_to_float_preserves_enabled_host_traps_and_denormal_controls) {
+    const fpu_host::ScopedEnvironment environment(FE_TONEAREST);
+    auto system = std::make_unique<System>();
+    system->cpu.write_cop0(12, 0x34000000U);
+    auto& fpu = system->cpu.fpu;
+    const unsigned saved = _mm_getcsr();
+    const unsigned hostile = (saved | 0x8040U | 0x21U) & ~0x1080U;
+    for (unsigned format : {0x14U, 0x15U}) {
+        for (unsigned function : {0x20U, 0x21U}) {
+            fpu.registers[2] = 16777217U;
+            fpu.control = 2;
+            _mm_setcsr(hostile);
+            fpu.execute(0x44000000U | (format << 21U) | (2U << 11U) | (4U << 6U) | function);
+            const unsigned actual = _mm_getcsr();
+            _mm_setcsr(saved);
+            CHECK_EQ(actual, hostile);
+            CHECK_EQ(fpu.registers[4], function == 0x20U ? 0x4b800001ULL : 0x4170000010000000ULL);
+            CHECK_EQ(fpu.control, 2U | (function == 0x20U ? (1U << 12U) | (1U << 2U) : 0U));
+            CHECK(!system->cpu.exception_pending);
+        }
     }
 }
 #endif

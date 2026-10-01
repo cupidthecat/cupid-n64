@@ -7,25 +7,39 @@ RdpColor rdp_blend(const RdpColorState& state, u64 modes, RdpColor pixel, const 
                    unsigned pixel_alpha_shift) {
     const bool two_cycles = ((modes >> 52U) & 3U) == 1U;
     const bool force = (modes & (1ULL << 14U)) != 0;
-    const RdpColor fog = rdp_unpack_color(state.fog);
-    const RdpColor blend = rdp_unpack_color(state.blend);
+    const auto select = [&](unsigned selector) {
+        switch (selector) {
+        case 0:
+            return pixel;
+        case 1:
+            return memory;
+        case 2:
+            return rdp_unpack_color(state.blend);
+        default:
+            return rdp_unpack_color(state.fog);
+        }
+    };
     for (unsigned cycle = 0; cycle < (two_cycles ? 2U : 1U); ++cycle) {
         const bool final = !two_cycles || cycle == 1U;
-        const std::array<RdpColor, 4> colors = {pixel, memory, blend, fog};
         const unsigned p = static_cast<unsigned>(modes >> (30U - cycle * 2U)) & 3U;
         const unsigned a = static_cast<unsigned>(modes >> (26U - cycle * 2U)) & 3U;
         const unsigned m = static_cast<unsigned>(modes >> (22U - cycle * 2U)) & 3U;
         const unsigned b = static_cast<unsigned>(modes >> (18U - cycle * 2U)) & 3U;
         if (final && (modes & (1ULL << 7U)) != 0 && !coverage_wrap) {
+            const auto selected = select(m);
             for (unsigned channel = 0; channel < 3; ++channel)
-                pixel[channel] = colors[m][channel];
+                pixel[channel] = selected[channel];
             break;
         }
         if (final && (!blend_enabled || (a == 0U && b == 0U && pixel[3] == 255))) {
+            const auto selected = select(p);
             for (unsigned channel = 0; channel < 3; ++channel)
-                pixel[channel] = colors[p][channel];
+                pixel[channel] = selected[channel];
             break;
         }
+        const RdpColor fog = rdp_unpack_color(state.fog);
+        const RdpColor blend = rdp_unpack_color(state.blend);
+        const std::array<RdpColor, 4> colors = {pixel, memory, blend, fog};
         const unsigned factors[4] = {static_cast<unsigned>(pixel[3]), static_cast<unsigned>(fog[3]),
                                      shade_alpha, 0};
         unsigned first = factors[a];

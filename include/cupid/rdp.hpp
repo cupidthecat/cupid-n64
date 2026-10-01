@@ -122,7 +122,8 @@ class Rdp {
                                                        unsigned tile, unsigned inputs,
                                                        unsigned maximum_level = 0) const;
     void write_color_pixel(unsigned x, unsigned y, unsigned coverage_mask, const RdpColorInputs& inputs,
-                           RdpDepth depth, const RdpDepthResult* pre_tested = nullptr);
+                           RdpDepth depth, const RdpDepthResult* pre_tested = nullptr,
+                           const RdpColor* pre_memory = nullptr);
     [[nodiscard]] u32 framebuffer_address(u32 base, unsigned bytes, u32 pixel) const;
     [[nodiscard]] RdpColor read_framebuffer_color(u32 address) const;
     void write_framebuffer_color(u32 address, const RdpColor& color, unsigned coverage);

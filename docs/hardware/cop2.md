@@ -18,3 +18,10 @@ without reporting an address error.
 The regression suite covers an `LWC2` from the upper word of a doubleword,
 subsequent `DMFC2`, both store widths, and exception priority for a disabled
 coprocessor.
+
+The four memory encodings use the address-base register and signed offset from
+the instruction. Primary opcode `0x12` selects the register-transfer decoder.
+Both paths retain their separate dispatch when native CPU blocks are enabled.
+The extended cartridge's `LWC2/LDC2/SWC2/SDC2` case checks the shared latch and
+memory side effects; the native execution regression also checks these transfers
+between compiled integer sequences.

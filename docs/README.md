@@ -65,6 +65,8 @@ packet reuse, IMEM write invalidation, and direct memory aliases.
 microcode reuse, execution boundaries, and the portable fallback.
 [Native RSP and audio results](testing/native-rsp-results.md) records compiler,
 cartridge, sanitizer, and Mario replay checks.
+[Native vector results](testing/rsp-vector-results.md) records emitted arithmetic,
+scalar-oracle checks, corrected output observation, and complete gameplay comparisons.
 [SP DMA](hardware/rsp-dma.md) covers transfer registers, row visibility, and
 the clocks used by the scheduler.
 

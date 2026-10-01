@@ -77,6 +77,7 @@ void Rdp::reset() {
     fill_color_ = 0;
     color_state_ = {};
     combiner_plan_ = {};
+    combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
     primitive_sequence_ = 0;
     primitive_depth_ = 0;
     primitive_delta_depth_ = 0;
@@ -353,7 +354,9 @@ void Rdp::execute(u8 opcode) {
         if (cycle == 3U || cycle == 2U)
             fill_copy_triangle(cycle == 2U);
         else {
-            combiner_plan_ = rdp_prepare_combiner(color_state_);
+            if (combiner_plan_.rgb_expression[0] == RdpCombinerExpression::Dirty) {
+                combiner_plan_ = rdp_prepare_combiner(color_state_);
+            }
             color_triangle();
         }
         return;
@@ -363,7 +366,9 @@ void Rdp::execute(u8 opcode) {
         if (((other_modes_ >> 52U) & 3U) == 3U)
             fill_rectangle(command);
         else if (cycle < 2U) {
-            combiner_plan_ = rdp_prepare_combiner(color_state_);
+            if (combiner_plan_.rgb_expression[0] == RdpCombinerExpression::Dirty) {
+                combiner_plan_ = rdp_prepare_combiner(color_state_);
+            }
             color_rectangle(command, opcode == 0x25);
         } else
             copy_rectangle(command, opcode == 0x25);
@@ -381,15 +386,18 @@ void Rdp::execute(u8 opcode) {
         color_state_.key_scale[1] = static_cast<u8>(command >> 16U);
         color_state_.key_center[2] = static_cast<u8>(command >> 8U);
         color_state_.key_scale[2] = static_cast<u8>(command);
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x2b:
         color_state_.key_width[0] = static_cast<u16>((command >> 16U) & 4095U);
         color_state_.key_center[0] = static_cast<u8>(command >> 8U);
         color_state_.key_scale[0] = static_cast<u8>(command);
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x2c:
         for (unsigned index = 0; index < 6; ++index)
             color_state_.convert[index] = static_cast<u16>((command >> ((5U - index) * 9U)) & 511U);
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x2d:
         scissor_x0_ = static_cast<u16>((command >> 44) & 0x0fffU);
@@ -430,12 +438,15 @@ void Rdp::execute(u8 opcode) {
         color_state_.primitive = static_cast<u32>(command);
         color_state_.minimum_lod = static_cast<u8>((command >> 40U) & 31U);
         color_state_.primitive_lod = static_cast<u8>(command >> 32U);
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x3b:
         color_state_.environment = static_cast<u32>(command);
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x3c:
         color_state_.combine = command & 0x00ffffffffffffffULL;
+        combiner_plan_.rgb_expression[0] = RdpCombinerExpression::Dirty;
         return;
     case 0x3d:
         texture_image_format_ = static_cast<u8>((command >> 53) & 7U);

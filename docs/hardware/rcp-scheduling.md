@@ -23,8 +23,16 @@ Cached and idle CPU slices can reuse the remaining part of an already deferred
 interval. Reuse requires a halted RSP, a clean device schedule, no peripheral
 debt, no pending output, and no buffered CPU store. The remaining RCP deadline
 is converted with the current CPU-to-RCP fractional phase, and each slice stops
-one CPU cycle before that boundary. Cached execution also excludes active or
-queued SP DMA. Every other case settles and queries the devices again.
+one CPU cycle before that boundary. Reusing a cached interval excludes active or
+queued SP DMA. A fresh cached slice can run during a transfer, bounded by the
+next SP DMA row as well as the peripheral and VI deadlines. Its private cache
+accesses preserve stale data while DMA changes physical memory. Every other
+case settles and queries the devices again.
+
+`tests/cpu/test_cached_rsp_dma.cpp` compares cached slices with individual
+stepping during queued, multirow SP transfers. It covers both DMA directions,
+all CPU/RCP phases, native and portable CPU paths, masked and enabled RCP
+interrupts, stale data-cache contents, and DMA replacement of executing IMEM.
 
 An active RSP processes an issue group, dependency stall or branch bubble
 at each one-cycle boundary. An eligible scalar/vector pair shares that boundary; see

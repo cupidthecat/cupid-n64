@@ -89,6 +89,35 @@ void start_rsp(System& system, bool dma) {
     }
 }
 
+void prepare_conversion(System& system, bool paired, unsigned format, unsigned function, u64 input,
+                        u32 control) {
+    test::initialize_memory(system);
+    system.cpu.write_cop0(12, paired ? 0x30000000U : 0x34000000U);
+    system.cpu.fpu.control = control;
+    system.cpu.fpu.registers.fill(0xdeadbeef11223344ULL);
+    system.cpu.fpu.registers[paired ? 2 : 3] = input;
+    const std::array<u32, 8> words{
+        0U,
+        arithmetic(format, 4, 3, 6, function),
+        arithmetic(16, 0, 6, 8, 6),                  // Consume the conversion's pending result.
+        (0x11U << 26U) | (10U << 16U) | (8U << 11U), // MFC1.
+        0x254b0001U,                                 // ADDIU consumes the MFC1 load.
+        0x1000fffbU,
+        0U,
+        0U,
+    };
+    auto& line = system.cpu.instruction_cache[(code >> 5U) & 511U];
+    line = {};
+    line.valid = true;
+    line.tag = 0x1000U;
+    for (unsigned index = 0; index < words.size(); ++index) {
+        write_be32(line.data.data() + index * 4U, words[index]);
+        system.bus.write(0x1000U + index * 4U, 4, words[index]);
+    }
+    system.cpu.set_pc(code);
+    system.cpu.step();
+}
+
 } // namespace
 
 TEST(cpu_cached_arithmetic_keeps_exact_results_interlocks_and_separate_cycle_totals) {
@@ -109,6 +138,78 @@ TEST(cpu_cached_arithmetic_keeps_exact_results_interlocks_and_separate_cycle_tot
                 CHECK_EQ(batched->cpu.fpu.registers[12], wide ? 0x4008000000000000ULL : 0x40400000ULL);
                 compare(*batched, *stepped, 3U); // Continue through branch, delay, and another ADD.
             }
+}
+
+TEST(cpu_cached_conversions_preserve_results_flags_fr_and_integer_fpu_interlocks) {
+    for (const bool paired : {false, true}) {
+        for (unsigned rounding = 0; rounding < 4U; ++rounding) {
+            for (unsigned format : {0x10U, 0x11U, 0x14U, 0x15U}) {
+                const bool floating_input = format < 0x14U;
+                const u64 input = format == 0x10U   ? 0xc0200000ULL
+                                  : format == 0x11U ? 0xc004000000000000ULL
+                                                    : 16777217ULL;
+                const std::vector<unsigned> functions =
+                    floating_input ? std::vector<unsigned>{8, 9, 10, 11, 12, 13, 14, 15, 0x24, 0x25}
+                                   : std::vector<unsigned>{0x20, 0x21};
+                for (const unsigned function : functions) {
+                    auto batched = std::make_unique<System>();
+                    auto stepped = std::make_unique<System>();
+                    const u32 control = rounding | 0x0003f000U | (1U << 5U) | (1U << 23U);
+                    prepare_conversion(*batched, paired, format, function, input, control);
+                    prepare_conversion(*stepped, paired, format, function, input, control);
+                    compare(*batched, *stepped, 4U);
+                    CHECK_EQ(batched->cpu.batched_cached_instructions(), 4U);
+                    compare(*batched, *stepped, 3U);
+                }
+            }
+        }
+    }
+}
+
+TEST(cpu_cached_conversions_keep_cycle_budgets_and_rsp_dma_phases) {
+    for (unsigned format : {0x10U, 0x15U}) {
+        for (const u64 budget : {1ULL, 4ULL, 5ULL, 6ULL, 7ULL, 8ULL, 9ULL}) {
+            for (unsigned phase = 0; phase < 3U; ++phase) {
+                auto batched = std::make_unique<System>();
+                auto stepped = std::make_unique<System>();
+                for (auto* system : {batched.get(), stepped.get()}) {
+                    prepare_conversion(*system, false, format, format == 0x10U ? 0x0cU : 0x20U,
+                                       format == 0x10U ? 0x40200000ULL : 16777217ULL, 0);
+                    system->advance(phase);
+                    start_rsp(*system, true);
+                }
+                compare(*batched, *stepped, 4U, budget);
+                compare(*batched, *stepped, 24U);
+                for (unsigned byte = 0; byte < 32U; ++byte)
+                    CHECK_EQ(batched->rsp.memory[0x300U + byte], static_cast<u8>(0x80U + byte));
+            }
+        }
+    }
+}
+
+TEST(cpu_cached_conversions_leave_enabled_exceptions_and_unimplemented_inputs_on_step) {
+    using Case = std::array<u64, 4>;
+    constexpr std::array<Case, 6> cases{
+        Case{0x10U, 0x0cU, 0x40200000U, 0x80U},
+        Case{0x11U, 0x25U, 0x7ff8000000000000ULL, 0U},
+        Case{0x10U, 0x24U, 1U, 0U},
+        Case{0x14U, 0x20U, 16777217U, 0x80U},
+        Case{0x15U, 0x21U, 0x0020000000000001ULL, 0x80U},
+        Case{0x15U, 0x20U, 0x0080000000000000ULL, 0U},
+    };
+    for (const auto& example : cases) {
+        auto batched = std::make_unique<System>();
+        auto stepped = std::make_unique<System>();
+        const auto format = static_cast<unsigned>(example[0]);
+        const auto function = static_cast<unsigned>(example[1]);
+        prepare_conversion(*batched, false, format, function, example[2], static_cast<u32>(example[3]));
+        prepare_conversion(*stepped, false, format, function, example[2], static_cast<u32>(example[3]));
+        CHECK_EQ(batched->cpu.fpu.nontrapping_arithmetic_cycles(arithmetic(format, 4, 3, 6, function)), 0U);
+        compare(*batched, *stepped, 1U);
+        CHECK_EQ(batched->cpu.batched_cached_instructions(), 0U);
+        CHECK_EQ(batched->cpu.fpu.registers[6], 0xdeadbeef11223344ULL);
+        compare(*batched, *stepped, 3U);
+    }
 }
 
 TEST(cpu_cached_arithmetic_preserves_budgets_that_end_inside_an_instruction) {

@@ -1,3 +1,4 @@
+#include "coverage_count.hpp"
 #include "cupid/bus.hpp"
 #include "cupid/rdp/triangle.hpp"
 #include "raster_tasks.hpp"
@@ -51,11 +52,8 @@ void Rdp::color_triangle() {
     const bool image_read = (other_modes_ & (1ULL << 6U)) != 0;
     const bool alpha_compare = (other_modes_ & 1U) != 0;
     const bool antialias = (other_modes_ & (1ULL << 3U)) != 0;
-    const bool early_depth_test =
-        compare_depth && !image_read && !alpha_compare && (other_modes_ & (1ULL << 12U)) == 0;
-    unsigned texture_inputs = rdp_combiner_texture_inputs(color_state_.combine, two_cycles);
-    if ((other_modes_ & (1ULL << 48U)) != 0)
-        texture_inputs |= 4U;
+    const bool early_depth_test = compare_depth && !alpha_compare && (other_modes_ & (1ULL << 12U)) == 0;
+    const unsigned texture_inputs = rdp_combiner_texture_inputs(combiner_plan_, other_modes_);
     const bool lod_needed = (texture_inputs & 4U) != 0;
     const bool one_cycle_texel1_needed = !two_cycles && (texture_inputs & 2U) != 0;
     const unsigned tile = static_cast<unsigned>(command >> 48U) & 7U;
@@ -128,12 +126,21 @@ void Rdp::color_triangle() {
                     depth_value_needed ? rdp_interpolate_depth(base[7], attributes[7], dx, coverage) : 0U,
                     delta};
                 RdpDepthResult tested{};
+                RdpColor pre_memory{};
                 if (early_depth_test) {
                     const u32 pixel = y * color_image_width_ + x;
+                    unsigned old_coverage = 7U;
+                    if (image_read) {
+                        const unsigned bytes = color_image_size_ < 2U ? 1U : 1U << (color_image_size_ - 1U);
+                        const u32 address = framebuffer_address(color_image_address_, bytes, pixel);
+                        pre_memory = read_framebuffer_color(address);
+                        old_coverage = static_cast<unsigned>(pre_memory[3]) >> 5U;
+                    }
                     const u32 depth_address = framebuffer_address(depth_image_address_, 2, pixel);
                     const auto stored_depth = bus_.memory.read_halfword(depth_address);
                     tested = rdp_test_depth(depth, stored_depth.value, stored_depth.hidden,
-                                            static_cast<unsigned>(std::popcount(coverage)), 7U, other_modes_);
+                                            rdp::sample_count(static_cast<u8>(coverage)), old_coverage,
+                                            other_modes_);
                     if (!tested.pass || (antialias && tested.coverage == 0U))
                         continue;
                 }
@@ -169,7 +176,8 @@ void Rdp::color_triangle() {
                     for (unsigned i = 0; i < inputs.shade.size(); ++i)
                         inputs.shade[i] = rdp_interpolate_shade(base[i], attributes[i], dx, coverage);
                 }
-                write_color_pixel(x, y, coverage, inputs, depth, early_depth_test ? &tested : nullptr);
+                write_color_pixel(x, y, coverage, inputs, depth, early_depth_test ? &tested : nullptr,
+                                  early_depth_test && image_read ? &pre_memory : nullptr);
             }
         }
     };

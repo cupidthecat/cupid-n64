@@ -20,6 +20,16 @@ struct RspNativeState {
     Rsp* rsp{};
     u32* scalar{};
     u8* dmem{};
+    u16* vectors{};
+    u16* accumulator{};
+    u8* carry_low{};
+    u8* carry_high{};
+    u8* compare_low{};
+    u8* compare_high{};
+    u8* compare_extension{};
+    s16* divider_input{};
+    s16* divider_output{};
+    bool* divider_high{};
 };
 
 class RspNativeCode {
@@ -34,10 +44,15 @@ class RspNativeCode {
     void execute(RspNativeState& state) const;
 
   private:
-    explicit RspNativeCode(void* code) : code_(code) {}
+    explicit RspNativeCode(void* code, bool inline_vectors, bool inline_flags, bool inline_divider)
+        : code_(code), inline_vectors_(inline_vectors), inline_flags_(inline_flags),
+          inline_divider_(inline_divider) {}
     void* code_{};
+    bool inline_vectors_{};
+    bool inline_flags_{};
+    bool inline_divider_{};
 
-    template <unsigned Function> static void vector(Rsp* rsp, u32 word);
+    template <unsigned Function, unsigned Element> static void vector(Rsp* rsp, u32 word);
     static void cop2(Rsp* rsp, u32 word);
     static void load_vector(Rsp* rsp, u32 word);
     static void store_vector(Rsp* rsp, u32 word);
