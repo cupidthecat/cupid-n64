@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## VI channel reconstruction (2026-10-01)
+
+The [VI reconstruction results](vi-reconstruction-results.md) record SIMD
+coverage and dither arithmetic, independent sample oracles, the scalar fallback,
+and complete compiler and cartridge validation. Both production SM64 replays
+preserve every field, complete PCM stream, EEPROM byte, and execution counter.
+Full-speed gameplay remains unresolved.
+
 ## Native CPU control flow (2026-10-01)
 
 The [CPU control-flow results](cpu-control-results.md) record compiled terminal

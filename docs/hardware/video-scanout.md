@@ -85,6 +85,12 @@ filtering needs only the first two source rows. The fixed temporary storage
 belongs to that row call; short rows and coordinates without room for the margin
 use scalar sampling. Both paths share the same reconstruction arithmetic.
 
+On hosts with SSE2, coverage reconstruction and dither restoration process the
+three color channels together. Signed corrections keep the same rounding,
+neighbor eligibility, and output clamping as the scalar implementation. Other
+architectures use that scalar implementation. Integer SIMD operations leave the
+host floating-point environment unchanged.
+
 `VideoScanMode::Parallel` can split a sufficiently large snapshot into disjoint
 output-row ranges. The tasks read the same scan register and framebuffer
 state and write separate rows of the returned `VideoField`; the sequential mode
