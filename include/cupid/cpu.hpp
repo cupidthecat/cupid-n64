@@ -273,6 +273,7 @@ class Cpu {
             u8 last_cycles{1};
             bool has_load{};
             bool has_store{};
+            bool ends_branch{};
         };
         std::array<u8, 32> image{};
         std::array<NativeBlock, CpuNativeCode::maximum_instructions> native{};

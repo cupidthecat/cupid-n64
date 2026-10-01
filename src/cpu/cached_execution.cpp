@@ -552,6 +552,10 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                     break;
                 stored = stored || decoded.kind == CachedKind::Store;
                 ++block.count;
+                if (CpuNativeCode::terminal_branch(decoded.word)) {
+                    block.ends_branch = true;
+                    break;
+                }
             }
             unsigned pending_load = 0;
             for (unsigned offset = 0; offset < block.count; ++offset) {
@@ -720,7 +724,8 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
         const auto* native_block =
             slot < CpuNativeCode::maximum_instructions ? &active_plan->native[slot] : nullptr;
         const bool native_candidate =
-            native_execution_ && native_block != nullptr && native_block->count >= 3U;
+            native_execution_ && native_block != nullptr &&
+            (native_block->count >= 3U || (native_block->ends_branch && native_block->count >= 2U));
         std::optional<std::array<u64, 32>> native_registers;
         CpuNativeState native_state{gpr.data(), data_cache.data()};
         const u64 native_pc = pc;
@@ -792,6 +797,7 @@ unsigned Cpu::batch_cached_private(unsigned maximum_steps, u64 maximum_cycles) {
                     pending_load_register_ = replay_pending_load;
                     pc = native_pc + committed * 4U;
                     next_pc = following_pc_ = pc + 4U;
+                    in_delay_slot_ = following_delay_slot_ = annul_next_ = false;
                     following_delay_slot_ = annul_next_ = false;
                     fetched_instruction_ = {
                         pc, cached_decode_[active_line_index * 8U + slot + committed].word, true};

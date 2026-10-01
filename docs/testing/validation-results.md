@@ -1,5 +1,13 @@
 # Recorded validation results
 
+## Native CPU control flow (2026-10-01)
+
+The [CPU control-flow results](cpu-control-results.md) record compiled terminal
+branches and jumps, live PC and link handling, delay-slot boundaries, interrupt
+retirement, and complete compiler and cartridge validation. Both SM64 replays
+preserve video, complete audio, EEPROM, and guest execution observations.
+Full-speed gameplay remains unresolved.
+
 ## Native RSP vector emission (2026-09-30)
 
 The [vector results](rsp-vector-results.md) record direct SSE2 arithmetic,

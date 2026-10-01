@@ -1,6 +1,7 @@
 #include "cupid/cpu/native.hpp"
 
 #include "cupid/cpu.hpp"
+#include "native/control.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -23,7 +24,15 @@ bool CpuNativeCode::available() {
 #endif
 }
 
+bool CpuNativeCode::terminal_branch(u32 instruction) {
+    const unsigned opcode = instruction >> 26U;
+    return (opcode >= 2U && opcode <= 7U) || (opcode == 1U && ((instruction >> 16U) & 31U) <= 1U) ||
+           (opcode == 0U && ((instruction & 63U) == 8U || (instruction & 63U) == 9U));
+}
+
 bool CpuNativeCode::supports(u32 instruction) {
+    if (terminal_branch(instruction))
+        return true;
     switch (instruction >> 26U) {
     case 0x00:
         switch (instruction & 63U) {
@@ -96,6 +105,8 @@ __attribute__((no_sanitize("function")))
 bool CpuNativeCode::execute(CpuNativeState& state) const {
     using Entry = std::intptr_t (*)(CpuNativeState*);
     state.store_count = 0;
+    state.branch_taken = 0;
+    state.branch_target = 0;
     if (reinterpret_cast<Entry>(code_)(&state) == 0)
         return false;
     state.commit_stores();
@@ -103,6 +114,8 @@ bool CpuNativeCode::execute(CpuNativeState& state) const {
 }
 
 bool CpuNativeCode::execute(std::span<u64, 32> registers) const {
+    if (links_)
+        return false;
     CpuNativeState state{registers.data(), nullptr};
     return execute(state);
 }
@@ -120,6 +133,10 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
     auto* compiler = owner.get();
     if (compiler == nullptr)
         return {};
+
+    if (std::any_of(instructions.begin(), instructions.end() - 1, terminal_branch))
+        return {};
+    const bool has_branch = terminal_branch(instructions.back());
 
     static_assert(std::is_standard_layout_v<CacheLine<16>>);
     static_assert(offsetof(CacheLine<16>, data) == 0);
@@ -150,7 +167,7 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
     constexpr sljit_s32 gpr_base = SLJIT_S0;
     constexpr sljit_s32 cache_base = SLJIT_S1;
     constexpr sljit_s32 state_base = SLJIT_S2;
-    const unsigned base_registers = has_store ? 3U : has_memory ? 2U : 1U;
+    const unsigned base_registers = has_store || has_branch ? 3U : has_memory ? 2U : 1U;
     const unsigned cache_capacity = SLJIT_NUMBER_OF_SAVED_REGISTERS - base_registers;
     std::array<sljit_s32, 32> cached{};
     std::array<bool, 32> initialized{};
@@ -166,7 +183,7 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
     }
     sljit_emit_enter(compiler, 0, SLJIT_ARGS1(W, P), has_memory ? 4 : 2,
                      static_cast<sljit_s32>(base_registers + cache_count), 0);
-    if (has_store)
+    if (has_store || has_branch)
         sljit_emit_op1(compiler, SLJIT_MOV_P, state_base, 0, SLJIT_S0, 0);
     if (has_memory)
         sljit_emit_op1(compiler, SLJIT_MOV_P, cache_base, 0, SLJIT_MEM1(SLJIT_S0),
@@ -294,6 +311,11 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
         const unsigned rd = (instruction >> 11U) & 31U;
         const unsigned sa = (instruction >> 6U) & 31U;
         const auto immediate = static_cast<sljit_sw>(std::bit_cast<s16>(static_cast<u16>(instruction)));
+
+        if (terminal_branch(instruction)) {
+            cpu_native::emit_terminal_control(compiler, instruction, state_base, read, write);
+            continue;
+        }
 
         if (opcode != 0) {
             if (opcode == 0x20U || opcode == 0x21U || opcode == 0x23U || opcode == 0x24U || opcode == 0x25U ||
@@ -427,7 +449,9 @@ std::shared_ptr<const CpuNativeCode> CpuNativeCode::compile(std::span<const u32>
     }
     if (sljit_get_compiler_error(compiler) != SLJIT_SUCCESS)
         return {};
-    auto result = std::shared_ptr<CpuNativeCode>(new CpuNativeCode(nullptr));
+    const u32 last = instructions.back();
+    const bool links = (last >> 26U) == 3U || ((last >> 26U) == 0U && (last & 63U) == 9U);
+    auto result = std::shared_ptr<CpuNativeCode>(new CpuNativeCode(nullptr, links));
     result->code_ = sljit_generate_code(compiler, 0, nullptr);
     return result->code_ == nullptr ? std::shared_ptr<const CpuNativeCode>{} : result;
 #endif

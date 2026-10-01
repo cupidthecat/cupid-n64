@@ -24,6 +24,8 @@ struct CpuNativeState {
     u64* registers{};
     void* data_cache{};
     unsigned store_count{};
+    u32 branch_taken{};
+    u64 branch_target{}, branch_link{};
     std::array<Store, 7> stores;
 
     void commit_stores();
@@ -40,13 +42,15 @@ class CpuNativeCode {
 
     [[nodiscard]] static bool available();
     [[nodiscard]] static bool supports(u32 instruction);
+    [[nodiscard]] static bool terminal_branch(u32 instruction);
     [[nodiscard]] static std::shared_ptr<const CpuNativeCode> compile(std::span<const u32> instructions);
     [[nodiscard]] bool execute(CpuNativeState& state) const;
     [[nodiscard]] bool execute(std::span<u64, 32> registers) const;
 
   private:
-    explicit CpuNativeCode(void* code) : code_(code) {}
+    explicit CpuNativeCode(void* code, bool links = false) : code_(code), links_(links) {}
     void* code_{};
+    bool links_{};
 };
 
 } // namespace cupid

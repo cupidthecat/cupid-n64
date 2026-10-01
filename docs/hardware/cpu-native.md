@@ -29,9 +29,17 @@ order and mark the line dirty. Loads after a store end the native block so the
 ordinary cached path reads the committed bytes. Stores remain private to the
 CPU cache until the ordinary writeback path transfers them to backing memory.
 
+Blocks can end with BEQ, BNE, BLEZ, BGTZ, BLTZ, BGEZ, J, JAL, JR, or JALR. The
+compiler records the predicate or target; the existing pipeline executes the
+delay slot and performs the target fetch. Untaken ordinary branches still mark
+their delay slot. JAL and JALR use the return address supplied for the current
+PC. JALR captures its source before writing the link, including when the source
+and destination are the same register. Likely branches and conditional links use
+ordinary execution.
+
 Compilation uses the existing cached-slice entry checks: kernel mode, big-endian
-kseg0 execution, matching instruction-cache tags, and a clean pipeline. Branches,
-coprocessors, HI/LO operations, overflow traps, and multicycle operations retain
+kseg0 execution, matching instruction-cache tags, and a clean pipeline.
+Coprocessors, HI/LO operations, overflow traps, and multicycle operations retain
 their existing execution paths.
 
 Frequently used GPRs stay in host registers within a block. The compiler loads
@@ -43,7 +51,9 @@ a host callback or expose these temporary values to another device.
 ## Clock and fetch boundaries
 
 Each compiled block contains three to seven instructions from one 32-byte
-instruction-cache line. The last word of that line is left to ordinary execution
+instruction-cache line. A block ending with a supported branch or jump can also
+contain two instructions. Control instructions close the block. The last word
+of the cache line is left to ordinary execution
 so prefetching across the next line retains its cache-miss and exception behavior.
 The planner requires the entire block to fit the remaining instruction, CPU-cycle,
 Count/Compare, and peripheral-event budgets.
@@ -84,8 +94,11 @@ existing line-plan copies can share immutable programs. Portable builds allocate
 no lookup storage.
 
 Generated code receives the current register-array and data-cache pointers at
-entry and embeds no machine pointer or program address. Identical sequences can
-therefore reuse code after instruction-cache replacement or at another address.
+entry and embeds no machine pointer or executing PC. Direct jump literals come
+from the instruction word; relative targets and links use the current PC.
+Identical sequences can therefore reuse code after instruction-cache replacement
+or at another address. Link operations require the `CpuNativeState` context;
+the register-array-only entry rejects them because it has no return address.
 
 The CPU shares the vendored SLJIT generator and write-or-execute allocator with
 the RSP. Redistribution must retain `third_party/sljit/LICENSE`. C++ planning,

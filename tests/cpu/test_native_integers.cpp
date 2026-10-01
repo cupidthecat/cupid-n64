@@ -100,9 +100,9 @@ TEST(cpu_native_integer_compilation_rejects_unguarded_memory_traps_control_and_o
     const std::array<u32, 8> too_long{};
     CHECK(!CpuNativeCode::compile(too_long));
     for (const u32 rejected :
-         {0x88010000U, 0x98010000U, 0xc0010000U, 0xd0010000U, 0x10000000U, 0x08000400U, 0x40014800U,
-          0x44010000U, 0x48010000U, 0x20010001U, 0x0000000cU, 0x0000000dU, 0x00221820U, 0x00221818U,
-          0x00001810U, 0x00200011U, 0x00000008U, 0xc849fff7U, 0xd849fff7U, 0xe849fff7U, 0xf849fff7U}) {
+         {0x88010000U, 0x98010000U, 0xc0010000U, 0xd0010000U, 0x40014800U, 0x44010000U, 0x48010000U,
+          0x20010001U, 0x0000000cU, 0x0000000dU, 0x00221820U, 0x00221818U, 0x00001810U, 0x00200011U,
+          0xc849fff7U, 0xd849fff7U, 0xe849fff7U, 0xf849fff7U}) {
         CHECK(!CpuNativeCode::supports(rejected));
         const std::array words{0x24010001U, rejected, 0x24210001U};
         CHECK(!CpuNativeCode::compile(words));
