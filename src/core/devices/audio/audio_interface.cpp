@@ -66,7 +66,11 @@ StereoSample AudioInterface::sample() {
 }
 
 void AudioInterface::advance(std::uint32_t clocks) {
-  clock_ -= clocks;
+  elapse(clocks);
+  run();
+}
+
+void AudioInterface::run() {
   while (clock_ < 0) {
     const auto value = sample();
     if (sample_)

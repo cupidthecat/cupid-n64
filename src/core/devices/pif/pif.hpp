@@ -16,6 +16,10 @@ public:
   void connect_reset(std::function<void()> callback);
   void attach(unsigned channel, JoybusDevice *device);
   void advance(std::uint32_t clocks);
+  void elapse(std::uint32_t clocks) {
+    clock_ -= clocks;
+  }
+  void run();
   void tick();
   std::uint32_t read_word(std::uint32_t address);
   void write_word(std::uint32_t address, std::uint32_t value);

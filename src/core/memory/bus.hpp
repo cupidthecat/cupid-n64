@@ -19,6 +19,9 @@ struct BusWrite {
 class Bus {
 public:
   virtual ~Bus() = default;
+  virtual bool frozen() const {
+    return false;
+  }
   virtual BusRead read(std::uint32_t address, unsigned bytes) = 0;
   virtual BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) = 0;
 

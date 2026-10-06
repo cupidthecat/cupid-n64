@@ -26,6 +26,10 @@ public:
   AudioInterface(Rdram &ram, MipsInterface &interrupts, VideoRegion region = VideoRegion::Ntsc);
   void power();
   void advance(std::uint32_t clocks);
+  void elapse(std::uint32_t clocks) {
+    clock_ -= clocks;
+  }
+  void run();
   StereoSample sample();
   std::uint32_t read_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
