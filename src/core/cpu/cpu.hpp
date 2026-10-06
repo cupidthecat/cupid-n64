@@ -2,6 +2,7 @@
 
 #include "core/cpu/state.hpp"
 #include "core/memory/bus.hpp"
+#include <functional>
 #include <optional>
 
 namespace cupid::n64 {
@@ -16,6 +17,11 @@ public:
   void set_interrupt(unsigned bit, bool pending);
   void request_nmi();
   void advance_clocks(std::uint64_t clocks);
+  bool run_block(const std::uint64_t &clock_target);
+  std::uint64_t synchronization_limit() const;
+  void connect_sync(std::function<void()> callback) {
+    synchronize_ = std::move(callback);
+  }
   std::uint64_t read_control(unsigned index);
   void write_control(unsigned index, std::uint64_t value);
 
@@ -97,6 +103,7 @@ private:
   void cache_operation(unsigned operation, std::uint64_t address);
   unsigned random_index();
   void write_tlb(unsigned index);
+  void interrupt_changed();
 
   Bus &bus_;
   CpuState state_{};
@@ -112,8 +119,11 @@ private:
   std::uint64_t entropy_ = 1;
   bool delay_slot_ = false;
   bool next_delay_slot_ = false;
+  bool block_exit_ = false;
+  bool next_block_exit_ = false;
   bool llbit_ = false;
   bool nmi_pending_ = false;
+  std::function<void()> synchronize_;
 };
 
 } // namespace cupid::n64

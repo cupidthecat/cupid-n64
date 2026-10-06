@@ -27,6 +27,7 @@ void Cpu::set_pc(std::uint64_t address) {
   state_.pc = pipeline_pc_ = address;
   next_pc_ = address + 4;
   delay_slot_ = next_delay_slot_ = false;
+  block_exit_ = next_block_exit_ = false;
 }
 
 Cpu::Mode Cpu::mode() const {
@@ -68,10 +69,13 @@ void Cpu::set_interrupt(unsigned bit, bool pending) {
     return;
   const auto mask = 1ull << (bit + 8);
   control_[Cause] = (control_[Cause] & ~mask) | (pending ? mask : 0);
+  interrupt_changed();
 }
 
 void Cpu::request_nmi() {
   nmi_pending_ = true;
+  if (synchronize_)
+    synchronize_();
 }
 
 bool Cpu::poll_interrupt() {
@@ -93,6 +97,7 @@ bool Cpu::poll_interrupt() {
 
 void Cpu::begin_instruction() {
   next_delay_slot_ = false;
+  next_block_exit_ = false;
   pipeline_pc_ = next_pc_;
   next_pc_ += 4;
 }
@@ -100,6 +105,7 @@ void Cpu::begin_instruction() {
 void Cpu::end_instruction() {
   state_.gpr[0] = 0;
   delay_slot_ = next_delay_slot_;
+  block_exit_ = next_block_exit_;
   state_.pc = pipeline_pc_;
 }
 
@@ -142,6 +148,7 @@ void Cpu::raise(Exception code, unsigned coprocessor, bool tlb_miss) {
                     (static_cast<std::uint64_t>(coprocessor) << 28);
   const auto base = control_[Status] & 0x00400000 ? 0xffffffffbfc00200ull : 0xffffffff80000000ull;
   set_pc(base + offset);
+  block_exit_ = true;
 }
 
 void Cpu::address_exception(std::uint64_t address) {
@@ -155,6 +162,7 @@ void Cpu::address_exception(std::uint64_t address) {
 void Cpu::jump(std::uint64_t target) {
   next_pc_ = target;
   next_delay_slot_ = true;
+  next_block_exit_ = true;
 }
 
 void Cpu::branch(bool taken, bool likely, std::int16_t offset) {
@@ -163,6 +171,7 @@ void Cpu::branch(bool taken, bool likely, std::int16_t offset) {
   else if (likely) {
     pipeline_pc_ += 4;
     next_pc_ = pipeline_pc_ + 4;
+    block_exit_ = true;
   } else
     next_delay_slot_ = true;
 }

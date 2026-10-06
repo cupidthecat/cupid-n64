@@ -7,6 +7,28 @@ using namespace cupid::n64;
 void timing_tests() {
   {
     EventQueue queue;
+    unsigned notifications = 0;
+    std::int32_t deadline = 0;
+    queue.connect_insert([&] {
+      ++notifications;
+      deadline = queue.time_to_event();
+    });
+    queue.insert(Event::SerialRead, 42);
+    equal(notifications, 1);
+    equal(deadline, 42);
+    queue.insert(Event::SerialWrite, 7);
+    equal(notifications, 2);
+    equal(deadline, 7);
+    queue.reset();
+    for (unsigned n = 0; n < 512; ++n)
+      queue.insert(Event::SerialRead, 100);
+    equal(notifications, 514);
+    queue.insert(Event::SerialRead, 0);
+    equal(notifications, 514);
+    equal(deadline, 100);
+  }
+  {
+    EventQueue queue;
     std::vector<Event> events;
     queue.insert(Event::PeripheralRead, 30);
     queue.insert(Event::SerialRead, 10);

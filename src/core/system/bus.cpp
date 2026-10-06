@@ -2,6 +2,12 @@
 
 namespace cupid::n64 {
 
+std::span<const std::uint32_t> Console::instruction_data(std::uint32_t address) const {
+  if (!ram_.identity() || address >= ram_.size())
+    return {};
+  return ram_.words().subspan(address >> 2);
+}
+
 BusRead Console::read(std::uint32_t address, unsigned bytes) {
   if (address <= 0x03ffffff)
     return mi_.read_rdram(address, bytes);

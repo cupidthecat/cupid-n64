@@ -24,6 +24,12 @@ public:
   std::span<std::uint32_t> words() {
     return data_;
   }
+  std::span<const std::uint32_t> words() const {
+    return data_;
+  }
+  bool identity() const {
+    return identity_;
+  }
   std::span<std::uint8_t> hidden() {
     return hidden_view_;
   }

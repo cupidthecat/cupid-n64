@@ -99,6 +99,7 @@ void integer_tests();
 void memory_tests();
 void control_tests();
 void cache_tests();
+void execution_tests();
 void fpu_tests();
 
 } // namespace test

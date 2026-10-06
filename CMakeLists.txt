@@ -3,6 +3,7 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 
 add_library(cupid_core
   src/core/cpu/cpu.cpp
+  src/core/cpu/execution.cpp
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
   src/core/cpu/control.cpp
@@ -67,9 +68,13 @@ if(BUILD_TESTING)
     tests/cpu/memory.cpp
     tests/cpu/control.cpp
     tests/cpu/cache.cpp
+    tests/cpu/execution.cpp
     tests/cpu/fpu.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
+  if(MSVC)
+    target_link_options(cpu_tests PRIVATE /STACK:8388608)
+  endif()
   add_test(NAME vr4300 COMMAND cpu_tests)
   add_executable(device_tests
     tests/devices/main.cpp
