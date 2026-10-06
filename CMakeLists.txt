@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
+include(cmake/Optimization.cmake)
 
 add_library(cupid_core
   src/core/cpu/cpu.cpp
