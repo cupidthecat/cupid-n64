@@ -199,7 +199,7 @@ bool CpuCompiler::Emitter::compile() {
     pc += 4;
     if (target)
       dispatch_internal(*target);
-    if (!info.branch && info.terminal) {
+    if ((!info.branch && info.terminal) || opcode == 47) {
       commit_pipeline();
       return_now(cycles);
       break;

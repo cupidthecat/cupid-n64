@@ -63,7 +63,8 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     const auto instruction = data[word ^ reverse];
     instructions[count++] = instruction;
     const auto info = block_instruction(instruction);
-    if (stop_after_delay || (!info.branch && info.terminal))
+    // Cache operations can change instructions already captured for this block.
+    if (stop_after_delay || (!info.branch && info.terminal) || (instruction >> 26) == 47)
       break;
     stop_after_delay = info.stop_after_delay;
   }
@@ -88,7 +89,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
       advance_clocks(126);
     const bool exit = block_exit_;
     end_instruction();
-    if (exit || (!info.branch && info.terminal) ||
+    if (exit || (!info.branch && info.terminal) || (instruction >> 26) == 47 ||
         (conditional_delay && state_.clocks >= clock_target))
       return true;
     conditional_delay = info.branch && !info.stop_after_delay && (instruction >> 26) != 3 &&
