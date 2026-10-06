@@ -110,8 +110,9 @@ struct CpuCompiler::Emitter {
   static Operand imm(std::uint64_t value) {
     return {SLJIT_IMM, static_cast<sljit_sw>(value)};
   }
-  static Operand field(const void *address) {
-    return {SLJIT_MEM0(), reinterpret_cast<sljit_sw>(address)};
+  Operand field(const void *address) const {
+    return {SLJIT_MEM1(SLJIT_S2),
+            reinterpret_cast<sljit_sw>(address) - reinterpret_cast<sljit_sw>(&cpu)};
   }
   static Operand state(std::size_t offset) {
     return {SLJIT_MEM1(SLJIT_S1), static_cast<sljit_sw>(offset)};
@@ -119,10 +120,8 @@ struct CpuCompiler::Emitter {
   static Operand gpr(unsigned index) {
     return state(offsetof(CpuState, gpr) + index * 8);
   }
-  static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view,
-                        sljit_uw clocks);
+  static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
-  static sljit_sw prepare(Cpu *cpu, sljit_uw clocks);
   static sljit_sw loop_pending(Cpu *cpu);
   static void step(Cpu *cpu, sljit_uw clocks);
 };

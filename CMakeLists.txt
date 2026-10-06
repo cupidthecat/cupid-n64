@@ -5,6 +5,8 @@ add_library(cupid_core
   src/core/cpu/cpu.cpp
   src/core/cpu/execution.cpp
   src/core/cpu/recompiler/cache.cpp
+  src/core/cpu/recompiler/clocks.cpp
+  src/core/cpu/recompiler/pipeline.cpp
   src/core/cpu/recompiler/branch.cpp
   src/core/cpu/recompiler/emitter.cpp
   src/core/cpu/recompiler/integer.cpp
@@ -90,6 +92,7 @@ if(BUILD_TESTING)
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
     tests/cpu/native_loops.cpp
+    tests/cpu/native_boundaries.cpp
     tests/cpu/fpu.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)

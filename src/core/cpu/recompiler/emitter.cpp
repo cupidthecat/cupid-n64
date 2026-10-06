@@ -39,8 +39,7 @@ void CpuCompiler::Emitter::store(unsigned dest, Operand source, bool word) {
 }
 
 sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
-                                     const Impl::Block::InstructionView *view, sljit_uw clocks) {
-  cpu->advance_clocks(clocks);
+                                     const Impl::Block::InstructionView *view) {
   auto &line = cpu->icache_[(cpu->state_.pc >> 5) & 511];
   if (line.hit(physical))
     return 1;
@@ -68,48 +67,16 @@ sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit
   return exit;
 }
 
-sljit_sw CpuCompiler::Emitter::prepare(Cpu *cpu, sljit_uw clocks) {
-  cpu->advance_clocks(clocks);
-  cpu->begin_instruction();
-  return cpu->block_exit_;
-}
-
-void CpuCompiler::Emitter::step(Cpu *cpu, sljit_uw clocks) {
-  cpu->advance_clocks(clocks);
-}
-
-void CpuCompiler::Emitter::commit_pipeline() {
-  if (!pipeline_dirty)
-    return;
-  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), imm(pc));
-  op1(SLJIT_MOV, field(&cpu.pipeline_pc_), imm(pc));
-  op1(SLJIT_MOV, field(&cpu.next_pc_), imm(pc + 4));
-  pipeline_dirty = false;
-}
-
-void CpuCompiler::Emitter::advance(unsigned clocks) {
-  if (!clocks)
-    return;
-  op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
-  op1(SLJIT_MOV, reg(SLJIT_R1), imm(clocks));
-  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, W), SLJIT_IMM, SLJIT_FUNC_ADDR(step));
-}
-
-void CpuCompiler::Emitter::return_now(unsigned clocks) {
-  advance(clocks);
-  sljit_emit_return_void(compiler);
-}
-
-void CpuCompiler::Emitter::return_if(sljit_s32 condition, Operand left, Operand right,
-                                     unsigned clocks) {
-  const auto skip =
-      sljit_emit_cmp(compiler, condition ^ 1, left.type, left.value, right.type, right.value);
-  return_now(clocks);
-  sljit_set_label(skip, sljit_emit_label(compiler));
-}
-
 void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   commit_pipeline();
+  advance(cycles);
+  cycles = 0;
+  const auto &line = cpu.icache_[(pc >> 5) & 511];
+  op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&line.valid));
+  const auto invalid = sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
+  const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, field(&line.tag).type,
+                                  field(&line.tag).value, SLJIT_IMM, address & ~0xfffu);
+  sljit_set_label(invalid, sljit_emit_label(compiler));
   const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
   auto &view = block.views.emplace_back();
   view.count = static_cast<unsigned>(
@@ -118,11 +85,10 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(address));
   op1(SLJIT_MOV, reg(SLJIT_R2), imm(reinterpret_cast<std::uintptr_t>(&view)));
-  op1(SLJIT_MOV, reg(SLJIT_R3), imm(cycles));
-  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4(W, P, 32, P, W), SLJIT_IMM,
+  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, P), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
-  cycles = 0;
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 0);
+  sljit_set_label(hit, sljit_emit_label(compiler));
 }
 
 void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
@@ -137,24 +103,6 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
     op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
   else
     return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
-}
-
-void CpuCompiler::Emitter::begin() {
-  commit_pipeline();
-  op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
-  op1(SLJIT_MOV, reg(SLJIT_R1), imm(cycles));
-  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2(W, P, W), SLJIT_IMM, SLJIT_FUNC_ADDR(prepare));
-  op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
-  cycles = 0;
-}
-
-void CpuCompiler::Emitter::end(bool defer_exit) {
-  op1(SLJIT_MOV, gpr(0), imm(0));
-  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
-  op1(SLJIT_MOV_U8, field(&cpu.delay_slot_), imm(0));
-  op1(SLJIT_MOV_U8, field(&cpu.block_exit_), imm(0));
-  if (!defer_exit)
-    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), cycles);
 }
 
 bool CpuCompiler::Emitter::compile() {

@@ -11,28 +11,25 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
   const auto rt = (instruction >> 16) & 31;
   const auto function = instruction & 63;
   const auto offset = std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction));
-  const auto cpu_field = [&](const void *address) {
-    return Operand{SLJIT_MEM1(SLJIT_S2),
-                   reinterpret_cast<sljit_sw>(address) - reinterpret_cast<sljit_sw>(&cpu)};
-  };
+
   begin();
   if (opcode == 0) {
     op1(SLJIT_MOV, reg(SLJIT_R0), gpr(rs));
     if (function == 9) {
-      op2(SLJIT_ADD, reg(SLJIT_R1), cpu_field(&cpu.pipeline_pc_), imm(4));
+      op2(SLJIT_ADD, reg(SLJIT_R1), field(&cpu.pipeline_pc_), imm(4));
       op1(SLJIT_MOV, gpr((instruction >> 11) & 31), reg(SLJIT_R1));
     }
-    op1(SLJIT_MOV, cpu_field(&cpu.next_pc_), reg(SLJIT_R0));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_delay_slot_), imm(1));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_block_exit_), imm(1));
+    op1(SLJIT_MOV, field(&cpu.next_pc_), reg(SLJIT_R0));
+    op1(SLJIT_MOV_U8, field(&cpu.next_delay_slot_), imm(1));
+    op1(SLJIT_MOV_U8, field(&cpu.next_block_exit_), imm(1));
   } else if (opcode == 2 || opcode == 3) {
     if (opcode == 3)
-      op2(SLJIT_ADD, gpr(31), cpu_field(&cpu.pipeline_pc_), imm(4));
-    op2(SLJIT_AND, reg(SLJIT_R0), cpu_field(&cpu.pipeline_pc_), imm(~0x0fffffffull));
-    op2(SLJIT_OR, cpu_field(&cpu.next_pc_), reg(SLJIT_R0),
+      op2(SLJIT_ADD, gpr(31), field(&cpu.pipeline_pc_), imm(4));
+    op2(SLJIT_AND, reg(SLJIT_R0), field(&cpu.pipeline_pc_), imm(~0x0fffffffull));
+    op2(SLJIT_OR, field(&cpu.next_pc_), reg(SLJIT_R0),
         imm(std::uint64_t(instruction & 0x03ffffff) << 2));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_delay_slot_), imm(1));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_block_exit_), imm(1));
+    op1(SLJIT_MOV_U8, field(&cpu.next_delay_slot_), imm(1));
+    op1(SLJIT_MOV_U8, field(&cpu.next_block_exit_), imm(1));
   } else {
     auto left = gpr(rs);
     auto right = imm(0);
@@ -42,7 +39,7 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
       if (rt >= 16) {
         if (rt == 17)
           op1(SLJIT_MOV, reg(SLJIT_R2), left);
-        op2(SLJIT_ADD, reg(SLJIT_R0), cpu_field(&cpu.pipeline_pc_), imm(4));
+        op2(SLJIT_ADD, reg(SLJIT_R0), field(&cpu.pipeline_pc_), imm(4));
         store(31, reg(SLJIT_R0), true);
         if (rt == 17)
           left = reg(SLJIT_R2);
@@ -62,30 +59,30 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
     const auto take =
         sljit_emit_cmp(compiler, taken, left.type, left.value, right.type, right.value);
     if (likely) {
-      op2(SLJIT_ADD, reg(SLJIT_R0), cpu_field(&cpu.pipeline_pc_), imm(4));
-      op1(SLJIT_MOV, cpu_field(&cpu.pipeline_pc_), reg(SLJIT_R0));
-      op2(SLJIT_ADD, cpu_field(&cpu.next_pc_), reg(SLJIT_R0), imm(4));
+      op2(SLJIT_ADD, reg(SLJIT_R0), field(&cpu.pipeline_pc_), imm(4));
+      op1(SLJIT_MOV, field(&cpu.pipeline_pc_), reg(SLJIT_R0));
+      op2(SLJIT_ADD, field(&cpu.next_pc_), reg(SLJIT_R0), imm(4));
       op1(SLJIT_MOV, reg(SLJIT_S3), imm(1));
     } else {
-      op1(SLJIT_MOV_U8, cpu_field(&cpu.next_delay_slot_), imm(1));
+      op1(SLJIT_MOV_U8, field(&cpu.next_delay_slot_), imm(1));
     }
     const auto done = sljit_emit_jump(compiler, SLJIT_JUMP);
     sljit_set_label(take, sljit_emit_label(compiler));
-    op2(SLJIT_ADD, cpu_field(&cpu.next_pc_), cpu_field(&cpu.pipeline_pc_),
+    op2(SLJIT_ADD, field(&cpu.next_pc_), field(&cpu.pipeline_pc_),
         imm(static_cast<std::uint64_t>(std::int64_t(offset) * 4)));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_delay_slot_), imm(1));
-    op1(SLJIT_MOV_U8, cpu_field(&cpu.next_block_exit_), imm(1));
+    op1(SLJIT_MOV_U8, field(&cpu.next_delay_slot_), imm(1));
+    op1(SLJIT_MOV_U8, field(&cpu.next_block_exit_), imm(1));
     sljit_set_label(done, sljit_emit_label(compiler));
   }
   const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
   if (instruction == 0x1000ffff || instruction == self_jump)
     advance(126);
   op1(SLJIT_MOV, gpr(0), imm(0));
-  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), cpu_field(&cpu.pipeline_pc_));
-  op1(SLJIT_MOV_U8, reg(SLJIT_R0), cpu_field(&cpu.next_delay_slot_));
-  op1(SLJIT_MOV_U8, cpu_field(&cpu.delay_slot_), reg(SLJIT_R0));
-  op1(SLJIT_MOV_U8, reg(SLJIT_R0), cpu_field(&cpu.next_block_exit_));
-  op1(SLJIT_MOV_U8, cpu_field(&cpu.block_exit_), reg(SLJIT_R0));
+  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
+  op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&cpu.next_delay_slot_));
+  op1(SLJIT_MOV_U8, field(&cpu.delay_slot_), reg(SLJIT_R0));
+  op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&cpu.next_block_exit_));
+  op1(SLJIT_MOV_U8, field(&cpu.block_exit_), reg(SLJIT_R0));
   return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);
   return true;
 }
