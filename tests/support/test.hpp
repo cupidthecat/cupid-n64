@@ -100,6 +100,7 @@ void memory_tests();
 void control_tests();
 void cache_tests();
 void execution_tests();
+void native_memory_tests();
 void fpu_tests();
 
 } // namespace test
