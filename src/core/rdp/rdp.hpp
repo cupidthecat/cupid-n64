@@ -22,7 +22,7 @@ public:
   }
   void run();
   void connect(std::function<void(std::span<const std::uint32_t>)> submit,
-               std::function<void()> synchronize);
+               std::function<void()> synchronize, std::function<void()> complete = {});
   void connect_sync(std::function<void()> callback);
   std::uint32_t read_word(std::uint32_t address, std::int64_t caller_clock = 0,
                           bool cpu = true) const;
@@ -62,6 +62,7 @@ private:
   } test_;
   std::function<void(std::span<const std::uint32_t>)> submit_;
   std::function<void()> synchronize_;
+  std::function<void()> complete_;
   std::function<void()> sync_;
 };
 

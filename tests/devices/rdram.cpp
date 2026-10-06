@@ -98,6 +98,18 @@ void rdram_tests() {
     f.ram.read_burst(0x2000, result);
     for (unsigned n = 0; n < values.size(); ++n)
       equal(result[n], values[n]);
+    equal(reinterpret_cast<std::uintptr_t>(f.ram.words().data()) % 65536, 0);
+    std::vector<std::uint8_t> coverage(f.ram.size() / 2);
+    equal(f.ram.bind_hidden(std::span(coverage).first(8)), false);
+    equal(f.ram.bind_hidden(coverage), true);
+    equal(coverage[0x1001], 3);
+    f.ram.write(0x2000, 4, 0x00010001);
+    equal(coverage[0x1000], 3);
+    equal(coverage[0x1001], 3);
+    coverage[0x1000] = 1;
+    equal(f.ram.bind_hidden({}), true);
+    equal(f.ram.hidden()[0x1000], 1);
+    equal(f.ram.hidden().data() == coverage.data(), false);
   }
 }
 
