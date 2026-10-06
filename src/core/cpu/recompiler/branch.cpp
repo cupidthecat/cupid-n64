@@ -90,33 +90,75 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
   return true;
 }
 
-std::optional<unsigned> CpuCompiler::Emitter::internal_target(unsigned branch) const {
-  if (branch + 1 >= block.words.size())
-    return {};
+std::optional<std::uint64_t> CpuCompiler::Emitter::branch_target(unsigned branch) const {
   const auto instruction = block.words[branch];
   const auto info = block_instruction(instruction);
-  const auto delay = block_instruction(block.words[branch + 1]);
-  if (!info.branch || delay.branch || delay.terminal)
+  if (!info.branch)
     return {};
   const auto opcode = instruction >> 26;
   const auto address = start_pc + branch * 4;
-  std::uint64_t target;
   if (opcode == 2 || opcode == 3) {
-    target = ((address + 4) & ~0x0fffffffull) | (std::uint64_t(instruction & 0x03ffffff) << 2);
+    return ((address + 4) & ~0x0fffffffull) | (std::uint64_t(instruction & 0x03ffffff) << 2);
   } else if (opcode == 1 || (opcode >= 4 && opcode <= 7) || (opcode >= 20 && opcode <= 23) ||
              opcode == 17) {
     const auto offset = std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction));
-    target = address + 4 + static_cast<std::uint64_t>(std::int64_t(offset) * 4);
-  } else {
-    return {};
+    return address + 4 + static_cast<std::uint64_t>(std::int64_t(offset) * 4);
   }
-  // Keep repeated fetches in one cache line when guest stores change the backing memory.
-  if (target < start_pc || target - start_pc >= block.words.size() * 4 || (target & 3) ||
-      (target & ~31ull) != ((address + 4) & ~31ull))
+  return {};
+}
+
+std::optional<unsigned> CpuCompiler::Emitter::entry_index(std::uint64_t target) const {
+  if (target < start_pc || target - start_pc >= block.words.size() * 4 || (target & 3))
     return {};
   const auto index = static_cast<unsigned>((target - start_pc) >> 2);
   if (index && block_instruction(block.words[index - 1]).branch)
     return {};
+  return index;
+}
+
+void CpuCompiler::Emitter::plan_entries() {
+  internal_entries.resize(block.words.size());
+  instruction_labels.resize(block.words.size());
+  const auto add = [&](std::uint64_t address) {
+    if (const auto index = entry_index(address))
+      internal_entries[*index] = true;
+  };
+  for (unsigned n = 0; n < block.words.size(); ++n) {
+    const auto instruction = block.words[n];
+    const auto info = block_instruction(instruction);
+    if (!info.branch)
+      continue;
+    const auto opcode = instruction >> 26;
+    const bool link = opcode == 3 || (opcode == 0 && (instruction & 63) == 9);
+    if (link || !info.stop_after_delay)
+      add(start_pc + n * 4 + 8);
+    if (!info.stop_after_delay && !link)
+      if (const auto target = branch_target(n))
+        add(*target);
+    if (const auto target = internal_target(n))
+      internal_entries[*target] = true;
+  }
+  for (unsigned n = 1; n < internal_entries.size(); ++n)
+    if (internal_entries[n])
+      block.entries.push_back(n);
+}
+
+std::optional<unsigned> CpuCompiler::Emitter::internal_target(unsigned branch) const {
+  if (branch + 1 >= block.words.size())
+    return {};
+  const auto delay = block_instruction(block.words[branch + 1]);
+  if (delay.branch || delay.terminal)
+    return {};
+  const auto target = branch_target(branch);
+  if (!target)
+    return {};
+  const auto entry = entry_index(*target);
+  if (!entry)
+    return {};
+  // Keep repeated fetches in one cache line when guest stores change the backing memory.
+  if ((*target & ~31ull) != ((start_pc + branch * 4 + 4) & ~31ull))
+    return {};
+  const auto index = *entry;
   for (unsigned n = std::min(index, branch); n <= std::max(index, branch + 1); ++n)
     if ((block.words[n] >> 26) == 47)
       return {};

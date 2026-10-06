@@ -86,6 +86,7 @@ if(BUILD_TESTING)
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
     tests/cpu/native_branches.cpp
+    tests/cpu/native_entries.cpp
     tests/cpu/native_loops.cpp
     tests/cpu/fpu.cpp
   )
