@@ -12,11 +12,14 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        ipo: ['ON', 'OFF']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+        run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          -DCUPID_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.ipo }}
       - name: Build
         run: cmake --build build --config Release --parallel 2
       - name: Test
