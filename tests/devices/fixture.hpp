@@ -55,5 +55,7 @@ void cic_tests();
 void pif_tests();
 void gamepad_tests();
 void rsp_tests();
+void video_tests();
+void audio_tests();
 
 } // namespace test

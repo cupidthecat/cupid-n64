@@ -10,6 +10,8 @@ int main() {
   test::pif_tests();
   test::gamepad_tests();
   test::rsp_tests();
+  test::video_tests();
+  test::audio_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
