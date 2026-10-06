@@ -7,7 +7,9 @@ CpuCompiler::CpuCompiler(Cpu &cpu) : impl_(std::make_unique<Impl>(cpu)) {}
 CpuCompiler::~CpuCompiler() = default;
 
 void CpuCompiler::reset() {
-  impl_->sections.clear();
+  for (auto &section : impl_->sections)
+    section.reset();
+  impl_->other_sections.clear();
   impl_->bytes = 0;
 }
 
@@ -47,7 +49,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const Impl::Key key{cpu.state_.pc, reverse | (unsigned(wide) << 1)};
   if (impl_->bytes >= 63 * 1024 * 1024)
     reset();
-  auto &section = impl_->sections[page];
+  auto &section = impl_->section(page);
   auto *tracker = cpu.bus_.instruction_tracker();
   const auto generation = tracker ? tracker->generation(page) : 0;
   if (tracker && section.tracker &&
@@ -59,10 +61,9 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     section.tracker = tracker;
     section.generation = generation;
   }
-  auto &blocks = section.blocks;
-  auto found = blocks.find(key);
-  if (found != blocks.end() && (!tracker || !found->second.tracked)) {
-    const auto words = std::span(found->second.block->words).subspan(found->second.index);
+  auto *found = section.find(key);
+  if (found && (!tracker || !found->tracked)) {
+    const auto words = std::span(found->block->words).subspan(found->index);
     bool unchanged = true;
     for (unsigned n = 0; n < words.size(); ++n)
       if (words[n] != data[(first + n) ^ reverse]) {
@@ -70,26 +71,19 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
         break;
       }
     if (!unchanged) {
-      const auto owner = found->second.block;
+      const auto owner = found->block;
       impl_->bytes -= owner->bytes;
       section.bytes -= owner->bytes;
-      for (auto entry = blocks.begin(); entry != blocks.end();) {
-        if (entry->second.block == owner)
-          entry = blocks.erase(entry);
-        else
-          ++entry;
-      }
-      found = blocks.end();
+      section.erase(owner);
+      found = nullptr;
     }
   }
   const auto limit =
-      found == blocks.end()
-          ? 1024u
-          : first + static_cast<unsigned>(found->second.block->words.size()) - found->second.index;
+      found ? first + static_cast<unsigned>(found->block->words.size()) - found->index : 1024u;
   std::vector<std::uint32_t> words;
   bool stop_after_delay = false;
-  const bool validate = !tracker || found == blocks.end() || !found->second.tracked ||
-                        found->second.cache_generation != cpu.instruction_cache_generation_;
+  const bool validate = !tracker || !found || !found->tracked ||
+                        found->cache_generation != cpu.instruction_cache_generation_;
   for (unsigned word = first; validate && word < limit; ++word) {
     const auto address = page + word * 4;
     if (word == first || !(word & 7)) {
@@ -99,8 +93,10 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
           !std::equal(line.words.begin(), line.words.end(), data.begin() + (word & ~7u)))
         return false;
     }
-    if (found != blocks.end())
+    if (found) {
+      word |= 7;
       continue;
+    }
     const auto instruction = data[word ^ reverse];
     words.push_back(instruction);
     const auto info = block_instruction(instruction);
@@ -108,7 +104,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
       break;
     stop_after_delay = info.stop_after_delay;
   }
-  if (found == blocks.end()) {
+  if (!found) {
     auto block = std::make_shared<Impl::Block>();
     block->words = std::move(words);
     Emitter emitter(cpu, *block, key.pc, physical, wide);
@@ -118,17 +114,17 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     section.bytes += block->bytes;
     if (tracker)
       tracker->watch(physical, static_cast<std::uint32_t>(block->words.size() * 4));
-    blocks.emplace(key, Impl::Entry{block});
+    section.insert(key, block);
     for (auto index : block->entries)
-      blocks.emplace(Impl::Key{key.pc + index * 4, key.mode}, Impl::Entry{block, index});
-    found = blocks.find(key);
+      section.insert(Impl::Key{key.pc + index * 4, key.mode}, block, index);
+    found = section.find(key);
   }
-  if (tracker && !found->second.tracked)
-    tracker->watch(physical, static_cast<std::uint32_t>(
-                                 (found->second.block->words.size() - found->second.index) * 4));
-  found->second.tracked = tracker != nullptr;
-  found->second.cache_generation = cpu.instruction_cache_generation_;
-  found->second.block->execute(clock_target);
+  if (tracker && !found->tracked)
+    tracker->watch(physical,
+                   static_cast<std::uint32_t>((found->block->words.size() - found->index) * 4));
+  found->tracked = tracker != nullptr;
+  found->cache_generation = cpu.instruction_cache_generation_;
+  found->block->execute(clock_target);
   return true;
 #endif
 }
