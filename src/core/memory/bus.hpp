@@ -22,6 +22,9 @@ public:
   virtual bool frozen() const {
     return false;
   }
+  virtual std::span<const std::uint32_t> instruction_data(std::uint32_t) const {
+    return {};
+  }
   virtual BusRead read(std::uint32_t address, unsigned bytes) = 0;
   virtual BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) = 0;
 

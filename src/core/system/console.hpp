@@ -27,6 +27,7 @@ public:
   bool load(std::span<const std::uint8_t> cartridge, std::span<const std::uint8_t> firmware);
   void power();
   void step();
+  std::uint32_t run_interval(std::uint32_t limit = 4096);
   void run_clocks(std::uint64_t clocks);
   void synchronize();
   void connect_controller(unsigned port, bool connected);
@@ -37,6 +38,7 @@ public:
   BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) override;
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words) override;
   BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words) override;
+  std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override;
   Cpu &cpu() {
     return cpu_;
   }
@@ -92,6 +94,7 @@ private:
   std::array<Gamepad, 4> controllers_;
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;
+  std::uint64_t clock_target_ = 0;
   bool frozen_ = false;
 };
 

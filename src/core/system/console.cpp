@@ -1,4 +1,5 @@
 #include "core/system/console.hpp"
+#include <algorithm>
 
 namespace cupid::n64 {
 
@@ -11,6 +12,17 @@ Console::Console(ConsoleConfig config)
       cpu_(*this) {
   mi_.connect([this](bool line) { cpu_.set_interrupt(2, line); }, [this] { frozen_ = true; });
   pif_.connect_reset([this] { cpu_.request_nmi(); });
+  auto request_sync = [this] { clock_target_ = cpu_.state().clocks; };
+  cpu_.connect_sync(request_sync);
+  rsp_.connect_sync(request_sync);
+  rdp_.connect_sync(request_sync);
+  vi_.connect_sync(request_sync);
+  audio_.connect_sync(request_sync);
+  si_.connect_sync(request_sync);
+  events_.connect_insert([this] {
+    const auto remaining = std::max(0, events_.time_to_event());
+    clock_target_ = std::min(clock_target_, cpu_.state().clocks + remaining);
+  });
   pif_.attach(4, &eeprom_);
   pi_.attach(rom_, 0);
   rsp_.connect_display(
@@ -47,6 +59,7 @@ void Console::power() {
   rsp_.power();
   rdp_.power();
   synchronized_clock_ = 0;
+  clock_target_ = 0;
   frozen_ = false;
 }
 
@@ -62,6 +75,21 @@ std::int64_t Console::pending_clocks() const {
 void Console::step() {
   cpu_.step();
   synchronize();
+}
+
+std::uint32_t Console::run_interval(std::uint32_t limit) {
+  const auto start = cpu_.state().clocks;
+  const auto queue_limit = static_cast<std::uint64_t>(std::max(0, events_.time_to_event()));
+  clock_target_ =
+      start + std::min({std::uint64_t(limit), queue_limit, cpu_.synchronization_limit()});
+  do {
+    if (!cpu_.run_block(clock_target_)) {
+      cpu_.step();
+      break;
+    }
+  } while (cpu_.state().clocks < clock_target_);
+  synchronize();
+  return static_cast<std::uint32_t>(cpu_.state().clocks - start);
 }
 
 void Console::run_clocks(std::uint64_t clocks) {

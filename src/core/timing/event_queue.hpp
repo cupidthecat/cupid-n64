@@ -3,6 +3,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 namespace cupid::n64 {
@@ -21,6 +22,9 @@ enum class Event : unsigned {
 
 class EventQueue {
 public:
+  void connect_insert(std::function<void()> callback) {
+    inserted_ = std::move(callback);
+  }
   void reset() {
     clock_ = size_ = 0;
   }
@@ -38,6 +42,8 @@ public:
       child = parent;
     }
     heap_[child] = {clocks, event, true};
+    if (inserted_)
+      inserted_();
     return true;
   }
 
@@ -72,6 +78,7 @@ private:
     Event event{};
     bool valid = false;
   };
+  std::function<void()> inserted_;
 
   static bool at_or_after(std::uint32_t a, std::uint32_t b) {
     return a - b < 0x7fffffff;

@@ -62,9 +62,11 @@ void Cpu::write_control(unsigned index, std::uint64_t value) {
     break;
   case Status:
     control_[Status] = (value & 0xff57ffff) | (control_[Status] & 0x00200000);
+    interrupt_changed();
     break;
   case Cause:
     control_[Cause] = (control_[Cause] & ~0x300ull) | (value & 0x300);
+    interrupt_changed();
     break;
   case Epc:
   case ErrorEpc:
@@ -178,7 +180,10 @@ void Cpu::cop0(std::uint32_t instruction) {
     const auto target = control_[error ? ErrorEpc : Epc];
     control_[Status] &= ~(error ? 4ull : 2ull);
     llbit_ = false;
-    return set_pc(target);
+    set_pc(target);
+    block_exit_ = true;
+    interrupt_changed();
+    return;
   }
   default:
     return raise(Exception::ReservedInstruction);
