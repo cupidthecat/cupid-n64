@@ -3,6 +3,8 @@
 #include "core/devices/ri/ram_interface.hpp"
 #include "core/timing/random.hpp"
 #include <array>
+#include <memory>
+#include <new>
 #include <optional>
 #include <span>
 #include <vector>
@@ -23,8 +25,9 @@ public:
     return data_;
   }
   std::span<std::uint8_t> hidden() {
-    return hidden_;
+    return hidden_view_;
   }
+  bool bind_hidden(std::span<std::uint8_t> memory);
   std::uint32_t size() const {
     return static_cast<std::uint32_t>(data_.size() * 4);
   }
@@ -61,8 +64,15 @@ private:
 
   RamInterface &interface_;
   RandomGenerator &random_;
-  std::vector<std::uint32_t> data_;
+  struct WordDeleter {
+    void operator()(std::uint32_t *pointer) const {
+      ::operator delete[](pointer, std::align_val_t(65536));
+    }
+  };
+  std::unique_ptr<std::uint32_t[], WordDeleter> allocation_;
+  std::span<std::uint32_t> data_;
   std::vector<std::uint8_t> hidden_;
+  std::span<std::uint8_t> hidden_view_;
   std::array<Chip, 4> chips_{};
   bool identity_ = false;
 };

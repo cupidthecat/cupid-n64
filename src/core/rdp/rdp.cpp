@@ -17,9 +17,10 @@ void Rdp::power() {
 }
 
 void Rdp::connect(std::function<void(std::span<const std::uint32_t>)> submit,
-                  std::function<void()> synchronize) {
+                  std::function<void()> synchronize, std::function<void()> complete) {
   submit_ = std::move(submit);
   synchronize_ = std::move(synchronize);
+  complete_ = std::move(complete);
 }
 
 void Rdp::connect_sync(std::function<void()> callback) {
@@ -56,8 +57,11 @@ void Rdp::flush_commands() {
     return;
   command_.buffer_busy = command_.pipe_busy = 1;
   command_.start_clock = true;
-  if (command_.end > command_.current)
+  if (command_.end > command_.current) {
     render();
+    if (complete_)
+      complete_();
+  }
   command_.buffer_busy = 0;
   command_.ready = true;
 }

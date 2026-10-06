@@ -146,6 +146,18 @@ void rdp_tests() {
   rdp.write_word(4, 0x1008);
   equal(rdp.read_word(12), 0xa2);
   equal(f.mi.read_word(8) & 32, 0);
+  rdp.power();
+  unsigned completions = 0;
+  rdp.connect({}, {}, [&] {
+    ++completions;
+    rdp.crash();
+  });
+  rdp.write_word(4, 0);
+  equal(completions, 0);
+  rdp.write_word(0, 0x1000);
+  rdp.write_word(4, 0x1008);
+  equal(completions, 1);
+  equal(rdp.read_word(12), 0xa2);
 }
 
 } // namespace test

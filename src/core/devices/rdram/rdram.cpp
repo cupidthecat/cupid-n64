@@ -4,8 +4,11 @@
 namespace cupid::n64 {
 
 Rdram::Rdram(RamInterface &interface, RandomGenerator &random, bool expansion)
-    : interface_(interface), random_(random), data_((expansion ? 8u : 4u) * 1024 * 1024 / 4),
-      hidden_(data_.size() * 2) {
+    : interface_(interface), random_(random),
+      allocation_(static_cast<std::uint32_t *>(
+          ::operator new[]((expansion ? 8u : 4u) * 1024 * 1024, std::align_val_t(65536)))),
+      data_(allocation_.get(), (expansion ? 8u : 4u) * 1024 * 1024 / 4), hidden_(data_.size() * 2),
+      hidden_view_(hidden_) {
   power();
 }
 
@@ -13,7 +16,7 @@ void Rdram::power(bool reset) {
   if (reset)
     return;
   std::fill(data_.begin(), data_.end(), 0);
-  std::fill(hidden_.begin(), hidden_.end(), std::uint8_t(0));
+  std::fill(hidden_view_.begin(), hidden_view_.end(), std::uint8_t(0));
   chips_ = {};
   identity_ = false;
   for (unsigned n = 0; n < data_.size() / (2 * 1024 * 1024 / 4); ++n) {
@@ -28,6 +31,17 @@ void Rdram::power(bool reset) {
     if (chip.high_current <= chip.low_current)
       chip.high_current = chip.low_current + 1;
   }
+}
+
+bool Rdram::bind_hidden(std::span<std::uint8_t> memory) {
+  if (memory.empty())
+    memory = hidden_;
+  if (memory.size() != hidden_.size())
+    return false;
+  if (memory.data() != hidden_view_.data())
+    std::copy(hidden_view_.begin(), hidden_view_.end(), memory.begin());
+  hidden_view_ = memory;
+  return true;
 }
 
 std::uint16_t Rdram::decode_id(std::uint32_t value) {
@@ -204,12 +218,12 @@ void Rdram::write_raw(std::uint32_t address, unsigned bytes, std::uint64_t value
 }
 
 std::uint32_t Rdram::hidden_nibble(std::uint32_t address) const {
-  return ((hidden_[address >> 1] & 3) << 2) | (hidden_[(address >> 1) + 1] & 3);
+  return ((hidden_view_[address >> 1] & 3) << 2) | (hidden_view_[(address >> 1) + 1] & 3);
 }
 
 void Rdram::write_hidden_bit(std::uint32_t address, bool value) {
   const auto shift = 1 - (address & 1);
-  auto &bits = hidden_[address >> 1];
+  auto &bits = hidden_view_[address >> 1];
   bits = static_cast<std::uint8_t>((bits & ~(1u << shift)) | (unsigned(value) << shift));
 }
 
@@ -230,7 +244,7 @@ void Rdram::update_hidden(std::uint32_t address, unsigned bytes, std::uint64_t v
     write_hidden_bit(address, (address & 1) && (value & 1));
   else {
     for (unsigned n = 0; n < bytes; n += 2)
-      hidden_[(address + n) >> 1] = ((value >> ((bytes - 2 - n) * 8)) & 1) * 3;
+      hidden_view_[(address + n) >> 1] = ((value >> ((bytes - 2 - n) * 8)) & 1) * 3;
   }
 }
 

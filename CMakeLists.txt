@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(cupid_n64 VERSION 0.1.0 LANGUAGES CXX)
+project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 
 add_library(cupid_core
   src/core/cpu/cpu.cpp
@@ -54,6 +54,11 @@ else()
     COMPILE_OPTIONS "-frounding-math;-ffp-contract=off")
 endif()
 
+option(CUPID_HARDWARE_RENDERER "Build Vulkan rendering" ON)
+if(CUPID_HARDWARE_RENDERER)
+  include(cmake/Renderer.cmake)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
   add_executable(cpu_tests
@@ -93,4 +98,10 @@ if(BUILD_TESTING)
   )
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
+  if(CUPID_HARDWARE_RENDERER)
+    add_executable(renderer_tests tests/renderer/main.cpp)
+    target_link_libraries(renderer_tests PRIVATE cupid_renderer)
+    add_test(NAME hardware_renderer COMMAND renderer_tests)
+    set_tests_properties(hardware_renderer PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
 endif()
