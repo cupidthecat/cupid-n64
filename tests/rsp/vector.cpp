@@ -23,7 +23,7 @@ void rsp_vector_tests() {
     rsp.execute(vector(0x2a, 3, 1, 2, element));
     for (unsigned lane = 0; lane < 8; ++lane) {
       equal(result[lane], indices[element][lane] + 1);
-      equal(state.accumulator[lane], result[lane]);
+      equal(state.accumulator.get(lane), result[lane]);
     }
   }
   a.fill(0xffff);
@@ -36,19 +36,19 @@ void rsp_vector_tests() {
   b.fill(0);
   rsp.execute(vector(0x10, 3, 1, 2));
   equal(result[0], 0x7fff);
-  equal(state.accumulator[0], 0x8000);
+  equal(state.accumulator.get(0), 0x8000);
   equal(state.carry_low, 0);
   a.fill(0x8000);
   b.fill(0x8000);
   rsp.execute(vector(0, 3, 1, 2));
-  equal(state.accumulator[0], 0x80008000);
+  equal(state.accumulator.get(0), 0x80008000);
   equal(result[0], 0x7fff);
   rsp.execute(vector(1, 3, 1, 2));
   equal(result[0], 0xffff);
   a.fill(0xffff);
   b.fill(1);
   rsp.execute(vector(7, 3, 1, 2));
-  equal(state.accumulator[0], 0xffffffff0000);
+  equal(state.accumulator.get(0), 0xffffffff0000);
   equal(result[0], 0xffff);
   rsp.execute(vector(0x1d, 3, 0, 0, 8));
   equal(result[0], 0xffff);
@@ -83,7 +83,7 @@ void rsp_vector_tests() {
   b.fill(0x8000);
   rsp.execute(vector(0x13, 3, 1, 2));
   equal(result[0], 0x7fff);
-  equal(state.accumulator[0] & 0xffff, 0x8000);
+  equal(state.accumulator.get(0) & 0xffff, 0x8000);
 
   b.fill(1);
   rsp.execute(vector(0x30, 3, 0, 2));

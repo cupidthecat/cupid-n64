@@ -43,8 +43,7 @@ void Rsp::vector_divide(unsigned operation, unsigned dest, unsigned lane, unsign
   static const DivideTables tables;
   const auto vector = state_.vectors[source];
   for (unsigned n = 0; n < 8; ++n)
-    state_.accumulator[n] =
-        (state_.accumulator[n] & ~0xffffull) | vector.lanes[select_lane(element, n)];
+    state_.accumulator.low.lanes[n] = vector.lanes[select_lane(element, n)];
   auto &result = state_.vectors[dest].lanes[lane];
   if (operation == 0x33) {
     result = vector.lanes[select_lane(element, lane)];
