@@ -96,6 +96,13 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  if(TARGET cupid_desktop)
+    add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
+    target_include_directories(desktop_audio_tests PRIVATE src)
+    target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
+    target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    add_test(NAME desktop_audio_devices COMMAND desktop_audio_tests)
+  endif()
   add_executable(cpu_tests
     tests/cpu/main.cpp
     tests/cpu/integer.cpp

@@ -1,4 +1,5 @@
 #include "desktop/windows/audio.hpp"
+#include "desktop/windows/audio_device.hpp"
 #include <algorithm>
 
 namespace cupid::desktop {
@@ -11,7 +12,9 @@ Audio::Audio() {
   format.wBitsPerSample = 16;
   format.nBlockAlign = 4;
   format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
-  error_ = waveOutOpen(&device_, WAVE_MAPPER, &format, 0, 0, CALLBACK_NULL);
+  error_ = open_audio_device(waveOutGetNumDevs(), [&](unsigned id) {
+    return waveOutOpen(&device_, id, &format, 0, 0, CALLBACK_NULL);
+  });
   if (error_ != MMSYSERR_NOERROR) {
     device_ = nullptr;
     return;
