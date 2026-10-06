@@ -36,6 +36,9 @@ add_library(cupid_core
   src/core/devices/vi/io.cpp
   src/core/devices/audio/audio_interface.cpp
   src/core/devices/audio/io.cpp
+  src/core/rdp/rdp.cpp
+  src/core/rdp/io.cpp
+  src/core/rdp/commands.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -73,6 +76,7 @@ if(BUILD_TESTING)
     tests/devices/rsp.cpp
     tests/devices/video.cpp
     tests/devices/audio.cpp
+    tests/devices/rdp.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)

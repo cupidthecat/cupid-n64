@@ -12,6 +12,7 @@ int main() {
   test::rsp_tests();
   test::video_tests();
   test::audio_tests();
+  test::rdp_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
