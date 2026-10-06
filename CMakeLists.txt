@@ -83,6 +83,7 @@ if(BUILD_TESTING)
     tests/cpu/memory.cpp
     tests/cpu/control.cpp
     tests/cpu/cache.cpp
+    tests/cpu/cache_coherence.cpp
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
     tests/cpu/native_branches.cpp

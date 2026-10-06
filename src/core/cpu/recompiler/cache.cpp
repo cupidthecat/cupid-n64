@@ -86,7 +86,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     const auto instruction = data[word ^ reverse];
     words.push_back(instruction);
     const auto info = block_instruction(instruction);
-    if (stop_after_delay || (!info.branch && info.terminal))
+    if (stop_after_delay || (!info.branch && info.terminal) || (instruction >> 26) == 47)
       break;
     stop_after_delay = info.stop_after_delay;
   }

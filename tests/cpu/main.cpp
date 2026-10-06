@@ -5,6 +5,7 @@ int main() {
   test::memory_tests();
   test::control_tests();
   test::cache_tests();
+  test::cache_coherence_tests();
   test::execution_tests();
   test::native_memory_tests();
   test::native_loop_tests();
