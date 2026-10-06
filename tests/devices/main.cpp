@@ -13,6 +13,7 @@ int main() {
   test::video_tests();
   test::audio_tests();
   test::rdp_tests();
+  test::console_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

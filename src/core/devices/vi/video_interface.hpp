@@ -11,6 +11,10 @@ public:
   explicit VideoInterface(MipsInterface &interrupts, VideoRegion region = VideoRegion::Ntsc);
   void power();
   void advance(std::uint32_t clocks);
+  void elapse(std::uint32_t clocks) {
+    clock_ -= clocks;
+  }
+  void run();
   std::uint32_t read_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
   void connect_frame(std::function<void(bool)> callback);

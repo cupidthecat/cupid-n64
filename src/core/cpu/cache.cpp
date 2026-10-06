@@ -10,7 +10,7 @@ bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, boo
       bus_.read_burst(line.tag | index, std::span(line.words).first(instruction ? 8 : 4));
   advance_clocks(transfer.clocks);
   line.valid = transfer.success;
-  if (!transfer.success)
+  if (!transfer.success && !bus_.frozen())
     raise(instruction ? Exception::BusInstruction : Exception::BusData);
   return transfer.success;
 }
@@ -20,9 +20,9 @@ bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
   const auto transfer =
       bus_.write_burst(line.tag | index, std::span(line.words).first(instruction ? 8 : 4));
   advance_clocks(transfer.clocks);
-  if (!transfer.success)
+  if (!transfer.success && !bus_.frozen())
     raise(Exception::BusData);
-  return transfer.success;
+  return transfer.success || bus_.frozen();
 }
 
 std::optional<std::uint64_t> Cpu::cache_read(std::uint64_t virtual_address, std::uint32_t physical,
@@ -34,7 +34,7 @@ std::optional<std::uint64_t> Cpu::cache_read(std::uint64_t virtual_address, std:
   if (!line.hit(physical)) {
     if (!instruction && line.valid && line.dirty && !writeback(line, bus_index, false))
       return {};
-    if (!fill(line, physical, bus_index, instruction))
+    if (!fill(line, physical, bus_index, instruction) && (instruction || !bus_.frozen()))
       return {};
   } else if (!instruction)
     advance_clocks(2);
@@ -57,7 +57,7 @@ bool Cpu::cache_write(std::uint64_t virtual_address, std::uint32_t physical, uns
   if (!line.hit(physical)) {
     if (line.valid && line.dirty && !writeback(line, bus_index, false))
       return false;
-    if (!fill(line, physical, bus_index, false))
+    if (!fill(line, physical, bus_index, false) && !bus_.frozen())
       return false;
   } else
     advance_clocks(2);

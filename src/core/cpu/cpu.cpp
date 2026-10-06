@@ -106,6 +106,10 @@ void Cpu::end_instruction() {
 void Cpu::step() {
   if (poll_interrupt())
     return;
+  if (bus_.frozen()) {
+    advance_clocks(2);
+    return;
+  }
   const auto instruction = read(state_.pc, 4, true);
   if (!instruction)
     return;
@@ -118,6 +122,8 @@ void Cpu::execute(std::uint32_t instruction) {
   if (poll_interrupt())
     return;
   advance_clocks(2);
+  if (bus_.frozen())
+    return;
   begin_instruction();
   decode(instruction);
   end_instruction();

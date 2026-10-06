@@ -102,7 +102,11 @@ std::uint32_t Rsp::step() {
 }
 
 void Rsp::advance(std::uint32_t clocks) {
-  clock_ -= clocks;
+  elapse(clocks);
+  run();
+}
+
+void Rsp::run() {
   while (clock_ < 0) {
     const auto elapsed = status_.halted ? 128u : step();
     clock_ += elapsed;

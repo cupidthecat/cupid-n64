@@ -37,6 +37,10 @@ public:
   std::uint32_t step();
   std::uint32_t execute(std::uint32_t instruction);
   void advance(std::uint32_t clocks);
+  void elapse(std::uint32_t clocks) {
+    clock_ -= clocks;
+  }
+  void run();
   void connect_display(std::function<std::uint32_t(unsigned)> read,
                        std::function<void(unsigned, std::uint32_t)> write);
   RspState &state() {

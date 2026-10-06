@@ -17,6 +17,10 @@ public:
   Rdp(Rdram &ram, Rsp &rsp, MipsInterface &interrupts);
   void power();
   void advance(std::uint32_t clocks);
+  void elapse(std::uint32_t clocks) {
+    clock_ -= clocks;
+  }
+  void run();
   void connect(std::function<void(std::span<const std::uint32_t>)> submit,
                std::function<void()> synchronize);
   void connect_sync(std::function<void()> callback);

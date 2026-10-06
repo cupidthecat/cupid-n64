@@ -110,7 +110,8 @@ std::optional<std::uint64_t> Cpu::read(std::uint64_t address, unsigned bytes, bo
   const auto transfer = bus_.read(physical, bytes);
   advance_clocks(transfer.clocks);
   if (!transfer.success) {
-    raise(instruction ? Exception::BusInstruction : Exception::BusData);
+    if (!bus_.frozen())
+      raise(instruction ? Exception::BusInstruction : Exception::BusData);
     return {};
   }
   return transfer.value;
@@ -125,7 +126,7 @@ bool Cpu::write(std::uint64_t address, unsigned bytes, std::uint64_t value, bool
     return cache_write(address, physical, bytes, value);
   const auto transfer = bus_.write(physical, bytes, value);
   advance_clocks(transfer.clocks);
-  if (!transfer.success)
+  if (!transfer.success && !bus_.frozen())
     raise(Exception::BusData);
   return transfer.success;
 }

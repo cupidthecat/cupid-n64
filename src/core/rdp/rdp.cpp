@@ -27,7 +27,11 @@ void Rdp::connect_sync(std::function<void()> callback) {
 }
 
 void Rdp::advance(std::uint32_t clocks) {
-  clock_ -= clocks;
+  elapse(clocks);
+  run();
+}
+
+void Rdp::run() {
   while (clock_ < 0) {
     clock_ += clock_frequency;
     command_.clock = (command_.clock + clock_frequency / 3) & 0xffffff;

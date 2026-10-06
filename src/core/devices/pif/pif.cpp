@@ -35,7 +35,11 @@ void Pif::power() {
 }
 
 void Pif::advance(std::uint32_t clocks) {
-  clock_ -= clocks;
+  elapse(clocks);
+  run();
+}
+
+void Pif::run() {
   while (clock_ < 0)
     tick();
 }
