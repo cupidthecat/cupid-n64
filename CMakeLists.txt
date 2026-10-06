@@ -14,6 +14,14 @@ add_library(cupid_core
   src/core/devices/rdram/rdram.cpp
   src/core/devices/pi/peripheral_interface.cpp
   src/core/devices/pi/dma.cpp
+  src/core/devices/cic/cic.cpp
+  src/core/devices/joybus/crc.cpp
+  src/core/devices/pif/pif.cpp
+  src/core/devices/pif/joybus.cpp
+  src/core/devices/si/serial_interface.cpp
+  src/core/cartridge/eeprom.cpp
+  src/core/controller/gamepad.cpp
+  src/core/controller/pak.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -45,6 +53,9 @@ if(BUILD_TESTING)
     tests/devices/rdram.cpp
     tests/devices/pi.cpp
     tests/devices/timing.cpp
+    tests/devices/cic.cpp
+    tests/devices/pif.cpp
+    tests/devices/gamepad.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)
