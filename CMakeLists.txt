@@ -4,6 +4,9 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 add_library(cupid_core
   src/core/cpu/cpu.cpp
   src/core/cpu/execution.cpp
+  src/core/cpu/recompiler/cache.cpp
+  src/core/cpu/recompiler/emitter.cpp
+  src/core/cpu/recompiler/integer.cpp
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
   src/core/cpu/control.cpp
@@ -46,6 +49,7 @@ add_library(cupid_core
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
+include(cmake/Compiler.cmake)
 if(MSVC)
   target_compile_options(cupid_core PRIVATE /W4 /WX /permissive-)
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES COMPILE_OPTIONS /fp:strict)

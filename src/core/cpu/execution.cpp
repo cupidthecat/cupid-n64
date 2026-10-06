@@ -1,5 +1,6 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
+#include "core/cpu/recompiler.hpp"
 #include <algorithm>
 
 namespace cupid::n64 {
@@ -16,6 +17,10 @@ void Cpu::interrupt_changed() {
 }
 
 bool Cpu::run_block(const std::uint64_t &clock_target) {
+  return compiler_->run(clock_target);
+}
+
+bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
   if (poll_interrupt()) {
     if (synchronize_)
       synchronize_();
