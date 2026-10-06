@@ -84,7 +84,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     stop_after_delay = info.stop_after_delay;
   }
   if (found == impl_->blocks.end()) {
-    if (impl_->bytes >= 32 * 1024 * 1024)
+    if (impl_->bytes >= 63 * 1024 * 1024)
       reset();
     auto block = std::make_unique<Impl::Block>();
     block->words = std::move(words);

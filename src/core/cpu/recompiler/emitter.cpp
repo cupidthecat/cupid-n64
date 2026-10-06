@@ -4,8 +4,8 @@ namespace cupid::n64 {
 
 CpuCompiler::Emitter::Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc,
                               std::uint32_t physical, bool wide)
-    : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), pc(pc), physical(physical),
-      wide(wide) {}
+    : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), start_pc(pc), pc(pc),
+      physical(physical), wide(wide) {}
 
 CpuCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);
@@ -52,7 +52,7 @@ sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit
   const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
   if (instruction == 0x1000ffff || instruction == self_jump)
     cpu->advance_clocks(126);
-  const auto exit = cpu->block_exit_;
+  const auto exit = unsigned(cpu->block_exit_) | (cpu->state_.pc != pc ? 2u : 0u);
   cpu->end_instruction();
   return exit;
 }
@@ -109,7 +109,7 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 0);
 }
 
-void CpuCompiler::Emitter::execute(std::uint32_t instruction) {
+void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
   commit_pipeline();
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(instruction));
@@ -117,7 +117,10 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction) {
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(helper));
   cycles = 0;
-  return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
+  if (defer_exit)
+    op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
+  else
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
 }
 
 void CpuCompiler::Emitter::begin() {
@@ -129,12 +132,13 @@ void CpuCompiler::Emitter::begin() {
   cycles = 0;
 }
 
-void CpuCompiler::Emitter::end() {
+void CpuCompiler::Emitter::end(bool defer_exit) {
   op1(SLJIT_MOV, gpr(0), imm(0));
   op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
   op1(SLJIT_MOV_U8, field(&cpu.delay_slot_), imm(0));
   op1(SLJIT_MOV_U8, field(&cpu.block_exit_), imm(0));
-  return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), cycles);
+  if (!defer_exit)
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), cycles);
 }
 
 bool CpuCompiler::Emitter::compile() {
@@ -143,13 +147,26 @@ bool CpuCompiler::Emitter::compile() {
   sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4, 4, 0);
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
+  internal_entries.resize(block.words.size());
+  instruction_labels.resize(block.words.size());
+  for (unsigned n = 0; n < block.words.size(); ++n)
+    if (const auto target = internal_target(n))
+      internal_entries[*target] = true;
   bool previous_branch = false;
   bool conditional_delay = false;
   for (unsigned n = 0; n < block.words.size(); ++n) {
     const auto instruction = block.words[n];
     const auto info = block_instruction(instruction);
+    if (internal_entries[n]) {
+      commit_pipeline();
+      advance(cycles);
+      cycles = 0;
+    }
+    instruction_labels[n] = sljit_emit_label(compiler);
+    const auto target = previous_branch ? internal_target(n - 1) : std::nullopt;
+    const bool defer_exit = target.has_value();
     cycles += 2;
-    if (!n || !(pc & 31))
+    if (!n || !(pc & 31) || internal_entries[n])
       cache_guard(physical + n * 4);
     const auto opcode = instruction >> 26;
     const auto function = instruction & 63;
@@ -166,18 +183,21 @@ bool CpuCompiler::Emitter::compile() {
         opcode == 25 || (opcode == 0 && (function == 20 || function == 22 || function == 23 ||
                                          function == 45 || function == 47 || function >= 56));
     if (native && (!requires_wide || wide)) {
-      const bool full = !n || previous_branch;
+      const bool full = !n || previous_branch || internal_entries[n];
       if (full)
         begin();
       integer(instruction);
       if (full)
-        end();
+        end(defer_exit);
       else
         pipeline_dirty = true;
-    } else if (!memory(instruction, !n || previous_branch)) {
-      execute(instruction);
+    } else if (!branch(instruction) &&
+               !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit)) {
+      execute(instruction, defer_exit);
     }
     pc += 4;
+    if (target)
+      dispatch_internal(*target);
     if (!info.branch && info.terminal) {
       commit_pipeline();
       return_now(cycles);
@@ -196,6 +216,8 @@ bool CpuCompiler::Emitter::compile() {
   commit_pipeline();
   return_now(cycles);
   memory_slow_paths();
+  for (const auto &[jump, target] : internal_jumps)
+    sljit_set_label(jump, instruction_labels[target]);
   block.code = sljit_generate_code(compiler, 0, nullptr);
   block.bytes = static_cast<std::size_t>(sljit_get_generated_code_size(compiler));
   return block.code != nullptr;

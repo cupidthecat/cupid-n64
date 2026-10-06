@@ -101,6 +101,8 @@ void control_tests();
 void cache_tests();
 void execution_tests();
 void native_memory_tests();
+void native_loop_tests();
+void native_branch_tests();
 void fpu_tests();
 
 } // namespace test
