@@ -10,6 +10,7 @@ int main() {
   test::execution_tests();
   test::native_memory_tests();
   test::native_loop_tests();
+  test::native_boundary_tests();
   test::native_branch_tests();
   test::native_entry_tests();
   test::fpu_tests();
