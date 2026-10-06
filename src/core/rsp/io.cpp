@@ -111,8 +111,12 @@ std::uint32_t Rsp::read_status(std::uint32_t address) {
 }
 
 void Rsp::write_status(std::uint32_t address, std::uint32_t value) {
-  if (((address & 31) >> 2) == 0)
+  if (((address & 31) >> 2) == 0) {
     pc_ = value & 0xffc;
+    pipeline_pc_ = pc_;
+    next_pc_ = (pc_ + 4) & 0xfff;
+    delay_slot_ = next_delay_slot_ = false;
+  }
 }
 
 } // namespace cupid::n64

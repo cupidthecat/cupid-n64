@@ -25,6 +25,13 @@ add_library(cupid_core
   src/core/rsp/rsp.cpp
   src/core/rsp/io.cpp
   src/core/rsp/dma.cpp
+  src/core/rsp/scalar/execute.cpp
+  src/core/rsp/pipeline/decode.cpp
+  src/core/rsp/pipeline/execute.cpp
+  src/core/rsp/vector/transfer.cpp
+  src/core/rsp/vector/memory.cpp
+  src/core/rsp/vector/execute.cpp
+  src/core/rsp/vector/divide.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -63,4 +70,13 @@ if(BUILD_TESTING)
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)
+  add_executable(rsp_tests
+    tests/rsp/main.cpp
+    tests/rsp/scalar.cpp
+    tests/rsp/vector.cpp
+    tests/rsp/memory.cpp
+    tests/rsp/pipeline.cpp
+  )
+  target_link_libraries(rsp_tests PRIVATE cupid_core)
+  add_test(NAME signal_processor COMMAND rsp_tests)
 endif()
