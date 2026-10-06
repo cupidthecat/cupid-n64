@@ -11,9 +11,10 @@ struct CodeMemory : Memory {
                                    : std::span<const std::uint32_t>();
   }
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> dest) override {
-    for (unsigned n = 0; n < dest.size(); ++n)
-      dest[n] = words[((address >> 2) + n) % words.size()];
-    return {0, true};
+    if (success)
+      for (unsigned n = 0; n < dest.size(); ++n)
+        dest[n] = words[((address >> 2) + n) % words.size()];
+    return {clocks, success};
   }
 };
 struct BlockFixture {
@@ -34,6 +35,17 @@ struct BlockFixture {
 } // namespace
 
 void execution_tests() {
+  {
+    BlockFixture f;
+    f.code(0, i(9, 0, 1, 42));
+    f.memory.success = false;
+    f.run();
+    equal(f.cpu.state().clocks, 98);
+    equal(f.cpu.state().gpr[1], 0);
+    equal(f.cpu.read_control(Epc), 0xffffffff80001000);
+    equal(f.cpu.state().pc, 0xffffffff80000180);
+    equal((f.cpu.read_control(Cause) >> 2) & 31, static_cast<unsigned>(Exception::BusInstruction));
+  }
   {
     BlockFixture f;
     f.code(0, i(9, 0, 1, 42));

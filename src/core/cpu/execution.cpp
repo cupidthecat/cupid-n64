@@ -69,13 +69,13 @@ bool Cpu::run_block(const std::uint64_t &clock_target) {
     const auto pc = state_.pc;
     const auto instruction = instructions[(pc - start_pc) >> 2];
     const auto info = block_instruction(instruction);
+    advance_clocks(2);
     if (first_instruction || !(pc & 31)) {
       const auto address = physical + static_cast<std::uint32_t>(pc - start_pc);
       auto &line = icache_[(pc >> 5) & 511];
       if (!line.hit(address) && !fill(line, address, static_cast<std::uint32_t>(pc) & 0xfe0, true))
         return true;
     }
-    advance_clocks(2);
     begin_instruction();
     decode(instruction);
     const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
