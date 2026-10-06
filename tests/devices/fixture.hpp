@@ -51,5 +51,8 @@ void ri_tests();
 void rdram_tests();
 void pi_tests();
 void timing_tests();
+void cic_tests();
+void pif_tests();
+void gamepad_tests();
 
 } // namespace test
