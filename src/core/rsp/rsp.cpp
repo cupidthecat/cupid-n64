@@ -1,4 +1,5 @@
 #include "core/rsp/rsp.hpp"
+#include "core/rsp/recompiler.hpp"
 #include <utility>
 
 namespace cupid::n64 {
@@ -6,9 +7,14 @@ namespace cupid::n64 {
 Rsp::Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random)
     : ram_(ram), interrupts_(interrupts), random_(random) {
   power();
+  compiler_ = std::make_unique<RspCompiler>(*this);
 }
 
+Rsp::~Rsp() = default;
+
 void Rsp::power() {
+  if (compiler_)
+    compiler_->reset();
   memory_.fill(0);
   status_ = {};
   state_ = {};
@@ -36,6 +42,11 @@ void Rsp::connect_display(std::function<std::uint32_t(unsigned)> read,
   display_write_ = std::move(write);
 }
 
+std::span<std::uint8_t, 4096> Rsp::imem() {
+  compiler_->expose_memory();
+  return std::span(memory_).last<4096>();
+}
+
 std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes) const {
   const auto region = address & 0x1000;
   address = (address & 0xfff) & ~(bytes - 1u);
@@ -48,8 +59,11 @@ std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes) const {
 void Rsp::write_local(std::uint32_t address, unsigned bytes, std::uint64_t value) {
   const auto region = address & 0x1000;
   address = (address & 0xfff) & ~(bytes - 1u);
-  if (region && invalidate_)
-    invalidate_(address, bytes);
+  if (region) {
+    compiler_->invalidate(address, bytes);
+    if (invalidate_)
+      invalidate_(address, bytes);
+  }
   for (unsigned n = 0; n < bytes; ++n)
     memory_[region | (address + n)] = static_cast<std::uint8_t>(value >> ((bytes - n - 1) * 8));
 }

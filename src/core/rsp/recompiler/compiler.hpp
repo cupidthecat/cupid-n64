@@ -1,0 +1,112 @@
+#pragma once
+
+#include "core/rsp/recompiler.hpp"
+#include "core/rsp/rsp.hpp"
+#include <bit>
+#include <bitset>
+#include <cstddef>
+#include <sljitLir.h>
+#include <unordered_map>
+#include <vector>
+
+namespace cupid::n64 {
+
+struct RspCompiler::Impl {
+  struct Key {
+    std::array<Rsp::PipelineStage, 3> previous;
+    std::uint32_t pc;
+    bool single;
+    bool operator==(const Key &) const = default;
+  };
+  struct Hash {
+    std::size_t operator()(const Key &key) const {
+      std::uint64_t value = (key.pc << 1) | unsigned(key.single);
+      for (const auto &stage : key.previous) {
+        value = std::rotl(value, 13) ^ (std::uint64_t(stage.gpr) << 32) ^ stage.vector;
+        value = std::rotl(value, 7) ^ unsigned(stage.load);
+      }
+      return std::hash<std::uint64_t>()(value);
+    }
+  };
+  struct Block {
+    using Function = void (*)();
+    Key key;
+    std::vector<std::uint32_t> words;
+    std::bitset<128> lines;
+    void *code = nullptr;
+    std::size_t bytes = 0;
+    ~Block() {
+      if (code)
+        sljit_free_code(code, nullptr);
+    }
+    void execute() const {
+      std::bit_cast<Function>(code)();
+    }
+  };
+  Rsp &rsp;
+  std::unordered_map<Key, std::vector<std::unique_ptr<Block>>, Hash> blocks;
+  std::array<Block *, 1024> context{};
+  std::bitset<128> dirty;
+  bool external_memory = false;
+  std::size_t bytes = 0;
+  explicit Impl(Rsp &rsp) : rsp(rsp) {}
+};
+
+struct RspCompiler::Emitter {
+  struct Operand {
+    sljit_s32 type;
+    sljit_sw value = 0;
+  };
+  struct Exit {
+    sljit_jump *jump;
+    Rsp::Pipeline pipeline;
+    std::uint32_t pc;
+  };
+  struct MemoryPath {
+    sljit_jump *enter;
+    sljit_label *resume;
+    std::uint32_t instruction;
+    std::uint32_t pc;
+  };
+  Rsp &rsp;
+  Impl::Block &block;
+  sljit_compiler *compiler;
+  Rsp::Pipeline pipeline;
+  std::uint32_t start;
+  bool first_instruction = true;
+  std::vector<Exit> exits;
+  std::vector<MemoryPath> memory_paths;
+
+  Emitter(Rsp &rsp, Impl::Block &block);
+  ~Emitter();
+  bool compile();
+  std::uint32_t word(unsigned index);
+  bool integer(std::uint32_t instruction);
+  bool memory(std::uint32_t instruction, std::uint32_t pc);
+  void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch);
+  void commit(std::uint32_t pc, bool branch);
+  void budget_exit(std::uint32_t pc);
+  void op1(sljit_s32 op, Operand dest, Operand source);
+  void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
+  void compare(unsigned dest, Operand left, Operand right, bool is_signed);
+  void store(unsigned dest, Operand source);
+  static void helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
+  static void vector_helper(Rsp *rsp, std::uint32_t instruction);
+  static void branch_helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
+  static void dma(Rsp *rsp, std::uint32_t clocks);
+
+  static Operand reg(sljit_s32 index) {
+    return {index};
+  }
+  static Operand imm(std::uint64_t value) {
+    return {SLJIT_IMM, static_cast<sljit_sw>(value)};
+  }
+  static Operand field(const void *address) {
+    return {SLJIT_MEM0(), reinterpret_cast<sljit_sw>(address)};
+  }
+  static Operand gpr(unsigned index) {
+    return {SLJIT_MEM1(SLJIT_S0), static_cast<sljit_sw>(offsetof(RspState, gpr) + index * 4)};
+  }
+};
+
+} // namespace cupid::n64

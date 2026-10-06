@@ -3,9 +3,11 @@
 #include "core/devices/mi/mips_interface.hpp"
 #include "core/rsp/state.hpp"
 #include <functional>
+#include <memory>
 
 namespace cupid::n64 {
 
+class RspCompiler;
 struct RspStatus {
   bool semaphore = false;
   bool halted = true;
@@ -19,6 +21,7 @@ struct RspStatus {
 class Rsp {
 public:
   Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random);
+  ~Rsp();
   void power();
   void connect_sync(std::function<void()> callback);
   void connect_invalidation(std::function<void(std::uint32_t, unsigned)> callback);
@@ -41,6 +44,7 @@ public:
     clock_ -= clocks;
   }
   void run();
+  void run_interpreted();
   void connect_display(std::function<std::uint32_t(unsigned)> read,
                        std::function<void(unsigned, std::uint32_t)> write);
   RspState &state() {
@@ -61,9 +65,7 @@ public:
   std::span<std::uint8_t, 4096> dmem() {
     return std::span(memory_).first<4096>();
   }
-  std::span<std::uint8_t, 4096> imem() {
-    return std::span(memory_).last<4096>();
-  }
+  std::span<std::uint8_t, 4096> imem();
   bool dma_busy() const {
     return busy_read_ || busy_write_;
   }
@@ -72,6 +74,7 @@ public:
   }
 
 private:
+  friend class RspCompiler;
   enum OpFlag : unsigned {
     Load = 1,
     Store = 2,
@@ -91,6 +94,7 @@ private:
     std::uint32_t gpr = 0;
     std::uint32_t vector = 0;
     bool load = false;
+    bool operator==(const PipelineStage &) const = default;
   };
   struct Pipeline {
     std::array<PipelineStage, 3> previous{};
@@ -149,6 +153,7 @@ private:
   std::function<void(std::uint32_t, unsigned)> invalidate_;
   std::function<std::uint32_t(unsigned)> display_read_;
   std::function<void(unsigned, std::uint32_t)> display_write_;
+  std::unique_ptr<RspCompiler> compiler_;
 };
 
 } // namespace cupid::n64
