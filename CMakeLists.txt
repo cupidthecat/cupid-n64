@@ -78,6 +78,22 @@ if(CUPID_HARDWARE_RENDERER)
   include(cmake/Renderer.cmake)
 endif()
 
+option(CUPID_DESKTOP "Build the Windows desktop frontend" ON)
+if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
+  add_executable(cupid_desktop WIN32
+    src/desktop/windows/main.cpp
+    src/desktop/windows/window.cpp
+    src/desktop/windows/audio.cpp
+    src/desktop/session.cpp
+  )
+  set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
+  target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(cupid_desktop PRIVATE cupid_renderer comdlg32 shell32 winmm)
+  if(MSVC)
+    target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
+  endif()
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
   add_executable(cpu_tests
