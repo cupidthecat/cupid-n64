@@ -113,6 +113,7 @@ if(BUILD_TESTING)
     tests/cpu/cache_refill.cpp
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
+    tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
     tests/cpu/section_invalidation.cpp

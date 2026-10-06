@@ -9,6 +9,7 @@ int main() {
   test::cache_refill_tests();
   test::execution_tests();
   test::native_memory_tests();
+  test::native_fpu_memory_tests();
   test::native_loop_tests();
   test::native_boundary_tests();
   test::native_branch_tests();

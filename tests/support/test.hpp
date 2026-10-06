@@ -104,6 +104,7 @@ void cache_coherence_tests();
 void cache_refill_tests();
 void execution_tests();
 void native_memory_tests();
+void native_fpu_memory_tests();
 void native_loop_tests();
 void native_boundary_tests();
 void native_branch_tests();

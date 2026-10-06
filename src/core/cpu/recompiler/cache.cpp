@@ -46,7 +46,8 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto first = (physical & 4095) >> 2;
   const unsigned reverse = cpu.little_endian() ? 1 : 0;
   const bool wide = cpu.mode() == Cpu::Mode::Kernel || cpu.extended_addressing();
-  const Impl::Key key{cpu.state_.pc, reverse | (unsigned(wide) << 1)};
+  const auto floating_mode = static_cast<unsigned>(cpu.control_[Status] & 0x24000000);
+  const Impl::Key key{cpu.state_.pc, reverse | (unsigned(wide) << 1) | floating_mode};
   if (impl_->bytes >= 63 * 1024 * 1024)
     reset();
   auto &section = impl_->section(page);
