@@ -24,6 +24,13 @@ jobs:
         run: cmake --build build --config Release --parallel 2
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Upload Windows frontend
+        if: runner.os == 'Windows' && matrix.ipo == 'ON'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cupid-n64-windows
+          path: build/Release/cupid-n64.exe
+          if-no-files-found: error
 
   clang:
     runs-on: ubuntu-latest
