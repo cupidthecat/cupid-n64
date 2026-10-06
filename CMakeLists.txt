@@ -9,6 +9,9 @@ add_library(cupid_core
   src/core/cpu/cache.cpp
   src/core/cpu/fpu/registers.cpp
   src/core/cpu/fpu/execute.cpp
+  src/core/devices/mi/mips_interface.cpp
+  src/core/devices/ri/ram_interface.cpp
+  src/core/devices/rdram/rdram.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -33,4 +36,12 @@ if(BUILD_TESTING)
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
   add_test(NAME vr4300 COMMAND cpu_tests)
+  add_executable(device_tests
+    tests/devices/main.cpp
+    tests/devices/mi.cpp
+    tests/devices/ri.cpp
+    tests/devices/rdram.cpp
+  )
+  target_link_libraries(device_tests PRIVATE cupid_core)
+  add_test(NAME console_devices COMMAND device_tests)
 endif()
