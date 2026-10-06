@@ -55,8 +55,42 @@ int main() {
     test::equal(frame.rgba[center + 1], 0);
     test::equal(frame.rgba[center + 2], 0);
   }
-  renderer.reset();
-  test::equal(console.ram().hidden()[0x80000] & 3, 3);
+  auto &cpu = console.cpu();
+  cpu.write_control(Status, 0x30000000);
+  cpu.state().gpr[5] = 0x30000000;
+  console.ram().write(0x100000, 4, test::i(9, 0, 4, 1));
+  console.ram().write(0x100004, 4, test::c(4, 5, Status));
+  cpu.set_pc(0xffffffff80100000);
+  test::equal(cpu.run_block(cpu.state().clocks), true);
+  test::equal(cpu.state().gpr[4], 1);
+  auto *tracker = console.instruction_tracker();
+  test::equal(tracker != nullptr, true);
+  if (!tracker)
+    return 1;
+  for (unsigned pass = 0; pass < 3; ++pass) {
+    const auto generation = tracker->generation(0x100000);
+    const auto value = pass == 2 ? 13u : 9u;
+    const std::uint32_t packets[][2] = {
+        {0x3f18003f, 0x00100000},
+        {0x2d000000, 0x00100100},
+        {0x2f300000, 0},
+        {0x37000000, test::i(9, 0, 4, static_cast<std::uint16_t>(value))},
+        {0x36000000, 0}};
+    for (const auto &packet : packets)
+      renderer->submit(packet);
+    test::equal(console.instruction_tracker() == nullptr, true);
+    if (pass == 2)
+      renderer.reset();
+    else
+      renderer->synchronize();
+    test::equal(console.instruction_tracker() == tracker, true);
+    test::equal(tracker->generation(0x100000) != generation, pass != 1);
+    cpu.state().gpr[30] = 0xffffffff80100000;
+    cpu.execute(test::i(47, 30, 16, 0));
+    cpu.set_pc(0xffffffff80100000);
+    test::equal(cpu.run_block(cpu.state().clocks), true);
+    test::equal(cpu.state().gpr[4], value);
+  }
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

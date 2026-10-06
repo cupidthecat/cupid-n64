@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/devices/ri/ram_interface.hpp"
+#include "core/memory/instruction_tracker.hpp"
 #include "core/timing/random.hpp"
 #include <array>
 #include <memory>
@@ -22,6 +23,8 @@ public:
   std::uint32_t read_word(std::uint32_t address);
   void write_word(std::uint32_t address, std::uint32_t value, unsigned repeat_length = 0);
   std::span<std::uint32_t> words() {
+    // Retained mutable views cannot report later writes.
+    exposed_ = true;
     return data_;
   }
   std::span<const std::uint32_t> words() const {
@@ -29,6 +32,9 @@ public:
   }
   bool identity() const {
     return identity_;
+  }
+  InstructionTracker *instruction_tracker() {
+    return identity_ && !exposed_ && !external_writers_ ? &instructions_ : nullptr;
   }
   std::span<std::uint8_t> hidden() {
     return hidden_view_;
@@ -39,6 +45,17 @@ public:
   }
 
 private:
+  friend class HardwareRenderer;
+  void begin_external_write() {
+    if (!external_writers_ && !exposed_)
+      instructions_.capture(data_);
+    ++external_writers_;
+  }
+  void end_external_write() {
+    --external_writers_;
+    if (!external_writers_ && !exposed_)
+      instructions_.compare(data_);
+  }
   struct Chip {
     bool present = false;
     bool enabled = false;
@@ -77,10 +94,13 @@ private:
   };
   std::unique_ptr<std::uint32_t[], WordDeleter> allocation_;
   std::span<std::uint32_t> data_;
+  InstructionTracker instructions_;
   std::vector<std::uint8_t> hidden_;
   std::span<std::uint8_t> hidden_view_;
   std::array<Chip, 4> chips_{};
   bool identity_ = false;
+  bool exposed_ = false;
+  unsigned external_writers_ = 0;
 };
 
 } // namespace cupid::n64

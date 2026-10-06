@@ -92,6 +92,7 @@ if(BUILD_TESTING)
     tests/cpu/native_memory.cpp
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
+    tests/cpu/section_invalidation.cpp
     tests/cpu/native_loops.cpp
     tests/cpu/native_boundaries.cpp
     tests/cpu/fpu.cpp
@@ -106,6 +107,7 @@ if(BUILD_TESTING)
     tests/devices/mi.cpp
     tests/devices/ri.cpp
     tests/devices/rdram.cpp
+    tests/devices/instruction_tracking.cpp
     tests/devices/pi.cpp
     tests/devices/timing.cpp
     tests/devices/cic.cpp

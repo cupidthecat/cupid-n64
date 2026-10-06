@@ -3,6 +3,7 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
 #include "core/cpu/recompiler.hpp"
+#include "core/memory/instruction_tracker.hpp"
 #include <array>
 #include <memory>
 #include <optional>
@@ -46,9 +47,17 @@ struct CpuCompiler::Impl {
   struct Entry {
     std::shared_ptr<Block> block;
     unsigned index = 0;
+    std::uint64_t cache_generation = 0;
+    bool tracked = false;
+  };
+  struct Section {
+    std::unordered_map<Key, Entry, Hash> blocks;
+    InstructionTracker *tracker = nullptr;
+    std::uint64_t generation = 0;
+    std::size_t bytes = 0;
   };
   Cpu &cpu;
-  std::unordered_map<Key, Entry, Hash> blocks;
+  std::unordered_map<std::uint32_t, Section> sections;
   std::size_t bytes = 0;
   explicit Impl(Cpu &cpu) : cpu(cpu) {}
 };

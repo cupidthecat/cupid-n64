@@ -49,6 +49,7 @@ struct MemoryFixture : cupid::n64::Bus {
 void mi_tests();
 void ri_tests();
 void rdram_tests();
+void instruction_tracking_tests();
 void pi_tests();
 void timing_tests();
 void cic_tests();

@@ -3,6 +3,8 @@
 namespace cupid::n64 {
 
 bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, bool instruction) {
+  if (instruction)
+    ++instruction_cache_generation_;
   advance_clocks(instruction ? 96 : 80);
   line.tag = physical & ~0xfffu;
   line.dirty = false;
@@ -80,6 +82,8 @@ void Cpu::cache_operation(unsigned operation, std::uint64_t address) {
   if (!access)
     return;
   const bool instruction = !(operation & 1);
+  if (instruction)
+    ++instruction_cache_generation_;
   const auto shift = instruction ? 5u : 4u;
   const auto index = static_cast<unsigned>((address >> shift) & 511);
   auto &line = instruction ? icache_[index] : dcache_[index];

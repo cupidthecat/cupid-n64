@@ -94,7 +94,11 @@ void pi_tests() {
     PeripheralFixture f;
     f.pi.write_io(0, 0x1000);
     f.pi.write_io(4, 0x10000000);
+    auto *tracker = f.ram.instruction_tracker();
+    tracker->watch(0x1000, 16);
+    const auto generation = tracker->generation(0x1000);
     f.pi.write_io(12, 15);
+    equal(tracker->generation(0x1000) != generation, true);
     equal(f.pi.read_io(0), 0x1010);
     equal(f.pi.read_io(4), 0x10000010);
     equal(f.pi.read_io(12), 127);

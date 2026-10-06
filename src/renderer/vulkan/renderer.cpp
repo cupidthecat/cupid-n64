@@ -13,6 +13,7 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   std::unique_ptr<RDP::CommandProcessor> processor;
   RDP::VIScanoutBuffer scanout;
   std::atomic<bool> crashed = false;
+  bool pending_writes = false;
 
   explicit Implementation(Rdram &memory) : ram(memory) {
     if (!Vulkan::Context::init_loader(nullptr) ||
@@ -21,7 +22,7 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
     device.set_context(context);
     device.init_frame_contexts(3);
     processor = std::make_unique<RDP::CommandProcessor>(
-        device, ram.words().data(), 0, ram.size(), ram.size() / 2,
+        device, ram.data_.data(), 0, ram.size(), ram.size() / 2,
         RDP::COMMAND_PROCESSOR_FLAG_HOST_VISIBLE_HIDDEN_RDRAM_BIT);
     if (!processor->device_is_supported())
       throw std::runtime_error("Vulkan device does not support display rendering");
@@ -33,7 +34,15 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   ~Implementation() {
     if (processor) {
       processor->idle();
+      finish_writes();
       ram.bind_hidden({});
+    }
+  }
+
+  void finish_writes() {
+    if (pending_writes) {
+      ram.end_external_write();
+      pending_writes = false;
     }
   }
 
@@ -48,12 +57,17 @@ HardwareRenderer::HardwareRenderer(Rdram &ram)
 HardwareRenderer::~HardwareRenderer() = default;
 
 void HardwareRenderer::submit(std::span<const std::uint32_t> words) {
+  if (!implementation_->pending_writes) {
+    implementation_->ram.begin_external_write();
+    implementation_->pending_writes = true;
+  }
   implementation_->processor->enqueue_command(static_cast<unsigned>(words.size()), words.data());
 }
 
 void HardwareRenderer::synchronize() {
   auto &processor = *implementation_->processor;
   processor.wait_for_timeline(processor.signal_timeline());
+  implementation_->finish_writes();
 }
 
 void HardwareRenderer::write_video(unsigned index, std::uint32_t value) {
@@ -78,6 +92,7 @@ VideoFrame HardwareRenderer::frame(bool field) {
   if (!state.scanout.fence || !state.scanout.width || !state.scanout.height)
     return frame;
   state.scanout.fence->wait();
+  state.finish_writes();
   frame.width = state.scanout.width;
   frame.height = state.scanout.height;
   frame.rgba.resize(std::size_t(frame.width) * frame.height * 4);

@@ -76,8 +76,12 @@ void rsp_tests() {
     equal(rsp.dma_busy(), false);
     rsp.write_io(0, region | 0xff8);
     rsp.write_io(4, 0x2000);
+    auto *tracker = f.ram.instruction_tracker();
+    tracker->watch(0x2000, 16);
+    const auto generation = tracker->generation(0x2000);
     rsp.write_io(12, 15);
     rsp.advance_dma(6);
+    equal(tracker->generation(0x2000) != generation, true);
     equal(f.ram.read(0x2000, 8), 0x0102030405060708);
     equal(f.ram.read(0x2008, 8), 0x090a0b0c0d0e0f10);
     equal(f.ram.hidden()[0x1000], 0);
