@@ -9,6 +9,7 @@ int main() {
   test::cic_tests();
   test::pif_tests();
   test::gamepad_tests();
+  test::rsp_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
