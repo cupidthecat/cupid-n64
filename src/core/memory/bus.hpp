@@ -5,6 +5,8 @@
 
 namespace cupid::n64 {
 
+class InstructionTracker;
+
 struct BusRead {
   std::uint64_t value = 0;
   std::uint32_t clocks = 0;
@@ -24,6 +26,9 @@ public:
   }
   virtual std::span<const std::uint32_t> instruction_data(std::uint32_t) const {
     return {};
+  }
+  virtual InstructionTracker *instruction_tracker() {
+    return nullptr;
   }
   virtual BusRead read(std::uint32_t address, unsigned bytes) = 0;
   virtual BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) = 0;

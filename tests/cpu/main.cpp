@@ -13,6 +13,7 @@ int main() {
   test::native_boundary_tests();
   test::native_branch_tests();
   test::native_entry_tests();
+  test::section_invalidation_tests();
   test::fpu_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;

@@ -39,6 +39,9 @@ public:
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words) override;
   BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words) override;
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override;
+  InstructionTracker *instruction_tracker() override {
+    return ram_.instruction_tracker();
+  }
   Cpu &cpu() {
     return cpu_;
   }

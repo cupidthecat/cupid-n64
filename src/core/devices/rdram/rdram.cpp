@@ -7,7 +7,8 @@ Rdram::Rdram(RamInterface &interface, RandomGenerator &random, bool expansion)
     : interface_(interface), random_(random),
       allocation_(static_cast<std::uint32_t *>(
           ::operator new[]((expansion ? 8u : 4u) * 1024 * 1024, std::align_val_t(65536)))),
-      data_(allocation_.get(), (expansion ? 8u : 4u) * 1024 * 1024 / 4), hidden_(data_.size() * 2),
+      data_(allocation_.get(), (expansion ? 8u : 4u) * 1024 * 1024 / 4),
+      instructions_(static_cast<std::uint32_t>(data_.size() * 4)), hidden_(data_.size() * 2),
       hidden_view_(hidden_) {
   power();
 }
@@ -15,6 +16,7 @@ Rdram::Rdram(RamInterface &interface, RandomGenerator &random, bool expansion)
 void Rdram::power(bool reset) {
   if (reset)
     return;
+  instructions_.invalidate_all();
   std::fill(data_.begin(), data_.end(), 0);
   std::fill(hidden_view_.begin(), hidden_view_.end(), std::uint8_t(0));
   chips_ = {};
@@ -62,6 +64,7 @@ std::uint32_t Rdram::encode_current(unsigned current) {
 }
 
 void Rdram::update_mapping() {
+  instructions_.invalidate_all();
   identity_ = true;
   for (unsigned n = 0; n < chips_.size(); ++n) {
     const auto &chip = chips_[n];
@@ -204,6 +207,7 @@ std::uint64_t Rdram::read_raw(std::uint32_t address, unsigned bytes) const {
 
 void Rdram::write_raw(std::uint32_t address, unsigned bytes, std::uint64_t value) {
   address &= ~(bytes - 1u);
+  instructions_.invalidate(address, bytes);
   auto &word = data_[address >> 2];
   if (bytes == 8) {
     word = static_cast<std::uint32_t>(value >> 32);

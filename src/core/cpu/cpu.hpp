@@ -117,6 +117,7 @@ private:
   std::array<TlbEntry, 32> tlb_{};
   std::array<CacheLine, 512> icache_{};
   std::array<CacheLine, 512> dcache_{};
+  std::uint64_t instruction_cache_generation_ = 1;
   std::uint64_t control_latch_ = 0;
   std::uint64_t cop2_latch_ = 0;
   std::uint64_t count_ticks_ = 0;

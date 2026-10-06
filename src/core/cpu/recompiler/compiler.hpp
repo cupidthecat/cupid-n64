@@ -3,6 +3,7 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
 #include "core/cpu/recompiler.hpp"
+#include "core/memory/instruction_tracker.hpp"
 #include <array>
 #include <memory>
 #include <optional>
@@ -18,11 +19,6 @@ struct CpuCompiler::Impl {
     std::uint64_t pc;
     unsigned mode;
     bool operator==(const Key &) const = default;
-  };
-  struct Hash {
-    std::size_t operator()(const Key &key) const {
-      return std::hash<std::uint64_t>()(key.pc) ^ (std::size_t(key.mode) << 1);
-    }
   };
   struct Block {
     struct InstructionView {
@@ -44,13 +40,62 @@ struct CpuCompiler::Impl {
     }
   };
   struct Entry {
+    Key key;
     std::shared_ptr<Block> block;
     unsigned index = 0;
+    std::uint64_t cache_generation = 0;
+    bool tracked = false;
+    std::unique_ptr<Entry> next;
+  };
+  struct Section {
+    std::array<std::unique_ptr<Entry>, 1024> entries;
+    InstructionTracker *tracker = nullptr;
+    std::uint64_t generation = 0;
+    std::size_t bytes = 0;
+    Entry *find(const Key &key) const {
+      auto *entry = entries[(key.pc >> 2) & 1023].get();
+      while (entry && entry->key != key)
+        entry = entry->next.get();
+      return entry;
+    }
+    void insert(const Key &key, const std::shared_ptr<Block> &block, unsigned index = 0) {
+      if (find(key))
+        return;
+      auto &head = entries[(key.pc >> 2) & 1023];
+      auto entry = std::make_unique<Entry>();
+      entry->key = key;
+      entry->block = block;
+      entry->index = index;
+      entry->next = std::move(head);
+      head = std::move(entry);
+    }
+    void erase(const std::shared_ptr<Block> &block) {
+      for (auto &head : entries) {
+        auto *entry = &head;
+        while (*entry) {
+          if ((*entry)->block == block) {
+            auto next = std::move((*entry)->next);
+            *entry = std::move(next);
+          } else
+            entry = &(*entry)->next;
+        }
+      }
+    }
   };
   Cpu &cpu;
-  std::unordered_map<Key, Entry, Hash> blocks;
+  std::array<std::unique_ptr<Section>, 2048> sections;
+  std::unordered_map<std::uint32_t, Section> other_sections;
   std::size_t bytes = 0;
   explicit Impl(Cpu &cpu) : cpu(cpu) {}
+  Section &section(std::uint32_t page) {
+    const auto index = page >> 12;
+    if (index >= sections.size())
+      return other_sections[page];
+    auto &section = sections[index];
+    if (!section)
+      section = std::make_unique<Section>();
+    return *section;
+  }
 };
 
 struct CpuCompiler::Emitter {
