@@ -73,15 +73,24 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
   bool conditional_delay = false;
   while (state_.pc >= start_pc && state_.pc < end_pc) {
     const auto pc = state_.pc;
-    const auto instruction = instructions[(pc - start_pc) >> 2];
-    const auto info = block_instruction(instruction);
+    const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
+    auto instruction = instructions[index];
+    bool changed = false;
     advance_clocks(2);
     if (first_instruction || !(pc & 31)) {
       const auto address = physical + static_cast<std::uint32_t>(pc - start_pc);
       auto &line = icache_[(pc >> 5) & 511];
-      if (!line.hit(address) && !fill(line, address, static_cast<std::uint32_t>(pc) & 0xfe0, true))
-        return true;
+      if (!line.hit(address)) {
+        if (!fill(line, address, static_cast<std::uint32_t>(pc) & 0xfe0, true))
+          return true;
+        const auto remaining = std::min(count - index, 8 - ((address >> 2) & 7));
+        for (unsigned n = 0; n < remaining; ++n)
+          changed |= instructions[index + n] != line.words[(((address >> 2) + n) ^ reverse) & 7];
+        if (changed)
+          instruction = line.words[((address >> 2) ^ reverse) & 7];
+      }
     }
+    const auto info = block_instruction(instruction);
     begin_instruction();
     decode(instruction);
     const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
@@ -89,7 +98,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
       advance_clocks(126);
     const bool exit = block_exit_;
     end_instruction();
-    if (exit || (!info.branch && info.terminal) || (instruction >> 26) == 47 ||
+    if (changed || exit || (!info.branch && info.terminal) || (instruction >> 26) == 47 ||
         (conditional_delay && state_.clocks >= clock_target))
       return true;
     conditional_delay = info.branch && !info.stop_after_delay && (instruction >> 26) != 3 &&

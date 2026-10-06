@@ -1,4 +1,5 @@
 #include "core/cpu/recompiler/compiler.hpp"
+#include <algorithm>
 
 namespace cupid::n64 {
 
@@ -37,11 +38,21 @@ void CpuCompiler::Emitter::store(unsigned dest, Operand source, bool word) {
   op1(SLJIT_MOV, gpr(dest), source);
 }
 
-sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical, std::uint32_t index,
-                                     sljit_uw clocks) {
+sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
+                                     const Impl::Block::InstructionView *view, sljit_uw clocks) {
   cpu->advance_clocks(clocks);
-  auto &line = cpu->icache_[(index >> 5) & 511];
-  return line.hit(physical) || cpu->fill(line, physical, index & 0xfe0, true);
+  auto &line = cpu->icache_[(cpu->state_.pc >> 5) & 511];
+  if (line.hit(physical))
+    return 1;
+  if (!cpu->fill(line, physical, static_cast<std::uint32_t>(cpu->state_.pc) & 0xfe0, true))
+    return 0;
+  const unsigned reverse = cpu->little_endian() ? 1 : 0;
+  for (unsigned n = 0; n < view->count; ++n)
+    if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {
+      helper(cpu, line.words[((physical >> 2) ^ reverse) & 7], 0);
+      return 0;
+    }
+  return 1;
 }
 
 sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
@@ -99,11 +110,16 @@ void CpuCompiler::Emitter::return_if(sljit_s32 condition, Operand left, Operand 
 
 void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   commit_pipeline();
+  const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
+  auto &view = block.views.emplace_back();
+  view.count = static_cast<unsigned>(
+      std::min<std::size_t>(8 - ((address >> 2) & 7), block.words.size() - index));
+  std::copy_n(block.words.begin() + index, view.count, view.words.begin());
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(address));
-  op1(SLJIT_MOV32, reg(SLJIT_R2), imm(static_cast<std::uint32_t>(pc)));
+  op1(SLJIT_MOV, reg(SLJIT_R2), imm(reinterpret_cast<std::uintptr_t>(&view)));
   op1(SLJIT_MOV, reg(SLJIT_R3), imm(cycles));
-  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4(W, P, 32, 32, W), SLJIT_IMM,
+  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4(W, P, 32, P, W), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
   cycles = 0;
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 0);
@@ -144,6 +160,8 @@ void CpuCompiler::Emitter::end(bool defer_exit) {
 bool CpuCompiler::Emitter::compile() {
   if (!compiler)
     return false;
+  // Generated code keeps pointers to the fetch views.
+  block.views.reserve(block.words.size());
   sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4, 4, 0);
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
