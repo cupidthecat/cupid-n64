@@ -27,6 +27,10 @@ add_library(cupid_core
   src/core/controller/gamepad.cpp
   src/core/controller/pak.cpp
   src/core/rsp/rsp.cpp
+  src/core/rsp/recompiler/cache.cpp
+  src/core/rsp/recompiler/emitter.cpp
+  src/core/rsp/recompiler/integer.cpp
+  src/core/rsp/recompiler/memory.cpp
   src/core/rsp/io.cpp
   src/core/rsp/dma.cpp
   src/core/rsp/scalar/execute.cpp
@@ -108,6 +112,7 @@ if(BUILD_TESTING)
     tests/rsp/scalar.cpp
     tests/rsp/vector.cpp
     tests/rsp/simd.cpp
+    tests/rsp/native.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
   )

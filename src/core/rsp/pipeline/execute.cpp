@@ -1,3 +1,4 @@
+#include "core/rsp/recompiler.hpp"
 #include "core/rsp/rsp.hpp"
 
 namespace cupid::n64 {
@@ -107,6 +108,16 @@ void Rsp::advance(std::uint32_t clocks) {
 }
 
 void Rsp::run() {
+  while (clock_ < 0) {
+    if (!status_.halted && compiler_->run())
+      continue;
+    const auto elapsed = status_.halted ? 128u : step();
+    clock_ += elapsed;
+    advance_dma(elapsed);
+  }
+}
+
+void Rsp::run_interpreted() {
   while (clock_ < 0) {
     const auto elapsed = status_.halted ? 128u : step();
     clock_ += elapsed;

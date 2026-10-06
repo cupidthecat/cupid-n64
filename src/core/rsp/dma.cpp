@@ -1,3 +1,4 @@
+#include "core/rsp/recompiler.hpp"
 #include "core/rsp/rsp.hpp"
 
 namespace cupid::n64 {
@@ -22,8 +23,11 @@ void Rsp::advance_dma(std::uint32_t clocks) {
 
 void Rsp::transfer_dma() {
   const auto region = current_.local_address & 0x1000;
-  if (busy_read_ && region && invalidate_)
-    invalidate_(current_.local_address & 0xfff, current_.length + 8);
+  if (busy_read_ && region) {
+    compiler_->invalidate(current_.local_address & 0xfff, current_.length + 8);
+    if (invalidate_)
+      invalidate_(current_.local_address & 0xfff, current_.length + 8);
+  }
   for (unsigned offset = 0; offset <= current_.length; offset += 8) {
     const auto local_address = region | (current_.local_address & 0xfff);
     if (busy_read_) {
