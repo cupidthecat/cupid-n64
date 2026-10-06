@@ -174,7 +174,7 @@ bool CpuCompiler::Emitter::compile() {
         end();
       else
         pipeline_dirty = true;
-    } else {
+    } else if (!memory(instruction, !n || previous_branch)) {
       execute(instruction);
     }
     pc += 4;
@@ -195,6 +195,7 @@ bool CpuCompiler::Emitter::compile() {
   }
   commit_pipeline();
   return_now(cycles);
+  memory_slow_paths();
   block.code = sljit_generate_code(compiler, 0, nullptr);
   block.bytes = static_cast<std::size_t>(sljit_get_generated_code_size(compiler));
   return block.code != nullptr;

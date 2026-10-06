@@ -44,6 +44,11 @@ struct CpuCompiler::Emitter {
     sljit_s32 type;
     sljit_sw value = 0;
   };
+  struct MemoryPath {
+    std::vector<sljit_jump *> enter;
+    sljit_label *resume;
+    std::uint32_t instruction;
+  };
   Cpu &cpu;
   Impl::Block &block;
   sljit_compiler *compiler;
@@ -52,11 +57,14 @@ struct CpuCompiler::Emitter {
   bool wide;
   unsigned cycles = 0;
   bool pipeline_dirty = false;
+  std::vector<MemoryPath> memory_paths;
 
   Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc, std::uint32_t physical, bool wide);
   ~Emitter();
   bool compile();
   bool integer(std::uint32_t instruction);
+  bool memory(std::uint32_t instruction, bool full);
+  void memory_slow_paths();
   bool special(std::uint32_t instruction);
   void op1(sljit_s32 op, Operand dest, Operand source);
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);

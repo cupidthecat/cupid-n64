@@ -7,6 +7,7 @@ add_library(cupid_core
   src/core/cpu/recompiler/cache.cpp
   src/core/cpu/recompiler/emitter.cpp
   src/core/cpu/recompiler/integer.cpp
+  src/core/cpu/recompiler/memory.cpp
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
   src/core/cpu/control.cpp
@@ -82,6 +83,7 @@ if(BUILD_TESTING)
     tests/cpu/control.cpp
     tests/cpu/cache.cpp
     tests/cpu/execution.cpp
+    tests/cpu/native_memory.cpp
     tests/cpu/fpu.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
