@@ -1,13 +1,19 @@
 #include "core/cpu/cpu.hpp"
+#include "core/cpu/recompiler.hpp"
 #include <algorithm>
 
 namespace cupid::n64 {
 
 Cpu::Cpu(Bus &bus) : bus_(bus) {
   power();
+  compiler_ = std::make_unique<CpuCompiler>(*this);
 }
 
+Cpu::~Cpu() = default;
+
 void Cpu::power() {
+  if (compiler_)
+    compiler_->reset();
   state_ = {};
   control_ = {};
   tlb_ = {};

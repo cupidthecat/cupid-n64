@@ -1,0 +1,95 @@
+#pragma once
+
+#include "core/cpu/cpu.hpp"
+#include "core/cpu/execution/instruction.hpp"
+#include "core/cpu/recompiler.hpp"
+#include <sljitLir.h>
+#include <unordered_map>
+#include <vector>
+
+namespace cupid::n64 {
+
+struct CpuCompiler::Impl {
+  struct Key {
+    std::uint64_t pc;
+    unsigned mode;
+    bool operator==(const Key &) const = default;
+  };
+  struct Hash {
+    std::size_t operator()(const Key &key) const {
+      return std::hash<std::uint64_t>()(key.pc) ^ (std::size_t(key.mode) << 1);
+    }
+  };
+  struct Block {
+    using Function = void (*)(const std::uint64_t *);
+    std::vector<std::uint32_t> words;
+    void *code = nullptr;
+    std::size_t bytes = 0;
+    ~Block() {
+      if (code)
+        sljit_free_code(code, nullptr);
+    }
+    void execute(const std::uint64_t &target) const {
+      std::bit_cast<Function>(code)(&target);
+    }
+  };
+  Cpu &cpu;
+  std::unordered_map<Key, std::unique_ptr<Block>, Hash> blocks;
+  std::size_t bytes = 0;
+  explicit Impl(Cpu &cpu) : cpu(cpu) {}
+};
+
+struct CpuCompiler::Emitter {
+  struct Operand {
+    sljit_s32 type;
+    sljit_sw value = 0;
+  };
+  Cpu &cpu;
+  Impl::Block &block;
+  sljit_compiler *compiler;
+  std::uint64_t pc;
+  std::uint32_t physical;
+  bool wide;
+  unsigned cycles = 0;
+  bool pipeline_dirty = false;
+
+  Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc, std::uint32_t physical, bool wide);
+  ~Emitter();
+  bool compile();
+  bool integer(std::uint32_t instruction);
+  bool special(std::uint32_t instruction);
+  void op1(sljit_s32 op, Operand dest, Operand source);
+  void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
+  void compare(Operand dest, Operand left, Operand right, bool is_signed);
+  void store(unsigned dest, Operand source, bool word = false);
+  void commit_pipeline();
+  void advance(unsigned clocks);
+  void return_now(unsigned clocks);
+  void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
+  void cache_guard(std::uint32_t address);
+  void execute(std::uint32_t instruction);
+  void begin();
+  void end();
+
+  static Operand reg(sljit_s32 index) {
+    return {index};
+  }
+  static Operand imm(std::uint64_t value) {
+    return {SLJIT_IMM, static_cast<sljit_sw>(value)};
+  }
+  static Operand field(const void *address) {
+    return {SLJIT_MEM0(), reinterpret_cast<sljit_sw>(address)};
+  }
+  static Operand state(std::size_t offset) {
+    return {SLJIT_MEM1(SLJIT_S1), static_cast<sljit_sw>(offset)};
+  }
+  static Operand gpr(unsigned index) {
+    return state(offsetof(CpuState, gpr) + index * 8);
+  }
+  static sljit_sw guard(Cpu *cpu, std::uint32_t physical, std::uint32_t index, sljit_uw clocks);
+  static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
+  static sljit_sw prepare(Cpu *cpu, sljit_uw clocks);
+  static void step(Cpu *cpu, sljit_uw clocks);
+};
+
+} // namespace cupid::n64

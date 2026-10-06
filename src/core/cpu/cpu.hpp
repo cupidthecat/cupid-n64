@@ -3,13 +3,17 @@
 #include "core/cpu/state.hpp"
 #include "core/memory/bus.hpp"
 #include <functional>
+#include <memory>
 #include <optional>
 
 namespace cupid::n64 {
 
+class CpuCompiler;
+
 class Cpu {
 public:
   explicit Cpu(Bus &bus);
+  ~Cpu();
   void power();
   void step();
   void execute(std::uint32_t instruction);
@@ -18,6 +22,7 @@ public:
   void request_nmi();
   void advance_clocks(std::uint64_t clocks);
   bool run_block(const std::uint64_t &clock_target);
+  bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
   void connect_sync(std::function<void()> callback) {
     synchronize_ = std::move(callback);
@@ -36,6 +41,7 @@ public:
   }
 
 private:
+  friend class CpuCompiler;
   enum class Mode { Kernel, Supervisor, User };
   enum class Segment { Invalid, Mapped, Cached, Direct, Cached32, Direct32 };
 
@@ -124,6 +130,7 @@ private:
   bool llbit_ = false;
   bool nmi_pending_ = false;
   std::function<void()> synchronize_;
+  std::unique_ptr<CpuCompiler> compiler_;
 };
 
 } // namespace cupid::n64

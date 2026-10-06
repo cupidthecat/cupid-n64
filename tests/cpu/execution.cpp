@@ -35,6 +35,82 @@ struct BlockFixture {
 } // namespace
 
 void execution_tests() {
+  for (auto immediate : {std::uint16_t(7), std::uint16_t(0xffff)}) {
+    BlockFixture f;
+    f.cpu.state().gpr[1] = 0x123456789abcdef0;
+    f.code(0, i(9, 0, 1, immediate));
+    f.code(4, i(11, 0, 0, 1));
+    f.code(8, i(9, 0, 2, 3));
+    f.code(12, 0x08000400);
+    f.code(16, 0);
+    f.run();
+    equal(f.cpu.state().gpr[1], immediate == 7 ? 7 : ~0ull);
+    equal(f.cpu.state().gpr[0], 0);
+    equal(f.cpu.state().gpr[2], 3);
+    f.cpu.power();
+    f.cpu.write_control(Status, 0x30000000);
+    f.cpu.set_pc(0xffffffff80001000);
+    f.run();
+    equal(f.cpu.state().gpr[1], immediate == 7 ? 7 : ~0ull);
+    equal(f.cpu.state().clocks, 106);
+  }
+  {
+    std::uint64_t random = 0x457238419ba43ull;
+    const auto next = [&] {
+      random ^= random << 13;
+      random ^= random >> 7;
+      random ^= random << 17;
+      return random;
+    };
+    constexpr std::array functions{0u,  2u,  3u,  4u,  6u,  7u,  15u, 16u, 17u, 18u,
+                                   19u, 20u, 22u, 23u, 33u, 35u, 36u, 37u, 38u, 39u,
+                                   42u, 43u, 45u, 47u, 56u, 58u, 59u, 60u, 62u, 63u};
+    constexpr std::array opcodes{9u, 10u, 11u, 12u, 13u, 14u, 15u, 25u};
+    for (unsigned trial = 0; trial < 128; ++trial) {
+      BlockFixture native;
+      BlockFixture interpreted;
+      const bool little = trial & 1;
+      for (auto *fixture : {&native, &interpreted}) {
+        fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
+        fixture->target = 0;
+      }
+      for (unsigned reg = 0; reg < 32; ++reg) {
+        const auto value = reg ? next() : 0;
+        native.cpu.state().gpr[reg] = interpreted.cpu.state().gpr[reg] = value;
+      }
+      native.cpu.state().hi = interpreted.cpu.state().hi = next();
+      native.cpu.state().lo = interpreted.cpu.state().lo = next();
+      for (unsigned word = 0; word < 64; ++word) {
+        const auto rs = static_cast<unsigned>(next() & 31);
+        const auto rt = static_cast<unsigned>(next() & 31);
+        const auto dest = static_cast<unsigned>(next() % 28);
+        const auto instruction = word & 1 ? r(functions[next() % functions.size()], rs, rt, dest,
+                                              static_cast<unsigned>(next() & 31))
+                                          : i(opcodes[next() % opcodes.size()], rs, dest,
+                                              static_cast<std::uint16_t>(next()));
+        const auto offset = (word ^ unsigned(little)) * 4;
+        native.code(offset, instruction);
+        interpreted.code(offset, instruction);
+      }
+      for (auto *fixture : {&native, &interpreted}) {
+        fixture->code((64 ^ unsigned(little)) * 4, 0x08000400);
+        fixture->code((65 ^ unsigned(little)) * 4, 0);
+      }
+      for (unsigned run = 0; run < 3; ++run) {
+        equal(native.cpu.run_block(native.target), true);
+        equal(interpreted.cpu.run_interpreted_block(interpreted.target), true);
+        for (unsigned reg = 0; reg < 32; ++reg)
+          equal(native.cpu.state().gpr[reg], interpreted.cpu.state().gpr[reg]);
+        equal(native.cpu.state().hi, interpreted.cpu.state().hi);
+        equal(native.cpu.state().lo, interpreted.cpu.state().lo);
+        equal(native.cpu.state().pc, interpreted.cpu.state().pc);
+        equal(native.cpu.state().clocks, interpreted.cpu.state().clocks);
+        equal(native.cpu.read_control(Count), interpreted.cpu.read_control(Count));
+        equal(native.cpu.read_control(Cause), interpreted.cpu.read_control(Cause));
+        equal(native.cpu.in_delay_slot(), interpreted.cpu.in_delay_slot());
+      }
+    }
+  }
   {
     BlockFixture f;
     f.code(0, i(9, 0, 1, 42));
