@@ -3,6 +3,7 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
 #include "core/cpu/recompiler.hpp"
+#include <array>
 #include <memory>
 #include <optional>
 #include <sljitLir.h>
@@ -24,9 +25,14 @@ struct CpuCompiler::Impl {
     }
   };
   struct Block {
+    struct InstructionView {
+      std::array<std::uint32_t, 8> words{};
+      unsigned count = 0;
+    };
     using Function = void (*)(const std::uint64_t *);
     std::vector<std::uint32_t> words;
     std::vector<unsigned> entries;
+    std::vector<InstructionView> views;
     void *code = nullptr;
     std::size_t bytes = 0;
     ~Block() {
@@ -113,7 +119,8 @@ struct CpuCompiler::Emitter {
   static Operand gpr(unsigned index) {
     return state(offsetof(CpuState, gpr) + index * 8);
   }
-  static sljit_sw guard(Cpu *cpu, std::uint32_t physical, std::uint32_t index, sljit_uw clocks);
+  static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view,
+                        sljit_uw clocks);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
   static sljit_sw prepare(Cpu *cpu, sljit_uw clocks);
   static sljit_sw loop_pending(Cpu *cpu);

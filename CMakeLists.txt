@@ -84,6 +84,7 @@ if(BUILD_TESTING)
     tests/cpu/control.cpp
     tests/cpu/cache.cpp
     tests/cpu/cache_coherence.cpp
+    tests/cpu/cache_refill.cpp
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
     tests/cpu/native_branches.cpp
