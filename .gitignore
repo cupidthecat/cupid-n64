@@ -1,0 +1,11 @@
+/.work/
+/build*/
+/out/
+*.z64
+*.n64
+*.v64
+*.eep
+*.sra
+*.fla
+*.pak
+__pycache__/
