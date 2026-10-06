@@ -57,5 +57,6 @@ void gamepad_tests();
 void rsp_tests();
 void video_tests();
 void audio_tests();
+void rdp_tests();
 
 } // namespace test
