@@ -22,6 +22,9 @@ add_library(cupid_core
   src/core/cartridge/eeprom.cpp
   src/core/controller/gamepad.cpp
   src/core/controller/pak.cpp
+  src/core/rsp/rsp.cpp
+  src/core/rsp/io.cpp
+  src/core/rsp/dma.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -56,6 +59,7 @@ if(BUILD_TESTING)
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp
+    tests/devices/rsp.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)
