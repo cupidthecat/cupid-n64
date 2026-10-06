@@ -11,8 +11,13 @@ Rsp::Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random)
 void Rsp::power() {
   memory_.fill(0);
   status_ = {};
+  state_ = {};
+  pipeline_ = {};
   pending_ = current_ = {};
   pc_ = 0;
+  pipeline_pc_ = next_pc_ = 4;
+  clock_ = 0;
+  delay_slot_ = next_delay_slot_ = false;
   dma_clock_ = 0;
   busy_read_ = busy_write_ = full_read_ = full_write_ = false;
 }
@@ -23,6 +28,12 @@ void Rsp::connect_sync(std::function<void()> callback) {
 
 void Rsp::connect_invalidation(std::function<void(std::uint32_t, unsigned)> callback) {
   invalidate_ = std::move(callback);
+}
+
+void Rsp::connect_display(std::function<std::uint32_t(unsigned)> read,
+                          std::function<void(unsigned, std::uint32_t)> write) {
+  display_read_ = std::move(read);
+  display_write_ = std::move(write);
 }
 
 std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes) const {
