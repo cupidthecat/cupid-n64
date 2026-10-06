@@ -35,6 +35,8 @@ add_library(cupid_core
   src/core/rsp/vector/transfer.cpp
   src/core/rsp/vector/memory.cpp
   src/core/rsp/vector/execute.cpp
+  src/core/rsp/vector/simd.cpp
+  src/core/rsp/vector/simd/sse.cpp
   src/core/rsp/vector/divide.cpp
   src/core/devices/vi/video_interface.cpp
   src/core/devices/vi/io.cpp
@@ -57,6 +59,9 @@ else()
   target_compile_options(cupid_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
     COMPILE_OPTIONS "-frounding-math;-ffp-contract=off")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86)$")
+    set_source_files_properties(src/core/rsp/vector/simd/sse.cpp PROPERTIES COMPILE_OPTIONS -msse4.1)
+  endif()
 endif()
 
 option(CUPID_HARDWARE_RENDERER "Build Vulkan rendering" ON)
@@ -102,6 +107,7 @@ if(BUILD_TESTING)
     tests/rsp/main.cpp
     tests/rsp/scalar.cpp
     tests/rsp/vector.cpp
+    tests/rsp/simd.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
   )

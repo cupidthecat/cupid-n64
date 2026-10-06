@@ -115,8 +115,6 @@ private:
   void take_branch(std::uint32_t address);
   std::uint32_t read_unaligned(std::uint32_t address, unsigned bytes) const;
   void write_unaligned(std::uint32_t address, unsigned bytes, std::uint32_t value);
-  std::uint16_t saturate_accumulator(unsigned lane, bool middle, std::uint16_t negative,
-                                     std::uint16_t positive) const;
   struct DmaRegisters {
     std::uint32_t local_address = 0;
     std::uint32_t dram_address = 0;

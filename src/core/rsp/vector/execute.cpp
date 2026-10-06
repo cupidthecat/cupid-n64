@@ -1,3 +1,4 @@
+#include "core/rsp/vector/execute.hpp"
 #include "core/rsp/rsp.hpp"
 #include <algorithm>
 #include <bit>
@@ -27,11 +28,8 @@ void flag(std::uint8_t &flags, unsigned lane, bool value) {
   flags = static_cast<std::uint8_t>((flags & ~(1u << lane)) | (unsigned(value) << lane));
 }
 
-} // namespace
-
-std::uint16_t Rsp::saturate_accumulator(unsigned lane, bool middle, std::uint16_t negative,
-                                        std::uint16_t positive) const {
-  const auto value = state_.accumulator[lane];
+std::uint16_t saturate_accumulator(std::uint64_t value, bool middle, std::uint16_t negative,
+                                   std::uint16_t positive) {
   const auto high = static_cast<std::uint16_t>(value >> 32);
   const auto mid = static_cast<std::uint16_t>(value >> 16);
   if (static_cast<std::int16_t>(high) < 0) {
@@ -42,7 +40,20 @@ std::uint16_t Rsp::saturate_accumulator(unsigned lane, bool middle, std::uint16_
   return static_cast<std::uint16_t>(value >> (middle ? 16 : 0));
 }
 
+} // namespace
+
 void Rsp::vector_execute(std::uint32_t instruction) {
+  const auto operation = instruction & 63;
+  if (operation >= 0x30 && operation <= 0x36) {
+    vector_divide(operation, (instruction >> 6) & 31, (instruction >> 11) & 7,
+                  (instruction >> 16) & 31, (instruction >> 21) & 15);
+    return;
+  }
+  if (!execute_vector_simd(state_, instruction))
+    execute_vector_scalar(state_, instruction);
+}
+
+void execute_vector_scalar(RspState &state, std::uint32_t instruction) {
   const auto operation = instruction & 63;
   const auto element = (instruction >> 21) & 15;
   const auto target = (instruction >> 16) & 31;
@@ -50,26 +61,22 @@ void Rsp::vector_execute(std::uint32_t instruction) {
   const auto dest = (instruction >> 6) & 31;
   if (operation == 0x37 || operation == 0x3f)
     return;
-  if (operation >= 0x30 && operation <= 0x36) {
-    vector_divide(operation, dest, source & 7, target, element);
-    return;
-  }
-  const auto a = state_.vectors[source];
+  const auto a = state.vectors[source];
   RspVector b;
   for (unsigned n = 0; n < 8; ++n)
-    b.lanes[n] = state_.vectors[target].lanes[select_lane(element, n)];
-  auto &result = state_.vectors[dest];
+    b.lanes[n] = state.vectors[target].lanes[select_lane(element, n)];
+  auto &result = state.vectors[dest];
   for (unsigned n = 0; n < 8; ++n) {
     const auto au = a.lanes[n];
     const auto bu = b.lanes[n];
     const auto as = static_cast<std::int16_t>(au);
     const auto bs = static_cast<std::int16_t>(bu);
-    const auto carry = (state_.carry_low >> n) & 1;
-    const bool carry_high = (state_.carry_high >> n) & 1;
-    const bool compare = (state_.compare_low >> n) & 1;
-    const bool compare_high = (state_.compare_high >> n) & 1;
-    const bool extension = (state_.extension >> n) & 1;
-    auto &acc = state_.accumulator[n];
+    const auto carry = (state.carry_low >> n) & 1;
+    const bool carry_high = (state.carry_high >> n) & 1;
+    const bool compare = (state.compare_low >> n) & 1;
+    const bool compare_high = (state.compare_high >> n) & 1;
+    const bool extension = (state.extension >> n) & 1;
+    auto acc = state.accumulator.get(n);
     const auto low = [&](std::uint16_t value) {
       acc = (acc & ~0xffffull) | value;
       result.lanes[n] = value;
@@ -93,7 +100,7 @@ void Rsp::vector_execute(std::uint32_t instruction) {
       const auto high = static_cast<std::int16_t>(acc >> 32);
       const auto middle = static_cast<std::int16_t>(acc >> 16);
       if ((operation & 1) == 0)
-        result.lanes[n] = saturate_accumulator(n, true, 0x8000, 0x7fff);
+        result.lanes[n] = saturate_accumulator(acc, true, 0x8000, 0x7fff);
       else if (high < 0)
         result.lanes[n] = 0;
       else if (operation == 1 ? ((high ^ middle) < 0) : (high != 0 || middle < 0))
@@ -133,7 +140,7 @@ void Rsp::vector_execute(std::uint32_t instruction) {
       break;
     case 0x07:
       full(std::int64_t(as) * bs * 65536);
-      result.lanes[n] = saturate_accumulator(n, true, 0x8000, 0x7fff);
+      result.lanes[n] = saturate_accumulator(acc, true, 0x8000, 0x7fff);
       break;
     case 0x0b: {
       auto product =
@@ -148,19 +155,19 @@ void Rsp::vector_execute(std::uint32_t instruction) {
     }
     case 0x0c:
       add((std::uint32_t(au) * bu) >> 16);
-      result.lanes[n] = saturate_accumulator(n, false, 0, 0xffff);
+      result.lanes[n] = saturate_accumulator(acc, false, 0, 0xffff);
       break;
     case 0x0d:
       add(std::int64_t(as) * bu);
-      result.lanes[n] = saturate_accumulator(n, true, 0x8000, 0x7fff);
+      result.lanes[n] = saturate_accumulator(acc, true, 0x8000, 0x7fff);
       break;
     case 0x0e:
       add(std::int64_t(au) * bs);
-      result.lanes[n] = saturate_accumulator(n, false, 0, 0xffff);
+      result.lanes[n] = saturate_accumulator(acc, false, 0, 0xffff);
       break;
     case 0x0f:
       add(std::int64_t(as) * bs * 65536);
-      result.lanes[n] = saturate_accumulator(n, true, 0x8000, 0x7fff);
+      result.lanes[n] = saturate_accumulator(acc, true, 0x8000, 0x7fff);
       break;
     case 0x10:
     case 0x11: {
@@ -178,14 +185,14 @@ void Rsp::vector_execute(std::uint32_t instruction) {
     case 0x14: {
       const auto value = std::uint32_t(au) + bu;
       low(static_cast<std::uint16_t>(value));
-      flag(state_.carry_low, n, value >> 16);
+      flag(state.carry_low, n, value >> 16);
       break;
     }
     case 0x15: {
       const auto value = std::uint32_t(au) - bu;
       low(static_cast<std::uint16_t>(value));
-      flag(state_.carry_low, n, value >> 16);
-      flag(state_.carry_high, n, value != 0);
+      flag(state.carry_low, n, value >> 16);
+      flag(state.carry_high, n, value != 0);
       break;
     }
     case 0x1d:
@@ -206,7 +213,7 @@ void Rsp::vector_execute(std::uint32_t instruction) {
         condition = au != bu || carry_high;
       else
         condition = as > bs || (as == bs && (!carry || !carry_high));
-      flag(state_.compare_low, n, condition);
+      flag(state.compare_low, n, condition);
       low(condition ? au : bu);
       break;
     }
@@ -217,14 +224,14 @@ void Rsp::vector_execute(std::uint32_t instruction) {
           const auto sum = static_cast<std::uint16_t>(au + bu);
           const bool overflow = std::uint32_t(au) + bu != sum;
           condition = extension ? (sum == 0 || !overflow) : (sum == 0 && !overflow);
-          flag(state_.compare_low, n, condition);
+          flag(state.compare_low, n, condition);
         }
         low(condition ? static_cast<std::uint16_t>(-std::int32_t(bu)) : au);
       } else {
         bool condition = compare_high;
         if (!carry_high) {
           condition = au >= bu;
-          flag(state_.compare_high, n, condition);
+          flag(state.compare_high, n, condition);
         }
         low(condition ? bu : au);
       }
@@ -233,31 +240,31 @@ void Rsp::vector_execute(std::uint32_t instruction) {
       if ((as ^ bs) < 0) {
         const auto value = static_cast<std::int16_t>(as + bs);
         low(value <= 0 ? static_cast<std::uint16_t>(-std::int32_t(bs)) : au);
-        flag(state_.compare_low, n, value <= 0);
-        flag(state_.compare_high, n, bs < 0);
-        flag(state_.carry_low, n, true);
-        flag(state_.carry_high, n, value != 0 && au != (bu ^ 0xffff));
-        flag(state_.extension, n, value == -1);
+        flag(state.compare_low, n, value <= 0);
+        flag(state.compare_high, n, bs < 0);
+        flag(state.carry_low, n, true);
+        flag(state.carry_high, n, value != 0 && au != (bu ^ 0xffff));
+        flag(state.extension, n, value == -1);
       } else {
         const auto value = static_cast<std::int16_t>(as - bs);
         low(value >= 0 ? bu : au);
-        flag(state_.compare_low, n, bs < 0);
-        flag(state_.compare_high, n, value >= 0);
-        flag(state_.carry_low, n, false);
-        flag(state_.carry_high, n, value != 0 && au != (bu ^ 0xffff));
-        flag(state_.extension, n, false);
+        flag(state.compare_low, n, bs < 0);
+        flag(state.compare_high, n, value >= 0);
+        flag(state.carry_low, n, false);
+        flag(state.carry_high, n, value != 0 && au != (bu ^ 0xffff));
+        flag(state.extension, n, false);
       }
       break;
     case 0x26:
       if ((as ^ bs) < 0) {
         const bool condition = std::int32_t(as) + bs + 1 <= 0;
-        flag(state_.compare_high, n, bs < 0);
-        flag(state_.compare_low, n, condition);
+        flag(state.compare_high, n, bs < 0);
+        flag(state.compare_low, n, condition);
         low(condition ? static_cast<std::uint16_t>(~bu) : au);
       } else {
         const bool condition = as >= bs;
-        flag(state_.compare_low, n, bs < 0);
-        flag(state_.compare_high, n, condition);
+        flag(state.compare_low, n, bs < 0);
+        flag(state.compare_high, n, condition);
         low(condition ? bu : au);
       }
       break;
@@ -287,16 +294,17 @@ void Rsp::vector_execute(std::uint32_t instruction) {
       result.lanes[n] = 0;
       break;
     }
+    state.accumulator.set(n, acc);
   }
   if (operation == 0x10 || operation == 0x11 || (operation >= 0x20 && operation <= 0x24) ||
       operation == 0x26 || operation == 0x27)
-    state_.carry_low = state_.carry_high = 0;
+    state.carry_low = state.carry_high = 0;
   if (operation == 0x14)
-    state_.carry_high = 0;
+    state.carry_high = 0;
   if (operation >= 0x20 && operation <= 0x23)
-    state_.compare_high = 0;
+    state.compare_high = 0;
   if (operation == 0x24 || operation == 0x26)
-    state_.extension = 0;
+    state.extension = 0;
 }
 
 } // namespace cupid::n64

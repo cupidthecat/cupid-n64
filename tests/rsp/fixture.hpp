@@ -23,6 +23,7 @@ constexpr std::uint32_t vector_memory(bool store, unsigned operation, unsigned t
 
 void rsp_scalar_tests();
 void rsp_vector_tests();
+void rsp_simd_tests();
 void rsp_memory_tests();
 void rsp_pipeline_tests();
 
