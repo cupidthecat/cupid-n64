@@ -3,6 +3,7 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
 #include "core/cpu/recompiler.hpp"
+#include <memory>
 #include <optional>
 #include <sljitLir.h>
 #include <unordered_map>
@@ -25,6 +26,7 @@ struct CpuCompiler::Impl {
   struct Block {
     using Function = void (*)(const std::uint64_t *);
     std::vector<std::uint32_t> words;
+    std::vector<unsigned> entries;
     void *code = nullptr;
     std::size_t bytes = 0;
     ~Block() {
@@ -35,8 +37,12 @@ struct CpuCompiler::Impl {
       std::bit_cast<Function>(code)(&target);
     }
   };
+  struct Entry {
+    std::shared_ptr<Block> block;
+    unsigned index = 0;
+  };
   Cpu &cpu;
-  std::unordered_map<Key, std::unique_ptr<Block>, Hash> blocks;
+  std::unordered_map<Key, Entry, Hash> blocks;
   std::size_t bytes = 0;
   explicit Impl(Cpu &cpu) : cpu(cpu) {}
 };
@@ -84,6 +90,9 @@ struct CpuCompiler::Emitter {
   void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
   void cache_guard(std::uint32_t address);
   std::optional<unsigned> internal_target(unsigned branch) const;
+  std::optional<std::uint64_t> branch_target(unsigned branch) const;
+  std::optional<unsigned> entry_index(std::uint64_t target) const;
+  void plan_entries();
   void dispatch_internal(unsigned target);
   void execute(std::uint32_t instruction, bool defer_exit);
   void begin();

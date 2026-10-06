@@ -147,11 +147,12 @@ bool CpuCompiler::Emitter::compile() {
   sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4, 4, 0);
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
-  internal_entries.resize(block.words.size());
-  instruction_labels.resize(block.words.size());
-  for (unsigned n = 0; n < block.words.size(); ++n)
-    if (const auto target = internal_target(n))
-      internal_entries[*target] = true;
+  plan_entries();
+  for (auto index : block.entries)
+    internal_jumps.emplace_back(sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_MEM1(SLJIT_S1),
+                                               offsetof(CpuState, pc), SLJIT_IMM,
+                                               static_cast<sljit_sw>(start_pc + index * 4)),
+                                index);
   bool previous_branch = false;
   bool conditional_delay = false;
   for (unsigned n = 0; n < block.words.size(); ++n) {

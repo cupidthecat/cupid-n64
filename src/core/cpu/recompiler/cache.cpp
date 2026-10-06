@@ -47,7 +47,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const Impl::Key key{cpu.state_.pc, reverse | (unsigned(wide) << 1)};
   auto found = impl_->blocks.find(key);
   if (found != impl_->blocks.end()) {
-    const auto &words = found->second->words;
+    const auto words = std::span(found->second.block->words).subspan(found->second.index);
     bool unchanged = true;
     for (unsigned n = 0; n < words.size(); ++n)
       if (words[n] != data[(first + n) ^ reverse]) {
@@ -55,14 +55,21 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
         break;
       }
     if (!unchanged) {
-      impl_->bytes -= found->second->bytes;
-      impl_->blocks.erase(found);
+      const auto owner = found->second.block;
+      impl_->bytes -= owner->bytes;
+      for (auto entry = impl_->blocks.begin(); entry != impl_->blocks.end();) {
+        if (entry->second.block == owner)
+          entry = impl_->blocks.erase(entry);
+        else
+          ++entry;
+      }
       found = impl_->blocks.end();
     }
   }
-  const auto limit = found == impl_->blocks.end()
-                         ? 1024u
-                         : first + static_cast<unsigned>(found->second->words.size());
+  const auto limit =
+      found == impl_->blocks.end()
+          ? 1024u
+          : first + static_cast<unsigned>(found->second.block->words.size()) - found->second.index;
   std::vector<std::uint32_t> words;
   bool stop_after_delay = false;
   for (unsigned word = first; word < limit; ++word) {
@@ -86,15 +93,18 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   if (found == impl_->blocks.end()) {
     if (impl_->bytes >= 63 * 1024 * 1024)
       reset();
-    auto block = std::make_unique<Impl::Block>();
+    auto block = std::make_shared<Impl::Block>();
     block->words = std::move(words);
     Emitter emitter(cpu, *block, key.pc, physical, wide);
     if (!emitter.compile())
       return cpu.run_interpreted_block(clock_target);
     impl_->bytes += block->bytes;
-    found = impl_->blocks.emplace(key, std::move(block)).first;
+    impl_->blocks.emplace(key, Impl::Entry{block});
+    for (auto index : block->entries)
+      impl_->blocks.emplace(Impl::Key{key.pc + index * 4, key.mode}, Impl::Entry{block, index});
+    found = impl_->blocks.find(key);
   }
-  found->second->execute(clock_target);
+  found->second.block->execute(clock_target);
   return true;
 #endif
 }
