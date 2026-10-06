@@ -4,6 +4,8 @@ int main() {
   test::mi_tests();
   test::ri_tests();
   test::rdram_tests();
+  test::pi_tests();
+  test::timing_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
