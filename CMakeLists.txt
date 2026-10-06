@@ -32,6 +32,10 @@ add_library(cupid_core
   src/core/rsp/vector/memory.cpp
   src/core/rsp/vector/execute.cpp
   src/core/rsp/vector/divide.cpp
+  src/core/devices/vi/video_interface.cpp
+  src/core/devices/vi/io.cpp
+  src/core/devices/audio/audio_interface.cpp
+  src/core/devices/audio/io.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -67,6 +71,8 @@ if(BUILD_TESTING)
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp
     tests/devices/rsp.cpp
+    tests/devices/video.cpp
+    tests/devices/audio.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)
