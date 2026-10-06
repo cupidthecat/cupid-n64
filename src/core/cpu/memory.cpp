@@ -245,16 +245,12 @@ void Cpu::load_store(std::uint32_t instruction) {
   case 0x35:
   case 0x39:
   case 0x3d:
-    return raise(control_[Status] & 0x20000000 ? Exception::ReservedInstruction
-                                               : Exception::CoprocessorUnusable,
-                 1);
+    return fpu_memory(operation, rt, address);
   case 0x32:
   case 0x36:
   case 0x3a:
   case 0x3e:
-    return raise(control_[Status] & 0x40000000 ? Exception::ReservedInstruction
-                                               : Exception::CoprocessorUnusable,
-                 2);
+    return cop2(instruction);
   case 0x33:
   case 0x3b:
     return raise(Exception::ReservedInstruction);

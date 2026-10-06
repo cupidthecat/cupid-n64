@@ -29,6 +29,7 @@ enum class Exception : unsigned {
   CoprocessorUnusable = 11,
   Overflow = 12,
   Trap = 13,
+  FloatingPoint = 15,
 };
 
 enum ControlRegister : unsigned {
@@ -61,6 +62,8 @@ enum ControlRegister : unsigned {
 
 struct CpuState {
   std::array<std::uint64_t, 32> gpr{};
+  std::array<std::uint64_t, 32> fpr{};
+  std::uint32_t fcr31 = 0;
   std::uint64_t hi = 0;
   std::uint64_t lo = 0;
   std::uint64_t pc = 0;

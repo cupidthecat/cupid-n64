@@ -13,7 +13,7 @@ void Cpu::power() {
   tlb_ = {};
   icache_ = {};
   dcache_ = {};
-  control_latch_ = count_ticks_ = 0;
+  control_latch_ = cop2_latch_ = count_ticks_ = 0;
   entropy_ = 1;
   llbit_ = nmi_pending_ = false;
   control_[Status] = 0x3450ff04;

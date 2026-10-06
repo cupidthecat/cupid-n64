@@ -133,13 +133,9 @@ void Cpu::decode(std::uint32_t instruction) {
   case 0x10:
     return cop0(instruction);
   case 0x11:
-    return raise(control_[Status] & 0x20000000 ? Exception::ReservedInstruction
-                                               : Exception::CoprocessorUnusable,
-                 1);
+    return cop1(instruction);
   case 0x12:
-    return raise(control_[Status] & 0x40000000 ? Exception::ReservedInstruction
-                                               : Exception::CoprocessorUnusable,
-                 2);
+    return cop2(instruction);
   case 0x13:
     return raise(Exception::ReservedInstruction);
   case 0x14:

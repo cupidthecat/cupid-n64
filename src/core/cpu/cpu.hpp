@@ -54,6 +54,23 @@ private:
   void special(std::uint32_t instruction);
   void regimm(std::uint32_t instruction);
   void cop0(std::uint32_t instruction);
+  void cop1(std::uint32_t instruction);
+  void cop2(std::uint32_t instruction);
+  bool fpu_enabled();
+  bool fpu_begin();
+  bool fpu_exception(unsigned exceptions);
+  bool fpu_host_exceptions(unsigned exceptions, bool conversion = false);
+  bool fpu_unimplemented();
+  unsigned fpu_source(unsigned index) const;
+  std::uint64_t fpu_transfer(unsigned index, bool wide) const;
+  void fpu_transfer(unsigned index, bool wide, std::uint64_t value);
+  void fpu_memory(unsigned operation, unsigned reg, std::uint64_t address);
+  template <typename Float> void fpu_arithmetic(std::uint32_t instruction);
+  template <typename Float>
+  void fpu_to_integer(unsigned dest, unsigned source, bool wide, unsigned rounding);
+  template <typename Float> void fpu_convert(unsigned dest, unsigned source, unsigned format);
+  template <typename Float> bool fpu_inputs(Float a, std::optional<Float> b = {});
+  template <typename Float> bool fpu_output(Float &value);
   void branch(bool taken, bool likely, std::int16_t offset);
   void jump(std::uint64_t target);
   void raise(Exception code, unsigned coprocessor = 0, bool tlb_miss = false);
@@ -88,6 +105,7 @@ private:
   std::array<CacheLine, 512> icache_{};
   std::array<CacheLine, 512> dcache_{};
   std::uint64_t control_latch_ = 0;
+  std::uint64_t cop2_latch_ = 0;
   std::uint64_t count_ticks_ = 0;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
