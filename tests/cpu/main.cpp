@@ -7,6 +7,8 @@ int main() {
   test::cache_tests();
   test::execution_tests();
   test::native_memory_tests();
+  test::native_loop_tests();
+  test::native_branch_tests();
   test::fpu_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
