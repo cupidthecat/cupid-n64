@@ -12,6 +12,8 @@ add_library(cupid_core
   src/core/devices/mi/mips_interface.cpp
   src/core/devices/ri/ram_interface.cpp
   src/core/devices/rdram/rdram.cpp
+  src/core/devices/pi/peripheral_interface.cpp
+  src/core/devices/pi/dma.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
@@ -41,6 +43,8 @@ if(BUILD_TESTING)
     tests/devices/mi.cpp
     tests/devices/ri.cpp
     tests/devices/rdram.cpp
+    tests/devices/pi.cpp
+    tests/devices/timing.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
   add_test(NAME console_devices COMMAND device_tests)
