@@ -20,7 +20,7 @@ struct ConsoleConfig {
   CicModel cic = CicModel::N6102;
   unsigned eeprom_size = 0;
   unsigned sram_size = 0;
-  std::optional<FlashModel> flash_model;
+  std::optional<FlashModel> flash_model = {};
 };
 
 class Console : public Bus {
