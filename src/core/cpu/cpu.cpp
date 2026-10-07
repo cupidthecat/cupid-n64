@@ -4,7 +4,7 @@
 
 namespace cupid::n64 {
 
-Cpu::Cpu(Bus &bus) : bus_(bus) {
+Cpu::Cpu(Bus &bus, RandomGenerator *random) : bus_(bus), random_(random ? *random : entropy_) {
   power();
   compiler_ = std::make_unique<CpuCompiler>(*this);
 }
@@ -22,7 +22,6 @@ void Cpu::power() {
   control_latch_ = cop2_latch_ = count_ticks_ = 0;
   count_clock_ = 0;
   timer_deadline_ = 2;
-  entropy_ = 1;
   llbit_ = nmi_pending_ = false;
   control_[Status] = 0x3450ff04;
   control_[Config] = 0x7006e460;

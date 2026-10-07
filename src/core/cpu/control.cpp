@@ -3,12 +3,10 @@
 namespace cupid::n64 {
 
 unsigned Cpu::random_index() {
-  entropy_ ^= entropy_ << 13;
-  entropy_ ^= entropy_ >> 7;
-  entropy_ ^= entropy_ << 17;
+  const auto value = random_();
   const auto wired = static_cast<unsigned>(control_[Wired]);
-  return wired > 31 ? static_cast<unsigned>(entropy_ & 63)
-                    : static_cast<unsigned>(entropy_ % (32 - wired)) + wired;
+  return wired > 31 ? static_cast<unsigned>(value & 63)
+                    : static_cast<unsigned>(value % (32 - wired)) + wired;
 }
 
 std::uint64_t Cpu::read_control(unsigned index) {

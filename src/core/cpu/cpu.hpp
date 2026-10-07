@@ -2,6 +2,7 @@
 
 #include "core/cpu/state.hpp"
 #include "core/memory/bus.hpp"
+#include "core/timing/random.hpp"
 #include <functional>
 #include <memory>
 #include <optional>
@@ -12,7 +13,7 @@ class CpuCompiler;
 
 class Cpu {
 public:
-  explicit Cpu(Bus &bus);
+  explicit Cpu(Bus &bus, RandomGenerator *random = nullptr);
   ~Cpu();
   void power();
   void step();
@@ -126,7 +127,8 @@ private:
   std::uint64_t timer_deadline_ = 2;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
-  std::uint64_t entropy_ = 1;
+  RandomGenerator entropy_;
+  RandomGenerator &random_;
   bool delay_slot_ = false;
   bool next_delay_slot_ = false;
   bool block_exit_ = false;

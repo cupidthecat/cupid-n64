@@ -170,6 +170,7 @@ if(BUILD_TESTING)
     tests/cpu/integer.cpp
     tests/cpu/memory.cpp
     tests/cpu/control.cpp
+    tests/cpu/random.cpp
     tests/cpu/cache.cpp
     tests/cpu/cache_coherence.cpp
     tests/cpu/cache_refill.cpp

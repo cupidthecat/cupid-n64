@@ -12,7 +12,7 @@ Console::Console(ConsoleConfig config)
       cartridge_joybus_(eeprom_, rtc_), sram_(config.sram_size),
       flash_(events_, config.flash_model),
       controllers_{Gamepad(random_), Gamepad(random_), Gamepad(random_), Gamepad(random_)},
-      cpu_(*this) {
+      cpu_(*this, &random_) {
   mi_.connect([this](bool line) { cpu_.set_interrupt(2, line); }, [this] { frozen_ = true; });
   pif_.connect_reset([this] { cpu_.request_nmi(); });
   auto request_sync = [this] { clock_target_ = cpu_.state().clocks; };

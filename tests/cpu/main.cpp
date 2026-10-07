@@ -4,6 +4,7 @@ int main() {
   test::integer_tests();
   test::memory_tests();
   test::control_tests();
+  test::random_tests();
   test::cache_tests();
   test::cache_coherence_tests();
   test::cache_refill_tests();
