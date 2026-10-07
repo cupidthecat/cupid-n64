@@ -14,7 +14,7 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
   const auto function = instruction & 63;
   const auto offset = std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction));
 
-  begin();
+  begin(false);
   if (opcode == 0) {
     op1(SLJIT_MOV, reg(SLJIT_R0), gpr(rs));
     if (function == 9) {
@@ -84,8 +84,9 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
     sljit_set_label(done, sljit_emit_label(compiler));
   }
   const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
-  if (instruction == 0x1000ffff || instruction == self_jump)
-    advance(126);
+  cycles += instruction == 0x1000ffff || instruction == self_jump ? 128 : 2;
+  advance(cycles);
+  cycles = 0;
   op1(SLJIT_MOV, gpr(0), imm(0));
   op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
   op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&cpu.next_delay_slot_));
@@ -178,6 +179,8 @@ sljit_sw CpuCompiler::Emitter::loop_pending(Cpu *cpu) {
 }
 
 void CpuCompiler::Emitter::dispatch_internal(unsigned target) {
+  advance(cycles);
+  cycles = 0;
   op2(SLJIT_AND, reg(SLJIT_R0), reg(SLJIT_S3), imm(2));
   return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
   const auto fallthrough = sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_S3, 0, SLJIT_IMM, 0);

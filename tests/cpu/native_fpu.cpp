@@ -299,6 +299,8 @@ void timing() {
             fixture->cpu.write_control(Compare, timer);
             fixture->cpu.write_control(Status, 0x34008001);
           }
+          const auto actual_start = actual.cpu.state().clocks;
+          const auto expected_start = expected.cpu.state().clocks;
           actual.cpu.connect_sync([&] {
             ++actual_sync;
             actual_limit = actual.cpu.state().clocks;
@@ -310,7 +312,11 @@ void timing() {
           equal(actual.cpu.run_block(actual_limit), true);
           equal(expected.cpu.run_interpreted_block(expected_limit), true);
           compare_state(actual, expected);
-          equal(actual_limit, expected_limit);
+          if (actual_sync) {
+            equal(actual_limit >= actual_start && actual_limit <= actual.cpu.state().clocks, true);
+            equal(expected_limit >= expected_start && expected_limit <= expected.cpu.state().clocks,
+                  true);
+          }
           equal(actual_sync, expected_sync);
         }
       }

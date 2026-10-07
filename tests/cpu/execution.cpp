@@ -269,7 +269,8 @@ void execution_tests() {
     });
     f.run();
     equal(requests, 1);
-    equal(f.target, 98);
+    equal(f.target, 96);
+    equal(f.cpu.state().clocks, 98);
     equal(f.cpu.state().pc, 0xffffffff80001004);
     f.run();
     equal(requests, 2);

@@ -87,7 +87,7 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   op1(SLJIT_MOV, reg(SLJIT_R2), imm(reinterpret_cast<std::uintptr_t>(&view)));
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, P), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
-  return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 0);
+  return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 2);
   sljit_set_label(hit, sljit_emit_label(compiler));
 }
 
@@ -98,11 +98,11 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
   op1(SLJIT_MOV, reg(SLJIT_R2), imm(cycles));
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(helper));
-  cycles = 0;
+  cycles = 2;
   if (defer_exit)
     op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
   else
-    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), cycles);
 }
 
 bool CpuCompiler::Emitter::compile() {
@@ -132,7 +132,6 @@ bool CpuCompiler::Emitter::compile() {
     instruction_labels[n] = sljit_emit_label(compiler);
     const auto target = previous_branch ? internal_target(n - 1) : std::nullopt;
     const bool defer_exit = target.has_value();
-    cycles += 2;
     if (!n || !(pc & 31) || internal_entries[n])
       cache_guard(physical + n * 4);
     const auto opcode = instruction >> 26;
@@ -156,8 +155,10 @@ bool CpuCompiler::Emitter::compile() {
       integer(instruction);
       if (full)
         end(defer_exit);
-      else
+      else {
+        cycles += 2;
         pipeline_dirty = true;
+      }
     } else if (!branch(instruction) &&
                !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit) &&
                !floating(instruction, !n || previous_branch || internal_entries[n], defer_exit)) {

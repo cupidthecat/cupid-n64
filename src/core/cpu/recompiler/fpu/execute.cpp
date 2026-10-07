@@ -16,8 +16,10 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
     floating_transfer(instruction);
     if (full)
       end(defer_exit);
-    else
+    else {
+      cycles += 2;
       pipeline_dirty = true;
+    }
     return true;
   }
   const bool arithmetic = real && operation <= 7;
@@ -31,7 +33,7 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
   commit_pipeline();
   advance(cycles);
   cycles = 0;
-  SlowPath path{{}, nullptr, instruction, defer_exit};
+  SlowPath path{{}, nullptr, instruction, 0, defer_exit};
   if (arithmetic)
     floating_arithmetic(path);
   else if (compare)
@@ -43,8 +45,10 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
     begin();
   if (full)
     end(defer_exit);
-  else
+  else {
+    cycles += 2;
     pipeline_dirty = true;
+  }
   path.resume = sljit_emit_label(compiler);
   slow_paths.push_back(std::move(path));
   return true;

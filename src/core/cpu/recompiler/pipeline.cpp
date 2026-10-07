@@ -24,10 +24,12 @@ void CpuCompiler::Emitter::return_if(sljit_s32 condition, Operand left, Operand 
   sljit_set_label(skip, sljit_emit_label(compiler));
 }
 
-void CpuCompiler::Emitter::begin() {
+void CpuCompiler::Emitter::begin(bool flush) {
   commit_pipeline();
-  advance(cycles);
-  cycles = 0;
+  if (flush) {
+    advance(cycles);
+    cycles = 0;
+  }
   op1(SLJIT_MOV_U8, field(&cpu.next_delay_slot_), imm(0));
   op1(SLJIT_MOV_U8, field(&cpu.next_block_exit_), imm(0));
   op1(SLJIT_MOV, reg(SLJIT_R0), field(&cpu.next_pc_));
@@ -37,6 +39,7 @@ void CpuCompiler::Emitter::begin() {
 }
 
 void CpuCompiler::Emitter::end(bool defer_exit) {
+  cycles += 2;
   op1(SLJIT_MOV, gpr(0), imm(0));
   op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
   op1(SLJIT_MOV_U8, field(&cpu.delay_slot_), imm(0));

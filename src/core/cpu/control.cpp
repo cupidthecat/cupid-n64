@@ -16,7 +16,7 @@ std::uint64_t Cpu::read_control(unsigned index) {
   case Random:
     return random_index();
   case Count:
-    return count_ticks_ >> 1;
+    return ((count_ticks_ + ((state_.clocks - count_clock_) >> 1)) & ((1ull << 33) - 1)) >> 1;
   case 7:
   case 21:
   case 22:
@@ -51,14 +51,18 @@ void Cpu::write_control(unsigned index, std::uint64_t value) {
     control_[Wired] = value & 63;
     break;
   case Count:
+    advance_clocks(0);
     count_ticks_ = (value & 0xffffffff) << 1;
+    update_timer_deadline();
     break;
   case EntryHi:
     control_[EntryHi] = value & 0xc00000ffffffe0ffull;
     break;
   case Compare:
+    advance_clocks(0);
     control_[Compare] = value & 0xffffffff;
     set_interrupt(7, false);
+    update_timer_deadline();
     break;
   case Status:
     control_[Status] = (value & 0xff57ffff) | (control_[Status] & 0x00200000);

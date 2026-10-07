@@ -67,9 +67,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
         imm(reinterpret_cast<std::uintptr_t>(cpu.dcache_.data())));
   };
   commit_pipeline();
-  advance(cycles);
-  cycles = 0;
-  SlowPath path{{}, nullptr, instruction, defer_exit};
+  SlowPath path{{}, nullptr, instruction, cycles, defer_exit};
   address();
   path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, 0x1fffffff));
   if (bytes > 1) {
@@ -83,8 +81,9 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R3, 0,
                                       SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, tag)));
   if (full)
-    begin();
-  advance(2);
+    begin(false);
+  advance(cycles + 2);
+  cycles = 0;
   address();
   line();
   if (write)
@@ -127,8 +126,10 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   }
   if (full)
     end(defer_exit);
-  else
+  else {
+    cycles += 2;
     pipeline_dirty = true;
+  }
   path.resume = sljit_emit_label(compiler);
   slow_paths.push_back(std::move(path));
   return true;
@@ -141,13 +142,13 @@ void CpuCompiler::Emitter::emit_slow_paths() {
       sljit_set_label(jump, entry);
     op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
     op1(SLJIT_MOV32, reg(SLJIT_R1), imm(path.instruction));
-    op1(SLJIT_MOV, reg(SLJIT_R2), imm(0));
+    op1(SLJIT_MOV, reg(SLJIT_R2), imm(path.clocks));
     sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
                      SLJIT_FUNC_ADDR(helper));
     if (path.defer_exit)
       op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
     else
-      return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
+      return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 2);
     sljit_set_label(sljit_emit_jump(compiler, SLJIT_JUMP), path.resume);
   }
 }
