@@ -50,32 +50,23 @@ void RspCompiler::Emitter::vector_helper(Rsp *rsp, std::uint32_t instruction) {
   rsp->state_.gpr[0] = 0;
 }
 
-void RspCompiler::Emitter::branch_helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc) {
-  rsp->pc_ = pc;
-  rsp->next_pc_ = (pc + 4) & 0xfff;
-  rsp->begin_instruction();
-  rsp->decode(instruction);
-  rsp->end_instruction();
-}
-
-void RspCompiler::Emitter::dma(Rsp *rsp, std::uint32_t clocks) {
-  rsp->advance_dma(clocks);
-}
-
-void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, bool branch) {
-  const bool first = first_instruction;
-  first_instruction = false;
-  if (!branch && (integer(opcode) || memory(opcode, pc))) {
-    if (first)
-      op1(SLJIT_MOV32, gpr(0), imm(0));
-    return;
+void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, bool branched,
+                                       bool delay) {
+  const auto operation = opcode >> 26;
+  if (operation == 16 || operation == 50 || operation == 58 ||
+      (operation == 0 && (opcode & 63) == 13))
+    flush_clocks();
+  if (branched && !delay) {
+    op1(SLJIT_MOV32, field(&rsp.next_pc_), imm((pc + 8) & 0xfff));
+    op1(SLJIT_MOV_U8, field(&rsp.next_delay_slot_), imm(0));
   }
-  if ((opcode >> 26) == 18 && ((opcode >> 21) & 31) >= 16) {
-    if ((opcode & 63) == 55 || (opcode & 63) == 63) {
-      if (first)
-        op1(SLJIT_MOV32, gpr(0), imm(0));
+  if (branched && branch(opcode, pc))
+    return;
+  if (!branched && (integer(opcode) || memory(opcode, pc)))
+    return;
+  if (operation == 18 && ((opcode >> 21) & 31) >= 16) {
+    if ((opcode & 63) == 55 || (opcode & 63) == 63)
       return;
-    }
     op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
     op1(SLJIT_MOV32, reg(SLJIT_R1), imm(opcode));
     sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
@@ -86,32 +77,7 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(opcode));
   op1(SLJIT_MOV32, reg(SLJIT_R2), imm(pc));
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3V(P, 32, 32), SLJIT_IMM,
-                   branch ? SLJIT_FUNC_ADDR(branch_helper) : SLJIT_FUNC_ADDR(helper));
-}
-
-void RspCompiler::Emitter::commit(std::uint32_t pc, bool branch) {
-  for (unsigned n = 0; n < 3; ++n) {
-    const auto &stage = pipeline.previous[n];
-    auto &dest = rsp.pipeline_.previous[n];
-    op1(SLJIT_MOV32, field(&dest.gpr), imm(stage.gpr));
-    op1(SLJIT_MOV32, field(&dest.vector), imm(stage.vector));
-    op1(SLJIT_MOV_U8, field(&dest.load), imm(stage.load));
-  }
-  op1(SLJIT_MOV32, field(&rsp.pipeline_.clocks), imm(pipeline.clocks));
-  op1(SLJIT_MOV_U8, field(&rsp.pipeline_.single_issue), imm(pipeline.single_issue));
-  if (branch)
-    return;
-  op1(SLJIT_MOV32, field(&rsp.pc_), imm(pc));
-  op1(SLJIT_MOV32, field(&rsp.pipeline_pc_), imm(pc));
-  op1(SLJIT_MOV32, field(&rsp.next_pc_), imm((pc + 4) & 0xfff));
-  op1(SLJIT_MOV_U8, field(&rsp.delay_slot_), imm(0));
-  op1(SLJIT_MOV_U8, field(&rsp.next_delay_slot_), imm(0));
-}
-
-void RspCompiler::Emitter::budget_exit(std::uint32_t pc) {
-  const auto jump = sljit_emit_cmp(compiler, SLJIT_SIG_GREATER_EQUAL, SLJIT_MEM0(),
-                                   reinterpret_cast<sljit_sw>(&rsp.clock_), SLJIT_IMM, 0);
-  exits.push_back({jump, pipeline, pc});
+                   SLJIT_FUNC_ADDR(helper));
 }
 
 bool RspCompiler::Emitter::compile() {
@@ -120,13 +86,15 @@ bool RspCompiler::Emitter::compile() {
   sljit_emit_enter(compiler, 0, SLJIT_ARGS0V(), 4, 2, 0);
   op1(SLJIT_MOV, reg(SLJIT_S0), imm(reinterpret_cast<std::uintptr_t>(&rsp.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&rsp)));
-  for (unsigned n = 0; n < 128;) {
+  op1(SLJIT_MOV32, gpr(0), imm(0));
+  bool delay = false;
+  for (unsigned n = 0; n < 1024;) {
     const auto first_opcode = word(n);
     const auto first = Rsp::decode_info(first_opcode);
     auto second_opcode = 0u;
     Rsp::OpInfo second;
     bool dual = false;
-    if (!pipeline.single_issue && !(first.flags & Rsp::Branch)) {
+    if (!pipeline.single_issue && !(first.flags & Rsp::Branch) && n + 1 < 1024) {
       second_opcode = word(n + 1);
       second = Rsp::decode_info(second_opcode);
       dual = Rsp::dual_issue(first, second);
@@ -138,33 +106,47 @@ bool RspCompiler::Emitter::compile() {
     pipeline.end();
     const bool first_branch = first.flags & Rsp::Branch;
     const bool second_branch = dual && (second.flags & Rsp::Branch);
-    instruction(first_opcode, (start + n * 4) & 0xfff, first_branch);
+    if (delay)
+      begin_delay();
+    instruction(first_opcode, (start + n * 4) & 0xfff, first_branch, delay);
     if (dual)
-      instruction(second_opcode, (start + (n + 1) * 4) & 0xfff, second_branch);
+      instruction(second_opcode, (start + (n + 1) * 4) & 0xfff, second_branch, delay);
     n += dual ? 2 : 1;
-    op2(SLJIT_ADD, field(&rsp.clock_), field(&rsp.clock_), imm(pipeline.clocks));
-    const auto writes_io = [](std::uint32_t opcode) {
-      return (opcode >> 26) == 16 && ((opcode >> 21) & 31) == 4;
-    };
-    const bool io = writes_io(first_opcode) || (dual && writes_io(second_opcode));
-    const bool branch = first_branch || second_branch;
-    if (branch || io || n >= 128) {
-      commit((start + n * 4) & 0xfff, branch);
-      if (io) {
-        op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
-        op1(SLJIT_MOV32, reg(SLJIT_R1), imm(pipeline.clocks));
-        sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
-                         SLJIT_FUNC_ADDR(dma));
-      }
+    cycles += pipeline.clocks;
+    if (delay) {
+      flush_clocks();
+      op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS1V(P), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(end_delay));
       sljit_emit_return_void(compiler);
       break;
     }
-    budget_exit((start + n * 4) & 0xfff);
+    const bool branched = first_branch || second_branch;
+    const auto next = (start + n * 4) & 0xfff;
+    if (branched || n == 1024)
+      commit(next, branched);
+    const auto may_halt = [](std::uint32_t opcode) {
+      return ((opcode >> 26) == 0 && (opcode & 63) == 13) ||
+             ((opcode >> 26) == 16 && ((opcode >> 21) & 31) == 4 && ((opcode >> 11) & 15) == 4);
+    };
+    if (may_halt(first_opcode) || (dual && may_halt(second_opcode)))
+      halt_exit(next, branched);
+    if (n == 1024) {
+      flush_clocks();
+      sljit_emit_return_void(compiler);
+      break;
+    }
+    delay = branched;
   }
+  block.pipeline = pipeline;
+  block.pipeline.clocks = 0;
   for (const auto &exit : exits) {
     sljit_set_label(exit.jump, sljit_emit_label(compiler));
     pipeline = exit.pipeline;
-    commit(exit.pc, false);
+    cycles = exit.clocks;
+    flush_clocks();
+    commit_pipeline();
+    commit(exit.pc, exit.branch);
     sljit_emit_return_void(compiler);
   }
   for (const auto &path : memory_paths) {

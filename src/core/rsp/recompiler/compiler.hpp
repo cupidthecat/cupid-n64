@@ -31,6 +31,7 @@ struct RspCompiler::Impl {
   struct Block {
     using Function = void (*)();
     Key key;
+    Rsp::Pipeline pipeline;
     std::vector<std::uint32_t> words;
     std::bitset<128> lines;
     void *code = nullptr;
@@ -39,7 +40,8 @@ struct RspCompiler::Impl {
       if (code)
         sljit_free_code(code, nullptr);
     }
-    void execute() const {
+    void execute(Rsp &rsp) const {
+      rsp.pipeline_ = pipeline;
       std::bit_cast<Function>(code)();
     }
   };
@@ -61,6 +63,8 @@ struct RspCompiler::Emitter {
     sljit_jump *jump;
     Rsp::Pipeline pipeline;
     std::uint32_t pc;
+    unsigned clocks;
+    bool branch;
   };
   struct MemoryPath {
     sljit_jump *enter;
@@ -73,7 +77,7 @@ struct RspCompiler::Emitter {
   sljit_compiler *compiler;
   Rsp::Pipeline pipeline;
   std::uint32_t start;
-  bool first_instruction = true;
+  unsigned cycles = 0;
   std::vector<Exit> exits;
   std::vector<MemoryPath> memory_paths;
 
@@ -83,17 +87,20 @@ struct RspCompiler::Emitter {
   std::uint32_t word(unsigned index);
   bool integer(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, std::uint32_t pc);
-  void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch);
+  bool branch(std::uint32_t instruction, std::uint32_t pc);
+  void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch, bool delay);
   void commit(std::uint32_t pc, bool branch);
-  void budget_exit(std::uint32_t pc);
+  void commit_pipeline();
+  void flush_clocks();
+  void begin_delay();
+  void halt_exit(std::uint32_t pc, bool branch);
   void op1(sljit_s32 op, Operand dest, Operand source);
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
   void compare(unsigned dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source);
   static void helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
   static void vector_helper(Rsp *rsp, std::uint32_t instruction);
-  static void branch_helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
-  static void dma(Rsp *rsp, std::uint32_t clocks);
+  static void end_delay(Rsp *rsp);
 
   static Operand reg(sljit_s32 index) {
     return {index};

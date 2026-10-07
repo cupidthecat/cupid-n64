@@ -35,26 +35,33 @@ bool RspCompiler::run() {
   return false;
 #else
   auto &rsp = impl_->rsp;
-  if (rsp.delay_slot_ || rsp.dma_busy() || rsp.status_.halted)
+  if (rsp.delay_slot_ || rsp.status_.halted)
     return false;
+  const auto execute = [&](const Impl::Block &block) {
+    const auto before = rsp.clock_;
+    block.execute(rsp);
+    rsp.clock_ += rsp.pipeline_.clocks;
+    rsp.advance_dma(static_cast<std::uint32_t>(rsp.clock_ - before));
+  };
   if (impl_->dirty.any()) {
     for (auto &entry : impl_->context)
       if (entry && (entry->lines & impl_->dirty).any())
         entry = nullptr;
     impl_->dirty.reset();
   }
-  const Impl::Key key{rsp.pipeline_.previous, rsp.pc_, rsp.pipeline_.single_issue};
-  auto &context = impl_->context[(key.pc >> 2) & 1023];
+  const auto pc = rsp.pc_;
+  auto &context = impl_->context[(pc >> 2) & 1023];
   const auto matches = [&](const Impl::Block &block) {
     for (unsigned n = 0; n < block.words.size(); ++n)
-      if (block.words[n] != rsp.read_local(0x1000 | ((key.pc + n * 4) & 0xfff), 4))
+      if (block.words[n] != rsp.read_local(0x1000 | ((pc + n * 4) & 0xfff), 4))
         return false;
     return true;
   };
-  if (context && context->key == key && (!impl_->external_memory || matches(*context))) {
-    context->execute();
+  if (context && context->key.pc == pc && (!impl_->external_memory || matches(*context))) {
+    execute(*context);
     return true;
   }
+  const Impl::Key key{rsp.pipeline_.previous, pc, rsp.pipeline_.single_issue};
   const auto found = impl_->blocks.find(key);
   Impl::Block *selected = nullptr;
   if (found != impl_->blocks.end()) {
@@ -74,13 +81,13 @@ bool RspCompiler::run() {
     if (!emitter.compile())
       return false;
     for (unsigned n = 0; n < block->words.size(); ++n)
-      block->lines.set(((key.pc + n * 4) & 0xfff) >> 5);
+      block->lines.set(((pc + n * 4) & 0xfff) >> 5);
     impl_->bytes += block->bytes;
     selected = block.get();
     impl_->blocks[key].push_back(std::move(block));
   }
   context = selected;
-  selected->execute();
+  execute(*selected);
   return true;
 #endif
 }
