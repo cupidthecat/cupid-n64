@@ -54,6 +54,7 @@ void pi_tests();
 void sram_tests();
 void flash_tests();
 void cartridge_bus_tests();
+void isviewer_tests();
 void cartridge_profile_tests();
 void rtc_tests();
 void timing_tests();

@@ -76,10 +76,8 @@ void PeripheralInterface::write_half(std::uint16_t value) {
 BusRead PeripheralInterface::read_word(std::uint32_t address) {
   if (address <= 0x046fffff)
     return {read_io(address)};
-  if (io_busy_) {
-    io_busy_ = false;
-    return {latch_, events_.cancel(Event::PeripheralBusWrite) * 2};
-  }
+  if (io_busy_)
+    return {latch_, force_finish_write() * 2};
   select(address);
   const auto upper = std::uint32_t(read_half()) << 16;
   latch_ = upper | read_half();
@@ -123,6 +121,11 @@ BusWrite PeripheralInterface::write(std::uint32_t address, unsigned bytes, std::
 
 void PeripheralInterface::complete_write() {
   io_busy_ = false;
+}
+
+std::uint32_t PeripheralInterface::force_finish_write() {
+  io_busy_ = false;
+  return events_.cancel(Event::PeripheralBusWrite);
 }
 
 void PeripheralInterface::complete_dma() {

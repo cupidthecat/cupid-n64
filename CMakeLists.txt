@@ -40,6 +40,7 @@ add_library(cupid_core
   src/core/cartridge/rtc/calendar.cpp
   src/core/cartridge/rtc/joybus.cpp
   src/core/cartridge/sram.cpp
+  src/core/cartridge/isviewer/isviewer.cpp
   src/core/cartridge/flash/flash.cpp
   src/core/cartridge/flash/io.cpp
   src/core/cartridge/flash/commands.cpp
@@ -200,6 +201,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/sram.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/integration.cpp
+    tests/devices/cartridge/isviewer.cpp
     tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp

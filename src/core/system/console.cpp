@@ -7,7 +7,7 @@ Console::Console(ConsoleConfig config)
     : config_(config), ram_(ri_, random_, config.expansion), mi_(ram_), cic_(config.cic),
       pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_),
       disk_(events_, config.disk_clock), rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_),
-      vi_(mi_, config.region), audio_(ram_, mi_, config.region),
+      vi_(mi_, config.region), audio_(ram_, mi_, config.region), isviewer_(pi_),
       eeprom_(events_, config.eeprom_size), rtc_(events_, config.rtc_present, config.rtc_clock),
       cartridge_joybus_(eeprom_, rtc_), sram_(config.sram_size),
       flash_(events_, config.flash_model),
@@ -32,6 +32,7 @@ Console::Console(ConsoleConfig config)
     pi_.attach(sram_, 1);
   if (!flash_.data().empty())
     pi_.attach(flash_, 1);
+  pi_.attach(isviewer_, 1);
   if (config_.disk_drive) {
     disk_.connect_interrupt([this](bool line) { cpu_.set_interrupt(3, line); });
     pi_.attach(disk_, 2);
@@ -55,6 +56,7 @@ bool Console::load(std::span<const std::uint8_t> cartridge,
   } else if (!rom_.load(cartridge)) {
     return false;
   }
+  isviewer_.connect(rom_.data().size());
   pif_.load_rom(firmware);
   power();
   return true;
@@ -75,6 +77,7 @@ void Console::power(bool reset) {
   events_.reset();
   eeprom_.complete_write();
   flash_.power();
+  isviewer_.power();
   ram_.power(reset);
   mi_.power();
   vi_.power();

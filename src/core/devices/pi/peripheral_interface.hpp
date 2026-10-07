@@ -19,6 +19,7 @@ public:
   void write_io(std::uint32_t address, std::uint32_t value);
   void complete_dma();
   void complete_write();
+  std::uint32_t force_finish_write();
   std::uint32_t dma_duration(bool read) const;
 
 private:

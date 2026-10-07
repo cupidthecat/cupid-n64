@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/cartridge/flash/flash.hpp"
+#include "core/cartridge/isviewer/isviewer.hpp"
 #include "core/cartridge/joybus.hpp"
 #include "core/cartridge/rom.hpp"
 #include "core/cartridge/sram.hpp"
@@ -122,6 +123,7 @@ private:
   VideoInterface vi_;
   AudioInterface audio_;
   CartridgeRom rom_;
+  IsViewer isviewer_;
   Eeprom eeprom_;
   Rtc rtc_;
   CartridgeJoybus cartridge_joybus_;
