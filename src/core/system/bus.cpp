@@ -3,6 +3,8 @@
 namespace cupid::n64 {
 
 std::span<const std::uint32_t> Console::instruction_data(std::uint32_t address) const {
+  if (arcade_ && address >= 0xc0000000)
+    return arcade_->instruction_data(address);
   if (!ram_.identity() || address >= ram_.size())
     return {};
   return ram_.words().subspan(address >> 2);
@@ -15,10 +17,15 @@ BusRead Console::read(std::uint32_t address, unsigned bytes) {
     frozen_ = true;
     return {};
   }
+  if (address > 0x7fffffff) {
+    if (arcade_)
+      return arcade_->read(address, bytes);
+    frozen_ = true;
+    return {};
+  }
   if (address <= 0x040bffff)
     return rsp_.read(address, bytes);
-  if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff) ||
-      address > 0x7fffffff) {
+  if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff)) {
     frozen_ = true;
     return {};
   }
@@ -36,10 +43,15 @@ BusRead Console::read(std::uint32_t address, unsigned bytes) {
 BusWrite Console::write(std::uint32_t address, unsigned bytes, std::uint64_t value) {
   if (address <= 0x03ffffff)
     return mi_.write_rdram(address, bytes, value);
+  if (address > 0x7fffffff) {
+    if (arcade_)
+      return arcade_->write(address, bytes, value);
+    frozen_ = true;
+    return {};
+  }
   if (address <= 0x040bffff)
     return rsp_.write(address, bytes, value, rsp_.clocks() - pending_clocks());
-  if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff) ||
-      address > 0x7fffffff) {
+  if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff)) {
     frozen_ = true;
     return {};
   }
@@ -112,6 +124,11 @@ void Console::write_register(std::uint32_t address, std::uint32_t value) {
 BusWrite Console::read_burst(std::uint32_t address, std::span<std::uint32_t> words) {
   if (address <= 0x03ffffff)
     return mi_.read_burst(address, words);
+  if (arcade_) {
+    const auto transfer = arcade_->read_burst(address, words);
+    if (transfer.success)
+      return transfer;
+  }
   frozen_ = true;
   return {0, false};
 }
@@ -119,6 +136,11 @@ BusWrite Console::read_burst(std::uint32_t address, std::span<std::uint32_t> wor
 BusWrite Console::write_burst(std::uint32_t address, std::span<const std::uint32_t> words) {
   if (address <= 0x03ffffff)
     return mi_.write_burst(address, words);
+  if (arcade_) {
+    const auto transfer = arcade_->write_burst(address, words);
+    if (transfer.success)
+      return transfer;
+  }
   frozen_ = true;
   return {0, false};
 }

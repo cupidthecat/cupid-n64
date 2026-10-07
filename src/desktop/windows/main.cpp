@@ -24,7 +24,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         options.ipl = value;
       else if (argument == L"--disk")
         options.disk = value;
-      else if (argument == L"--capture")
+      else if (argument == L"--arcade") {
+        std::string name;
+        for (auto letter : value)
+          name.push_back(static_cast<char>(letter));
+        const auto profile = cupid::n64::arcade_profile(name);
+        if (!profile)
+          throw std::runtime_error("Unknown Aleck64 game name. Use generic, 11beat, starsldr, "
+                                   "doncdoon, kurufev, mayjin3, vivdolls, twrshaft, hipai, "
+                                   "hipai2, srmvs, srmvsa, or mtetrisc.");
+        options.arcade_profile = *profile;
+      } else if (argument == L"--capture")
         options.capture = value;
       else if (argument == L"--frames") {
         std::size_t parsed = 0;
@@ -34,12 +44,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         options.frames = frames;
       } else
         throw std::runtime_error("Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
-                                 "FILE, --frames N, --capture FILE, --test-input.");
+                                 "FILE, --arcade GAME, --frames N, --capture FILE, --test-input.");
     }
     if (!options.frames && (options.test_input || !options.capture.empty()))
       throw std::runtime_error("--capture and --test-input require --frames N.");
     if (!options.disk.empty() && options.ipl.empty())
       throw std::runtime_error("--disk requires --ipl FILE.");
+    if (options.arcade_profile != cupid::n64::ArcadeProfile::Disabled &&
+        (options.rom.empty() || options.firmware.empty() || !options.ipl.empty() ||
+         !options.disk.empty()))
+      throw std::runtime_error("--arcade requires --rom FILE and --pif FILE.");
     LocalFree(arguments);
     arguments = nullptr;
     SetProcessDPIAware();

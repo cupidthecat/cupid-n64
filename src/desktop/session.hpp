@@ -12,7 +12,8 @@ namespace cupid::desktop {
 class Session {
 public:
   Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio,
-          const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {});
+          const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
+          n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled);
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void reset();
   void save();

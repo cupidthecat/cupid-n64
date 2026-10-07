@@ -3,6 +3,9 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
 
 add_library(cupid_core
+  src/core/arcade/aleck64.cpp
+  src/core/arcade/memory.cpp
+  src/core/arcade/controls.cpp
   src/core/cpu/cpu.cpp
   src/core/cpu/execution.cpp
   src/core/cpu/recompiler/cache.cpp
@@ -202,6 +205,9 @@ if(BUILD_TESTING)
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/integration.cpp
     tests/devices/cartridge/isviewer.cpp
+    tests/devices/arcade/memory.cpp
+    tests/devices/arcade/controls.cpp
+    tests/devices/arcade/native.cpp
     tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp
