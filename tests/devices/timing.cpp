@@ -72,6 +72,31 @@ void timing_tests() {
     queue.reset();
     equal(queue.time_to_event(), 0x7fffffff);
   }
+  {
+    EventQueue queue;
+    queue.advance(0xfffffff0, [](Event) {});
+    queue.insert(Event::SerialRead, 30);
+    queue.insert(Event::RtcTick, 10);
+    queue.insert(Event::SerialWrite, 20);
+    queue.insert(Event::RtcTick, 40);
+    queue.insert(Event::ClockTick, 15);
+    queue.remove(Event::RtcTick);
+    equal(queue.time_to_event(), 15);
+    std::vector<Event> fired;
+    queue.advance(15, [&](Event event) { fired.push_back(event); });
+    equal(fired.size(), 1);
+    equal(static_cast<unsigned>(fired[0]), static_cast<unsigned>(Event::ClockTick));
+    equal(queue.time_to_event(), 5);
+    queue.advance(15, [&](Event event) { fired.push_back(event); });
+    equal(fired.size(), 3);
+    equal(static_cast<unsigned>(fired[1]), static_cast<unsigned>(Event::SerialWrite));
+    equal(static_cast<unsigned>(fired[2]), static_cast<unsigned>(Event::SerialRead));
+    for (unsigned n = 0; n < 512; ++n)
+      equal(queue.insert(Event::RtcTick, 1000), true);
+    queue.remove(Event::RtcTick);
+    equal(queue.time_to_event(), 0x7fffffff);
+    equal(queue.insert(Event::SerialRead, 1), true);
+  }
 }
 
 } // namespace test
