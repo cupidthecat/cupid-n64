@@ -4,9 +4,11 @@
 namespace cupid::n64 {
 
 bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
-  if (!block_instruction(instruction).branch || (instruction >> 26) == 17)
+  if (!block_instruction(instruction).branch)
     return false;
   const auto opcode = instruction >> 26;
+  if (opcode == 17 && !(cpu.control_[Status] & 0x20000000))
+    return false;
   const auto rs = (instruction >> 21) & 31;
   const auto rt = (instruction >> 16) & 31;
   const auto function = instruction & 63;
@@ -35,7 +37,14 @@ bool CpuCompiler::Emitter::branch(std::uint32_t instruction) {
     auto right = imm(0);
     sljit_s32 taken;
     bool likely;
-    if (opcode == 1) {
+    if (opcode == 17) {
+      op2(SLJIT_AND | SLJIT_32, state(offsetof(CpuState, fcr31)), state(offsetof(CpuState, fcr31)),
+          imm(~0x0003f000u));
+      op2(SLJIT_AND | SLJIT_32, reg(SLJIT_R2), state(offsetof(CpuState, fcr31)), imm(0x800000));
+      left = reg(SLJIT_R2);
+      taken = (rt & 1) ? SLJIT_NOT_EQUAL : SLJIT_EQUAL;
+      likely = rt & 2;
+    } else if (opcode == 1) {
       if (rt >= 16) {
         if (rt == 17)
           op1(SLJIT_MOV, reg(SLJIT_R2), left);

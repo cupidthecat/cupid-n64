@@ -110,7 +110,7 @@ bool CpuCompiler::Emitter::compile() {
     return false;
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4, 4, 0);
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 0);
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
   plan_entries();
@@ -159,7 +159,8 @@ bool CpuCompiler::Emitter::compile() {
       else
         pipeline_dirty = true;
     } else if (!branch(instruction) &&
-               !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit)) {
+               !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit) &&
+               !floating(instruction, !n || previous_branch || internal_entries[n], defer_exit)) {
       execute(instruction, defer_exit);
     }
     pc += 4;
@@ -182,7 +183,7 @@ bool CpuCompiler::Emitter::compile() {
   }
   commit_pipeline();
   return_now(cycles);
-  memory_slow_paths();
+  emit_slow_paths();
   for (const auto &[jump, target] : internal_jumps)
     sljit_set_label(jump, instruction_labels[target]);
   block.code = sljit_generate_code(compiler, 0, nullptr);

@@ -29,6 +29,7 @@ struct CpuCompiler::Impl {
     std::vector<std::uint32_t> words;
     std::vector<unsigned> entries;
     std::vector<InstructionView> views;
+    std::array<std::uint32_t, 2> floating_control{};
     void *code = nullptr;
     std::size_t bytes = 0;
     ~Block() {
@@ -103,7 +104,7 @@ struct CpuCompiler::Emitter {
     sljit_s32 type;
     sljit_sw value = 0;
   };
-  struct MemoryPath {
+  struct SlowPath {
     std::vector<sljit_jump *> enter;
     sljit_label *resume;
     std::uint32_t instruction;
@@ -118,7 +119,7 @@ struct CpuCompiler::Emitter {
   bool wide;
   unsigned cycles = 0;
   bool pipeline_dirty = false;
-  std::vector<MemoryPath> memory_paths;
+  std::vector<SlowPath> slow_paths;
   std::vector<bool> internal_entries;
   std::vector<sljit_label *> instruction_labels;
   std::vector<std::pair<sljit_jump *, unsigned>> internal_jumps;
@@ -129,7 +130,20 @@ struct CpuCompiler::Emitter {
   bool integer(std::uint32_t instruction);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit);
-  void memory_slow_paths();
+  void emit_slow_paths();
+  bool floating(std::uint32_t instruction, bool full, bool defer_exit);
+  void floating_transfer(std::uint32_t instruction);
+  void floating_arithmetic(SlowPath &path);
+  void floating_convert(SlowPath &path);
+  void floating_compare(SlowPath &path);
+  void floating_input(SlowPath &path, sljit_s32 source, bool dual, bool subnormal = true);
+  void floating_flags(SlowPath &path, bool dual, bool flush);
+  void floating_environment(unsigned rounding);
+  void floating_restore();
+  void floating_sqrt(bool dual);
+  void floating_to_integer(bool dual, bool integer_dual);
+  static bool floating_host();
+  static Operand fpr(unsigned index, bool word = false, bool high = false);
   bool special(std::uint32_t instruction);
   void op1(sljit_s32 op, Operand dest, Operand source);
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);

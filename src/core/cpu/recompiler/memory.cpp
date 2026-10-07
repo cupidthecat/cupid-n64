@@ -69,7 +69,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   commit_pipeline();
   advance(cycles);
   cycles = 0;
-  MemoryPath path{{}, nullptr, instruction, defer_exit};
+  SlowPath path{{}, nullptr, instruction, defer_exit};
   address();
   path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, 0x1fffffff));
   if (bytes > 1) {
@@ -130,12 +130,12 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   else
     pipeline_dirty = true;
   path.resume = sljit_emit_label(compiler);
-  memory_paths.push_back(std::move(path));
+  slow_paths.push_back(std::move(path));
   return true;
 }
 
-void CpuCompiler::Emitter::memory_slow_paths() {
-  for (const auto &path : memory_paths) {
+void CpuCompiler::Emitter::emit_slow_paths() {
+  for (const auto &path : slow_paths) {
     const auto entry = sljit_emit_label(compiler);
     for (auto jump : path.enter)
       sljit_set_label(jump, entry);
