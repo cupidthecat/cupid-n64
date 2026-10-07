@@ -131,6 +131,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
     src/desktop/windows/main.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/audio.cpp
+    src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
     src/desktop/session.cpp
     src/desktop/storage/save.cpp
@@ -138,7 +139,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_renderer comdlg32 shell32 winmm)
+  target_link_libraries(cupid_desktop PRIVATE cupid_renderer comdlg32 shell32 winmm gdi32)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
   endif()
@@ -168,6 +169,17 @@ if(BUILD_TESTING)
     target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
     target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     add_test(NAME desktop_audio_devices COMMAND desktop_audio_tests)
+  endif()
+  if(WIN32)
+    add_executable(desktop_video_tests
+      tests/desktop/paint_buffer.cpp
+      src/desktop/windows/video/paint_buffer.cpp
+    )
+    target_include_directories(desktop_video_tests PRIVATE src)
+    target_compile_features(desktop_video_tests PRIVATE cxx_std_20)
+    target_compile_definitions(desktop_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(desktop_video_tests PRIVATE gdi32)
+    add_test(NAME desktop_frame_presentation COMMAND desktop_video_tests)
   endif()
   add_executable(cpu_tests
     tests/cpu/main.cpp

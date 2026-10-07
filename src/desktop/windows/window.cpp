@@ -97,13 +97,19 @@ int Window::run(HINSTANCE instance, int show) {
       MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
       continue;
     }
-    const auto delay = playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
-    if (delay.count()) {
-      MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()), QS_ALLINPUT);
-      continue;
-    }
     try {
-      advance();
+      if (frame_ready_) {
+        const auto delay =
+            playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
+        if (delay.count()) {
+          MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
+                                    QS_ALLINPUT);
+          continue;
+        }
+        present();
+      } else {
+        advance();
+      }
     } catch (const std::exception &exception) {
       error(exception);
     }
@@ -231,6 +237,8 @@ void Window::load() {
                                         options_.disk, options_.arcade_profile);
   session_ = std::move(next);
   pixels_.clear();
+  pixel_width_ = pixel_height_ = 0;
+  frame_ready_ = false;
   last_frame_ = 0;
   paused_ = false;
   keys_.fill(false);
@@ -284,6 +292,8 @@ void Window::command(unsigned id) {
       session_->save();
       session_->reset();
       pixels_.clear();
+      pixel_width_ = pixel_height_ = 0;
+      frame_ready_ = false;
       last_frame_ = 0;
       paused_ = false;
       keys_.fill(false);
@@ -327,45 +337,57 @@ void Window::fullscreen() {
 
 void Window::paint() {
   PAINTSTRUCT painting{};
-  const auto dc = BeginPaint(window_, &painting);
+  const auto target = BeginPaint(window_, &painting);
   RECT client{};
   GetClientRect(window_, &client);
-  FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-  const int width = client.right, height = std::max(0L, client.bottom - 24);
-  if (session_ && !pixels_.empty()) {
-    const auto &frame = session_->frame;
-    BITMAPINFO info{};
-    info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = static_cast<LONG>(frame.width);
-    info.bmiHeader.biHeight = -static_cast<LONG>(frame.height);
-    info.bmiHeader.biPlanes = 1;
-    info.bmiHeader.biBitCount = 32;
-    info.bmiHeader.biCompression = BI_RGB;
-    const int scaled_width = std::min(width, height * 4 / 3);
-    const int scaled_height = scaled_width * 3 / 4;
-    SetStretchBltMode(dc, COLORONCOLOR);
-    StretchDIBits(dc, (width - scaled_width) / 2, (height - scaled_height) / 2, scaled_width,
-                  scaled_height, 0, 0, static_cast<int>(frame.width),
-                  static_cast<int>(frame.height), pixels_.data(), &info, DIB_RGB_COLORS, SRCCOPY);
-  } else {
-    SetTextColor(dc, RGB(220, 220, 220));
-    SetBkMode(dc, TRANSPARENT);
-    RECT content{20, 20, width - 20, height - 20};
-    DrawTextW(dc,
-              L"CUPID-N64\n\nFile > Open ROM to load a Nintendo 64 game.\n"
-              L"Select the game's PIF firmware when prompted.\n\n"
-              L"Press F1 for keyboard controls.",
-              -1, &content, DT_CENTER);
+  if (client.right <= 0 || client.bottom <= 0) {
+    EndPaint(window_, &painting);
+    return;
   }
-  RECT bar{0, height, width, client.bottom};
-  FillRect(dc, &bar, static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
-  SetTextColor(dc, RGB(255, 255, 255));
-  SetBkMode(dc, TRANSPARENT);
-  bar.left = 8;
-  const auto status =
-      stopped() ? L"Paused  |  F5 Resume  |  F1 Controls  |  F11 Fullscreen"
-                : L"WASD Move  |  J Jump  |  K Punch  |  Enter Start  |  F1 Controls  |  F5 Pause";
-  DrawTextW(dc, status, -1, &bar, DT_SINGLELINE | DT_VCENTER);
+  try {
+    const auto dc = paint_buffer_.begin(target, client.right, client.bottom);
+    FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+    const int width = client.right, height = std::max(0L, client.bottom - 24);
+    if (session_ && !pixels_.empty()) {
+      BITMAPINFO info{};
+      info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+      info.bmiHeader.biWidth = static_cast<LONG>(pixel_width_);
+      info.bmiHeader.biHeight = -static_cast<LONG>(pixel_height_);
+      info.bmiHeader.biPlanes = 1;
+      info.bmiHeader.biBitCount = 32;
+      info.bmiHeader.biCompression = BI_RGB;
+      const int scaled_width = std::min(width, height * 4 / 3);
+      const int scaled_height = scaled_width * 3 / 4;
+      SetStretchBltMode(dc, COLORONCOLOR);
+      StretchDIBits(dc, (width - scaled_width) / 2, (height - scaled_height) / 2, scaled_width,
+                    scaled_height, 0, 0, static_cast<int>(pixel_width_),
+                    static_cast<int>(pixel_height_), pixels_.data(), &info, DIB_RGB_COLORS,
+                    SRCCOPY);
+    } else {
+      SetTextColor(dc, RGB(220, 220, 220));
+      SetBkMode(dc, TRANSPARENT);
+      RECT content{20, 20, width - 20, height - 20};
+      DrawTextW(dc,
+                L"CUPID-N64\n\nFile > Open ROM to load a Nintendo 64 game.\n"
+                L"Select the game's PIF firmware when prompted.\n\n"
+                L"Press F1 for keyboard controls.",
+                -1, &content, DT_CENTER);
+    }
+    RECT bar{0, height, width, client.bottom};
+    FillRect(dc, &bar, static_cast<HBRUSH>(GetStockObject(DKGRAY_BRUSH)));
+    SetTextColor(dc, RGB(255, 255, 255));
+    SetBkMode(dc, TRANSPARENT);
+    bar.left = 8;
+    const auto status =
+        stopped()
+            ? L"Paused  |  F5 Resume  |  F1 Controls  |  F11 Fullscreen"
+            : L"WASD Move  |  J Jump  |  K Punch  |  Enter Start  |  F1 Controls  |  F5 Pause";
+    DrawTextW(dc, status, -1, &bar, DT_SINGLELINE | DT_VCENTER);
+    paint_buffer_.present(target);
+  } catch (...) {
+    EndPaint(window_, &painting);
+    throw;
+  }
   EndPaint(window_, &painting);
 }
 
@@ -398,8 +420,15 @@ void Window::advance() {
   } while (session_->frames == last_frame_ && session_->clocks() - interval_start < 1875000);
   if (session_->frames == last_frame_)
     return;
+  frame_ready_ = true;
+}
+
+void Window::present() {
+  frame_ready_ = false;
   last_frame_ = session_->frames;
   pixels_ = session_->frame.rgba;
+  pixel_width_ = session_->frame.width;
+  pixel_height_ = session_->frame.height;
   for (std::size_t n = 0; n < pixels_.size(); n += 4)
     std::swap(pixels_[n], pixels_[n + 2]);
   InvalidateRect(window_, nullptr, FALSE);

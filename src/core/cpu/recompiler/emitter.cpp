@@ -110,7 +110,7 @@ bool CpuCompiler::Emitter::compile() {
     return false;
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 0);
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
   plan_entries();

@@ -52,6 +52,7 @@ void compare(BoundaryFixture &actual, BoundaryFixture &expected) {
   equal(actual.cpu.in_delay_slot(), expected.cpu.in_delay_slot());
   equal(actual.memory.fills, expected.memory.fills);
   equal(actual.synchronizations, expected.synchronizations);
+  equal(actual.cpu.synchronization_limit(), expected.cpu.synchronization_limit());
   for (unsigned reg = 0; reg < 32; ++reg) {
     equal(actual.cpu.state().gpr[reg], expected.cpu.state().gpr[reg]);
     equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
