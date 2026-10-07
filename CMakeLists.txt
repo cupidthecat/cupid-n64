@@ -127,6 +127,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
     src/desktop/windows/main.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/audio.cpp
+    src/desktop/audio/resampler.cpp
     src/desktop/session.cpp
     src/desktop/storage/save.cpp
     src/desktop/timing/playback_clock.cpp
@@ -141,6 +142,10 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(desktop_resampler_tests tests/desktop/resampler.cpp src/desktop/audio/resampler.cpp)
+  target_include_directories(desktop_resampler_tests PRIVATE src)
+  target_compile_features(desktop_resampler_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_audio_resampling COMMAND desktop_resampler_tests)
   add_executable(desktop_storage_tests tests/desktop/storage.cpp src/desktop/storage/save.cpp)
   target_include_directories(desktop_storage_tests PRIVATE src)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)

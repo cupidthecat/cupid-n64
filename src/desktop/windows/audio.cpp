@@ -5,15 +5,21 @@
 namespace cupid::desktop {
 
 Audio::Audio() {
+  completed_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!completed_) {
+    error_ = MMSYSERR_NOMEM;
+    return;
+  }
   WAVEFORMATEX format{};
   format.wFormatTag = WAVE_FORMAT_PCM;
   format.nChannels = 2;
-  format.nSamplesPerSec = 48000;
+  format.nSamplesPerSec = AudioResampler::output_frequency;
   format.wBitsPerSample = 16;
   format.nBlockAlign = 4;
   format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
   error_ = open_audio_device(waveOutGetNumDevs(), [&](unsigned id) {
-    return waveOutOpen(&device_, id, &format, 0, 0, CALLBACK_NULL);
+    return waveOutOpen(&device_, id, &format, reinterpret_cast<DWORD_PTR>(completed_), 0,
+                       CALLBACK_EVENT);
   });
   if (error_ != MMSYSERR_NOERROR) {
     device_ = nullptr;
@@ -41,52 +47,52 @@ std::wstring Audio::error() const {
 }
 
 Audio::~Audio() {
-  if (!device_)
-    return;
-  waveOutReset(device_);
-  for (auto &buffer : buffers_)
-    waveOutUnprepareHeader(device_, &buffer.header, sizeof(WAVEHDR));
-  waveOutClose(device_);
+  if (device_) {
+    waveOutReset(device_);
+    for (auto &buffer : buffers_)
+      waveOutUnprepareHeader(device_, &buffer.header, sizeof(WAVEHDR));
+    waveOutClose(device_);
+  }
+  if (completed_)
+    CloseHandle(completed_);
 }
 
 void Audio::frequency(unsigned value) {
-  step_ = std::max(1u, value) / 48000.0;
-  position_ = 0;
+  resampler_.frequency(value);
 }
 
 void Audio::clear() {
   if (device_)
     waveOutReset(device_);
   buffer_ = offset_ = 0;
-  position_ = 0;
-  previous_ = {};
+  resampler_.clear();
 }
 
 void Audio::sample(n64::StereoSample value) {
-  if (!available() || muted) {
-    previous_ = value;
+  if (!available())
     return;
-  }
-  while (position_ < 1.0) {
+  resampler_.write(value, [this](n64::StereoSample sample) {
+    if (!available())
+      return;
     auto &buffer = buffers_[buffer_];
-    if (buffer.header.dwFlags & WHDR_INQUEUE) {
-      position_ = 1.0;
-      break;
+    while (buffer.header.dwFlags & WHDR_INQUEUE) {
+      if (WaitForSingleObject(completed_, 1000) != WAIT_OBJECT_0) {
+        error_ = MMSYSERR_ERROR;
+        return;
+      }
     }
-    const auto interpolate = [this](double a, double b) {
-      return static_cast<short>(std::clamp(a + (b - a) * position_, -1.0, 32767.0 / 32768) * 32768);
+    const auto convert = [this](double value) {
+      return muted ? short(0)
+                   : static_cast<short>(std::clamp(value, -1.0, 32767.0 / 32768) * 32768);
     };
-    buffer.samples[offset_++] = interpolate(previous_.left, value.left);
-    buffer.samples[offset_++] = interpolate(previous_.right, value.right);
+    buffer.samples[offset_++] = convert(sample.left);
+    buffer.samples[offset_++] = convert(sample.right);
     if (offset_ == buffer.samples.size()) {
       error_ = waveOutWrite(device_, &buffer.header, sizeof(WAVEHDR));
       offset_ = 0;
       buffer_ = (buffer_ + 1) % static_cast<unsigned>(buffers_.size());
     }
-    position_ += step_;
-  }
-  position_ -= 1.0;
-  previous_ = value;
+  });
 }
 
 } // namespace cupid::desktop

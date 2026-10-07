@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/devices/audio/audio_interface.hpp"
+#include "desktop/audio/resampler.hpp"
 #include <array>
 #include <string>
 #include <windows.h>
@@ -30,11 +30,11 @@ private:
     std::array<short, 960> samples{};
   };
   HWAVEOUT device_ = nullptr;
+  HANDLE completed_ = nullptr;
   MMRESULT error_ = MMSYSERR_NOERROR;
   std::array<Buffer, 8> buffers_{};
   unsigned buffer_ = 0, offset_ = 0;
-  double position_ = 0, step_ = 44100.0 / 48000;
-  n64::StereoSample previous_{};
+  AudioResampler resampler_;
 };
 
 } // namespace cupid::desktop
