@@ -228,7 +228,7 @@ void Window::load() {
     session_->save();
   audio_.clear();
   auto next = std::make_unique<Session>(options_.rom, options_.firmware, audio_, options_.ipl,
-                                        options_.disk);
+                                        options_.disk, options_.arcade_profile);
   session_ = std::move(next);
   pixels_.clear();
   last_frame_ = 0;
@@ -249,7 +249,10 @@ std::filesystem::path Window::choose(bool firmware) {
   dialog.hwndOwner = window_;
   dialog.lpstrFile = path.data();
   dialog.nMaxFile = static_cast<DWORD>(path.size());
-  dialog.lpstrTitle = firmware ? L"Select PIF firmware (1984 bytes)" : L"Open Nintendo 64 ROM";
+  dialog.lpstrTitle = firmware ? (options_.arcade_profile == n64::ArcadeProfile::Disabled
+                                      ? L"Select PIF firmware (1984 bytes)"
+                                      : L"Select Aleck64 PIF firmware (1984 or 2048 bytes)")
+                               : L"Open Nintendo 64 ROM";
   dialog.lpstrFilter = firmware ? L"PIF firmware\0*.bin;*.rom\0All files\0*.*\0"
                                 : L"N64 cartridge\0*.z64;*.n64;*.v64\0All files\0*.*\0";
   dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;

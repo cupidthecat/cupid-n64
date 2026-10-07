@@ -6,22 +6,29 @@
 namespace cupid::desktop {
 
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
-                 Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk)
+                 Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
+                 n64::ArcadeProfile arcade)
     : audio_(audio) {
   auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read_file(rom, 0x0fc00000);
-  auto pif = read_file(firmware, 0x7c0);
+  auto pif = read_file(firmware, arcade == n64::ArcadeProfile::Disabled ? 0x7c0 : 0x800);
   const auto profile =
       rom.empty() ? std::optional(n64::CartridgeProfile{}) : n64::inspect_cartridge(cartridge);
   if (!profile)
     throw std::runtime_error("Select a valid Nintendo 64 cartridge image.");
   n64::ConsoleConfig config;
-  config.region = profile->region;
-  config.cic = profile->cic;
-  config.eeprom_size = profile->eeprom_size;
-  config.sram_size = profile->sram_size;
-  config.flash_model = profile->flash_model;
-  config.rtc_present = profile->rtc_present;
-  config.disk_drive = !ipl.empty();
+  config.arcade_profile = arcade;
+  if (arcade != n64::ArcadeProfile::Disabled) {
+    if (rom.empty() || !ipl.empty() || !disk.empty())
+      throw std::runtime_error("Aleck64 requires a cartridge image and its PIF firmware.");
+  } else {
+    config.region = profile->region;
+    config.cic = profile->cic;
+    config.eeprom_size = profile->eeprom_size;
+    config.sram_size = profile->sram_size;
+    config.flash_model = profile->flash_model;
+    config.rtc_present = profile->rtc_present;
+    config.disk_drive = !ipl.empty();
+  }
   console_ = std::make_unique<n64::Console>(config);
   if (config.disk_drive) {
     if (!console_->disk_drive().load_ipl(read_file(ipl, 0x400000)))
@@ -45,7 +52,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       saved_disk_.assign(data.begin(), data.end());
     }
   }
-  for (unsigned port = 0; port < profile->accessories.size(); ++port) {
+  for (unsigned port = 0; !console_->arcade() && port < profile->accessories.size(); ++port) {
     auto &pad = console_->controller(port);
     switch (profile->accessories[port]) {
     case n64::ControllerAccessory::Memory:
@@ -64,7 +71,10 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
                                                         n64::ControllerAccessory::None);
   }
   if (!console_->load(cartridge, pif))
-    throw std::runtime_error("Select a game or 64DD IPL and a 1984-byte PIF firmware file.");
+    throw std::runtime_error(
+        arcade == n64::ArcadeProfile::Disabled
+            ? "Select a game or 64DD IPL and a 1984-byte PIF firmware file."
+            : "Select an Aleck64 game and its 1984- or 2048-byte PIF firmware file.");
   if (!rom.empty()) {
     const auto attach_save = [&](const wchar_t *extension, std::span<std::uint8_t> memory) {
       if (!memory.empty())
@@ -116,7 +126,23 @@ void Session::reset() {
 }
 
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
-  console_->controller(0).input(buttons, x, y);
+  if (auto *arcade = console_->arcade()) {
+    auto &player = arcade->input().players[0];
+    player.up = buttons & 0x0800;
+    player.down = buttons & 0x0400;
+    player.left = buttons & 0x0200;
+    player.right = buttons & 0x0100;
+    player.buttons[0] = buttons & 0x8000;
+    player.buttons[1] = buttons & 0x4000;
+    player.buttons[2] = buttons & 0x0010;
+    player.buttons[3] = buttons & 0x0001;
+    player.start = buttons & 0x1000;
+    player.coin = buttons & 0x2000;
+    player.x = x;
+    player.y = y;
+  } else {
+    console_->controller(0).input(buttons, x, y);
+  }
   console_->run_interval();
   if (console_->frozen() || renderer_->crashed() ||
       console_->pif().state() == n64::Pif::State::Error)

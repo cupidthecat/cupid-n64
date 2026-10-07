@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/arcade/aleck64.hpp"
 #include "core/cartridge/flash/flash.hpp"
 #include "core/cartridge/isviewer/isviewer.hpp"
 #include "core/cartridge/joybus.hpp"
@@ -14,6 +15,7 @@
 #include "core/devices/vi/video_interface.hpp"
 #include "core/disk/drive.hpp"
 #include "core/rdp/rdp.hpp"
+#include <memory>
 
 namespace cupid::n64 {
 
@@ -28,6 +30,7 @@ struct ConsoleConfig {
   Rtc::HostClock rtc_clock = {};
   bool disk_drive = false;
   DiskClock::HostClock disk_clock = {};
+  ArcadeProfile arcade_profile = ArcadeProfile::Disabled;
 };
 
 class Console : public Bus {
@@ -54,7 +57,7 @@ public:
   BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words) override;
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override;
   InstructionTracker *instruction_tracker() override {
-    return ram_.instruction_tracker();
+    return arcade_ ? nullptr : ram_.instruction_tracker();
   }
   Cpu &cpu() {
     return cpu_;
@@ -101,6 +104,9 @@ public:
   DiskDrive &disk_drive() {
     return disk_;
   }
+  Aleck64 *arcade() {
+    return arcade_.get();
+  }
 
 private:
   std::uint32_t read_register(std::uint32_t address);
@@ -135,6 +141,7 @@ private:
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;
   bool frozen_ = false;
+  std::unique_ptr<Aleck64> arcade_;
 };
 
 } // namespace cupid::n64

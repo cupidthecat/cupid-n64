@@ -2,17 +2,32 @@
 #include <algorithm>
 
 namespace cupid::n64 {
+namespace {
+
+ConsoleConfig configure(ConsoleConfig config) {
+  if (config.arcade_profile != ArcadeProfile::Disabled) {
+    config.expansion = true;
+    config.region = VideoRegion::Ntsc;
+    config.cic = CicModel::N5101;
+    config.disk_drive = false;
+  }
+  return config;
+}
+
+} // namespace
 
 Console::Console(ConsoleConfig config)
-    : config_(config), ram_(ri_, random_, config.expansion), mi_(ram_), cic_(config.cic),
-      pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_),
-      disk_(events_, config.disk_clock), rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_),
-      vi_(mi_, config.region), audio_(ram_, mi_, config.region), isviewer_(pi_),
-      eeprom_(events_, config.eeprom_size), rtc_(events_, config.rtc_present, config.rtc_clock),
-      cartridge_joybus_(eeprom_, rtc_), sram_(config.sram_size),
-      flash_(events_, config.flash_model),
+    : config_(configure(config)), ram_(ri_, random_, config_.expansion), mi_(ram_),
+      cic_(config_.cic), pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_),
+      disk_(events_, config_.disk_clock), rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_),
+      vi_(mi_, config_.region), audio_(ram_, mi_, config_.region), isviewer_(pi_),
+      eeprom_(events_, config_.eeprom_size), rtc_(events_, config_.rtc_present, config_.rtc_clock),
+      cartridge_joybus_(eeprom_, rtc_), sram_(config_.sram_size),
+      flash_(events_, config_.flash_model),
       controllers_{Gamepad(random_), Gamepad(random_), Gamepad(random_), Gamepad(random_)},
-      cpu_(*this, &random_) {
+      cpu_(*this, &random_), arcade_(config_.arcade_profile == ArcadeProfile::Disabled
+                                         ? nullptr
+                                         : std::make_unique<Aleck64>(config_.arcade_profile)) {
   mi_.connect([this](bool line) { cpu_.set_interrupt(2, line); }, [this] { frozen_ = true; });
   pif_.connect_reset([this] { cpu_.request_nmi(); });
   auto request_sync = [this] { clock_target_ = cpu_.state().clocks; };
@@ -27,6 +42,9 @@ Console::Console(ConsoleConfig config)
     clock_target_ = std::min(clock_target_, cpu_.state().clocks + remaining);
   });
   pif_.attach(4, &cartridge_joybus_);
+  if (arcade_)
+    for (unsigned n = 0; n < 2; ++n)
+      pif_.attach(n, &arcade_->controller(n));
   pi_.attach(rom_, 0);
   if (!sram_.data().empty())
     pi_.attach(sram_, 1);
@@ -47,6 +65,8 @@ Console::Console(ConsoleConfig config)
 
 bool Console::load(std::span<const std::uint8_t> cartridge,
                    std::span<const std::uint8_t> firmware) {
+  if (arcade_ && firmware.size() == 0x800)
+    firmware = firmware.first(0x7c0);
   if (firmware.size() != 0x7c0)
     return false;
   if (cartridge.empty()) {
@@ -78,6 +98,8 @@ void Console::power(bool reset) {
   eeprom_.complete_write();
   flash_.power();
   isviewer_.power();
+  if (arcade_)
+    arcade_->power(reset);
   ram_.power(reset);
   mi_.power();
   vi_.power();
@@ -100,7 +122,9 @@ void Console::power(bool reset) {
 }
 
 void Console::connect_controller(unsigned port, bool connected) {
-  if (port < controllers_.size())
+  if (arcade_ && port < 2)
+    pif_.attach(port, connected ? &arcade_->controller(port) : nullptr);
+  else if (port < controllers_.size())
     pif_.attach(port, connected ? &controllers_[port] : nullptr);
 }
 

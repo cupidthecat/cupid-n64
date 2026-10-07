@@ -11,6 +11,7 @@ struct Options {
   std::filesystem::path rom, firmware, capture, ipl, disk;
   unsigned frames = 0;
   bool test_input = false;
+  n64::ArcadeProfile arcade_profile = n64::ArcadeProfile::Disabled;
 };
 
 class Window {
