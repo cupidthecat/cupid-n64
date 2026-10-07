@@ -13,18 +13,25 @@ namespace cupid::n64 {
 
 struct RspCompiler::Impl {
   struct Key {
-    std::array<Rsp::PipelineStage, 3> previous;
-    std::uint32_t pc;
-    bool single;
+    std::array<std::uint64_t, 3> registers{};
+    std::uint32_t pc = 0;
+    std::uint8_t flags = 0;
+    Key() = default;
+    Key(const Rsp::Pipeline &pipeline, std::uint32_t address) : pc(address) {
+      flags = static_cast<std::uint8_t>(unsigned(pipeline.single_issue) << 3);
+      for (unsigned n = 0; n < registers.size(); ++n) {
+        const auto &stage = pipeline.previous[n];
+        registers[n] = stage.gpr | (std::uint64_t(stage.vector) << 32);
+        flags |= static_cast<std::uint8_t>(unsigned(stage.load) << n);
+      }
+    }
     bool operator==(const Key &) const = default;
   };
   struct Hash {
     std::size_t operator()(const Key &key) const {
-      std::uint64_t value = (key.pc << 1) | unsigned(key.single);
-      for (const auto &stage : key.previous) {
-        value = std::rotl(value, 13) ^ (std::uint64_t(stage.gpr) << 32) ^ stage.vector;
-        value = std::rotl(value, 7) ^ unsigned(stage.load);
-      }
+      std::uint64_t value = (std::uint64_t(key.pc) << 4) | key.flags;
+      for (const auto registers : key.registers)
+        value = std::rotl(value, 17) ^ registers;
       return std::hash<std::uint64_t>()(value);
     }
   };
@@ -36,6 +43,7 @@ struct RspCompiler::Impl {
     std::bitset<128> lines;
     void *code = nullptr;
     std::size_t bytes = 0;
+    std::uint64_t generation = 0;
     ~Block() {
       if (code)
         sljit_free_code(code, nullptr);
@@ -48,9 +56,11 @@ struct RspCompiler::Impl {
   Rsp &rsp;
   std::unordered_map<Key, std::vector<std::unique_ptr<Block>>, Hash> blocks;
   std::array<Block *, 1024> context{};
+  std::array<Block *, 1024> alternate{};
   std::bitset<128> dirty;
   bool external_memory = false;
   std::size_t bytes = 0;
+  std::uint64_t generation = 1;
   explicit Impl(Rsp &rsp) : rsp(rsp) {}
 };
 

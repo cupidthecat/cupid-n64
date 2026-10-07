@@ -213,9 +213,6 @@ void rsp_native_tests() {
     }
     for (unsigned iteration = 0; iteration < 256; ++iteration) {
       const auto before = failures;
-      // Recompile each boundary with its current hazards; block tests cover retained schedules.
-      for (unsigned address = 0x1000; address < 0x2000; address += 32)
-        actual.rsp.write_local(address, 4, actual.rsp.read_local(address, 4));
       run(actual, expected, static_cast<unsigned>(actual.rsp.clocks()) + 1);
       if (failures != before)
         return;
