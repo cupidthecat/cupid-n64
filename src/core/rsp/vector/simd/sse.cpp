@@ -170,8 +170,15 @@ void execute(RspState &state, RspVector &dest, const RspVector &source, const Rs
   if (operation == 55 || operation == 63)
     return;
   const auto a = load(source);
-  const auto selection = _mm_load_si128(reinterpret_cast<const __m128i *>(&tables.select[element]));
-  const auto b = _mm_shuffle_epi8(load(target), selection);
+  const auto b = [&] {
+    if constexpr (Element == 0 || Element == 1)
+      return load(target);
+    else {
+      const auto selection =
+          _mm_load_si128(reinterpret_cast<const __m128i *>(&tables.select[element]));
+      return _mm_shuffle_epi8(load(target), selection);
+    }
+  }();
   const auto zero = _mm_setzero_si128();
   const auto invert = _mm_set1_epi16(-1);
   __m128i result;

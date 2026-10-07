@@ -40,9 +40,6 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     return false;
   }
   const auto page = physical & ~4095u;
-  const auto data = cpu.bus_.instruction_data(page);
-  if (data.size() < 1024)
-    return false;
   const auto first = (physical & 4095) >> 2;
   const unsigned reverse = cpu.little_endian() ? 1 : 0;
   const bool wide = cpu.mode() == Cpu::Mode::Kernel || cpu.extended_addressing();
@@ -66,7 +63,16 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     section.generation = generation;
   }
   auto *found = section.find(key);
-  if (found && (!tracker || !found->tracked)) {
+  // RAM writes cannot replace instructions already held in an unchanged CPU cache.
+  const bool cache_unchanged =
+      found && found->cache_generation == cpu.instruction_cache_generation_;
+  std::span<const std::uint32_t> data;
+  if (!cache_unchanged) {
+    data = cpu.bus_.instruction_data(page);
+    if (data.size() < 1024)
+      return false;
+  }
+  if (found && !cache_unchanged && (!tracker || !found->tracked)) {
     const auto words = std::span(found->block->words).subspan(found->index);
     bool unchanged = !reverse && std::equal(words.begin(), words.end(), data.begin() + first);
     if (reverse) {
@@ -89,8 +95,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
       found ? first + static_cast<unsigned>(found->block->words.size()) - found->index : 1024u;
   std::vector<std::uint32_t> words;
   bool stop_after_delay = false;
-  const bool validate = !tracker || !found || !found->tracked ||
-                        found->cache_generation != cpu.instruction_cache_generation_;
+  const bool validate = !cache_unchanged;
   for (unsigned word = first; validate && word < limit; ++word) {
     const auto address = page + word * 4;
     if (word == first || !(word & 7)) {
@@ -132,7 +137,6 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   found->tracked = tracker != nullptr;
   found->cache_generation = cpu.instruction_cache_generation_;
   found->block->execute(clock_target);
-  cpu.advance_clocks(0);
   return true;
 #endif
 }

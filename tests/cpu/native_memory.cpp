@@ -5,6 +5,36 @@ using namespace cupid::n64;
 using namespace native_memory;
 
 void native_memory_tests() {
+  for (bool little : {false, true}) {
+    for (unsigned operation : {32u, 33u, 35u, 36u, 37u, 39u, 40u, 41u, 43u, 55u, 63u}) {
+      for (unsigned timer : {1u, 2u, 3u}) {
+        CachedFixture actual;
+        CachedFixture expected;
+        unsigned actual_requests = 0;
+        unsigned expected_requests = 0;
+        for (auto *fixture : {&actual, &expected}) {
+          fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
+          fixture->cpu.state().gpr[1] = 0xffffffff80000200;
+          fixture->cpu.state().gpr[2] = 0x8394a5b6c7d8e9fa;
+          fixture->code(0, i(operation, 1, 2, 0), little);
+          fixture->code(4, i(35, 1, 3, 8), little);
+          fixture->code(8, c(4, 5, Status), little);
+          fixture->cpu.state().gpr[5] = 0x30000000;
+          fixture->cpu.run_interpreted_block(0);
+          fixture->cpu.set_pc(0xffffffff80001000);
+          fixture->cpu.write_control(Count, 0);
+          fixture->cpu.write_control(Compare, timer);
+          fixture->cpu.write_control(Status, 0x30008001);
+        }
+        actual.cpu.connect_sync([&] { ++actual_requests; });
+        expected.cpu.connect_sync([&] { ++expected_requests; });
+        const auto limit = actual.cpu.state().clocks + 64;
+        equal(actual.cpu.run_block(limit), expected.cpu.run_interpreted_block(limit));
+        compare(actual, expected);
+        equal(actual_requests, expected_requests);
+      }
+    }
+  }
   for (auto count : {0u, 1u, 0x7fffffffu, 0xffffffffu}) {
     for (auto timer : {0u, 1u, 2u, 0xffffffffu}) {
       for (bool odd : {false, true}) {

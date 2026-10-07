@@ -151,7 +151,7 @@ struct CpuCompiler::Emitter {
   void compare(Operand dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source, bool word = false);
   void commit_pipeline();
-  void advance(unsigned clocks);
+  void advance(unsigned clocks, bool preserve_address = false);
   void return_now(unsigned clocks);
   void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
   void cache_guard(std::uint32_t address);

@@ -147,7 +147,9 @@ void execution_tests() {
     equal(f.cpu.state().gpr[2], 2);
     equal(f.cpu.state().clocks, 356);
     f.code(0, 0x08000400);
-    equal(f.cpu.run_block(f.target), false);
+    equal(f.cpu.run_block(f.target), true);
+    equal(f.cpu.state().gpr[2], 3);
+    equal(f.cpu.state().clocks, 486);
     f.cpu.set_pc(0xffffffff80001000);
     f.cpu.state().gpr[3] = 0xffffffff80001000;
     f.cpu.execute(i(47, 3, 16, 0));

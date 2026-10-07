@@ -195,9 +195,14 @@ void native_entry_tests() {
           fixture->cpu.set_pc(0xffffffff8000101c);
         }
         const auto budget = actual.cpu.state().clocks;
-        equal(actual.cpu.run_block(budget), false);
-        equal(expected.cpu.run_interpreted_block(budget), false);
+        const auto cached_result = actual.cpu.state().gpr[8];
+        for (unsigned n = 0; n < 3; ++n)
+          expected.cpu.step();
+        for (unsigned n = 0; n < 8 && actual.cpu.state().pc != expected.cpu.state().pc; ++n)
+          if (!actual.cpu.run_block(budget))
+            actual.cpu.step();
         compare(actual, expected);
+        equal(actual.cpu.state().gpr[8], cached_result + 1);
         for (auto *fixture : {&actual, &expected}) {
           fixture->cpu.state().gpr[30] = 0xffffffff80001000;
           fixture->cpu.execute(i(47, 30, 16, 0));

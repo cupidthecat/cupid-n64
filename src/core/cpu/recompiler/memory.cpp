@@ -82,10 +82,8 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
                                       SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, tag)));
   if (full)
     begin(false);
-  advance(cycles + 2);
+  advance(cycles + 2, true);
   cycles = 0;
-  address();
-  line();
   if (write)
     op1(SLJIT_MOV_U8, {SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, dirty)}, imm(1));
   op2(SLJIT_AND, reg(SLJIT_R3), reg(SLJIT_R1), imm(15));

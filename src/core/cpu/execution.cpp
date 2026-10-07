@@ -6,8 +6,9 @@
 namespace cupid::n64 {
 
 std::uint64_t Cpu::synchronization_limit() const {
+  const auto count = (count_ticks_ + ((state_.clocks - count_clock_) >> 1)) & ((1ull << 33) - 1);
   const auto remaining =
-      static_cast<std::int64_t>(control_[Compare] << 1) - static_cast<std::int64_t>(count_ticks_);
+      static_cast<std::int64_t>(control_[Compare] << 1) - static_cast<std::int64_t>(count);
   return remaining > 0 ? static_cast<std::uint64_t>(remaining) : 0;
 }
 
