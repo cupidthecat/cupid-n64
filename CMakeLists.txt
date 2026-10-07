@@ -12,6 +12,12 @@ add_library(cupid_core
   src/core/cpu/recompiler/emitter.cpp
   src/core/cpu/recompiler/integer.cpp
   src/core/cpu/recompiler/memory.cpp
+  src/core/cpu/recompiler/fpu/execute.cpp
+  src/core/cpu/recompiler/fpu/registers.cpp
+  src/core/cpu/recompiler/fpu/arithmetic.cpp
+  src/core/cpu/recompiler/fpu/convert.cpp
+  src/core/cpu/recompiler/fpu/compare.cpp
+  src/core/cpu/recompiler/fpu/host.cpp
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
   src/core/cpu/control.cpp
@@ -114,6 +120,7 @@ if(BUILD_TESTING)
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
     tests/cpu/native_fpu_memory.cpp
+    tests/cpu/native_fpu.cpp
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
     tests/cpu/section_invalidation.cpp
