@@ -45,6 +45,15 @@ add_library(cupid_core
   src/core/cartridge/flash/commands.cpp
   src/core/controller/gamepad.cpp
   src/core/controller/pak.cpp
+  src/core/controller/mouse/mouse.cpp
+  src/core/controller/accessories/transfer_pak.cpp
+  src/core/controller/accessories/bio_sensor.cpp
+  src/core/controller/accessories/cartridge/handheld.cpp
+  src/core/controller/accessories/cartridge/identity.cpp
+  src/core/controller/accessories/cartridge/boards.cpp
+  src/core/controller/accessories/cartridge/clock.cpp
+  src/core/controller/accessories/cartridge/tama.cpp
+  src/core/controller/accessories/cartridge/serial.cpp
   src/core/rsp/rsp.cpp
   src/core/rsp/recompiler/cache.cpp
   src/core/rsp/recompiler/emitter.cpp
@@ -174,6 +183,8 @@ if(BUILD_TESTING)
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp
+    tests/devices/controller/accessories.cpp
+    tests/devices/controller/handheld.cpp
     tests/devices/rsp.cpp
     tests/devices/video.cpp
     tests/devices/audio.cpp

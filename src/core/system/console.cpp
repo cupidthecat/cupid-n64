@@ -76,6 +76,11 @@ void Console::connect_controller(unsigned port, bool connected) {
     pif_.attach(port, connected ? &controllers_[port] : nullptr);
 }
 
+void Console::connect_mouse(unsigned port, bool connected) {
+  if (port < mice_.size())
+    pif_.attach(port, connected ? &mice_[port] : nullptr);
+}
+
 std::int64_t Console::pending_clocks() const {
   return static_cast<std::int64_t>(cpu_.state().clocks - synchronized_clock_);
 }
