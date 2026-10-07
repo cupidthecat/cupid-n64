@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/cartridge/eeprom.hpp"
 #include "core/cartridge/flash/flash.hpp"
+#include "core/cartridge/joybus.hpp"
 #include "core/cartridge/rom.hpp"
 #include "core/cartridge/sram.hpp"
 #include "core/controller/gamepad.hpp"
@@ -21,6 +21,8 @@ struct ConsoleConfig {
   unsigned eeprom_size = 0;
   unsigned sram_size = 0;
   std::optional<FlashModel> flash_model = {};
+  bool rtc_present = false;
+  Rtc::HostClock rtc_clock = {};
 };
 
 class Console : public Bus {
@@ -76,6 +78,9 @@ public:
   Eeprom &eeprom() {
     return eeprom_;
   }
+  Rtc &rtc() {
+    return rtc_;
+  }
   Sram &sram() {
     return sram_;
   }
@@ -104,6 +109,8 @@ private:
   AudioInterface audio_;
   CartridgeRom rom_;
   Eeprom eeprom_;
+  Rtc rtc_;
+  CartridgeJoybus cartridge_joybus_;
   Sram sram_;
   FlashRam flash_;
   std::array<Gamepad, 4> controllers_;

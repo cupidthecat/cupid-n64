@@ -18,6 +18,7 @@ enum class Event : unsigned {
   ClockTick,
   EepromWrite,
   FlashComplete,
+  RtcTick,
 };
 
 class EventQueue {
@@ -58,6 +59,30 @@ public:
       }
     }
     return remaining;
+  }
+
+  void remove(Event event) {
+    unsigned count = 0;
+    for (unsigned n = 0; n < size_; ++n)
+      if (heap_[n].event != event)
+        heap_[count++] = heap_[n];
+    size_ = count;
+    for (unsigned index = size_ / 2; index > 0;) {
+      unsigned parent = --index;
+      const auto entry = heap_[parent];
+      while (true) {
+        unsigned child = parent * 2 + 1;
+        if (child >= size_)
+          break;
+        if (child + 1 < size_ && at_or_after(heap_[child].clock, heap_[child + 1].clock))
+          ++child;
+        if (at_or_after(heap_[child].clock, entry.clock))
+          break;
+        heap_[parent] = heap_[child];
+        parent = child;
+      }
+      heap_[parent] = entry;
+    }
   }
 
   std::int32_t time_to_event() const {

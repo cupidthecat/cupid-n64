@@ -7,7 +7,8 @@ Console::Console(ConsoleConfig config)
     : config_(config), ram_(ri_, random_, config.expansion), mi_(ram_), cic_(config.cic),
       pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_), rsp_(ram_, mi_, random_),
       rdp_(ram_, rsp_, mi_), vi_(mi_, config.region), audio_(ram_, mi_, config.region),
-      eeprom_(events_, config.eeprom_size), sram_(config.sram_size),
+      eeprom_(events_, config.eeprom_size), rtc_(events_, config.rtc_present, config.rtc_clock),
+      cartridge_joybus_(eeprom_, rtc_), sram_(config.sram_size),
       flash_(events_, config.flash_model),
       controllers_{Gamepad(random_), Gamepad(random_), Gamepad(random_), Gamepad(random_)},
       cpu_(*this) {
@@ -24,7 +25,7 @@ Console::Console(ConsoleConfig config)
     const auto remaining = std::max(0, events_.time_to_event());
     clock_target_ = std::min(clock_target_, cpu_.state().clocks + remaining);
   });
-  pif_.attach(4, &eeprom_);
+  pif_.attach(4, &cartridge_joybus_);
   pi_.attach(rom_, 0);
   if (!sram_.data().empty())
     pi_.attach(sram_, 1);
@@ -64,6 +65,7 @@ void Console::power() {
   cpu_.power();
   rsp_.power();
   rdp_.power();
+  rtc_.power();
   synchronized_clock_ = 0;
   clock_target_ = 0;
   frozen_ = false;
@@ -140,6 +142,9 @@ void Console::event(Event pending) {
     break;
   case Event::EepromWrite:
     eeprom_.complete_write();
+    break;
+  case Event::RtcTick:
+    rtc_.tick();
     break;
   case Event::FlashComplete:
     flash_.complete();

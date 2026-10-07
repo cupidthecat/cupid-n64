@@ -35,6 +35,10 @@ add_library(cupid_core
   src/core/devices/pif/joybus.cpp
   src/core/devices/si/serial_interface.cpp
   src/core/cartridge/eeprom.cpp
+  src/core/cartridge/joybus.cpp
+  src/core/cartridge/rtc/rtc.cpp
+  src/core/cartridge/rtc/calendar.cpp
+  src/core/cartridge/rtc/joybus.cpp
   src/core/cartridge/sram.cpp
   src/core/cartridge/flash/flash.cpp
   src/core/cartridge/flash/io.cpp
@@ -157,6 +161,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/sram.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/integration.cpp
+    tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
