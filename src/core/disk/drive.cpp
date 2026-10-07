@@ -63,7 +63,7 @@ void DiskDrive::power() {
   data_ = track_ = block_status_ = 0;
   current_sector_ = sector_bytes_ = transfer_bytes_ = sector_block_ = 0;
   disk_type_ = drive_errors_ = 0;
-  status_ = static_cast<std::uint16_t>(Reset | Changed | (disk_.empty() ? 0 : Present));
+  status_ = static_cast<std::uint16_t>(Reset | Changed | (disk_.empty() ? 0u : unsigned(Present)));
   motor(2);
   events_.insert(Event::DiskClock, 187500000);
   events_.cancel(Event::DiskResponse);
