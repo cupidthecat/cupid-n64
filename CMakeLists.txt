@@ -35,6 +35,10 @@ add_library(cupid_core
   src/core/devices/pif/joybus.cpp
   src/core/devices/si/serial_interface.cpp
   src/core/cartridge/eeprom.cpp
+  src/core/cartridge/sram.cpp
+  src/core/cartridge/flash/flash.cpp
+  src/core/cartridge/flash/io.cpp
+  src/core/cartridge/flash/commands.cpp
   src/core/controller/gamepad.cpp
   src/core/controller/pak.cpp
   src/core/rsp/rsp.cpp
@@ -140,6 +144,9 @@ if(BUILD_TESTING)
     tests/devices/rdram.cpp
     tests/devices/instruction_tracking.cpp
     tests/devices/pi.cpp
+    tests/devices/cartridge/sram.cpp
+    tests/devices/cartridge/flash.cpp
+    tests/devices/cartridge/integration.cpp
     tests/devices/timing.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
