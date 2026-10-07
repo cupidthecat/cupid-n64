@@ -277,7 +277,15 @@ void Window::command(unsigned id) {
       session_->save();
     rebase();
   } else if (id == Reset) {
-    load();
+    if (session_) {
+      session_->save();
+      session_->reset();
+      pixels_.clear();
+      last_frame_ = 0;
+      paused_ = false;
+      keys_.fill(false);
+      rebase();
+    }
   } else if (id == Mute) {
     audio_.muted = !audio_.muted;
     audio_.clear();

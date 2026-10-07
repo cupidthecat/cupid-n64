@@ -152,6 +152,66 @@ void console_tests() {
   console.write(0x04300000, 4, 0x400);
   console.read_burst(0x1000, burst);
   equal(console.frozen(), true);
+
+  for (bool expansion : {false, true}) {
+    ConsoleConfig config;
+    config.expansion = expansion;
+    config.eeprom_size = 512;
+    config.sram_size = 32768;
+    Console reset_console(config);
+    equal(reset_console.load(rom, firmware), true);
+    reset_console.write(0x04700008, 4, 0);
+    reset_console.write(0x0470000c, 4, 0x14);
+    reset_console.write(0x04300000, 4, 0x10f);
+    reset_console.write(0x03f80008, 4, 0x00080008);
+    const auto chips = expansion ? 4u : 2u;
+    for (unsigned chip = 0; chip < chips; ++chip) {
+      reset_console.write(0x03f0000c, 4, 0x02000000);
+      reset_console.write(0x03f00004, 4, (chip + 4) * 2 << 26);
+    }
+    for (unsigned chip = 0; chip < chips; ++chip)
+      reset_console.write(0x03f00004 + (chip + 4) * 0x800, 4, chip * 2 << 26);
+    reset_console.write(0x1000, 8, 0x1122334455667788);
+    reset_console.ram().hidden()[17] = 0xa5;
+    reset_console.eeprom().data()[7] = 0x69;
+    reset_console.sram().data()[11] = 0x73;
+    reset_console.write(0x04700010, 4, 0x12345678);
+    RandomGenerator expected_random;
+    for (unsigned n = 0; n < chips * 2; ++n)
+      expected_random();
+    reset_console.signal().write_io(16, 1);
+    equal(reset_console.signal().read_status(0), expected_random() & 0xfff);
+    reset_console.signal().state().gpr[1] = 0x99;
+    reset_console.signal().write_local(0, 4, 0x89abcdef);
+    reset_console.cpu().state().gpr[8] = 0x123;
+    reset_console.cpu().advance_clocks(42);
+    reset_console.video().write_word(0, 0x1234);
+    reset_console.audio().write_word(8, 1);
+    reset_console.power(true);
+    equal(reset_console.cpu().state().clocks, 0);
+    equal(reset_console.cpu().state().pc, 0xffffffffbfc00000);
+    equal(reset_console.cpu().state().gpr[8], 0);
+    equal(reset_console.signal().state().gpr[1], 0);
+    equal(reset_console.signal().read_local(0, 4), 0);
+    equal(reset_console.signal().status().halted, true);
+    equal(reset_console.signal().clocks(), 0);
+    equal(reset_console.video().read_word(0), 0);
+    equal(reset_console.audio().state().enable, false);
+    equal(reset_console.ram().identity(), true);
+    equal(reset_console.read(0x1000, 8).value, 0x1122334455667788);
+    equal(reset_console.ram().hidden()[17], 0xa5);
+    equal(reset_console.read(0x04700010, 4).value, 0x12345678);
+    equal(reset_console.eeprom().data()[7], 0x69);
+    equal(reset_console.sram().data()[11], 0x73);
+    reset_console.signal().write_io(16, 1);
+    equal(reset_console.signal().read_status(0), expected_random() & 0xfff);
+    reset_console.power();
+    equal(reset_console.ram().identity(), false);
+    equal(reset_console.ram().hidden()[17], 0);
+    equal(reset_console.read(0x04700010, 4).value, 0);
+    equal(reset_console.eeprom().data()[7], 0x69);
+    equal(reset_console.sram().data()[11], 0x73);
+  }
 }
 
 } // namespace test

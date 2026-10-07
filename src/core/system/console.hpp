@@ -37,7 +37,7 @@ public:
   bool load(std::span<const std::uint8_t> cartridge, std::span<const std::uint8_t> firmware);
   bool load_disk(std::span<const std::uint8_t> ipl, std::span<const std::uint8_t> firmware,
                  std::span<const std::uint8_t> image = {});
-  void power();
+  void power(bool reset = false);
   void step();
   std::uint32_t run_interval(std::uint32_t limit = 4096);
   void run_clocks(std::uint64_t clocks);
