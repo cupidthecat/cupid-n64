@@ -1,5 +1,7 @@
 #include "core/rsp/rsp.hpp"
+#include "core/rsp/vector/execute.hpp"
 #include <bit>
+#include <utility>
 
 namespace cupid::n64 {
 namespace {
@@ -26,6 +28,8 @@ struct DivideTables {
   }
 };
 
+const DivideTables tables;
+
 unsigned select_lane(unsigned element, unsigned lane) {
   if (element < 2)
     return lane;
@@ -38,27 +42,29 @@ unsigned select_lane(unsigned element, unsigned lane) {
 
 } // namespace
 
-void Rsp::vector_divide(unsigned operation, unsigned dest, unsigned lane, unsigned source,
-                        unsigned element) {
-  static const DivideTables tables;
-  const auto vector = state_.vectors[source];
+template <int Operation = -1, int Element = -1>
+void execute_divide(RspState &state, RspVector &dest, unsigned lane, const RspVector &source,
+                    unsigned dynamic_operation = 0, unsigned dynamic_element = 0) {
+  const auto operation = Operation < 0 ? dynamic_operation : unsigned(Operation);
+  const auto element = Element < 0 ? dynamic_element : unsigned(Element);
+  const auto vector = source;
   for (unsigned n = 0; n < 8; ++n)
-    state_.accumulator.low.lanes[n] = vector.lanes[select_lane(element, n)];
-  auto &result = state_.vectors[dest].lanes[lane];
+    state.accumulator.low.lanes[n] = vector.lanes[select_lane(element, n)];
+  auto &result = dest.lanes[lane];
   if (operation == 0x33) {
     result = vector.lanes[select_lane(element, lane)];
     return;
   }
   if (operation == 0x32 || operation == 0x36) {
-    state_.divide_double = true;
-    state_.divide_input = vector.lanes[element & 7];
-    result = state_.divide_output;
+    state.divide_double = true;
+    state.divide_input = vector.lanes[element & 7];
+    result = state.divide_output;
     return;
   }
   const bool low = operation == 0x31 || operation == 0x35;
   const auto input =
-      low && state_.divide_double
-          ? std::bit_cast<std::int32_t>((std::uint32_t(state_.divide_input) << 16) |
+      low && state.divide_double
+          ? std::bit_cast<std::int32_t>((std::uint32_t(state.divide_input) << 16) |
                                         vector.lanes[element & 7])
           : static_cast<std::int32_t>(static_cast<std::int16_t>(vector.lanes[element & 7]));
   const auto mask = static_cast<std::uint32_t>(input >> 31);
@@ -79,9 +85,31 @@ void Rsp::vector_divide(unsigned operation, unsigned dest, unsigned lane, unsign
     value = ((0x10000 | value) << 14) >> (square_root ? ((31 - shift) >> 1) : (31 - shift));
     value ^= mask;
   }
-  state_.divide_double = false;
-  state_.divide_output = static_cast<std::uint16_t>(value >> 16);
+  state.divide_double = false;
+  state.divide_output = static_cast<std::uint16_t>(value >> 16);
   result = static_cast<std::uint16_t>(value);
+}
+
+template <unsigned Operation, unsigned Element>
+void divide_handler(RspState *state, RspVector *dest, const RspVector *source,
+                    const RspVector *target) {
+  const auto lane = static_cast<unsigned>(source - state->vectors.data()) & 7;
+  execute_divide<Operation, Element>(*state, *dest, lane, *target);
+}
+
+template <std::size_t... Index> constexpr auto divide_handlers(std::index_sequence<Index...>) {
+  return std::array<VectorHandler, sizeof...(Index)>{
+      &divide_handler<0x30 + Index / 16, Index % 16>...};
+}
+
+VectorHandler vector_divide_handler(unsigned operation, unsigned element) {
+  static constexpr auto table = divide_handlers(std::make_index_sequence<112>{});
+  return table[(operation - 0x30) * 16 + element];
+}
+
+void Rsp::vector_divide(unsigned operation, unsigned dest, unsigned lane, unsigned source,
+                        unsigned element) {
+  execute_divide(state_, state_.vectors[dest], lane, state_.vectors[source], operation, element);
 }
 
 } // namespace cupid::n64

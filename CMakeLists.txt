@@ -49,6 +49,7 @@ add_library(cupid_core
   src/core/rsp/recompiler/integer.cpp
   src/core/rsp/recompiler/memory.cpp
   src/core/rsp/recompiler/vector/memory.cpp
+  src/core/rsp/recompiler/vector/arithmetic.cpp
   src/core/rsp/recompiler/vector/linear.cpp
   src/core/rsp/recompiler/vector/quad.cpp
   src/core/rsp/recompiler/vector/packed.cpp
@@ -62,6 +63,7 @@ add_library(cupid_core
   src/core/rsp/vector/transfer.cpp
   src/core/rsp/vector/memory.cpp
   src/core/rsp/vector/execute.cpp
+  src/core/rsp/vector/scalar.cpp
   src/core/rsp/vector/simd.cpp
   src/core/rsp/vector/simd/sse.cpp
   src/core/rsp/vector/divide.cpp
@@ -174,6 +176,7 @@ if(BUILD_TESTING)
     tests/rsp/simd.cpp
     tests/rsp/native.cpp
     tests/rsp/native_memory.cpp
+    tests/rsp/native_vector.cpp
     tests/rsp/blocks.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp

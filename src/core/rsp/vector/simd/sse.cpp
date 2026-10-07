@@ -1,6 +1,7 @@
 #include "core/rsp/vector/execute.hpp"
 #if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
 #include <smmintrin.h>
+#include <utility>
 
 namespace cupid::n64 {
 namespace {
@@ -121,8 +122,7 @@ __m128i add_signed(__m128i a, __m128i b, __m128i carry, bool subtract) {
 
 } // namespace
 
-bool execute_vector_sse(RspState &state, std::uint32_t instruction) {
-  const auto operation = instruction & 63;
+constexpr bool supported(unsigned operation) {
   switch (operation) {
   case 0:
   case 1:
@@ -153,20 +153,25 @@ bool execute_vector_sse(RspState &state, std::uint32_t instruction) {
   case 43:
   case 44:
   case 45:
-    break;
+    return true;
   case 55:
   case 63:
     return true;
   default:
     return false;
   }
-  const auto element = (instruction >> 21) & 15;
-  const auto source = (instruction >> 11) & 31;
-  const auto target = (instruction >> 16) & 31;
-  const auto dest = (instruction >> 6) & 31;
-  const auto a = load(state.vectors[source]);
+}
+
+template <int Operation = -1, int Element = -1>
+void execute(RspState &state, RspVector &dest, const RspVector &source, const RspVector &target,
+             unsigned dynamic_operation = 0, unsigned dynamic_element = 0) {
+  const auto operation = Operation < 0 ? dynamic_operation : unsigned(Operation);
+  const auto element = Element < 0 ? dynamic_element : unsigned(Element);
+  if (operation == 55 || operation == 63)
+    return;
+  const auto a = load(source);
   const auto selection = _mm_load_si128(reinterpret_cast<const __m128i *>(&tables.select[element]));
-  const auto b = _mm_shuffle_epi8(load(state.vectors[target]), selection);
+  const auto b = _mm_shuffle_epi8(load(target), selection);
   const auto zero = _mm_setzero_si128();
   const auto invert = _mm_set1_epi16(-1);
   __m128i result;
@@ -272,13 +277,44 @@ bool execute_vector_sse(RspState &state, std::uint32_t instruction) {
   }
   if (write_low)
     store(state.accumulator.low, result);
-  store(state.vectors[dest], result);
+  store(dest, result);
+}
+
+template <unsigned Operation, unsigned Element>
+void handler(RspState *state, RspVector *dest, const RspVector *source, const RspVector *target) {
+  execute<Operation, Element>(*state, *dest, *source, *target);
+}
+
+template <unsigned Operation, unsigned Element> constexpr VectorHandler select_handler() {
+  if constexpr (supported(Operation))
+    return &handler<Operation, Element>;
+  return nullptr;
+}
+
+template <std::size_t... Index> constexpr auto handlers(std::index_sequence<Index...>) {
+  return std::array<VectorHandler, sizeof...(Index)>{select_handler<Index / 16, Index % 16>()...};
+}
+
+VectorHandler vector_sse_handler(unsigned operation, unsigned element) {
+  static constexpr auto table = handlers(std::make_index_sequence<1024>{});
+  return table[operation * 16 + element];
+}
+
+bool execute_vector_sse(RspState &state, std::uint32_t instruction) {
+  if (!supported(instruction & 63))
+    return false;
+  execute(state, state.vectors[(instruction >> 6) & 31], state.vectors[(instruction >> 11) & 31],
+          state.vectors[(instruction >> 16) & 31], instruction & 63, (instruction >> 21) & 15);
   return true;
 }
 
 } // namespace cupid::n64
 #else
 namespace cupid::n64 {
+VectorHandler vector_sse_handler(unsigned, unsigned) {
+  return nullptr;
+}
+
 bool execute_vector_sse(RspState &, std::uint32_t) {
   return false;
 }

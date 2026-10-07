@@ -87,6 +87,7 @@ struct RspCompiler::Emitter {
   std::uint32_t word(unsigned index);
   bool integer(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, std::uint32_t pc);
+  bool vector_arithmetic(std::uint32_t instruction);
   bool vector_memory(std::uint32_t instruction, std::uint32_t pc);
   void vector_linear(std::uint32_t instruction, std::uint32_t pc);
   void vector_quad(std::uint32_t instruction);
@@ -108,7 +109,6 @@ struct RspCompiler::Emitter {
   void compare(unsigned dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source);
   static void helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
-  static void vector_helper(Rsp *rsp, std::uint32_t instruction);
   static void end_delay(Rsp *rsp);
 
   static Operand reg(sljit_s32 index) {
