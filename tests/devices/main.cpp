@@ -9,6 +9,7 @@ int main() {
   test::sram_tests();
   test::flash_tests();
   test::cartridge_bus_tests();
+  test::isviewer_tests();
   test::cartridge_profile_tests();
   test::rtc_tests();
   test::timing_tests();
