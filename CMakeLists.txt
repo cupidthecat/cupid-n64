@@ -109,6 +109,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
     src/desktop/windows/window.cpp
     src/desktop/windows/audio.cpp
     src/desktop/session.cpp
+    src/desktop/timing/playback_clock.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -120,6 +121,13 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(desktop_clock_tests
+    tests/desktop/playback_clock.cpp
+    src/desktop/timing/playback_clock.cpp
+  )
+  target_include_directories(desktop_clock_tests PRIVATE src)
+  target_compile_features(desktop_clock_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_playback_clock COMMAND desktop_clock_tests)
   if(TARGET cupid_desktop)
     add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
     target_include_directories(desktop_audio_tests PRIVATE src)
