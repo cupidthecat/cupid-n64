@@ -5,8 +5,9 @@ namespace cupid::n64 {
 
 Console::Console(ConsoleConfig config)
     : config_(config), ram_(ri_, random_, config.expansion), mi_(ram_), cic_(config.cic),
-      pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_), rsp_(ram_, mi_, random_),
-      rdp_(ram_, rsp_, mi_), vi_(mi_, config.region), audio_(ram_, mi_, config.region),
+      pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_),
+      disk_(events_, config.disk_clock), rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_),
+      vi_(mi_, config.region), audio_(ram_, mi_, config.region),
       eeprom_(events_, config.eeprom_size), rtc_(events_, config.rtc_present, config.rtc_clock),
       cartridge_joybus_(eeprom_, rtc_), sram_(config.sram_size),
       flash_(events_, config.flash_model),
@@ -31,6 +32,10 @@ Console::Console(ConsoleConfig config)
     pi_.attach(sram_, 1);
   if (!flash_.data().empty())
     pi_.attach(flash_, 1);
+  if (config_.disk_drive) {
+    disk_.connect_interrupt([this](bool line) { cpu_.set_interrupt(3, line); });
+    pi_.attach(disk_, 2);
+  }
   rsp_.connect_display(
       [this](unsigned address) { return rdp_.read_word(address, rsp_.clocks(), false); },
       [this](unsigned address, std::uint32_t value) {
@@ -41,11 +46,27 @@ Console::Console(ConsoleConfig config)
 
 bool Console::load(std::span<const std::uint8_t> cartridge,
                    std::span<const std::uint8_t> firmware) {
-  if (firmware.size() != 0x7c0 || !rom_.load(cartridge))
+  if (firmware.size() != 0x7c0)
     return false;
+  if (cartridge.empty()) {
+    if (!config_.disk_drive || !disk_.firmware_loaded())
+      return false;
+    rom_.disconnect();
+  } else if (!rom_.load(cartridge)) {
+    return false;
+  }
   pif_.load_rom(firmware);
   power();
   return true;
+}
+
+bool Console::load_disk(std::span<const std::uint8_t> ipl, std::span<const std::uint8_t> firmware,
+                        std::span<const std::uint8_t> image) {
+  if (!config_.disk_drive || firmware.size() != 0x7c0 || !disk_.load_ipl(ipl))
+    return false;
+  if (!image.empty() && !disk_.load_image(image))
+    return false;
+  return load({}, firmware);
 }
 
 void Console::power() {
@@ -59,13 +80,16 @@ void Console::power() {
   audio_.power();
   pi_.power();
   pif_.power();
-  cic_.power(config_.cic);
+  cic_.power(config_.disk_drive && rom_.data().empty() && disk_.firmware_loaded() ? disk_.cic()
+                                                                                  : config_.cic);
   ri_.power();
   si_.power();
   cpu_.power();
   rsp_.power();
   rdp_.power();
   rtc_.power();
+  if (config_.disk_drive)
+    disk_.power();
   synchronized_clock_ = 0;
   clock_target_ = 0;
   frozen_ = false;
@@ -153,6 +177,12 @@ void Console::event(Event pending) {
     break;
   case Event::FlashComplete:
     flash_.complete();
+    break;
+  case Event::DiskClock:
+  case Event::DiskResponse:
+  case Event::DiskBlock:
+  case Event::DiskMotor:
+    disk_.event(pending);
     break;
   default:
     break;

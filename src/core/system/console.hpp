@@ -11,6 +11,7 @@
 #include "core/devices/pi/peripheral_interface.hpp"
 #include "core/devices/si/serial_interface.hpp"
 #include "core/devices/vi/video_interface.hpp"
+#include "core/disk/drive.hpp"
 #include "core/rdp/rdp.hpp"
 
 namespace cupid::n64 {
@@ -24,6 +25,8 @@ struct ConsoleConfig {
   std::optional<FlashModel> flash_model = {};
   bool rtc_present = false;
   Rtc::HostClock rtc_clock = {};
+  bool disk_drive = false;
+  DiskClock::HostClock disk_clock = {};
 };
 
 class Console : public Bus {
@@ -32,6 +35,8 @@ public:
   Console(const Console &) = delete;
   Console &operator=(const Console &) = delete;
   bool load(std::span<const std::uint8_t> cartridge, std::span<const std::uint8_t> firmware);
+  bool load_disk(std::span<const std::uint8_t> ipl, std::span<const std::uint8_t> firmware,
+                 std::span<const std::uint8_t> image = {});
   void power();
   void step();
   std::uint32_t run_interval(std::uint32_t limit = 4096);
@@ -92,6 +97,9 @@ public:
   FlashRam &flash() {
     return flash_;
   }
+  DiskDrive &disk_drive() {
+    return disk_;
+  }
 
 private:
   std::uint32_t read_register(std::uint32_t address);
@@ -108,6 +116,7 @@ private:
   Pif pif_;
   SerialInterface si_;
   PeripheralInterface pi_;
+  DiskDrive disk_;
   Rsp rsp_;
   Rdp rdp_;
   VideoInterface vi_;

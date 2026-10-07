@@ -15,7 +15,7 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"Pause: F5 or Escape     Reset: F6\n"
                       L"Mute: F8     Fullscreen: F11\n\n"
                       L"The game pauses when this window loses focus.\n"
-                      L"In-game saves are stored as .eep beside your ROM.\n"
+                      L"Cartridge saves use .eep; disk saves use .disk and .rtc.\n"
                       L"This frontend uses the NTSC SM64 cartridge profile.";
 std::filesystem::path setting(const std::filesystem::path &file, const wchar_t *name) {
   std::array<wchar_t, 32768> buffer{};
@@ -33,7 +33,7 @@ Window::Window(Options options) : options_(std::move(options)) {
     settings_ = std::filesystem::path(directory.data()) / L"Cupid-N64";
     std::filesystem::create_directories(settings_);
     settings_ /= L"settings.ini";
-    if (options_.rom.empty())
+    if (options_.rom.empty() && options_.ipl.empty())
       options_.rom = setting(settings_, L"ROM");
     if (options_.firmware.empty())
       options_.firmware = setting(settings_, L"Firmware");
@@ -73,9 +73,10 @@ int Window::run(HINSTANCE instance, int show) {
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
-    if (options_.frames && (options_.rom.empty() || options_.firmware.empty()))
-      throw std::runtime_error("A frame test requires both --rom and --pif.");
-    if (!options_.rom.empty() && !options_.firmware.empty())
+    if (options_.frames &&
+        ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty()))
+      throw std::runtime_error("A frame test requires --rom or --ipl, plus --pif.");
+    if ((!options_.rom.empty() || !options_.ipl.empty()) && !options_.firmware.empty())
       load();
   } catch (const std::exception &exception) {
     error(exception);
@@ -221,12 +222,13 @@ void Window::rebase() {
 }
 
 void Window::load() {
-  if (options_.rom.empty() || options_.firmware.empty())
+  if ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty())
     return;
   if (session_)
     session_->save();
   audio_.clear();
-  auto next = std::make_unique<Session>(options_.rom, options_.firmware, audio_);
+  auto next = std::make_unique<Session>(options_.rom, options_.firmware, audio_, options_.ipl,
+                                        options_.disk);
   session_ = std::move(next);
   pixels_.clear();
   last_frame_ = 0;
@@ -234,7 +236,8 @@ void Window::load() {
   keys_.fill(false);
   rebase();
   if (!settings_.empty() && !options_.frames) {
-    WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
+    if (!options_.rom.empty())
+      WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
     WritePrivateProfileStringW(L"Files", L"Firmware", options_.firmware.c_str(), settings_.c_str());
   }
 }
@@ -400,8 +403,9 @@ void Window::advance() {
   const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
   if (elapsed >= 1.0) {
     const auto fps = (last_frame_ - measured_frames_) / elapsed;
-    const auto title = L"Cupid-N64 | " + options_.rom.filename().wstring() + L" | " +
-                       std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s" +
+    const auto title = L"Cupid-N64 | " +
+                       (options_.rom.empty() ? options_.ipl : options_.rom).filename().wstring() +
+                       L" | " + std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s" +
                        (audio_.available() ? L"" : L" | Audio unavailable");
     SetWindowTextW(window_, title.c_str());
     measured_time_ = now;
