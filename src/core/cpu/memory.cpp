@@ -150,50 +150,6 @@ void Cpu::load_merge(unsigned reg, std::uint64_t address, unsigned bytes, bool l
     state_.gpr[reg] = result;
 }
 
-void Cpu::store_merge(std::uint64_t value, std::uint64_t address, unsigned bytes, bool left) {
-  if (bytes == 8 && !require_doubleword())
-    return;
-  const auto offset = static_cast<unsigned>(address & (bytes - 1));
-  const auto base = address & ~std::uint64_t(bytes - 1);
-  const bool little = little_endian();
-  const auto length =
-      left ? (little ? offset + 1 : bytes - offset) : (little ? bytes - offset : offset + 1);
-  const auto start = (left != little) ? offset : 0;
-  unsigned remaining = length;
-  if (left && !little) {
-    unsigned position = start;
-    while (remaining) {
-      unsigned size = bytes;
-      while (size > remaining || (position & (size - 1)))
-        size >>= 1;
-      const auto shift = (bytes - (position - start) - size) * 8;
-      if (!write(base + position, size, value >> shift))
-        return;
-      position += size;
-      remaining -= size;
-    }
-  } else {
-    while (remaining) {
-      unsigned size = 1;
-      if (!left && little) {
-        size = bytes;
-        while (size > remaining || ((start + remaining - size) & (size - 1)))
-          size >>= 1;
-      } else {
-        while (size < bytes && !(remaining & size))
-          size <<= 1;
-      }
-      const auto position = start + remaining - size;
-      const auto shift = left     ? (bytes - length + position) * 8
-                         : little ? (position - start) * 8
-                                  : (length - remaining) * 8;
-      if (!write(base + position, size, value >> shift, false))
-        return;
-      remaining -= size;
-    }
-  }
-}
-
 void Cpu::load_store(std::uint32_t instruction) {
   const auto operation = instruction >> 26;
   const auto rs = (instruction >> 21) & 31;

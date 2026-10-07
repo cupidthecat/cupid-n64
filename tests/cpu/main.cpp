@@ -3,6 +3,7 @@
 int main() {
   test::integer_tests();
   test::memory_tests();
+  test::merge_store_tests();
   test::control_tests();
   test::random_tests();
   test::cache_tests();

@@ -23,6 +23,7 @@ add_library(cupid_core
   src/core/cpu/recompiler/fpu/host.cpp
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
+  src/core/cpu/memory/merge_store.cpp
   src/core/cpu/control.cpp
   src/core/cpu/cache.cpp
   src/core/cpu/fpu/registers.cpp
@@ -185,6 +186,7 @@ if(BUILD_TESTING)
     tests/cpu/main.cpp
     tests/cpu/integer.cpp
     tests/cpu/memory.cpp
+    tests/cpu/merge_store.cpp
     tests/cpu/control.cpp
     tests/cpu/random.cpp
     tests/cpu/cache.cpp
