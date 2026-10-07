@@ -33,8 +33,8 @@ void write_save(const std::filesystem::path &path, std::span<const std::uint8_t>
 } // namespace
 
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
-                 Audio &audio, const std::filesystem::path &ipl,
-                 const std::filesystem::path &disk) {
+                 Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk)
+    : audio_(audio) {
   auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read(rom, 0x0fc00000);
   auto pif = read(firmware, 0x7c0);
   n64::ConsoleConfig config{n64::VideoRegion::Ntsc, true, n64::CicModel::N6102,
@@ -81,8 +81,8 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
   saved_.assign(memory.begin(), memory.end());
   console_->connect_controller(0, true);
   renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
-  console_->audio().connect([&audio](n64::StereoSample sample) { audio.sample(sample); },
-                            [&audio](unsigned rate) { audio.frequency(rate); });
+  console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
+                            [this](unsigned rate) { audio_.frequency(rate); });
   console_->display().connect(
       [this](std::span<const std::uint32_t> words) { renderer_->submit(words); },
       [this] { renderer_->synchronize(); },
@@ -98,6 +98,16 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       frame = std::move(next);
     ++frames;
   });
+}
+
+void Session::reset() {
+  renderer_.reset();
+  console_->power(true);
+  audio_.clear();
+  audio_.frequency(console_->audio().frequency());
+  renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
+  frame = {};
+  frames = 0;
 }
 
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {

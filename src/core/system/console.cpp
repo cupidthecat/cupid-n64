@@ -69,12 +69,13 @@ bool Console::load_disk(std::span<const std::uint8_t> ipl, std::span<const std::
   return load({}, firmware);
 }
 
-void Console::power() {
-  random_.seed(0);
+void Console::power(bool reset) {
+  if (!reset)
+    random_.seed(0);
   events_.reset();
   eeprom_.complete_write();
   flash_.power();
-  ram_.power();
+  ram_.power(reset);
   mi_.power();
   vi_.power();
   audio_.power();
@@ -82,7 +83,7 @@ void Console::power() {
   pif_.power();
   cic_.power(config_.disk_drive && rom_.data().empty() && disk_.firmware_loaded() ? disk_.cic()
                                                                                   : config_.cic);
-  ri_.power();
+  ri_.power(reset);
   si_.power();
   cpu_.power();
   rsp_.power();

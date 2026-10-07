@@ -13,6 +13,7 @@ public:
   Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio,
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  void reset();
   void save();
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
@@ -21,6 +22,7 @@ public:
   n64::VideoFrame frame;
 
 private:
+  Audio &audio_;
   std::filesystem::path save_path_;
   std::vector<std::uint8_t> saved_;
   std::filesystem::path clock_path_, disk_path_;
