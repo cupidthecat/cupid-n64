@@ -44,6 +44,8 @@ add_library(cupid_core
   src/core/rsp/rsp.cpp
   src/core/rsp/recompiler/cache.cpp
   src/core/rsp/recompiler/emitter.cpp
+  src/core/rsp/recompiler/branch.cpp
+  src/core/rsp/recompiler/pipeline.cpp
   src/core/rsp/recompiler/integer.cpp
   src/core/rsp/recompiler/memory.cpp
   src/core/rsp/io.cpp
@@ -165,6 +167,7 @@ if(BUILD_TESTING)
     tests/rsp/vector.cpp
     tests/rsp/simd.cpp
     tests/rsp/native.cpp
+    tests/rsp/blocks.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
   )
