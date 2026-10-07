@@ -45,11 +45,6 @@ void RspCompiler::Emitter::helper(Rsp *rsp, std::uint32_t instruction, std::uint
   rsp->state_.gpr[0] = 0;
 }
 
-void RspCompiler::Emitter::vector_helper(Rsp *rsp, std::uint32_t instruction) {
-  rsp->vector_execute(instruction);
-  rsp->state_.gpr[0] = 0;
-}
-
 void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, bool branched,
                                        bool delay) {
   const auto operation = opcode >> 26;
@@ -66,15 +61,8 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
     return;
   if (!branched && (integer(opcode) || memory(opcode, pc)))
     return;
-  if (operation == 18 && ((opcode >> 21) & 31) >= 16) {
-    if ((opcode & 63) == 55 || (opcode & 63) == 63)
-      return;
-    op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
-    op1(SLJIT_MOV32, reg(SLJIT_R1), imm(opcode));
-    sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
-                     SLJIT_FUNC_ADDR(vector_helper));
+  if (vector_arithmetic(opcode))
     return;
-  }
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(opcode));
   op1(SLJIT_MOV32, reg(SLJIT_R2), imm(pc));
