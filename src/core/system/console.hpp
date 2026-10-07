@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/cartridge/eeprom.hpp"
+#include "core/cartridge/flash/flash.hpp"
 #include "core/cartridge/rom.hpp"
+#include "core/cartridge/sram.hpp"
 #include "core/controller/gamepad.hpp"
 #include "core/cpu/cpu.hpp"
 #include "core/devices/audio/audio_interface.hpp"
@@ -17,6 +19,8 @@ struct ConsoleConfig {
   bool expansion = true;
   CicModel cic = CicModel::N6102;
   unsigned eeprom_size = 0;
+  unsigned sram_size = 0;
+  std::optional<FlashModel> flash_model;
 };
 
 class Console : public Bus {
@@ -72,6 +76,12 @@ public:
   Eeprom &eeprom() {
     return eeprom_;
   }
+  Sram &sram() {
+    return sram_;
+  }
+  FlashRam &flash() {
+    return flash_;
+  }
 
 private:
   std::uint32_t read_register(std::uint32_t address);
@@ -94,6 +104,8 @@ private:
   AudioInterface audio_;
   CartridgeRom rom_;
   Eeprom eeprom_;
+  Sram sram_;
+  FlashRam flash_;
   std::array<Gamepad, 4> controllers_;
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;

@@ -7,7 +7,8 @@ Console::Console(ConsoleConfig config)
     : config_(config), ram_(ri_, random_, config.expansion), mi_(ram_), cic_(config.cic),
       pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_), rsp_(ram_, mi_, random_),
       rdp_(ram_, rsp_, mi_), vi_(mi_, config.region), audio_(ram_, mi_, config.region),
-      eeprom_(events_, config.eeprom_size),
+      eeprom_(events_, config.eeprom_size), sram_(config.sram_size),
+      flash_(events_, config.flash_model),
       controllers_{Gamepad(random_), Gamepad(random_), Gamepad(random_), Gamepad(random_)},
       cpu_(*this) {
   mi_.connect([this](bool line) { cpu_.set_interrupt(2, line); }, [this] { frozen_ = true; });
@@ -25,6 +26,10 @@ Console::Console(ConsoleConfig config)
   });
   pif_.attach(4, &eeprom_);
   pi_.attach(rom_, 0);
+  if (!sram_.data().empty())
+    pi_.attach(sram_, 1);
+  if (!flash_.data().empty())
+    pi_.attach(flash_, 1);
   rsp_.connect_display(
       [this](unsigned address) { return rdp_.read_word(address, rsp_.clocks(), false); },
       [this](unsigned address, std::uint32_t value) {
@@ -46,6 +51,7 @@ void Console::power() {
   random_.seed(0);
   events_.reset();
   eeprom_.complete_write();
+  flash_.power();
   ram_.power();
   mi_.power();
   vi_.power();
@@ -134,6 +140,9 @@ void Console::event(Event pending) {
     break;
   case Event::EepromWrite:
     eeprom_.complete_write();
+    break;
+  case Event::FlashComplete:
+    flash_.complete();
     break;
   default:
     break;

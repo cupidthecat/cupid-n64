@@ -6,6 +6,9 @@ int main() {
   test::rdram_tests();
   test::instruction_tracking_tests();
   test::pi_tests();
+  test::sram_tests();
+  test::flash_tests();
+  test::cartridge_bus_tests();
   test::timing_tests();
   test::cic_tests();
   test::pif_tests();
