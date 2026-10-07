@@ -1,28 +1,15 @@
 #include "core/cartridge/rom.hpp"
+#include "core/cartridge/profile/profile.hpp"
 
 namespace cupid::n64 {
 
 bool CartridgeRom::load(std::span<const std::uint8_t> bytes) {
-  if (bytes.size() < 4096 || bytes.size() > 0x0fc00000 || (bytes.size() & 3))
+  const auto profile = inspect_cartridge(bytes);
+  if (!profile)
     return false;
-  unsigned swap = 0;
-  const auto magic = (std::uint32_t(bytes[0]) << 24) | (std::uint32_t(bytes[1]) << 16) |
-                     (std::uint32_t(bytes[2]) << 8) | bytes[3];
-  switch (magic) {
-  case 0x80371240:
-    break;
-  case 0x37804012:
-    swap = 1;
-    break;
-  case 0x40123780:
-    swap = 3;
-    break;
-  default:
-    return false;
-  }
   data_.resize(bytes.size());
   for (std::size_t n = 0; n < bytes.size(); ++n)
-    data_[n] = bytes[n ^ swap];
+    data_[n] = bytes[n ^ profile->byte_swap];
   view_ = {};
   offset_ = 0;
   return true;

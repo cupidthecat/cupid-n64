@@ -15,8 +15,8 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"Pause: F5 or Escape     Reset: F6\n"
                       L"Mute: F8     Fullscreen: F11\n\n"
                       L"The game pauses when this window loses focus.\n"
-                      L"Cartridge saves use .eep; disk saves use .disk and .rtc.\n"
-                      L"This frontend uses the NTSC SM64 cartridge profile.";
+                      L"Cartridge saves use .eep, .sra, .fla or .rtc; Controller Paks use .pak.\n"
+                      L"Disk saves use .disk and .rtc.";
 std::filesystem::path setting(const std::filesystem::path &file, const wchar_t *name) {
   std::array<wchar_t, 32768> buffer{};
   GetPrivateProfileStringW(L"Files", name, L"", buffer.data(), static_cast<DWORD>(buffer.size()),
@@ -249,7 +249,7 @@ std::filesystem::path Window::choose(bool firmware) {
   dialog.hwndOwner = window_;
   dialog.lpstrFile = path.data();
   dialog.nMaxFile = static_cast<DWORD>(path.size());
-  dialog.lpstrTitle = firmware ? L"Select NTSC PIF firmware (1984 bytes)" : L"Open SM64 ROM";
+  dialog.lpstrTitle = firmware ? L"Select PIF firmware (1984 bytes)" : L"Open Nintendo 64 ROM";
   dialog.lpstrFilter = firmware ? L"PIF firmware\0*.bin;*.rom\0All files\0*.*\0"
                                 : L"N64 cartridge\0*.z64;*.n64;*.v64\0All files\0*.*\0";
   dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
@@ -349,8 +349,8 @@ void Window::paint() {
     SetBkMode(dc, TRANSPARENT);
     RECT content{20, 20, width - 20, height - 20};
     DrawTextW(dc,
-              L"CUPID-N64\n\nFile > Open ROM to load Super Mario 64.\n"
-              L"Select your NTSC PIF firmware when prompted.\n\n"
+              L"CUPID-N64\n\nFile > Open ROM to load a Nintendo 64 game.\n"
+              L"Select the game's PIF firmware when prompted.\n\n"
               L"Press F1 for keyboard controls.",
               -1, &content, DT_CENTER);
   }

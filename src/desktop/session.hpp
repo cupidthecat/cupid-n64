@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/system/console.hpp"
+#include "desktop/storage/save.hpp"
 #include "desktop/windows/audio.hpp"
 #include "renderer/vulkan/renderer.hpp"
 #include <filesystem>
@@ -23,8 +24,9 @@ public:
 
 private:
   Audio &audio_;
-  std::filesystem::path save_path_;
-  std::vector<std::uint8_t> saved_;
+  std::vector<MemorySave> saves_;
+  std::filesystem::path cartridge_clock_path_;
+  std::vector<std::uint8_t> saved_cartridge_clock_;
   std::filesystem::path clock_path_, disk_path_;
   std::vector<std::uint8_t> saved_clock_, saved_disk_;
   std::unique_ptr<n64::Console> console_;

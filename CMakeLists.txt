@@ -88,6 +88,8 @@ add_library(cupid_core
   src/core/rdp/io.cpp
   src/core/rdp/commands.cpp
   src/core/cartridge/rom.cpp
+  src/core/cartridge/profile/boot.cpp
+  src/core/cartridge/profile/profile.cpp
   src/core/system/console.cpp
   src/core/disk/drive.cpp
   src/core/disk/controller/commands.cpp
@@ -126,6 +128,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
     src/desktop/windows/window.cpp
     src/desktop/windows/audio.cpp
     src/desktop/session.cpp
+    src/desktop/storage/save.cpp
     src/desktop/timing/playback_clock.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
@@ -138,6 +141,11 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(desktop_storage_tests tests/desktop/storage.cpp src/desktop/storage/save.cpp)
+  target_include_directories(desktop_storage_tests PRIVATE src)
+  target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
+  target_compile_definitions(desktop_storage_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_test(NAME desktop_save_storage COMMAND desktop_storage_tests)
   add_executable(desktop_clock_tests
     tests/desktop/playback_clock.cpp
     src/desktop/timing/playback_clock.cpp
@@ -186,6 +194,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/sram.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/integration.cpp
+    tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp
     tests/devices/cic.cpp
