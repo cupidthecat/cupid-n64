@@ -59,6 +59,8 @@ void timing_tests();
 void cic_tests();
 void pif_tests();
 void gamepad_tests();
+void accessory_tests();
+void handheld_tests();
 void rsp_tests();
 void video_tests();
 void audio_tests();

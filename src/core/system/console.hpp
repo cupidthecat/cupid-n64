@@ -5,6 +5,7 @@
 #include "core/cartridge/rom.hpp"
 #include "core/cartridge/sram.hpp"
 #include "core/controller/gamepad.hpp"
+#include "core/controller/mouse/mouse.hpp"
 #include "core/cpu/cpu.hpp"
 #include "core/devices/audio/audio_interface.hpp"
 #include "core/devices/pi/peripheral_interface.hpp"
@@ -37,6 +38,7 @@ public:
   void run_clocks(std::uint64_t clocks);
   void synchronize();
   void connect_controller(unsigned port, bool connected);
+  void connect_mouse(unsigned port, bool connected = true);
   bool frozen() const override {
     return frozen_;
   }
@@ -74,6 +76,9 @@ public:
   }
   Gamepad &controller(unsigned port) {
     return controllers_.at(port);
+  }
+  Mouse &mouse(unsigned port) {
+    return mice_.at(port);
   }
   Eeprom &eeprom() {
     return eeprom_;
@@ -114,6 +119,7 @@ private:
   Sram sram_;
   FlashRam flash_;
   std::array<Gamepad, 4> controllers_;
+  std::array<Mouse, 4> mice_;
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;

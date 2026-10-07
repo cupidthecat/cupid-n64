@@ -14,6 +14,8 @@ int main() {
   test::cic_tests();
   test::pif_tests();
   test::gamepad_tests();
+  test::accessory_tests();
+  test::handheld_tests();
   test::rsp_tests();
   test::video_tests();
   test::audio_tests();
