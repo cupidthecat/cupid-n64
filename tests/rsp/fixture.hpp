@@ -25,6 +25,7 @@ void rsp_scalar_tests();
 void rsp_vector_tests();
 void rsp_simd_tests();
 void rsp_native_tests();
+void rsp_native_memory_tests();
 void rsp_block_tests();
 void rsp_memory_tests();
 void rsp_pipeline_tests();

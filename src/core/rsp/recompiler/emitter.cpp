@@ -62,6 +62,8 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
   }
   if (branched && branch(opcode, pc))
     return;
+  if (vector_memory(opcode, pc))
+    return;
   if (!branched && (integer(opcode) || memory(opcode, pc)))
     return;
   if (operation == 18 && ((opcode >> 21) & 31) >= 16) {
@@ -83,9 +85,11 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
 bool RspCompiler::Emitter::compile() {
   if (!compiler)
     return false;
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS0V(), 4, 2, 0);
+  const auto vectors = sljit_has_cpu_feature(SLJIT_HAS_SIMD) ? SLJIT_ENTER_VECTOR(2) : 0;
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS0V(), 4 | vectors, 3, 0);
   op1(SLJIT_MOV, reg(SLJIT_S0), imm(reinterpret_cast<std::uintptr_t>(&rsp.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&rsp)));
+  op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(rsp.memory_.data())));
   op1(SLJIT_MOV32, gpr(0), imm(0));
   bool delay = false;
   for (unsigned n = 0; n < 1024;) {

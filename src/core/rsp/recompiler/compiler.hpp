@@ -87,6 +87,15 @@ struct RspCompiler::Emitter {
   std::uint32_t word(unsigned index);
   bool integer(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, std::uint32_t pc);
+  bool vector_memory(std::uint32_t instruction, std::uint32_t pc);
+  void vector_linear(std::uint32_t instruction, std::uint32_t pc);
+  void vector_quad(std::uint32_t instruction);
+  bool vector_quad_simd(std::uint32_t instruction);
+  void vector_packed(std::uint32_t instruction);
+  void vector_transpose(std::uint32_t instruction);
+  static Operand vector_byte(unsigned index, unsigned byte);
+  static Operand vector_half(unsigned index, unsigned lane);
+  void vector_address(unsigned offset, bool window = false);
   bool branch(std::uint32_t instruction, std::uint32_t pc);
   void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch, bool delay);
   void commit(std::uint32_t pc, bool branch);
