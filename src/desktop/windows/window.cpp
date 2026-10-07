@@ -96,6 +96,11 @@ int Window::run(HINSTANCE instance, int show) {
       MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
       continue;
     }
+    const auto delay = playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
+    if (delay.count()) {
+      MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()), QS_ALLINPUT);
+      continue;
+    }
     try {
       advance();
     } catch (const std::exception &exception) {
@@ -209,8 +214,8 @@ void Window::error(const std::exception &exception) {
 }
 
 void Window::rebase() {
-  base_time_ = measured_time_ = std::chrono::steady_clock::now();
-  base_clocks_ = session_ ? session_->clocks() : 0;
+  measured_time_ = std::chrono::steady_clock::now();
+  playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
   measured_frames_ = session_ ? session_->frames : 0;
   InvalidateRect(window_, nullptr, FALSE);
 }
@@ -401,16 +406,6 @@ void Window::advance() {
     SetWindowTextW(window_, title.c_str());
     measured_time_ = now;
     measured_frames_ = last_frame_;
-  }
-  const double emulated = (session_->clocks() - base_clocks_) / 187500000.0;
-  const double wall = std::chrono::duration<double>(now - base_time_).count();
-  const auto ahead = emulated - wall;
-  if (ahead > 0)
-    MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(std::min(ahead * 1000, 20.0)),
-                              QS_ALLINPUT);
-  else if (ahead < -0.1) {
-    base_time_ = now;
-    base_clocks_ = session_->clocks();
   }
 }
 
