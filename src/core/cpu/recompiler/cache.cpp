@@ -68,12 +68,15 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   auto *found = section.find(key);
   if (found && (!tracker || !found->tracked)) {
     const auto words = std::span(found->block->words).subspan(found->index);
-    bool unchanged = true;
-    for (unsigned n = 0; n < words.size(); ++n)
-      if (words[n] != data[(first + n) ^ reverse]) {
-        unchanged = false;
-        break;
-      }
+    bool unchanged = !reverse && std::equal(words.begin(), words.end(), data.begin() + first);
+    if (reverse) {
+      unchanged = true;
+      for (unsigned n = 0; n < words.size(); ++n)
+        if (words[n] != data[(first + n) ^ reverse]) {
+          unchanged = false;
+          break;
+        }
+    }
     if (!unchanged) {
       const auto owner = found->block;
       impl_->bytes -= owner->bytes;
@@ -129,6 +132,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   found->tracked = tracker != nullptr;
   found->cache_generation = cpu.instruction_cache_generation_;
   found->block->execute(clock_target);
+  cpu.advance_clocks(0);
   return true;
 #endif
 }

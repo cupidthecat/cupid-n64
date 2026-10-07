@@ -110,6 +110,7 @@ private:
   unsigned random_index();
   void write_tlb(unsigned index);
   void interrupt_changed();
+  void update_timer_deadline();
 
   Bus &bus_;
   CpuState state_{};
@@ -121,6 +122,8 @@ private:
   std::uint64_t control_latch_ = 0;
   std::uint64_t cop2_latch_ = 0;
   std::uint64_t count_ticks_ = 0;
+  std::uint64_t count_clock_ = 0;
+  std::uint64_t timer_deadline_ = 2;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   std::uint64_t entropy_ = 1;

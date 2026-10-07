@@ -108,6 +108,7 @@ struct CpuCompiler::Emitter {
     std::vector<sljit_jump *> enter;
     sljit_label *resume;
     std::uint32_t instruction;
+    unsigned clocks;
     bool defer_exit;
   };
   Cpu &cpu;
@@ -160,7 +161,7 @@ struct CpuCompiler::Emitter {
   void plan_entries();
   void dispatch_internal(unsigned target);
   void execute(std::uint32_t instruction, bool defer_exit);
-  void begin();
+  void begin(bool flush = true);
   void end(bool defer_exit);
 
   static Operand reg(sljit_s32 index) {

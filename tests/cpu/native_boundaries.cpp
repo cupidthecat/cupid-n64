@@ -58,9 +58,77 @@ void compare(BoundaryFixture &actual, BoundaryFixture &expected) {
   }
 }
 
+void count_registers() {
+  for (bool cached : {false, true}) {
+    for (auto initial : {0u, 1u, 0x7fffffffu, 0xffffffffu}) {
+      for (bool writing : {false, true}) {
+        for (bool load : {false, true}) {
+          BoundaryMemory memory;
+          Cpu cpu(memory);
+          cpu.write_control(Status, 0x30000000);
+          cpu.write_control(Compare, 0xffffffffu);
+          std::vector<std::uint32_t> code;
+          if (load)
+            code.push_back(i(35, 4, 10, 0));
+          code.insert(code.end(),
+                      {c(writing ? 4u : 0u, 8, Count), c(0, 9, Count), r(8, 31, 0, 0), 0u});
+          std::copy(code.begin(), code.end(), memory.words.begin() + 1024);
+          cpu.state().gpr[4] = 0xffffffff80000000;
+          cpu.set_pc(0xffffffff80001000);
+          if (cached)
+            cpu.step();
+          cpu.set_pc(0xffffffff80001000);
+          cpu.write_control(Count, initial);
+          cpu.state().gpr[8] = initial;
+          cpu.state().gpr[31] = 0xffffffff80002000;
+          const auto start = cpu.state().clocks;
+          const auto target = start + 4096;
+          for (unsigned block = 0; block < 2 && cpu.state().pc != 0xffffffff80002000; ++block)
+            equal(cpu.run_block(target), true);
+          equal(cpu.state().pc, 0xffffffff80002000);
+          const auto extra = cached ? (load ? 1u : 0u) : (load ? 44u : 24u);
+          if (!writing)
+            equal(cpu.state().gpr[8], sign_word(initial + extra));
+          const auto second = extra + unsigned(load && !cached);
+          equal(cpu.state().gpr[9], sign_word(writing ? initial : initial + second));
+          equal(cpu.read_control(Count), std::uint32_t(initial + (writing ? 2u : extra + 2u)));
+          equal(cpu.state().clocks - start, cached ? (load ? 12 : 8) : (load ? 186 : 104));
+        }
+      }
+    }
+  }
+}
+
+void compare_interrupt() {
+  for (bool cached : {false, true}) {
+    for (auto initial : {0u, 1u, 0x7fffffffu, 0xffffffffu}) {
+      BoundaryMemory memory;
+      Cpu cpu(memory);
+      cpu.write_control(Status, 0x30000000);
+      cpu.write_control(Compare, 0xffffffffu);
+      const std::array code{c(0, 9, Count), c(4, 8, Compare), r(8, 31, 0, 0), 0u};
+      std::copy(code.begin(), code.end(), memory.words.begin() + 1024);
+      cpu.set_pc(0xffffffff80001000);
+      if (cached)
+        cpu.step();
+      cpu.set_pc(0xffffffff80001000);
+      cpu.write_control(Count, initial);
+      cpu.state().gpr[8] = std::uint32_t(initial + (cached ? 1u : 25u));
+      cpu.state().gpr[31] = 0xffffffff80002000;
+      const auto target = cpu.state().clocks + 4096;
+      for (unsigned block = 0; block < 2 && cpu.state().pc != 0xffffffff80002000; ++block)
+        equal(cpu.run_block(target), true);
+      equal(cpu.state().pc, 0xffffffff80002000);
+      equal(cpu.read_control(Cause) & 0x8000, 0x8000);
+    }
+  }
+}
+
 } // namespace
 
 void native_boundary_tests() {
+  count_registers();
+  compare_interrupt();
   for (bool little : {false, true}) {
     for (bool cached : {false, true}) {
       for (unsigned program : {0u, 1u, 2u}) {
