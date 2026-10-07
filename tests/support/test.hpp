@@ -99,6 +99,7 @@ void integer_tests();
 void section_invalidation_tests();
 void memory_tests();
 void control_tests();
+void random_tests();
 void cache_tests();
 void cache_coherence_tests();
 void cache_refill_tests();
