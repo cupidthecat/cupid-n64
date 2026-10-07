@@ -1,85 +1,90 @@
 #include "desktop/session.hpp"
+#include "core/cartridge/profile/profile.hpp"
 #include <algorithm>
-#include <fstream>
 #include <stdexcept>
 
 namespace cupid::desktop {
-namespace {
-std::vector<std::uint8_t> read(const std::filesystem::path &path, std::size_t maximum) {
-  std::ifstream stream(path, std::ios::binary | std::ios::ate);
-  if (!stream)
-    throw std::runtime_error("Could not open the selected file.");
-  const auto length = stream.tellg();
-  if (length < 0 || static_cast<std::uint64_t>(length) > maximum)
-    throw std::runtime_error("The selected file has an invalid size.");
-  std::vector<std::uint8_t> data(static_cast<std::size_t>(length));
-  stream.seekg(0);
-  if (!stream.read(reinterpret_cast<char *>(data.data()), length))
-    throw std::runtime_error("Could not read the selected file.");
-  return data;
-}
-
-void write_save(const std::filesystem::path &path, std::span<const std::uint8_t> data) {
-  auto temporary = path;
-  temporary += L".tmp";
-  std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
-  stream.write(reinterpret_cast<const char *>(data.data()),
-               static_cast<std::streamsize>(data.size()));
-  stream.close();
-  if (!stream || !MoveFileExW(temporary.c_str(), path.c_str(),
-                              MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-    throw std::runtime_error("Could not write a save file. Check folder permissions.");
-}
-} // namespace
 
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk)
     : audio_(audio) {
-  auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read(rom, 0x0fc00000);
-  auto pif = read(firmware, 0x7c0);
-  n64::ConsoleConfig config{n64::VideoRegion::Ntsc, true, n64::CicModel::N6102,
-                            rom.empty() ? 0u : 512u};
+  auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read_file(rom, 0x0fc00000);
+  auto pif = read_file(firmware, 0x7c0);
+  const auto profile =
+      rom.empty() ? std::optional(n64::CartridgeProfile{}) : n64::inspect_cartridge(cartridge);
+  if (!profile)
+    throw std::runtime_error("Select a valid Nintendo 64 cartridge image.");
+  n64::ConsoleConfig config;
+  config.region = profile->region;
+  config.cic = profile->cic;
+  config.eeprom_size = profile->eeprom_size;
+  config.sram_size = profile->sram_size;
+  config.flash_model = profile->flash_model;
+  config.rtc_present = profile->rtc_present;
   config.disk_drive = !ipl.empty();
   console_ = std::make_unique<n64::Console>(config);
   if (config.disk_drive) {
-    if (!console_->disk_drive().load_ipl(read(ipl, 0x400000)))
+    if (!console_->disk_drive().load_ipl(read_file(ipl, 0x400000)))
       throw std::runtime_error("Select a valid 64DD IPL firmware file.");
-    clock_path_ = ipl;
-    clock_path_.replace_extension(L".rtc");
+    clock_path_ = save_path(ipl, L".rtc");
     if (std::filesystem::exists(clock_path_) &&
-        !console_->disk_drive().clock().load(read(clock_path_, 16)))
+        !console_->disk_drive().clock().load(read_file(clock_path_, 16)))
       throw std::runtime_error("The disk clock save must contain 16 bytes.");
     const auto clock = console_->disk_drive().clock().save();
     saved_clock_.assign(clock.begin(), clock.end());
     if (!disk.empty()) {
-      if (!console_->disk_drive().load_image(read(disk, 0x435b0c0)))
+      if (!console_->disk_drive().load_image(read_file(disk, 0x435b0c0)))
         throw std::runtime_error("Select a valid 64DD disk image.");
-      disk_path_ = disk;
-      disk_path_.replace_extension(L".disk");
+      disk_path_ = save_path(disk, L".disk");
       if (std::filesystem::exists(disk_path_)) {
         const auto errors = console_->disk_drive().disk_errors();
-        if (!console_->disk_drive().insert(read(disk_path_, 0x435b0c0), errors))
+        if (!console_->disk_drive().insert(read_file(disk_path_, 0x435b0c0), errors))
           throw std::runtime_error("The disk save has an invalid size.");
       }
       const auto data = console_->disk_drive().disk_data();
       saved_disk_.assign(data.begin(), data.end());
     }
   }
+  for (unsigned port = 0; port < profile->accessories.size(); ++port) {
+    auto &pad = console_->controller(port);
+    switch (profile->accessories[port]) {
+    case n64::ControllerAccessory::Memory:
+      pad.memory_pak();
+      break;
+    case n64::ControllerAccessory::Rumble:
+      pad.rumble_pak();
+      break;
+    case n64::ControllerAccessory::Transfer:
+      pad.transfer_pak();
+      break;
+    case n64::ControllerAccessory::None:
+      break;
+    }
+    console_->connect_controller(port, port == 0 || profile->accessories[port] !=
+                                                        n64::ControllerAccessory::None);
+  }
   if (!console_->load(cartridge, pif))
-    throw std::runtime_error("Select a game or 64DD IPL and a 1984-byte NTSC PIF firmware file.");
+    throw std::runtime_error("Select a game or 64DD IPL and a 1984-byte PIF firmware file.");
   if (!rom.empty()) {
-    save_path_ = rom;
-    save_path_.replace_extension(L".eep");
+    const auto attach_save = [&](const wchar_t *extension, std::span<std::uint8_t> memory) {
+      if (!memory.empty())
+        saves_.emplace_back(save_path(rom, extension), memory);
+    };
+    attach_save(L".eep", console_->eeprom().data());
+    attach_save(L".sra", console_->sram().data());
+    attach_save(L".fla", console_->flash().data());
+    constexpr const wchar_t *pak_extensions[]{L".pak", L".p2.pak", L".p3.pak", L".p4.pak"};
+    for (unsigned port = 0; port < 4; ++port)
+      attach_save(pak_extensions[port], console_->controller(port).pak_data());
+    if (config.rtc_present) {
+      cartridge_clock_path_ = save_path(rom, L".rtc");
+      if (std::filesystem::exists(cartridge_clock_path_) &&
+          !console_->rtc().load(read_file(cartridge_clock_path_, 32)))
+        throw std::runtime_error("The cartridge clock save must contain 32 bytes.");
+      const auto clock = console_->rtc().save();
+      saved_cartridge_clock_.assign(clock.begin(), clock.end());
+    }
   }
-  auto memory = console_->eeprom().data();
-  if (!save_path_.empty() && std::filesystem::exists(save_path_)) {
-    auto data = read(save_path_, memory.size());
-    if (data.size() != memory.size())
-      throw std::runtime_error("The EEPROM save must contain 512 bytes for this SM64 profile.");
-    std::copy(data.begin(), data.end(), memory.begin());
-  }
-  saved_.assign(memory.begin(), memory.end());
-  console_->connect_controller(0, true);
   renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
@@ -120,10 +125,14 @@ void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
 }
 
 void Session::save() {
-  auto data = console_->eeprom().data();
-  if (!save_path_.empty() && !std::equal(data.begin(), data.end(), saved_.begin())) {
-    write_save(save_path_, data);
-    saved_.assign(data.begin(), data.end());
+  for (auto &memory : saves_)
+    memory.save();
+  if (!cartridge_clock_path_.empty()) {
+    const auto clock = console_->rtc().save();
+    if (!std::equal(clock.begin(), clock.end(), saved_cartridge_clock_.begin())) {
+      write_save(cartridge_clock_path_, clock);
+      saved_cartridge_clock_.assign(clock.begin(), clock.end());
+    }
   }
   if (!clock_path_.empty()) {
     const auto clock = console_->disk_drive().clock().save();
