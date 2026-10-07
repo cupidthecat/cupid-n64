@@ -20,6 +20,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         options.rom = value;
       else if (argument == L"--pif")
         options.firmware = value;
+      else if (argument == L"--ipl")
+        options.ipl = value;
+      else if (argument == L"--disk")
+        options.disk = value;
       else if (argument == L"--capture")
         options.capture = value;
       else if (argument == L"--frames") {
@@ -29,11 +33,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
           throw std::runtime_error("Frame count must be a positive integer.");
         options.frames = frames;
       } else
-        throw std::runtime_error(
-            "Use --rom FILE --pif FILE [--frames N --capture FILE --test-input].");
+        throw std::runtime_error("Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
+                                 "FILE, --frames N, --capture FILE, --test-input.");
     }
     if (!options.frames && (options.test_input || !options.capture.empty()))
       throw std::runtime_error("--capture and --test-input require --frames N.");
+    if (!options.disk.empty() && options.ipl.empty())
+      throw std::runtime_error("--disk requires --ipl FILE.");
     LocalFree(arguments);
     arguments = nullptr;
     SetProcessDPIAware();

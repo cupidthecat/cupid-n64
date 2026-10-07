@@ -10,7 +10,8 @@ namespace cupid::desktop {
 
 class Session {
 public:
-  Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio);
+  Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio,
+          const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void save();
   std::uint64_t clocks() const {
@@ -22,6 +23,8 @@ public:
 private:
   std::filesystem::path save_path_;
   std::vector<std::uint8_t> saved_;
+  std::filesystem::path clock_path_, disk_path_;
+  std::vector<std::uint8_t> saved_clock_, saved_disk_;
   std::unique_ptr<n64::Console> console_;
   std::unique_ptr<n64::HardwareRenderer> renderer_;
 };

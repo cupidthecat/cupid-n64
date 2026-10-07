@@ -19,6 +19,10 @@ enum class Event : unsigned {
   EepromWrite,
   FlashComplete,
   RtcTick,
+  DiskClock,
+  DiskResponse,
+  DiskBlock,
+  DiskMotor,
 };
 
 class EventQueue {

@@ -8,6 +8,11 @@ namespace cupid::n64 {
 class CartridgeRom : public PeripheralMemory {
 public:
   bool load(std::span<const std::uint8_t> bytes);
+  void disconnect() {
+    data_.clear();
+    view_ = {};
+    offset_ = 0;
+  }
   bool select(std::uint32_t address, PeripheralTiming timing) override;
   std::span<const std::uint8_t> data() const {
     return data_;

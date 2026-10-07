@@ -89,6 +89,14 @@ add_library(cupid_core
   src/core/rdp/commands.cpp
   src/core/cartridge/rom.cpp
   src/core/system/console.cpp
+  src/core/disk/drive.cpp
+  src/core/disk/controller/commands.cpp
+  src/core/disk/controller/transfers.cpp
+  src/core/disk/controller/io.cpp
+  src/core/disk/clock/clock.cpp
+  src/core/disk/image/image.cpp
+  src/core/disk/image/validation.cpp
+  src/core/disk/image/mapping.cpp
   src/core/system/bus.cpp
 )
 target_include_directories(cupid_core PUBLIC src)
@@ -185,6 +193,9 @@ if(BUILD_TESTING)
     tests/devices/gamepad.cpp
     tests/devices/controller/accessories.cpp
     tests/devices/controller/handheld.cpp
+    tests/devices/disk/drive.cpp
+    tests/devices/disk/clock.cpp
+    tests/devices/disk/image.cpp
     tests/devices/rsp.cpp
     tests/devices/video.cpp
     tests/devices/audio.cpp

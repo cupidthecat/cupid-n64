@@ -8,7 +8,7 @@
 namespace cupid::desktop {
 
 struct Options {
-  std::filesystem::path rom, firmware, capture;
+  std::filesystem::path rom, firmware, capture, ipl, disk;
   unsigned frames = 0;
   bool test_input = false;
 };
