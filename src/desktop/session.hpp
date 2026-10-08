@@ -15,6 +15,7 @@ public:
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
           n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled);
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  void finish_frame();
   void reset();
   void save();
   std::uint64_t clocks() const {
@@ -32,6 +33,7 @@ private:
   std::vector<std::uint8_t> saved_clock_, saved_disk_;
   std::unique_ptr<n64::Console> console_;
   std::unique_ptr<n64::HardwareRenderer> renderer_;
+  bool frame_pending_ = false;
 };
 
 } // namespace cupid::desktop

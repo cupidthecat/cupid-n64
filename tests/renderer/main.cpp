@@ -23,6 +23,13 @@ int main() {
     std::cout << error.what() << '\n';
     return 77;
   }
+  const auto blank = renderer->frame(false);
+  test::equal(blank.width, 1);
+  test::equal(blank.height, 1);
+  test::equal(blank.rgba.size(), 4);
+  if (blank.rgba.size() == 4)
+    for (unsigned n = 0; n < 4; ++n)
+      test::equal(blank.rgba[n], n == 3 ? 255 : 0);
   console.display().connect([&](std::span<const std::uint32_t> words) { renderer->submit(words); },
                             [&] { renderer->synchronize(); });
   constexpr std::uint64_t commands[] = {0x3f10003f00100000, 0x2d00000000100100, 0x2f30000000000000,
@@ -70,6 +77,7 @@ int main() {
   for (unsigned pass = 0; pass < 3; ++pass) {
     const auto generation = tracker->generation(0x100000);
     const auto value = pass == 2 ? 13u : 9u;
+    renderer->begin_frame(false);
     const std::uint32_t packets[][2] = {
         {0x3f18003f, 0x00100000},
         {0x2d000000, 0x00100100},
@@ -79,6 +87,11 @@ int main() {
     for (const auto &packet : packets)
       renderer->submit(packet);
     test::equal(console.instruction_tracker() == nullptr, true);
+    if (pass != 2) {
+      const auto queued_frame = renderer->read_frame();
+      test::equal(queued_frame.rgba.empty(), false);
+      test::equal(console.instruction_tracker() == nullptr, true);
+    }
     if (pass == 2)
       renderer.reset();
     else

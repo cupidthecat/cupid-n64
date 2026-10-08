@@ -1,5 +1,6 @@
 #include "renderer/vulkan/renderer.hpp"
 #include "rdp_device.hpp"
+#include "renderer/video/readback.hpp"
 #include <atomic>
 #include <cstring>
 #include <stdexcept>
@@ -14,6 +15,8 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   RDP::VIScanoutBuffer scanout;
   std::atomic<bool> crashed = false;
   bool pending_writes = false;
+  std::uint64_t write_epoch = 0, scanout_epoch = 0;
+  std::unique_ptr<FrameReadback> readback;
 
   explicit Implementation(Rdram &memory) : ram(memory) {
     if (!Vulkan::Context::init_loader(nullptr) ||
@@ -27,16 +30,37 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
     if (!processor->device_is_supported())
       throw std::runtime_error("Vulkan device does not support display rendering");
     processor->set_validation_interface(this);
+    readback = std::make_unique<FrameReadback>([this] { return read_pixels(); });
     ram.bind_hidden(
         {static_cast<std::uint8_t *>(processor->begin_read_hidden_rdram()), ram.size() / 2});
   }
 
   ~Implementation() {
+    readback.reset();
     if (processor) {
       processor->idle();
       finish_writes();
       ram.bind_hidden({});
     }
+  }
+
+  VideoFrame read_pixels() {
+    if (!scanout.fence || !scanout.width || !scanout.height)
+      return {1, 1, {0, 0, 0, 255}};
+    scanout.fence->wait();
+    VideoFrame frame;
+    frame.width = scanout.width;
+    frame.height = scanout.height;
+    frame.rgba.resize(std::size_t(frame.width) * frame.height * 4);
+    const auto *pixels = device.map_host_buffer(*scanout.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+    std::memcpy(frame.rgba.data(), pixels, frame.rgba.size());
+    device.unmap_host_buffer(*scanout.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+    return frame;
+  }
+
+  void finish_frame_writes() {
+    if (scanout.fence && scanout.width && scanout.height && scanout_epoch == write_epoch)
+      finish_writes();
   }
 
   void finish_writes() {
@@ -61,6 +85,7 @@ void HardwareRenderer::submit(std::span<const std::uint32_t> words) {
     implementation_->ram.begin_external_write();
     implementation_->pending_writes = true;
   }
+  ++implementation_->write_epoch;
   implementation_->processor->enqueue_command(static_cast<unsigned>(words.size()), words.data());
 }
 
@@ -78,8 +103,10 @@ bool HardwareRenderer::crashed() const {
   return implementation_->crashed.load(std::memory_order_relaxed);
 }
 
-VideoFrame HardwareRenderer::frame(bool field) {
+void HardwareRenderer::begin_frame(bool field) {
   auto &state = *implementation_;
+  state.readback->wait();
+  state.finish_frame_writes();
   state.processor->set_vi_register(RDP::VIRegister::VCurrentLine, unsigned(field));
   RDP::ScanoutOptions options;
   options.persist_frame_on_invalid_input = true;
@@ -88,19 +115,20 @@ VideoFrame HardwareRenderer::frame(bool field) {
     state.scanout.fence->wait();
   state.processor->scanout_async_buffer(state.scanout, options);
   state.processor->begin_frame_context();
-  VideoFrame frame;
-  if (!state.scanout.fence || !state.scanout.width || !state.scanout.height)
-    return frame;
-  state.scanout.fence->wait();
-  state.finish_writes();
-  frame.width = state.scanout.width;
-  frame.height = state.scanout.height;
-  frame.rgba.resize(std::size_t(frame.width) * frame.height * 4);
-  const auto *pixels =
-      state.device.map_host_buffer(*state.scanout.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
-  std::memcpy(frame.rgba.data(), pixels, frame.rgba.size());
-  state.device.unmap_host_buffer(*state.scanout.buffer, Vulkan::MEMORY_ACCESS_READ_BIT);
+  state.scanout_epoch = state.write_epoch;
+  state.readback->start();
+}
+
+VideoFrame HardwareRenderer::read_frame() {
+  auto &state = *implementation_;
+  auto frame = state.readback->take();
+  state.finish_frame_writes();
   return frame;
+}
+
+VideoFrame HardwareRenderer::frame(bool field) {
+  begin_frame(field);
+  return read_frame();
 }
 
 } // namespace cupid::n64

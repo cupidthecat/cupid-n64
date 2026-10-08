@@ -108,21 +108,29 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
   console_->video().connect_registers(
       [this](unsigned index, std::uint32_t value) { renderer_->write_video(index, value); });
   console_->video().connect_frame([this](bool field) {
-    auto next = renderer_->frame(field);
-    if (!next.rgba.empty())
-      frame = std::move(next);
+    finish_frame();
+    renderer_->begin_frame(field);
+    frame_pending_ = true;
     ++frames;
   });
 }
 
 void Session::reset() {
   renderer_.reset();
+  frame_pending_ = false;
   console_->power(true);
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
   renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
   frame = {};
   frames = 0;
+}
+
+void Session::finish_frame() {
+  if (frame_pending_) {
+    frame = renderer_->read_frame();
+    frame_pending_ = false;
+  }
 }
 
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {

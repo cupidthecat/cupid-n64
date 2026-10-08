@@ -58,7 +58,10 @@ if(WIN32)
   target_link_libraries(cupid_renderer_dependency PUBLIC winmm)
 endif()
 
-add_library(cupid_renderer src/renderer/vulkan/renderer.cpp)
+add_library(cupid_renderer
+  src/renderer/vulkan/renderer.cpp
+  src/renderer/video/readback.cpp
+)
 target_link_libraries(cupid_renderer PUBLIC cupid_core PRIVATE cupid_renderer_dependency)
 target_include_directories(cupid_renderer PUBLIC src)
 target_compile_features(cupid_renderer PUBLIC cxx_std_20)
