@@ -16,6 +16,7 @@ add_library(cupid_core
   src/core/cpu/recompiler/integer.cpp
   src/core/cpu/recompiler/arithmetic.cpp
   src/core/cpu/recompiler/memory.cpp
+  src/core/cpu/recompiler/memory/merge.cpp
   src/core/cpu/recompiler/fpu/execute.cpp
   src/core/cpu/recompiler/fpu/registers.cpp
   src/core/cpu/recompiler/fpu/arithmetic.cpp
@@ -204,6 +205,7 @@ if(BUILD_TESTING)
     tests/cpu/native_memory.cpp
     tests/cpu/native/timing.cpp
     tests/cpu/native/arithmetic.cpp
+    tests/cpu/native/merge_linked.cpp
     tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_fpu.cpp
     tests/cpu/native_branches.cpp
