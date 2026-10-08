@@ -61,9 +61,10 @@ void fallback_timing() {
             equal(f.cpu.state().gpr[4], kind < 3 ? 0x1234 : 0);
             equal(f.cpu.state().fpr[4], kind == 4 ? 0x40400000 : 0);
             equal(f.cpu.state().pc, fault ? 0xffffffff80000180ull : 0xffffffff80003000ull);
-            equal(f.cpu.read_control(Cause),
-                  (fault ? (kind == 3 ? 0x10u : 0x3cu) | (delay ? 0x80000000u : 0u) : 0) |
-                      (timer ? 0x8000u : 0u));
+            const auto cause = fault ? (kind == 3 ? 0x10u : 0x3cu) | (delay ? 0x80000000u : 0u) : 0;
+            equal(f.cpu.read_control(Cause), cause);
+            f.cpu.synchronize_timer();
+            equal(f.cpu.read_control(Cause), cause | (timer ? 0x8000u : 0u));
             equal(f.cpu.state().fcr31, kind == 6 ? 0x20000 : 0);
             if (fault)
               equal(f.cpu.read_control(Epc), 0xffffffff80001000ull + before * 4);

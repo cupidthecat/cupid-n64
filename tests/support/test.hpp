@@ -101,6 +101,7 @@ void memory_tests();
 void linked_load_tests();
 void merge_store_tests();
 void control_tests();
+void timer_phase_tests();
 void control_dispatch_tests();
 void cop2_memory_tests();
 void random_tests();

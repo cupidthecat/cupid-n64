@@ -49,18 +49,16 @@ void Cpu::write_control(unsigned index, std::uint64_t value) {
     control_[Wired] = value & 63;
     break;
   case Count:
-    advance_clocks(0);
+    flush_count();
     count_ticks_ = (value & 0xffffffff) << 1;
-    update_timer_deadline();
     break;
   case EntryHi:
     control_[EntryHi] = value & 0xc00000ffffffe0ffull;
     break;
   case Compare:
-    advance_clocks(0);
+    flush_count();
     control_[Compare] = value & 0xffffffff;
     set_interrupt(7, false);
-    update_timer_deadline();
     break;
   case Status:
     control_[Status] = (value & 0xff57ffff) | (control_[Status] & 0x00200000);
@@ -156,9 +154,13 @@ void Cpu::cop0(std::uint32_t instruction) {
     return;
   switch (function) {
   case 0:
+    if (rd == Count)
+      flush_count();
     state_.gpr[rt] = sign_word(static_cast<std::uint32_t>(read_control(rd)));
     return;
   case 1:
+    if (rd == Count)
+      flush_count();
     state_.gpr[rt] = read_control(rd);
     return;
   case 4:

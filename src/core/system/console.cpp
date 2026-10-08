@@ -166,17 +166,19 @@ void Console::run_clocks(std::uint64_t clocks) {
 void Console::synchronize() {
   const auto clocks = static_cast<std::uint32_t>(pending_clocks());
   synchronized_clock_ = cpu_.state().clocks;
-  vi_.elapse(clocks);
-  audio_.elapse(clocks);
-  rsp_.elapse(clocks);
-  rdp_.elapse(clocks);
-  pif_.elapse(clocks);
-  vi_.run();
-  audio_.run();
-  rsp_.run();
-  rdp_.run();
-  pif_.run();
-  events_.advance(clocks, [this](Event pending) { event(pending); });
+  cpu_.synchronize_timer([&] {
+    vi_.elapse(clocks);
+    audio_.elapse(clocks);
+    rsp_.elapse(clocks);
+    rdp_.elapse(clocks);
+    pif_.elapse(clocks);
+    vi_.run();
+    audio_.run();
+    rsp_.run();
+    rdp_.run();
+    pif_.run();
+    events_.advance(clocks, [this](Event pending) { event(pending); });
+  });
 }
 
 void Console::event(Event pending) {

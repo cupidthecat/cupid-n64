@@ -6,6 +6,7 @@ int main() {
   test::linked_load_tests();
   test::merge_store_tests();
   test::control_tests();
+  test::timer_phase_tests();
   test::control_dispatch_tests();
   test::cop2_memory_tests();
   test::random_tests();
