@@ -114,6 +114,7 @@ void native_timing_tests();
 void native_arithmetic_timing_tests();
 void native_merge_linked_timing_tests();
 void native_control_trap_timing_tests();
+void native_control_noop_timing_tests();
 void native_fpu_memory_tests();
 void native_fpu_tests();
 void native_loop_tests();
