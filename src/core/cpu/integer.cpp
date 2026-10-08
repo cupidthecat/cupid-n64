@@ -23,10 +23,10 @@ void Cpu::subtract(unsigned dest, std::uint64_t a, std::uint64_t b, bool wide, b
   state_.gpr[dest] = wide ? result : sign_word(static_cast<std::uint32_t>(result));
 }
 
-void Cpu::multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) {
+unsigned Cpu::multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) {
   if (wide) {
     if (!require_doubleword())
-      return;
+      return 0;
     const auto a0 = a & 0xffffffff;
     const auto a1 = a >> 32;
     const auto b0 = b & 0xffffffff;
@@ -42,20 +42,19 @@ void Cpu::multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) 
       if (b >> 63)
         state_.hi -= a;
     }
-    advance_clocks(14);
-    return;
+    return 14;
   }
   const auto right =
       is_signed ? static_cast<std::uint64_t>(signed_value(b << 29) >> 29) : b & 0xffffffff;
   const auto result = (is_signed ? a : a & 0xffffffff) * right;
   state_.lo = sign_word(static_cast<std::uint32_t>(result));
   state_.hi = sign_word(static_cast<std::uint32_t>(result >> 32));
-  advance_clocks(8);
+  return 8;
 }
 
-void Cpu::divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) {
+unsigned Cpu::divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) {
   if (wide && !require_doubleword())
-    return;
+    return 0;
   if (is_signed) {
     const auto numerator =
         wide ? signed_value(a) : signed_value(sign_word(static_cast<std::uint32_t>(a)));
@@ -80,7 +79,7 @@ void Cpu::divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed) {
     state_.lo = sign_word(static_cast<std::uint32_t>(state_.lo));
     state_.hi = sign_word(static_cast<std::uint32_t>(state_.hi));
   }
-  advance_clocks(wide ? 136 : 72);
+  return wide ? 136 : 72;
 }
 
 void Cpu::decode(std::uint32_t instruction) {
@@ -222,21 +221,21 @@ void Cpu::special(std::uint32_t instruction) {
       state_.gpr[rd] = static_cast<std::uint64_t>(signed_value(b) >> (a & 63));
     return;
   case 0x18:
-    return multiply(a, b, false, true);
+    return advance_clocks(multiply(a, b, false, true));
   case 0x19:
-    return multiply(a, b, false, false);
+    return advance_clocks(multiply(a, b, false, false));
   case 0x1a:
-    return divide(a, b, false, true);
+    return advance_clocks(divide(a, b, false, true));
   case 0x1b:
-    return divide(a, b, false, false);
+    return advance_clocks(divide(a, b, false, false));
   case 0x1c:
-    return multiply(a, b, true, true);
+    return advance_clocks(multiply(a, b, true, true));
   case 0x1d:
-    return multiply(a, b, true, false);
+    return advance_clocks(multiply(a, b, true, false));
   case 0x1e:
-    return divide(a, b, true, true);
+    return advance_clocks(divide(a, b, true, true));
   case 0x1f:
-    return divide(a, b, true, false);
+    return advance_clocks(divide(a, b, true, false));
   case 0x20:
     return add(rd, a, b, false, true);
   case 0x21:
