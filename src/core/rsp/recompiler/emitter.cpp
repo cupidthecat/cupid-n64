@@ -134,10 +134,8 @@ bool RspCompiler::Emitter::compile() {
   block.pipeline.clocks = 0;
   for (const auto &exit : exits) {
     sljit_set_label(exit.jump, sljit_emit_label(compiler));
-    pipeline = exit.pipeline;
     cycles = exit.clocks;
     flush_clocks();
-    commit_pipeline();
     commit(exit.pc, exit.branch);
     sljit_emit_return_void(compiler);
   }

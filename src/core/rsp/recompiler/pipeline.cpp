@@ -8,18 +8,6 @@ void RspCompiler::Emitter::flush_clocks() {
   cycles = 0;
 }
 
-void RspCompiler::Emitter::commit_pipeline() {
-  for (unsigned n = 0; n < 3; ++n) {
-    const auto &stage = pipeline.previous[n];
-    auto &dest = rsp.pipeline_.previous[n];
-    op1(SLJIT_MOV32, field(&dest.gpr), imm(stage.gpr));
-    op1(SLJIT_MOV32, field(&dest.vector), imm(stage.vector));
-    op1(SLJIT_MOV_U8, field(&dest.load), imm(stage.load));
-  }
-  op1(SLJIT_MOV32, field(&rsp.pipeline_.clocks), imm(0));
-  op1(SLJIT_MOV_U8, field(&rsp.pipeline_.single_issue), imm(pipeline.single_issue));
-}
-
 void RspCompiler::Emitter::commit(std::uint32_t pc, bool branch) {
   op1(SLJIT_MOV32, field(&rsp.pc_), imm(pc));
   op1(SLJIT_MOV32, field(&rsp.pipeline_pc_), imm(pc));
@@ -48,7 +36,7 @@ void RspCompiler::Emitter::end_delay(Rsp *rsp) {
 void RspCompiler::Emitter::halt_exit(std::uint32_t pc, bool branch) {
   op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&rsp.status_.halted));
   const auto jump = sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
-  exits.push_back({jump, pipeline, pc, cycles, branch});
+  exits.push_back({jump, branch ? pc : start, cycles, branch});
 }
 
 } // namespace cupid::n64

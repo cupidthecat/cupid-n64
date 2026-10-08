@@ -91,10 +91,17 @@ void rsp_block_tests() {
     f.rsp.write_local(0x1008, 4, 13);
     f.rsp.write_io(16, 1);
     f.rsp.advance(1);
-    equal(f.rsp.pc(), 4);
+    equal(f.rsp.pc(), 0);
     equal(f.rsp.clocks(), 2);
     equal(f.rsp.status().halted, true);
     equal(f.rsp.state().gpr[2], 0);
+    f.rsp.write_io(16, 1);
+    f.rsp.advance(3);
+    equal(f.rsp.pc(), 0);
+    equal(f.rsp.clocks(), 2);
+    equal(f.rsp.status().halted, true);
+    equal(f.rsp.state().gpr[2], 0);
+    f.rsp.state().gpr[1] = 0;
     f.rsp.write_io(16, 1);
     f.rsp.advance(3);
     equal(f.rsp.pc(), 12);
