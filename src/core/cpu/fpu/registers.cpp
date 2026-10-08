@@ -48,28 +48,6 @@ void Cpu::fpu_memory(unsigned operation, unsigned reg, std::uint64_t address) {
     fpu_transfer(reg, wide, *value);
 }
 
-void Cpu::cop2(std::uint32_t instruction) {
-  if (!(control_[Status] & 0x40000000))
-    return raise(Exception::CoprocessorUnusable, 2);
-  const auto rt = (instruction >> 16) & 31;
-  switch ((instruction >> 21) & 31) {
-  case 0:
-  case 2:
-    state_.gpr[rt] = sign_word(static_cast<std::uint32_t>(cop2_latch_));
-    return;
-  case 1:
-    state_.gpr[rt] = cop2_latch_;
-    return;
-  case 4:
-  case 5:
-  case 6:
-    cop2_latch_ = state_.gpr[rt];
-    return;
-  default:
-    return raise(Exception::ReservedInstruction, 2);
-  }
-}
-
 void Cpu::cop1(std::uint32_t instruction) {
   const auto format = (instruction >> 21) & 31;
   const auto rt = (instruction >> 16) & 31;

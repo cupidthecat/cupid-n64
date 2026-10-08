@@ -26,6 +26,7 @@ add_library(cupid_core
   src/core/cpu/memory/linked.cpp
   src/core/cpu/memory/merge_store.cpp
   src/core/cpu/control.cpp
+  src/core/cpu/control/cop2.cpp
   src/core/cpu/cache.cpp
   src/core/cpu/fpu/registers.cpp
   src/core/cpu/fpu/execute.cpp
@@ -191,6 +192,7 @@ if(BUILD_TESTING)
     tests/cpu/merge_store.cpp
     tests/cpu/control.cpp
     tests/cpu/control/dispatch.cpp
+    tests/cpu/control/cop2_memory.cpp
     tests/cpu/random.cpp
     tests/cpu/cache.cpp
     tests/cpu/cache_coherence.cpp

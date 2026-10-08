@@ -7,6 +7,7 @@ int main() {
   test::merge_store_tests();
   test::control_tests();
   test::control_dispatch_tests();
+  test::cop2_memory_tests();
   test::random_tests();
   test::cache_tests();
   test::cache_coherence_tests();

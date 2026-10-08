@@ -69,6 +69,7 @@ private:
   void cop0(std::uint32_t instruction);
   void cop1(std::uint32_t instruction);
   void cop2(std::uint32_t instruction);
+  void cop2_invalid();
   bool fpu_enabled();
   bool fpu_begin();
   bool fpu_exception(unsigned exceptions);
