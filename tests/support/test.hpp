@@ -98,6 +98,7 @@ struct Fixture {
 void integer_tests();
 void section_invalidation_tests();
 void memory_tests();
+void linked_load_tests();
 void merge_store_tests();
 void control_tests();
 void random_tests();

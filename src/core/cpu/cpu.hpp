@@ -99,6 +99,7 @@ private:
                                     bool instruction = false);
   bool write(std::uint64_t address, unsigned bytes, std::uint64_t value, bool alignment = true);
   void load_store(std::uint32_t instruction);
+  void load_linked(unsigned reg, std::uint64_t address, bool wide);
   void load_merge(unsigned reg, std::uint64_t address, unsigned bytes, bool left);
   void store_merge(std::uint64_t value, std::uint64_t address, unsigned bytes, bool left);
   std::optional<std::uint64_t> cache_read(std::uint64_t virtual_address, std::uint32_t physical,
