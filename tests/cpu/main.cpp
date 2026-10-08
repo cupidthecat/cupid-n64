@@ -19,6 +19,7 @@ int main() {
   test::native_arithmetic_timing_tests();
   test::native_merge_linked_timing_tests();
   test::native_control_trap_timing_tests();
+  test::native_control_noop_timing_tests();
   test::native_fpu_memory_tests();
   test::native_fpu_tests();
   test::native_loop_tests();
