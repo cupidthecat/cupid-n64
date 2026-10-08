@@ -159,7 +159,9 @@ bool CpuCompiler::Emitter::compile() {
         cycles += 2;
         pipeline_dirty = true;
       }
-    } else if (!branch(instruction) &&
+    } else if (!control_noop(instruction, !n || previous_branch || internal_entries[n],
+                             defer_exit) &&
+               !branch(instruction) &&
                !arithmetic(instruction, !n || previous_branch || internal_entries[n], defer_exit,
                            previous_branch) &&
                !trap(instruction, !n || previous_branch || internal_entries[n], defer_exit,
