@@ -9,8 +9,18 @@ struct alignas(16) Mask {
 };
 
 struct Tables {
+  std::array<Mask, 16> select{};
   std::array<std::array<std::array<std::array<Mask, 16>, 16>, 2>, 2> shuffle{}, preserve{};
   constexpr Tables() {
+    for (unsigned element = 0; element < 16; ++element)
+      for (unsigned lane = 0; lane < 8; ++lane) {
+        const auto index = element < 2   ? lane
+                           : element < 4 ? (lane & 6) | (element & 1)
+                           : element < 8 ? (lane & 4) | (element & 3)
+                                         : element & 7;
+        select[element].bytes[lane * 2] = static_cast<std::uint8_t>(index * 2);
+        select[element].bytes[lane * 2 + 1] = static_cast<std::uint8_t>(index * 2 + 1);
+      }
     for (unsigned store = 0; store < 2; ++store)
       for (unsigned reverse = 0; reverse < 2; ++reverse)
         for (unsigned element = 0; element < 16; ++element)
@@ -44,9 +54,66 @@ struct Tables {
   }
 };
 constexpr Tables tables;
+constexpr Mask zero{};
+constexpr Mask invert{{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+                       0xff, 0xff, 0xff}};
 constexpr sljit_s32 simd = SLJIT_SIMD_REG_128 | SLJIT_SIMD_ELEM_8;
 
 } // namespace
+
+bool RspCompiler::Emitter::vector_arithmetic_simd(std::uint32_t instruction) {
+  const auto operation = instruction & 63;
+  if (operation != 29 && (operation < 40 || operation > 45))
+    return false;
+  if (!sljit_has_cpu_feature(SLJIT_HAS_SIMD))
+    return false;
+  const auto element = (instruction >> 21) & 15;
+  const Operand dest{SLJIT_MEM1(SLJIT_S0),
+                     static_cast<sljit_sw>(offsetof(RspState, vectors) +
+                                           ((instruction >> 6) & 31) * sizeof(RspVector))};
+  const auto accumulator = [&](std::size_t offset) -> Operand {
+    return {SLJIT_MEM1(SLJIT_S0), static_cast<sljit_sw>(offsetof(RspState, accumulator) + offset)};
+  };
+  if (operation == 29) {
+    const auto source = element == 8    ? accumulator(offsetof(RspAccumulator, high))
+                        : element == 9  ? accumulator(offsetof(RspAccumulator, middle))
+                        : element == 10 ? accumulator(offsetof(RspAccumulator, low))
+                                        : field(&zero);
+    sljit_emit_simd_mov(compiler, simd, SLJIT_VR0, source.type, source.value);
+  } else {
+    const auto logic = operation < 42   ? SLJIT_SIMD_OP2_AND
+                       : operation < 44 ? SLJIT_SIMD_OP2_OR
+                                        : SLJIT_SIMD_OP2_XOR;
+    if (sljit_emit_simd_op2(compiler, simd | logic | SLJIT_SIMD_TEST, SLJIT_VR0, SLJIT_VR0,
+                            SLJIT_VR1, 0) != SLJIT_SUCCESS ||
+        (element >= 2 &&
+         sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE | SLJIT_SIMD_TEST, SLJIT_VR0,
+                             SLJIT_VR0, SLJIT_VR1, 0) != SLJIT_SUCCESS))
+      return false;
+    const Operand source{SLJIT_MEM1(SLJIT_S0),
+                         static_cast<sljit_sw>(offsetof(RspState, vectors) +
+                                               ((instruction >> 11) & 31) * sizeof(RspVector))};
+    const Operand target{SLJIT_MEM1(SLJIT_S0),
+                         static_cast<sljit_sw>(offsetof(RspState, vectors) +
+                                               ((instruction >> 16) & 31) * sizeof(RspVector))};
+    sljit_emit_simd_mov(compiler, simd, SLJIT_VR0, target.type, target.value);
+    if (element >= 2) {
+      const auto mask = field(&tables.select[element]);
+      sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE, SLJIT_VR0, SLJIT_VR0, mask.type,
+                          mask.value);
+    }
+    sljit_emit_simd_op2(compiler, simd | logic, SLJIT_VR0, SLJIT_VR0, source.type, source.value);
+    if (operation & 1) {
+      const auto mask = field(&invert);
+      sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_XOR, SLJIT_VR0, SLJIT_VR0, mask.type,
+                          mask.value);
+    }
+    const auto low = accumulator(offsetof(RspAccumulator, low));
+    sljit_emit_simd_mov(compiler, simd | SLJIT_SIMD_STORE, SLJIT_VR0, low.type, low.value);
+  }
+  sljit_emit_simd_mov(compiler, simd | SLJIT_SIMD_STORE, SLJIT_VR0, dest.type, dest.value);
+  return true;
+}
 
 bool RspCompiler::Emitter::vector_quad_simd(std::uint32_t instruction) {
   if (!sljit_has_cpu_feature(SLJIT_HAS_SIMD) ||

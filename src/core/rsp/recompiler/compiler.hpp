@@ -97,6 +97,7 @@ struct RspCompiler::Emitter {
   bool integer(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, std::uint32_t pc);
   bool vector_arithmetic(std::uint32_t instruction);
+  bool vector_arithmetic_simd(std::uint32_t instruction);
   bool vector_memory(std::uint32_t instruction, std::uint32_t pc);
   void vector_linear(std::uint32_t instruction, std::uint32_t pc);
   void vector_quad(std::uint32_t instruction);
