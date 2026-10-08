@@ -21,7 +21,6 @@ void Cpu::power() {
   dcache_ = {};
   control_latch_ = cop2_latch_ = count_ticks_ = 0;
   count_clock_ = 0;
-  timer_deadline_ = 2;
   llbit_ = nmi_pending_ = false;
   control_[Status] = 0x3450ff04;
   control_[Config] = 0x7006e460;
@@ -59,25 +58,6 @@ bool Cpu::require_doubleword() {
     return true;
   raise(Exception::ReservedInstruction);
   return false;
-}
-
-void Cpu::advance_clocks(std::uint64_t clocks) {
-  constexpr std::uint64_t mask = (1ull << 33) - 1;
-  const auto next_clock = state_.clocks + clocks;
-  const auto ticks = (next_clock - count_clock_) >> 1;
-  const auto remaining = ((control_[Compare] << 1) - count_ticks_) & mask;
-  if (remaining && ticks >= remaining)
-    set_interrupt(7, true);
-  count_ticks_ = (count_ticks_ + ticks) & mask;
-  count_clock_ += ticks << 1;
-  state_.clocks = next_clock;
-  update_timer_deadline();
-}
-
-void Cpu::update_timer_deadline() {
-  constexpr std::uint64_t period = 1ull << 33;
-  const auto remaining = ((control_[Compare] << 1) - count_ticks_) & (period - 1);
-  timer_deadline_ = count_clock_ + ((remaining ? remaining : 1) << 1);
 }
 
 void Cpu::set_interrupt(unsigned bit, bool pending) {

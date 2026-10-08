@@ -120,6 +120,8 @@ void compare_interrupt() {
       for (unsigned block = 0; block < 2 && cpu.state().pc != 0xffffffff80002000; ++block)
         equal(cpu.run_block(target), true);
       equal(cpu.state().pc, 0xffffffff80002000);
+      equal(cpu.read_control(Cause) & 0x8000, 0);
+      cpu.synchronize_timer();
       equal(cpu.read_control(Cause) & 0x8000, 0x8000);
     }
   }
@@ -148,6 +150,8 @@ void native_boundary_tests() {
                 equal(actual.cpu.run_block(target), true);
                 for (unsigned n = 0; n < 4; ++n)
                   expected.cpu.step();
+                actual.cpu.synchronize_timer();
+                expected.cpu.synchronize_timer();
                 compare(actual, expected);
               }
             }
@@ -166,6 +170,8 @@ void native_boundary_tests() {
     equal(actual.cpu.run_block(target), true);
     for (unsigned n = 0; n < 4; ++n)
       expected.cpu.step();
+    actual.cpu.synchronize_timer();
+    expected.cpu.synchronize_timer();
     compare(actual, expected);
     equal(actual.synchronizations, 1);
     equal(actual.cpu.read_control(Cause) & 0x8000, 0x8000);

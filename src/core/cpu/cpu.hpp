@@ -22,6 +22,7 @@ public:
   void set_interrupt(unsigned bit, bool pending);
   void request_nmi();
   void advance_clocks(std::uint64_t clocks);
+  void synchronize_timer(const std::function<void()> &devices = {});
   bool run_block(const std::uint64_t &clock_target);
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
@@ -113,7 +114,8 @@ private:
   unsigned random_index();
   void write_tlb(unsigned index);
   void interrupt_changed();
-  void update_timer_deadline();
+  void commit_count(std::uint64_t ticks);
+  void flush_count();
 
   Bus &bus_;
   CpuState state_{};
@@ -126,7 +128,6 @@ private:
   std::uint64_t cop2_latch_ = 0;
   std::uint64_t count_ticks_ = 0;
   std::uint64_t count_clock_ = 0;
-  std::uint64_t timer_deadline_ = 2;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

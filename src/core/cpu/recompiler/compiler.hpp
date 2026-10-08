@@ -152,7 +152,7 @@ struct CpuCompiler::Emitter {
   void compare(Operand dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source, bool word = false);
   void commit_pipeline();
-  void advance(unsigned clocks, bool preserve_address = false);
+  void advance(unsigned clocks);
   void return_now(unsigned clocks);
   void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
   void cache_guard(std::uint32_t address);
@@ -184,7 +184,6 @@ struct CpuCompiler::Emitter {
   static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
   static sljit_sw loop_pending(Cpu *cpu);
-  static void step(Cpu *cpu, sljit_uw clocks);
 };
 
 } // namespace cupid::n64

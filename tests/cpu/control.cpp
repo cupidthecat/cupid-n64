@@ -50,6 +50,8 @@ void control_tests() {
     equal(f.cpu.read_control(Count), 1);
     f.cpu.advance_clocks(4);
     equal(f.cpu.read_control(Count), 2);
+    equal(f.cpu.read_control(Cause) & 0x8000, 0);
+    f.cpu.synchronize_timer();
     equal(f.cpu.read_control(Cause) & 0x8000, 0x8000);
     f.cpu.write_control(Compare, 2);
     equal(f.cpu.read_control(Cause) & 0x8000, 0);
@@ -59,6 +61,7 @@ void control_tests() {
     f.cpu.write_control(Compare, 0);
     f.cpu.advance_clocks(4);
     equal(f.cpu.read_control(Count), 0);
+    f.cpu.synchronize_timer();
     equal(f.cpu.read_control(Cause) & 0x8000, 0x8000);
   }
   {

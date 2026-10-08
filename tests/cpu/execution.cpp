@@ -230,6 +230,8 @@ void execution_tests() {
       f.target = 0;
     });
     f.run();
+    equal(requests, 0);
+    f.cpu.synchronize_timer();
     equal(requests > 0, true);
     equal(f.cpu.state().gpr[2], 8);
     equal(f.cpu.state().pc, 0xffffffff8000100c);

@@ -84,7 +84,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   if (full)
     begin(false);
   // Cache hits keep the native instruction batch pending through the memory operation.
-  advance(2, true);
+  advance(2);
   if (write)
     op1(SLJIT_MOV_U8, {SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, dirty)}, imm(1));
   op2(SLJIT_AND, reg(SLJIT_R3), reg(SLJIT_R1), imm(15));

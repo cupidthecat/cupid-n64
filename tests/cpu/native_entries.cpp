@@ -109,6 +109,8 @@ void native_entry_tests() {
         equal(actual.cpu.read_control(Cause) & 0x7c, action == 2 ? 0 : 6 << 2);
       }
       if (action == 4) {
+        actual.cpu.synchronize_timer();
+        expected.cpu.synchronize_timer();
         equal(actual.cpu.read_control(Cause) & 0x8000, 0x8000);
         run(actual, expected);
         equal(actual.cpu.read_control(Epc), 0xffffffff8000101c);

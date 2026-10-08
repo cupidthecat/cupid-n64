@@ -219,12 +219,17 @@ void native_loop_tests() {
       fixture->cpu.write_control(Count, 0);
       fixture->cpu.write_control(Compare, compare_tick);
     }
-    const std::uint64_t budget = 4096;
-    equal(actual.cpu.run_block(budget), true);
     do {
-      equal(expected.cpu.run_interpreted_block(budget), true);
-    } while (!(expected.cpu.read_control(Cause) & 0x8000));
-    compare(actual, expected);
+      const auto target = actual.cpu.state().clocks + actual.cpu.synchronization_limit();
+      equal(actual.cpu.run_block(target), true);
+      do {
+        equal(expected.cpu.run_interpreted_block(target), true);
+      } while (expected.cpu.state().clocks < target);
+      actual.cpu.synchronize_timer();
+      expected.cpu.synchronize_timer();
+      compare(actual, expected);
+    } while (!(actual.cpu.read_control(Cause) & 0x8000));
+    const std::uint64_t budget = 4096;
     equal(actual.cpu.run_block(budget), expected.cpu.run_interpreted_block(budget));
     compare(actual, expected);
   }
