@@ -199,6 +199,7 @@ if(BUILD_TESTING)
     tests/cpu/cache_refill.cpp
     tests/cpu/execution.cpp
     tests/cpu/native_memory.cpp
+    tests/cpu/native/timing.cpp
     tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_fpu.cpp
     tests/cpu/native_branches.cpp
@@ -255,6 +256,7 @@ if(BUILD_TESTING)
     tests/rsp/native_memory.cpp
     tests/rsp/native_vector.cpp
     tests/rsp/blocks.cpp
+    tests/rsp/recompiler/context.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
   )

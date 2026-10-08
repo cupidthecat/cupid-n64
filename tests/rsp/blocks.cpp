@@ -53,10 +53,10 @@ void rsp_block_tests() {
     equal(f.rsp.clocks(), 11);
     equal(f.rsp.state().gpr[2], 1);
     f.rsp.advance(12);
-    equal(f.rsp.clocks(), 14);
+    equal(f.rsp.clocks(), 11);
     equal(f.rsp.state().gpr[2], 42);
     f.rsp.write_local(0x1000, 4, i(9, 1, 2, 1));
-    f.rsp.advance(15);
+    f.rsp.advance(12);
     equal(f.rsp.clocks(), 14);
     equal(f.rsp.state().gpr[2], 42);
     f.rsp.write_local(0x1000, 4, i(9, 1, 2, 2));

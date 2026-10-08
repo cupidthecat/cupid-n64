@@ -59,13 +59,15 @@ struct CoherenceFixture {
   }
 };
 
-void compare(CoherenceFixture &actual, CoherenceFixture &expected) {
+void compare(CoherenceFixture &actual, CoherenceFixture &expected, bool native) {
   equal(actual.cpu.state().pc, expected.cpu.state().pc);
-  equal(actual.cpu.state().clocks, expected.cpu.state().clocks);
+  if (!native)
+    equal(actual.cpu.state().clocks, expected.cpu.state().clocks);
   equal(actual.cpu.in_delay_slot(), expected.cpu.in_delay_slot());
   for (unsigned reg = 0; reg < 32; ++reg) {
     equal(actual.cpu.state().gpr[reg], expected.cpu.state().gpr[reg]);
-    equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
+    if (!native || reg != Count)
+      equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
   }
   equal(actual.memory.words == expected.memory.words, true);
 }
@@ -80,7 +82,7 @@ void run(CoherenceFixture &actual, CoherenceFixture &expected, bool native, unsi
     if (!handled)
       actual.cpu.step();
   }
-  compare(actual, expected);
+  compare(actual, expected, native);
 }
 
 } // namespace

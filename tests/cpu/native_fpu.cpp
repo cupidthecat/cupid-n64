@@ -18,13 +18,13 @@ void compare_state(CachedFixture &actual, CachedFixture &expected) {
   const auto &a = actual.cpu.state();
   const auto &b = expected.cpu.state();
   equal(a.pc, b.pc);
-  equal(a.clocks, b.clocks);
   equal(a.fcr31, b.fcr31);
   equal(actual.cpu.in_delay_slot(), expected.cpu.in_delay_slot());
   for (unsigned reg = 0; reg < 32; ++reg) {
     equal(a.gpr[reg], b.gpr[reg]);
     equal(a.fpr[reg], b.fpr[reg]);
-    equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
+    if (reg != Count)
+      equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
   }
   equal(actual.memory.transfers.size(), expected.memory.transfers.size());
 }

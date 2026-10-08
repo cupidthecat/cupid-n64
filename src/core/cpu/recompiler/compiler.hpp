@@ -110,6 +110,7 @@ struct CpuCompiler::Emitter {
     std::uint32_t instruction;
     unsigned clocks;
     bool defer_exit;
+    unsigned completion_clocks = 2;
   };
   Cpu &cpu;
   Impl::Block &block;
@@ -130,9 +131,9 @@ struct CpuCompiler::Emitter {
   bool compile();
   bool integer(std::uint32_t instruction);
   bool branch(std::uint32_t instruction);
-  bool memory(std::uint32_t instruction, bool full, bool defer_exit);
+  bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   void emit_slow_paths();
-  bool floating(std::uint32_t instruction, bool full, bool defer_exit);
+  bool floating(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   void floating_transfer(std::uint32_t instruction);
   void floating_arithmetic(SlowPath &path);
   void floating_convert(SlowPath &path);
