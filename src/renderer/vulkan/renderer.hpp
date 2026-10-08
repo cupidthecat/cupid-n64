@@ -1,14 +1,10 @@
 #pragma once
 
 #include "core/devices/rdram/rdram.hpp"
+#include "renderer/video/frame.hpp"
 #include <memory>
 
 namespace cupid::n64 {
-
-struct VideoFrame {
-  unsigned width = 0, height = 0;
-  std::vector<std::uint8_t> rgba;
-};
 
 class HardwareRenderer {
 public:
@@ -19,6 +15,8 @@ public:
   void submit(std::span<const std::uint32_t> words);
   void synchronize();
   void write_video(unsigned index, std::uint32_t value);
+  void begin_frame(bool field);
+  VideoFrame read_frame();
   VideoFrame frame(bool field);
   bool crashed() const;
 

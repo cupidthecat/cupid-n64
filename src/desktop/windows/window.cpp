@@ -424,6 +424,7 @@ void Window::advance() {
 }
 
 void Window::present() {
+  session_->finish_frame();
   frame_ready_ = false;
   last_frame_ = session_->frames;
   pixels_ = session_->frame.rgba;
