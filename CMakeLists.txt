@@ -267,6 +267,7 @@ if(BUILD_TESTING)
     tests/rsp/native_vector.cpp
     tests/rsp/blocks.cpp
     tests/rsp/recompiler/context.cpp
+    tests/rsp/recompiler/halt.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
   )

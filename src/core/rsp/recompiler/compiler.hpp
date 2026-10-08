@@ -71,7 +71,6 @@ struct RspCompiler::Emitter {
   };
   struct Exit {
     sljit_jump *jump;
-    Rsp::Pipeline pipeline;
     std::uint32_t pc;
     unsigned clocks;
     bool branch;
@@ -110,7 +109,6 @@ struct RspCompiler::Emitter {
   bool branch(std::uint32_t instruction, std::uint32_t pc);
   void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch, bool delay);
   void commit(std::uint32_t pc, bool branch);
-  void commit_pipeline();
   void flush_clocks();
   void begin_delay();
   void halt_exit(std::uint32_t pc, bool branch);
