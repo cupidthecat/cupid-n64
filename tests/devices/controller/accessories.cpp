@@ -1,4 +1,5 @@
 #include "../fixture.hpp"
+#include "core/controller/accessories/cartridge/handheld.hpp"
 #include "core/controller/gamepad.hpp"
 #include "core/controller/mouse/mouse.hpp"
 #include "core/system/console.hpp"
@@ -180,6 +181,76 @@ void accessory_tests() {
     equal(f.read(0xb000)[0], 0xc0);
     f.write(0xb000, 1);
     equal(f.read(0xb000)[0], 0x8d);
+    f.write(0xa000, 0);
+    equal(f.read(0xc000)[0], 255);
+  }
+  {
+    std::array<PakFixture, 2> ports;
+    for (unsigned port = 0; port < ports.size(); ++port) {
+      std::vector<std::uint8_t> rom(0x8000, static_cast<std::uint8_t>(0x31 + port));
+      auto cartridge = std::make_shared<HandheldCartridge>();
+      equal(cartridge->load(rom, {HandheldCartridge::Board::Linear}), true);
+      ports[port].pad.transfer_pak(cartridge);
+      equal(ports[port].identify(), 3);
+      ports[port].write(0x8000, 0x84);
+      ports[port].write(0xb000, 1);
+      ports[port].write(0xa000, 0);
+    }
+    for (unsigned port = 0; port < ports.size(); ++port) {
+      equal(ports[port].read(0xb000)[0], 0x8d);
+      equal(ports[port].read(0xc000)[0], 0x31 + port);
+    }
+    ports[0].pad.disconnect_pak();
+    equal(ports[0].identify(), 2);
+    equal(ports[0].read(0xc000)[0], 0);
+    equal(ports[1].read(0xb000)[0], 0x89);
+    equal(ports[1].read(0xc000)[0], 0x32);
+    ports[0].pad.transfer_pak();
+    equal(ports[0].identify(), 3);
+    ports[0].write(0xb000, 1);
+    equal(ports[0].read(0xc000)[0], 255);
+    equal(ports[1].read(0xc000)[0], 0x32);
+  }
+  {
+    PakFixture f;
+    f.pad.transfer_pak();
+    equal(f.identify(), 3);
+    equal(f.read(0xc000)[0], 0);
+    f.write(0x8000, 0x84);
+    equal(f.read(0xb000)[0], 0xc0);
+    equal(f.read(0xc000)[0], 0);
+    f.write(0xb000, 1);
+    const auto status = f.read(0xb000);
+    equal(status[0], 0x8d);
+    equal(status[1], 0x89);
+    for (unsigned bank = 0; bank < 4; ++bank) {
+      f.write(0xa000, static_cast<std::uint8_t>(bank));
+      for (unsigned address = 0; address < 0x4000; address += 32) {
+        const auto mapped = bank * 0x4000 + address;
+        const bool accessible = mapped <= 0x7fff || (mapped >= 0xa000 && mapped <= 0xbfff);
+        const auto response = f.read(0xc000 + address);
+        for (unsigned byte = 0; byte < 32; ++byte)
+          equal(response[byte], accessible ? 255 : 0);
+        equal(response[32], data_crc(std::span<const std::uint8_t, 32>(response.data(), 32)));
+      }
+    }
+    f.write(0xb000, 0);
+    const auto disabled = f.read(0xb000);
+    equal(disabled[0], 0x88);
+    equal(disabled[1], 0x84);
+    equal(disabled[2], 0x80);
+    equal(f.read(0xc000)[0], 0);
+    f.write(0x8000, 0xfe);
+    equal(f.read(0xb000)[0], 0);
+    f.pad.disconnect_pak();
+    equal(f.identify(), 2);
+    f.pad.transfer_pak();
+    equal(f.identify(), 3);
+    f.write(0x8000, 0x84);
+    equal(f.read(0xb000)[0], 0xc0);
+    f.write(0xb000, 1);
+    equal(f.read(0xb000)[0], 0x8d);
+    equal(f.read(0xc000)[0], 0);
     f.write(0xa000, 0);
     equal(f.read(0xc000)[0], 255);
   }
