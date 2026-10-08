@@ -28,7 +28,7 @@ bool CpuCompiler::Emitter::arithmetic(std::uint32_t instruction, bool full, bool
   const auto target = (instruction >> 16) & 31;
   const unsigned latency = hilo ? (function & 2) ? dual ? 136 : 72 : dual ? 14 : 8 : 0;
   commit_pipeline();
-  SlowPath path{{}, nullptr, instruction, cycles, defer_exit, delay ? 0u : latency + 2};
+  SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : latency + 2};
   if (hilo) {
     if (function & 2) {
       const auto denominator = gpr(target);

@@ -15,6 +15,14 @@
 namespace cupid::n64 {
 
 struct CpuCompiler::Impl {
+  struct ActiveSection {
+    InstructionTracker *tracker = nullptr;
+    std::uint32_t page = 0;
+    std::uint64_t generation = 0;
+    bool changed() const {
+      return tracker && tracker->generation(page) != generation;
+    }
+  } active;
   struct Key {
     std::uint64_t pc;
     unsigned mode;
@@ -109,7 +117,6 @@ struct CpuCompiler::Emitter {
     sljit_label *resume;
     std::uint32_t instruction;
     unsigned clocks;
-    bool defer_exit;
     unsigned completion_clocks = 2;
   };
   Cpu &cpu;
