@@ -7,11 +7,15 @@ RspCompiler::RspCompiler(Rsp &rsp) : impl_(std::make_unique<Impl>(rsp)) {}
 RspCompiler::~RspCompiler() = default;
 
 void RspCompiler::reset() {
-  impl_->context.fill(nullptr);
-  impl_->alternate.fill(nullptr);
-  impl_->dirty.reset();
-  impl_->blocks.clear();
-  impl_->bytes = 0;
+  impl_->reset();
+}
+
+void RspCompiler::Impl::reset() {
+  context.fill(nullptr);
+  alternate.fill(nullptr);
+  dirty.reset();
+  blocks.clear();
+  bytes = 0;
 }
 
 void RspCompiler::invalidate(std::uint32_t address, unsigned bytes) {
@@ -32,52 +36,39 @@ void RspCompiler::expose_memory() {
   impl_->external_memory = true;
 }
 
-bool RspCompiler::run() {
+void RspCompiler::Impl::clear_dirty() {
+  for (auto *contexts : {&context, &alternate})
+    for (auto &entry : *contexts)
+      if (entry && (entry->lines & dirty).any())
+        entry = nullptr;
+  dirty.reset();
+}
+
+bool RspCompiler::Impl::matches(Block &block) {
+  if (!external_memory && block.generation == generation)
+    return true;
+  for (unsigned n = 0; n < block.words.size(); ++n)
+    if (block.words[n] != rsp.read_local(0x1000 | ((rsp.pc_ + n * 4) & 0xfff), 4))
+      return false;
+  block.generation = generation;
+  return true;
+}
+
+RspCompiler::Impl::Block *RspCompiler::Impl::select() {
 #if !SLJIT_64BIT_ARCHITECTURE || SLJIT_CONFIG_UNSUPPORTED
-  return false;
+  return nullptr;
 #else
-  auto &rsp = impl_->rsp;
-  if (rsp.delay_slot_ || rsp.status_.halted)
-    return false;
-  const auto execute = [&](const Impl::Block &block) {
-    const auto before = rsp.clock_;
-    block.execute(rsp);
-    rsp.clock_ += rsp.pipeline_.clocks;
-    rsp.advance_dma(static_cast<std::uint32_t>(rsp.clock_ - before));
-  };
-  if (impl_->dirty.any()) {
-    for (auto *contexts : {&impl_->context, &impl_->alternate})
-      for (auto &entry : *contexts)
-        if (entry && (entry->lines & impl_->dirty).any())
-          entry = nullptr;
-    impl_->dirty.reset();
-  }
   const auto pc = rsp.pc_;
-  const Impl::Key key{rsp.pipeline_, pc};
-  auto &context = impl_->context[(pc >> 2) & 1023];
-  auto &alternate = impl_->alternate[(pc >> 2) & 1023];
-  const auto matches = [&](Impl::Block &block) {
-    if (!impl_->external_memory && block.generation == impl_->generation)
-      return true;
-    for (unsigned n = 0; n < block.words.size(); ++n)
-      if (block.words[n] != rsp.read_local(0x1000 | ((pc + n * 4) & 0xfff), 4))
-        return false;
-    block.generation = impl_->generation;
-    return true;
-  };
-  // Retain the selected schedule until its instruction range changes.
-  if (context && (!impl_->external_memory || matches(*context))) {
-    execute(*context);
-    return true;
+  const Key key{rsp.pipeline_, pc};
+  auto &current = context[(pc >> 2) & 1023];
+  auto &other = alternate[(pc >> 2) & 1023];
+  if (other && other->key == key && (!external_memory || matches(*other))) {
+    std::swap(current, other);
+    return current;
   }
-  if (alternate && alternate->key == key && (!impl_->external_memory || matches(*alternate))) {
-    std::swap(context, alternate);
-    execute(*context);
-    return true;
-  }
-  const auto found = impl_->blocks.find(key);
-  Impl::Block *selected = nullptr;
-  if (found != impl_->blocks.end()) {
+  const auto found = blocks.find(key);
+  Block *selected = nullptr;
+  if (found != blocks.end()) {
     for (const auto &block : found->second) {
       if (matches(*block)) {
         selected = block.get();
@@ -86,24 +77,51 @@ bool RspCompiler::run() {
     }
   }
   if (!selected) {
-    if (impl_->bytes >= 32 * 1024 * 1024)
+    if (bytes >= 32 * 1024 * 1024)
       reset();
-    auto block = std::make_unique<Impl::Block>();
+    auto block = std::make_unique<Block>();
     block->key = key;
     Emitter emitter(rsp, *block);
     if (!emitter.compile())
-      return false;
-    block->generation = impl_->generation;
+      return nullptr;
+    block->generation = generation;
     for (unsigned n = 0; n < block->words.size(); ++n)
       block->lines.set(((pc + n * 4) & 0xfff) >> 5);
-    impl_->bytes += block->bytes;
+    bytes += block->bytes;
     selected = block.get();
-    impl_->blocks[key].push_back(std::move(block));
+    blocks[key].push_back(std::move(block));
   }
-  alternate = context;
-  context = selected;
-  execute(*selected);
-  return true;
+  other = current;
+  current = selected;
+  return selected;
+#endif
+}
+
+bool RspCompiler::run() {
+#if !SLJIT_64BIT_ARCHITECTURE || SLJIT_CONFIG_UNSUPPORTED
+  return false;
+#else
+  auto &cache = *impl_;
+  auto &rsp = cache.rsp;
+  bool executed = false;
+  while (!rsp.delay_slot_ && !rsp.status_.halted) {
+    if (cache.dirty.any())
+      cache.clear_dirty();
+    // Retain the selected schedule until its instruction range changes.
+    auto *block = cache.context[(rsp.pc_ >> 2) & 1023];
+    if (!block || (cache.external_memory && !cache.matches(*block)))
+      block = cache.select();
+    if (!block)
+      return executed;
+    const auto before = rsp.clock_;
+    block->execute(rsp);
+    rsp.clock_ += rsp.pipeline_.clocks;
+    rsp.advance_dma(static_cast<std::uint32_t>(rsp.clock_ - before));
+    executed = true;
+    if (rsp.clock_ >= 0)
+      break;
+  }
+  return executed;
 #endif
 }
 

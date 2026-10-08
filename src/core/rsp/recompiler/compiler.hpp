@@ -62,6 +62,10 @@ struct RspCompiler::Impl {
   std::size_t bytes = 0;
   std::uint64_t generation = 1;
   explicit Impl(Rsp &rsp) : rsp(rsp) {}
+  void reset();
+  void clear_dirty();
+  bool matches(Block &block);
+  Block *select();
 };
 
 struct RspCompiler::Emitter {
