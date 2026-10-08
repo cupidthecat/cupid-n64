@@ -73,31 +73,7 @@ std::optional<Address> Cpu::translate(std::uint64_t address, unsigned bytes, boo
   case Segment::Mapped:
     break;
   }
-  for (const auto &entry : tlb_) {
-    const bool global = (entry.lo[0] & entry.lo[1] & 1) != 0;
-    const auto mask = 0x000000ffffffffffull & ~(std::uint64_t(entry.mask) | 0x1fff);
-    if (!global && (entry.hi & 0xff) != (control_[EntryHi] & 0xff))
-      continue;
-    if ((address >> 62) != (entry.hi >> 62))
-      continue;
-    if ((address & mask) != (entry.hi & mask))
-      continue;
-    const auto offset_mask = (std::uint64_t(entry.mask) | 0x1fff) >> 1;
-    const auto selected = (address & (offset_mask + 1)) != 0;
-    const auto lo = entry.lo[selected];
-    if (!(lo & 2) || (store && !(lo & 4))) {
-      address_exception(address);
-      raise(!(lo & 2) ? (store ? Exception::TlbStore : Exception::TlbLoad)
-                      : Exception::TlbModification);
-      return {};
-    }
-    const auto physical =
-        ((std::uint64_t(lo & 0x3fffffc0) << 6) & 0xffffffff) + (address & offset_mask);
-    return Address{static_cast<std::uint32_t>(physical), ((lo >> 3) & 7) != 2};
-  }
-  address_exception(address);
-  raise(store ? Exception::TlbStore : Exception::TlbLoad, 0, true);
-  return {};
+  return translate_tlb(address, store);
 }
 
 std::optional<std::uint64_t> Cpu::read(std::uint64_t address, unsigned bytes, bool instruction) {
