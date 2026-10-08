@@ -9,6 +9,8 @@ bool RspCompiler::Emitter::vector_arithmetic(std::uint32_t instruction) {
   const auto operation = instruction & 63;
   if (operation == 55 || operation == 63)
     return true;
+  if (vector_multiply_simd(instruction))
+    return true;
   if (vector_arithmetic_simd(instruction))
     return true;
   const auto vector = [](unsigned index) {

@@ -44,7 +44,10 @@ void rsp_native_vector_tests() {
   for (unsigned operation = 0; operation < 64; ++operation)
     for (unsigned element = 0; element < 16; ++element)
       for (unsigned trial = 0;
-           trial < (operation == 29 || (operation >= 40 && operation <= 45) ? 128u : 64u);
+           trial < (operation == 4 || operation == 14 || operation == 15 || operation == 29 ||
+                            (operation >= 40 && operation <= 45)
+                        ? 128u
+                        : 64u);
            ++trial) {
         const auto sample = trial & 63;
         actual.rsp.power();

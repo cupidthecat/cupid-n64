@@ -73,7 +73,12 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
 bool RspCompiler::Emitter::compile() {
   if (!compiler)
     return false;
+#if SLJIT_CONFIG_X86_64
+  // Five vector scratch registers stay within the Windows volatile register set.
+  const auto vectors = sljit_has_cpu_feature(SLJIT_HAS_SIMD) ? SLJIT_ENTER_VECTOR(5) : 0;
+#else
   const auto vectors = sljit_has_cpu_feature(SLJIT_HAS_SIMD) ? SLJIT_ENTER_VECTOR(2) : 0;
+#endif
   sljit_emit_enter(compiler, 0, SLJIT_ARGS0V(), 4 | vectors, 3, 0);
   op1(SLJIT_MOV, reg(SLJIT_S0), imm(reinterpret_cast<std::uintptr_t>(&rsp.state_)));
   op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&rsp)));
