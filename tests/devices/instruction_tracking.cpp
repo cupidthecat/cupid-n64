@@ -47,12 +47,18 @@ void instruction_tracking_tests() {
   equal(readonly.words().size(), f.ram.size() / 4);
   equal(f.ram.instruction_tracker() == tracker, true);
   auto retained = f.ram.words();
-  equal(f.ram.instruction_tracker() == nullptr, true);
+  equal(f.ram.instruction_tracker() == tracker, true);
+  equal(tracker->fully_tracked(), false);
   f.ram.power();
   f.initialize();
   retained[0x1000 / 4] = 42;
   equal(f.ram.read(0x1000, 4), 42);
-  equal(f.ram.instruction_tracker() == nullptr, true);
+  equal(f.ram.instruction_tracker() == tracker, true);
+  equal(tracker->fully_tracked(), false);
+  tracker->watch(0x1000, 4);
+  const auto reported = tracker->generation(0x1000);
+  f.ram.write(0x1000, 4, 43);
+  equal(tracker->generation(0x1000) != reported, true);
 }
 
 } // namespace test

@@ -32,7 +32,7 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
   if (!floating_host() || (!arithmetic && !compare && !convert))
     return false;
   commit_pipeline();
-  SlowPath path{{}, nullptr, instruction, cycles, defer_exit};
+  SlowPath path{{}, nullptr, instruction, cycles};
   if (arithmetic)
     floating_arithmetic(path);
   else if (compare)

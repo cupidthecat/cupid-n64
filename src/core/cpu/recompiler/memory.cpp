@@ -46,7 +46,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
         imm(reinterpret_cast<std::uintptr_t>(cpu.dcache_.data())));
   };
   commit_pipeline();
-  SlowPath path{{}, nullptr, instruction, cycles, defer_exit, delay ? 0u : 2u};
+  SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};
   address();
   path.enter.push_back(
       sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, ram_bytes - 1));
@@ -150,8 +150,7 @@ void CpuCompiler::Emitter::emit_slow_paths() {
                      SLJIT_FUNC_ADDR(helper));
     op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
     advance(path.completion_clocks);
-    if (!path.defer_exit)
-      return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);
     sljit_set_label(sljit_emit_jump(compiler, SLJIT_JUMP), path.resume);
   }
 }

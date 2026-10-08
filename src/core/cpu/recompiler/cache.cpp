@@ -44,6 +44,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     reset();
   auto &section = impl_->section(page);
   auto *tracker = cpu.bus_.instruction_tracker();
+  const bool fully_tracked = tracker && tracker->fully_tracked();
   const auto generation = tracker ? tracker->generation(page) : 0;
   if (tracker && section.tracker &&
       (section.tracker != tracker || section.generation != generation)) {
@@ -64,7 +65,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     if (data.size() < 1024)
       return false;
   }
-  if (found && !cache_unchanged && (!tracker || !found->tracked)) {
+  if (found && !cache_unchanged && (!fully_tracked || !found->tracked)) {
     const auto words = std::span(found->block->words).subspan(found->index);
     bool unchanged = !reverse && std::equal(words.begin(), words.end(), data.begin() + first);
     if (reverse) {
@@ -104,7 +105,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     const auto instruction = data[word ^ reverse];
     words.push_back(instruction);
     const auto info = block_instruction(instruction);
-    if (stop_after_delay || (!info.branch && info.terminal) || (instruction >> 26) == 47)
+    if (stop_after_delay || (!info.branch && info.terminal))
       break;
     stop_after_delay = info.stop_after_delay;
   }
@@ -128,7 +129,10 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
                    static_cast<std::uint32_t>((found->block->words.size() - found->index) * 4));
   found->tracked = tracker != nullptr;
   found->cache_generation = cpu.instruction_cache_generation_;
+  const auto previous = impl_->active;
+  impl_->active = {tracker, page, generation};
   found->block->execute(clock_target);
+  impl_->active = previous;
   return true;
 #endif
 }

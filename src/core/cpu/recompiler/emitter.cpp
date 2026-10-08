@@ -62,7 +62,8 @@ sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit
   const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
   if (instruction == 0x1000ffff || instruction == self_jump)
     cpu->advance_clocks(126);
-  const auto exit = unsigned(cpu->block_exit_) | (cpu->state_.pc != pc ? 2u : 0u);
+  const auto exit = unsigned(cpu->block_exit_) | (cpu->state_.pc != pc ? 2u : 0u) |
+                    (cpu->compiler_->impl_->active.changed() ? 4u : 0u);
   cpu->end_instruction();
   return exit;
 }
@@ -101,6 +102,8 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
   op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
   advance(2);
   cycles = 0;
+  op2(SLJIT_AND, reg(SLJIT_R0), reg(SLJIT_S3), imm(4));
+  return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), 0);
   if (!defer_exit)
     return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);
 }
@@ -132,7 +135,8 @@ bool CpuCompiler::Emitter::compile() {
     instruction_labels[n] = sljit_emit_label(compiler);
     const auto target = previous_branch ? internal_target(n - 1) : std::nullopt;
     const bool defer_exit = target.has_value();
-    if (!n || !(pc & 31) || internal_entries[n])
+    // Untracked memory validates additional entry points.
+    if (!n || !(pc & 31) || (internal_entries[n] && !cpu.bus_.instruction_tracker()))
       cache_guard(physical + n * 4);
     const auto opcode = instruction >> 26;
     const auto function = instruction & 63;
@@ -175,7 +179,7 @@ bool CpuCompiler::Emitter::compile() {
     pc += 4;
     if (target)
       dispatch_internal(*target);
-    if ((!info.branch && info.terminal) || opcode == 47) {
+    if (!info.branch && info.terminal) {
       commit_pipeline();
       return_now(cycles);
       break;

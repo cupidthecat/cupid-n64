@@ -18,7 +18,7 @@ bool CpuCompiler::Emitter::trap(std::uint32_t instruction, bool full, bool defer
       std::int64_t(std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction))));
   const auto operand = immediate ? imm(value) : gpr(target);
   commit_pipeline();
-  SlowPath path{{}, nullptr, instruction, cycles, defer_exit, delay ? 0u : 2u};
+  SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};
   path.enter.push_back(
       sljit_emit_cmp(compiler, condition, source.type, source.value, operand.type, operand.value));
   if (full) {

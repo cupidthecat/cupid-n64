@@ -213,6 +213,7 @@ if(BUILD_TESTING)
     tests/cpu/native/control_traps.cpp
     tests/cpu/native/control_noops.cpp
     tests/cpu/native/byte_order.cpp
+    tests/cpu/native/code_write.cpp
     tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_fpu.cpp
     tests/cpu/native_branches.cpp

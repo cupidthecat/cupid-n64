@@ -1,6 +1,7 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/execution/instruction.hpp"
 #include "core/cpu/recompiler.hpp"
+#include "core/memory/instruction_tracker.hpp"
 #include <algorithm>
 
 namespace cupid::n64 {
@@ -59,13 +60,16 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     const auto instruction = data[word ^ reverse];
     instructions[count++] = instruction;
     const auto info = block_instruction(instruction);
-    // Cache operations can change instructions already captured for this block.
-    if (stop_after_delay || (!info.branch && info.terminal) || (instruction >> 26) == 47)
+    if (stop_after_delay || (!info.branch && info.terminal))
       break;
     stop_after_delay = info.stop_after_delay;
   }
   const auto end_pc = start_pc + count * 4;
   const auto ram_bytes = bus_.instruction_data(0).size_bytes();
+  auto *tracker = bus_.instruction_tracker();
+  if (tracker)
+    tracker->watch(physical, count * 4);
+  const auto generation = tracker ? tracker->generation(page) : 0;
   bool first_instruction = true;
   bool conditional_delay = false;
   while (state_.pc >= start_pc && state_.pc < end_pc) {
@@ -94,13 +98,14 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     native_memory_order_ = native_cache_hit(instruction, ram_bytes);
     decode(instruction);
     native_memory_order_ = memory_order;
+    const bool written = tracker && tracker->generation(page) != generation;
     advance_clocks(2);
     const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
     if (instruction == 0x1000ffff || instruction == self_jump)
       advance_clocks(126);
     const bool exit = block_exit_;
     end_instruction();
-    if (changed || exit || (!info.branch && info.terminal) || (instruction >> 26) == 47 ||
+    if (changed || exit || written || (!info.branch && info.terminal) ||
         (conditional_delay && state_.clocks >= clock_target))
       return true;
     conditional_delay = info.branch && !info.stop_after_delay && (instruction >> 26) != 3 &&

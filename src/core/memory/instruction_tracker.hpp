@@ -14,6 +14,13 @@ public:
   explicit InstructionTracker(std::uint32_t bytes)
       : sections_((std::uint64_t(bytes) + 4095) / 4096) {}
 
+  bool fully_tracked() const {
+    return fully_tracked_;
+  }
+  void set_fully_tracked(bool value) {
+    fully_tracked_ = value;
+  }
+
   std::uint64_t generation(std::uint32_t address) const {
     return address / 4096u < sections_.size() ? sections_[address / 4096u].generation : 0;
   }
@@ -92,6 +99,7 @@ private:
 
   std::vector<Section> sections_;
   std::vector<Snapshot> snapshots_;
+  bool fully_tracked_ = true;
 };
 
 } // namespace cupid::n64

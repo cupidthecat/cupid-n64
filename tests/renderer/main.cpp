@@ -86,17 +86,20 @@ int main() {
         {0x36000000, 0}};
     for (const auto &packet : packets)
       renderer->submit(packet);
-    test::equal(console.instruction_tracker() == nullptr, true);
+    test::equal(console.instruction_tracker() == tracker, true);
+    test::equal(tracker->fully_tracked(), false);
     if (pass != 2) {
       const auto queued_frame = renderer->read_frame();
       test::equal(queued_frame.rgba.empty(), false);
-      test::equal(console.instruction_tracker() == nullptr, true);
+      test::equal(console.instruction_tracker() == tracker, true);
+      test::equal(tracker->fully_tracked(), false);
     }
     if (pass == 2)
       renderer.reset();
     else
       renderer->synchronize();
     test::equal(console.instruction_tracker() == tracker, true);
+    test::equal(tracker->fully_tracked(), true);
     test::equal(tracker->generation(0x100000) != generation, pass != 1);
     cpu.state().gpr[30] = 0xffffffff80100000;
     cpu.execute(test::i(47, 30, 16, 0));

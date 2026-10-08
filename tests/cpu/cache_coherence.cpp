@@ -1,4 +1,5 @@
 #include "../support/test.hpp"
+#include "core/memory/instruction_tracker.hpp"
 
 namespace test {
 using namespace cupid::n64;
@@ -6,9 +7,13 @@ namespace {
 
 struct CoherenceMemory : Memory {
   std::array<std::uint32_t, 2048> words{};
+  InstructionTracker tracker{sizeof(words)};
   bool wrote = false;
   bool fail_fill = false;
   bool fail_store = false;
+  InstructionTracker *instruction_tracker() override {
+    return &tracker;
+  }
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override {
     return address < sizeof(words) ? std::span(words).subspan(address >> 2)
                                    : std::span<const std::uint32_t>();
@@ -26,6 +31,7 @@ struct CoherenceMemory : Memory {
       return {clocks, false};
     if (bytes == 4)
       words[(address >> 2) % words.size()] = static_cast<std::uint32_t>(value);
+    tracker.invalidate(address, bytes);
     return {clocks, true};
   }
 };

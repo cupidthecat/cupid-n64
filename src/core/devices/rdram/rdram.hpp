@@ -25,6 +25,7 @@ public:
   std::span<std::uint32_t> words() {
     // Retained mutable views cannot report later writes.
     exposed_ = true;
+    instructions_.set_fully_tracked(false);
     return data_;
   }
   std::span<const std::uint32_t> words() const {
@@ -34,7 +35,7 @@ public:
     return identity_;
   }
   InstructionTracker *instruction_tracker() {
-    return identity_ && !exposed_ && !external_writers_ ? &instructions_ : nullptr;
+    return identity_ ? &instructions_ : nullptr;
   }
   std::span<std::uint8_t> hidden() {
     return hidden_view_;
@@ -50,11 +51,14 @@ private:
     if (!external_writers_ && !exposed_)
       instructions_.capture(data_);
     ++external_writers_;
+    instructions_.set_fully_tracked(false);
   }
   void end_external_write() {
     --external_writers_;
-    if (!external_writers_ && !exposed_)
+    if (!external_writers_ && !exposed_) {
       instructions_.compare(data_);
+      instructions_.set_fully_tracked(true);
+    }
   }
   struct Chip {
     bool present = false;
