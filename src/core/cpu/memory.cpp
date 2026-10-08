@@ -176,6 +176,9 @@ void Cpu::load_store(std::uint32_t instruction) {
     return store_merge(value, address, 4, false);
   case 0x2f:
     return cache_operation(rt, address);
+  case 0x30:
+  case 0x34:
+    return load_linked(rt, address, operation == 0x34);
   case 0x28:
     write(address, 1, value);
     return;
@@ -214,7 +217,7 @@ void Cpu::load_store(std::uint32_t instruction) {
   default:
     break;
   }
-  const bool wide = operation == 0x34 || operation == 0x37;
+  const bool wide = operation == 0x37;
   if (wide && !require_doubleword())
     return;
   const unsigned bytes = operation == 0x20 || operation == 0x24   ? 1
@@ -234,18 +237,11 @@ void Cpu::load_store(std::uint32_t instruction) {
         std::int64_t(std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(*data))));
     break;
   case 0x23:
-  case 0x30:
     state_.gpr[rt] = sign_word(static_cast<std::uint32_t>(*data));
     break;
   default:
     state_.gpr[rt] = *data;
     break;
-  }
-  if (operation == 0x30 || operation == 0x34) {
-    if (const auto access = translate(address, bytes, false)) {
-      control_[LlAddr] = access->physical >> 4;
-      llbit_ = true;
-    }
   }
 }
 
