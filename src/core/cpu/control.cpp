@@ -121,8 +121,34 @@ void Cpu::cop0(std::uint32_t instruction) {
   const auto function = (instruction >> 21) & 31;
   const auto rt = (instruction >> 16) & 31;
   const auto rd = (instruction >> 11) & 31;
-  if (function == 2 || function == 6 || function == 8)
-    return;
+  if (function < 16) {
+    switch (function) {
+    case 0:
+    case 1:
+    case 4:
+    case 5:
+      break;
+    case 2:
+    case 6:
+    case 8:
+      return;
+    default:
+      return raise(Exception::ReservedInstruction);
+    }
+  } else {
+    switch (instruction & 63) {
+    case 0x01:
+    case 0x02:
+    case 0x06:
+    case 0x08:
+    case 0x18:
+      break;
+    case 0x10:
+      return raise(Exception::ReservedInstruction);
+    default:
+      return;
+    }
+  }
   if (mode() != Mode::Kernel && !(control_[Status] & 0x10000000)) {
     return raise(Exception::CoprocessorUnusable, 0);
   }
@@ -139,15 +165,9 @@ void Cpu::cop0(std::uint32_t instruction) {
   case 5:
     write_control(rd, state_.gpr[rt]);
     return;
-  case 2:
-  case 6:
-  case 8:
-    return;
   default:
     break;
   }
-  if (function < 16)
-    return raise(Exception::ReservedInstruction);
   switch (instruction & 63) {
   case 0x01: {
     const auto index = static_cast<unsigned>(control_[Index] & 63);
@@ -188,7 +208,7 @@ void Cpu::cop0(std::uint32_t instruction) {
     return;
   }
   default:
-    return raise(Exception::ReservedInstruction);
+    return;
   }
 }
 

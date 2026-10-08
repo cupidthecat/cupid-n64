@@ -190,6 +190,7 @@ if(BUILD_TESTING)
     tests/cpu/linked.cpp
     tests/cpu/merge_store.cpp
     tests/cpu/control.cpp
+    tests/cpu/control/dispatch.cpp
     tests/cpu/random.cpp
     tests/cpu/cache.cpp
     tests/cpu/cache_coherence.cpp
