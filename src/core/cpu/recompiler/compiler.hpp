@@ -130,6 +130,7 @@ struct CpuCompiler::Emitter {
   ~Emitter();
   bool compile();
   bool integer(std::uint32_t instruction);
+  bool arithmetic(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   void emit_slow_paths();
@@ -183,6 +184,7 @@ struct CpuCompiler::Emitter {
   }
   static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
+  static void hi_lo(Cpu *cpu, sljit_s32 instruction);
   static sljit_sw loop_pending(Cpu *cpu);
 };
 

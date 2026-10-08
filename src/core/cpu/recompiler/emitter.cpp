@@ -160,6 +160,8 @@ bool CpuCompiler::Emitter::compile() {
         pipeline_dirty = true;
       }
     } else if (!branch(instruction) &&
+               !arithmetic(instruction, !n || previous_branch || internal_entries[n], defer_exit,
+                           previous_branch) &&
                !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit,
                        previous_branch) &&
                !floating(instruction, !n || previous_branch || internal_entries[n], defer_exit,

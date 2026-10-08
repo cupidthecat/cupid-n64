@@ -92,8 +92,8 @@ private:
   void address_exception(std::uint64_t address);
   void add(unsigned dest, std::uint64_t a, std::uint64_t b, bool wide, bool trap);
   void subtract(unsigned dest, std::uint64_t a, std::uint64_t b, bool wide, bool trap);
-  void multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
-  void divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
+  unsigned multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
+  unsigned divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
   Segment segment(std::uint64_t address) const;
   std::optional<Address> translate(std::uint64_t address, unsigned bytes, bool store,
                                    bool alignment = true);
