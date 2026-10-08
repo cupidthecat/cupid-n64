@@ -98,11 +98,11 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
   op1(SLJIT_MOV, reg(SLJIT_R2), imm(cycles));
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(helper));
-  cycles = 2;
-  if (defer_exit)
-    op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
-  else
-    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_R0), imm(0), cycles);
+  op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
+  advance(2);
+  cycles = 0;
+  if (!defer_exit)
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);
 }
 
 bool CpuCompiler::Emitter::compile() {
@@ -162,6 +162,8 @@ bool CpuCompiler::Emitter::compile() {
     } else if (!branch(instruction) &&
                !arithmetic(instruction, !n || previous_branch || internal_entries[n], defer_exit,
                            previous_branch) &&
+               !trap(instruction, !n || previous_branch || internal_entries[n], defer_exit,
+                     previous_branch) &&
                !memory(instruction, !n || previous_branch || internal_entries[n], defer_exit,
                        previous_branch) &&
                !floating(instruction, !n || previous_branch || internal_entries[n], defer_exit,
