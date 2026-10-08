@@ -215,7 +215,11 @@ void execution_tests() {
     f.cpu.set_pc(0xffffffffa0001000);
     equal(f.cpu.run_block(f.target), false);
     f.cpu.set_pc(0x0000000080001000);
-    equal(f.cpu.run_block(f.target), false);
+    equal(f.cpu.run_block(f.target), true);
+    equal(f.cpu.read_control(Cause), 16);
+    equal(f.cpu.read_control(BadVAddr), 0x0000000080001000);
+    equal(f.cpu.read_control(Epc), 0x0000000080001000);
+    equal(f.cpu.state().pc, 0xffffffff80000180);
   }
   {
     BlockFixture f;

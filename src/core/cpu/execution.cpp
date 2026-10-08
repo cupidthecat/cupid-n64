@@ -29,21 +29,14 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
       synchronize_();
     return true;
   }
-  if (bus_.frozen() || (state_.pc & 3))
+  if (bus_.frozen())
     return false;
-  if (!extended_addressing() && sign_word(static_cast<std::uint32_t>(state_.pc)) != state_.pc)
+  const auto access = translate(state_.pc, 4, false);
+  if (!access)
+    return true;
+  if (!access->cached)
     return false;
-  std::uint32_t physical = 0;
-  switch (segment(state_.pc)) {
-  case Segment::Cached:
-    physical = static_cast<std::uint32_t>(state_.pc & 0x1fffffff);
-    break;
-  case Segment::Cached32:
-    physical = static_cast<std::uint32_t>(state_.pc);
-    break;
-  default:
-    return false;
-  }
+  const auto physical = access->physical;
   const auto page = physical & ~4095u;
   const auto data = bus_.instruction_data(page);
   if (data.size() < 1024)

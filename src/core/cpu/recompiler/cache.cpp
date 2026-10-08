@@ -23,22 +23,14 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
       cpu.synchronize_();
     return true;
   }
-  if (cpu.bus_.frozen() || (cpu.state_.pc & 3))
+  if (cpu.bus_.frozen())
     return false;
-  if (!cpu.extended_addressing() &&
-      sign_word(static_cast<std::uint32_t>(cpu.state_.pc)) != cpu.state_.pc)
+  const auto access = cpu.translate(cpu.state_.pc, 4, false);
+  if (!access)
+    return true;
+  if (!access->cached)
     return false;
-  std::uint32_t physical = 0;
-  switch (cpu.segment(cpu.state_.pc)) {
-  case Cpu::Segment::Cached:
-    physical = static_cast<std::uint32_t>(cpu.state_.pc & 0x1fffffff);
-    break;
-  case Cpu::Segment::Cached32:
-    physical = static_cast<std::uint32_t>(cpu.state_.pc);
-    break;
-  default:
-    return false;
-  }
+  const auto physical = access->physical;
   const auto page = physical & ~4095u;
   const auto first = (physical & 4095) >> 2;
   const unsigned reverse = cpu.little_endian() ? 1 : 0;

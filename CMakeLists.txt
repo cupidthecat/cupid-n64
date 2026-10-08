@@ -193,6 +193,7 @@ if(BUILD_TESTING)
     tests/cpu/main.cpp
     tests/cpu/integer.cpp
     tests/cpu/memory.cpp
+    tests/cpu/memory/addressing.cpp
     tests/cpu/linked.cpp
     tests/cpu/merge_store.cpp
     tests/cpu/control.cpp

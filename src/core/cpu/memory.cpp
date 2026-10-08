@@ -55,6 +55,8 @@ std::optional<Address> Cpu::translate(std::uint64_t address, unsigned bytes, boo
     raise(store ? Exception::AddressStore : Exception::AddressLoad);
     return {};
   }
+  if (address >= 0xffffffff80000000ull && address < 0xffffffff83f00000ull)
+    return Address{static_cast<std::uint32_t>(address & 0x3effffff), true};
   switch (segment(address)) {
   case Segment::Invalid:
     address_exception(address);
