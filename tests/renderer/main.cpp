@@ -1,8 +1,42 @@
 #include "../support/test.hpp"
 #include "core/system/console.hpp"
 #include "renderer/vulkan/renderer.hpp"
+#include <algorithm>
 
 using namespace cupid::n64;
+
+namespace {
+
+VideoFrame coverage_scanout(HardwareRenderer &renderer) {
+  const std::uint32_t registers[][2] = {{0, 0x002},
+                                        {1, 0x180000},
+                                        {2, 64},
+                                        {6, 525},
+                                        {7, 3093},
+                                        {8, 0x0c150c15},
+                                        {9, (108u << 16) | 748},
+                                        {10, (34u << 16) | 514},
+                                        {12, 102},
+                                        {13, 273}};
+  for (const auto &reg : registers)
+    renderer.write_video(reg[0], reg[1]);
+  auto frame = renderer.frame(false);
+  test::equal(frame.width, 640);
+  test::equal(frame.height, 240);
+  constexpr std::uint8_t colors[][3] = {{16, 213, 197}, {80, 213, 134}, {143, 213, 70},
+                                        {207, 213, 7},  {15, 213, 199}, {79, 213, 136},
+                                        {142, 213, 72}, {206, 213, 9}};
+  if (frame.width == 640 && frame.height == 240) {
+    for (unsigned sample = 0; sample < std::size(colors); ++sample) {
+      const auto offset = (220 * frame.width + 20 + sample * 80) * 4;
+      for (unsigned component = 0; component < 3; ++component)
+        test::equal(frame.rgba[offset + component], colors[sample][component]);
+    }
+  }
+  return frame;
+}
+
+} // namespace
 
 int main() {
   Console console;
@@ -16,6 +50,13 @@ int main() {
   }
   for (unsigned chip = 0; chip < 4; ++chip)
     console.write(0x03f00004 + (chip + 4) * 0x800, 4, chip * 2 << 26);
+  for (unsigned n = 0; n < 64 * 64; n += 2) {
+    const auto pixel = [](unsigned n) {
+      const auto x = n % 64, y = n / 64;
+      return std::uint16_t(((x & 31) << 11) | ((y & 31) << 6) | (((x ^ y) & 31) << 1) | 1);
+    };
+    console.ram().write(0x180000 + n * 2, 4, (std::uint32_t(pixel(n)) << 16) | pixel(n + 1), true);
+  }
   std::unique_ptr<HardwareRenderer> renderer;
   try {
     renderer = std::make_unique<HardwareRenderer>(console.ram());
@@ -23,6 +64,19 @@ int main() {
     std::cout << error.what() << '\n';
     return 77;
   }
+  test::equal(std::all_of(console.ram().hidden().begin(), console.ram().hidden().end(),
+                          [](auto value) { return value == 3; }),
+              true);
+  test::equal(console.ram().read(0, 8, true), 0x0000000f0000000full);
+  const auto cold_coverage = coverage_scanout(*renderer);
+  console.ram().write(0, 4, 0x12345678);
+  test::equal(console.ram().read(0, 4, true), 0);
+  renderer.reset();
+  test::equal(console.ram().read(0, 4, true), 0);
+  console.power(true);
+  renderer = std::make_unique<HardwareRenderer>(console.ram());
+  test::equal(console.ram().read(0, 4), 0x12345678);
+  test::equal(console.ram().read(0, 4, true), 15);
   const auto blank = renderer->frame(false);
   test::equal(blank.width, 1);
   test::equal(blank.height, 1);
@@ -30,6 +84,8 @@ int main() {
   if (blank.rgba.size() == 4)
     for (unsigned n = 0; n < 4; ++n)
       test::equal(blank.rgba[n], n == 3 ? 255 : 0);
+  const auto warm_coverage = coverage_scanout(*renderer);
+  test::equal(cold_coverage.rgba == warm_coverage.rgba, true);
   console.display().connect([&](std::span<const std::uint32_t> words) { renderer->submit(words); },
                             [&] { renderer->synchronize(); });
   constexpr std::uint64_t commands[] = {0x3f10003f00100000, 0x2d00000000100100, 0x2f30000000000000,

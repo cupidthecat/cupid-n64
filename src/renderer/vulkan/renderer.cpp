@@ -31,8 +31,9 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
       throw std::runtime_error("Vulkan device does not support display rendering");
     processor->set_validation_interface(this);
     readback = std::make_unique<FrameReadback>([this] { return read_pixels(); });
-    ram.bind_hidden(
-        {static_cast<std::uint8_t *>(processor->begin_read_hidden_rdram()), ram.size() / 2});
+    // A new processor supplies the power-on coverage bits.
+    ram.hidden_view_ = {static_cast<std::uint8_t *>(processor->begin_read_hidden_rdram()),
+                        ram.size() / 2};
   }
 
   ~Implementation() {
