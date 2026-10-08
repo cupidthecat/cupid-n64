@@ -1,5 +1,6 @@
 #include "core/rsp/vector/execute.hpp"
 #include "fixture.hpp"
+#include <vector>
 
 namespace test {
 using namespace cupid::n64;
@@ -42,20 +43,23 @@ void rsp_native_vector_tests() {
   };
   for (unsigned operation = 0; operation < 64; ++operation)
     for (unsigned element = 0; element < 16; ++element)
-      for (unsigned trial = 0; trial < 64; ++trial) {
+      for (unsigned trial = 0;
+           trial < (operation == 29 || (operation >= 40 && operation <= 45) ? 128u : 64u);
+           ++trial) {
+        const auto sample = trial & 63;
         actual.rsp.power();
         expected.rsp.power();
         auto &state = actual.rsp.state();
         for (unsigned reg = 0; reg < 32; ++reg) {
           state.gpr[reg] = reg ? static_cast<std::uint32_t>(next()) : 0;
           for (unsigned lane = 0; lane < 8; ++lane)
-            state.vectors[reg].lanes[lane] = trial < 16
-                                                 ? values[(reg + lane + trial) % values.size()]
+            state.vectors[reg].lanes[lane] = sample < 16
+                                                 ? values[(reg + lane + sample) % values.size()]
                                                  : static_cast<std::uint16_t>(next());
         }
         for (unsigned lane = 0; lane < 8; ++lane)
           state.accumulator.set(
-              lane, trial < 24 ? accumulators[(lane + trial) % accumulators.size()] : next());
+              lane, sample < 24 ? accumulators[(lane + sample) % accumulators.size()] : next());
         state.carry_low = static_cast<std::uint8_t>(next());
         state.carry_high = static_cast<std::uint8_t>(next());
         state.compare_low = static_cast<std::uint8_t>(next());
@@ -71,17 +75,30 @@ void rsp_native_vector_tests() {
                           : trial % 5 == 2                 ? target
                                                            : (source + 13) & 31;
         const auto instruction = vector(operation, dest, source, target, element);
+        std::vector<std::uint32_t> instructions{instruction};
+        if (trial >= 64) {
+          instructions.push_back(vector(29, target, dest, source, 10));
+          instructions.push_back(vector(0, dest, dest, target, element));
+          instructions.push_back(vector(45, dest, dest, target, element));
+          instructions.push_back(vector(29, source, dest, target, 9));
+        }
+        instructions.push_back(vector(63, 0, 0, 0));
         for (auto *fixture : {&actual, &expected}) {
-          fixture->rsp.write_local(0x1000, 4, instruction);
-          fixture->rsp.write_local(0x1004, 4, vector(63, 0, 0, 0));
-          fixture->rsp.write_local(0x1008, 4, 13);
+          for (unsigned n = 0; n < instructions.size(); ++n)
+            fixture->rsp.write_local(0x1000 + n * 4, 4, instructions[n]);
+          fixture->rsp.write_local(0x1000 + static_cast<std::uint32_t>(instructions.size()) * 4, 4,
+                                   13);
           fixture->rsp.write_io(16, 1);
         }
         auto scalar = state;
-        const auto handler = operation >= 0x30 && operation <= 0x36
-                                 ? vector_divide_handler(operation, element)
-                                 : vector_scalar_handler(operation, element);
-        handler(&scalar, &scalar.vectors[dest], &scalar.vectors[source], &scalar.vectors[target]);
+        for (const auto opcode : instructions) {
+          const auto op = opcode & 63;
+          const auto e = (opcode >> 21) & 15;
+          const auto handler = op >= 0x30 && op <= 0x36 ? vector_divide_handler(op, e)
+                                                        : vector_scalar_handler(op, e);
+          handler(&scalar, &scalar.vectors[(opcode >> 6) & 31],
+                  &scalar.vectors[(opcode >> 11) & 31], &scalar.vectors[(opcode >> 16) & 31]);
+        }
         actual.rsp.advance(1);
         unsigned clocks = 0;
         while (!expected.rsp.status().halted)
