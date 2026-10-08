@@ -248,7 +248,7 @@ void execution_tests() {
     f.cpu.advance_clocks(40);
     equal(f.cpu.synchronization_limit(), 80);
     f.cpu.write_control(Compare, 50);
-    equal(f.cpu.synchronization_limit(), 0);
+    equal(f.cpu.synchronization_limit(), (1ull << 33) - 120);
   }
   {
     BlockFixture f;

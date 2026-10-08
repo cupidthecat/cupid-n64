@@ -146,6 +146,9 @@ constexpr bool supported(unsigned operation) {
   case 33:
   case 34:
   case 35:
+  case 36:
+  case 37:
+  case 38:
   case 39:
   case 40:
   case 41:
@@ -264,6 +267,62 @@ void execute(RspState &state, RspVector &dest, const RspVector &source, const Rs
       state.compare_low = flags(condition);
       state.compare_high = 0;
       state.carry_low = state.carry_high = 0;
+      write_low = true;
+      break;
+    }
+    case 36: {
+      const auto carry = flags(state.carry_low);
+      const auto held = flags(state.carry_high);
+      const auto sum = _mm_add_epi16(a, b);
+      const auto sum_zero = _mm_cmpeq_epi16(sum, zero);
+      const auto no_overflow = _mm_xor_si128(less_unsigned(sum, a), invert);
+      const auto low_condition =
+          _mm_blendv_epi8(_mm_and_si128(sum_zero, no_overflow), _mm_or_si128(sum_zero, no_overflow),
+                          flags(state.extension));
+      const auto high_condition = _mm_xor_si128(less_unsigned(a, b), invert);
+      const auto low =
+          _mm_blendv_epi8(flags(state.compare_low), low_condition, _mm_andnot_si128(held, carry));
+      const auto high = _mm_blendv_epi8(flags(state.compare_high), high_condition,
+                                        _mm_xor_si128(_mm_or_si128(held, carry), invert));
+      const auto value = _mm_blendv_epi8(b, _mm_sub_epi16(zero, b), carry);
+      result = _mm_blendv_epi8(a, value, _mm_blendv_epi8(high, low, carry));
+      state.compare_low = flags(low);
+      state.compare_high = flags(high);
+      state.carry_low = state.carry_high = state.extension = 0;
+      write_low = true;
+      break;
+    }
+    case 37: {
+      const auto opposite = _mm_srai_epi16(_mm_xor_si128(a, b), 15);
+      const auto sum = _mm_add_epi16(a, b);
+      const auto difference = _mm_sub_epi16(a, b);
+      const auto low = _mm_blendv_epi8(_mm_srai_epi16(b, 15),
+                                       _mm_xor_si128(_mm_cmpgt_epi16(sum, zero), invert), opposite);
+      const auto high = _mm_blendv_epi8(_mm_xor_si128(_mm_cmpgt_epi16(zero, difference), invert),
+                                        _mm_srai_epi16(b, 15), opposite);
+      const auto value = _mm_blendv_epi8(difference, sum, opposite);
+      const auto identical =
+          _mm_or_si128(_mm_cmpeq_epi16(value, zero), _mm_cmpeq_epi16(a, _mm_xor_si128(b, invert)));
+      result = _mm_blendv_epi8(a, _mm_blendv_epi8(b, _mm_sub_epi16(zero, b), opposite),
+                               _mm_blendv_epi8(high, low, opposite));
+      state.compare_low = flags(low);
+      state.compare_high = flags(high);
+      state.carry_low = flags(opposite);
+      state.carry_high = flags(_mm_xor_si128(identical, invert));
+      state.extension = flags(_mm_and_si128(opposite, _mm_cmpeq_epi16(value, invert)));
+      write_low = true;
+      break;
+    }
+    case 38: {
+      const auto opposite = _mm_srai_epi16(_mm_xor_si128(a, b), 15);
+      const auto low = _mm_blendv_epi8(_mm_srai_epi16(b, 15),
+                                       _mm_cmpgt_epi16(zero, _mm_add_epi16(a, b)), opposite);
+      const auto high = _mm_blendv_epi8(_mm_xor_si128(_mm_cmpgt_epi16(b, a), invert),
+                                        _mm_srai_epi16(b, 15), opposite);
+      result = _mm_blendv_epi8(a, _mm_xor_si128(b, opposite), _mm_blendv_epi8(high, low, opposite));
+      state.compare_low = flags(low);
+      state.compare_high = flags(high);
+      state.carry_low = state.carry_high = state.extension = 0;
       write_low = true;
       break;
     }

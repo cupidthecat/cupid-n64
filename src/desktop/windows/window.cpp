@@ -424,7 +424,7 @@ void Window::advance() {
 }
 
 void Window::present() {
-  session_->finish_frame();
+  // The VI callback takes the prior readback; let the new one overlap emulation.
   frame_ready_ = false;
   last_frame_ = session_->frames;
   pixels_ = session_->frame.rgba;
@@ -455,6 +455,7 @@ void Window::present() {
 }
 
 void Window::capture() {
+  session_->finish_frame();
   if (session_->frame.rgba.empty())
     throw std::runtime_error("No video frame was produced.");
   if (options_.capture.empty())
