@@ -57,17 +57,17 @@ void batches() {
             f.cpu.state().gpr[8] = 0;
             f.cpu.state().gpr[31] = 0xffffffff80003000;
             for (unsigned word = 0; word < before; ++word)
-              f.code(word * 4, i(9, 6, 6, 1), false);
+              f.code(word * 4, i(9, 6, 6, 1));
             unsigned word = before;
             if (delay) {
-              f.code(word++ * 4, r(8, 31, 0, 0), false);
-              f.code(word++ * 4, instruction, false);
+              f.code(word++ * 4, r(8, 31, 0, 0));
+              f.code(word++ * 4, instruction);
             } else {
-              f.code(word++ * 4, instruction, false);
+              f.code(word++ * 4, instruction);
               if (memory)
-                f.code(word++ * 4, i(35, 2, 8, 0), false);
-              f.code(word++ * 4, r(8, 31, 0, 0), false);
-              f.code(word++ * 4, 0, false);
+                f.code(word++ * 4, i(35, 2, 8, 0));
+              f.code(word++ * 4, r(8, 31, 0, 0));
+              f.code(word++ * 4, 0);
             }
             f.cpu.set_pc(0xffffffff80001000);
             f.cpu.write_control(Count, 0);

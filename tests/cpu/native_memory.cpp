@@ -16,9 +16,9 @@ void native_memory_tests() {
           fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
           fixture->cpu.state().gpr[1] = 0xffffffff80000200;
           fixture->cpu.state().gpr[2] = 0x8394a5b6c7d8e9fa;
-          fixture->code(0, i(operation, 1, 2, 0), little);
-          fixture->code(4, i(35, 1, 3, 8), little);
-          fixture->code(8, c(4, 5, Status), little);
+          fixture->code(0, i(operation, 1, 2, 0));
+          fixture->code(4, i(35, 1, 3, 8));
+          fixture->code(8, c(4, 5, Status));
           fixture->cpu.state().gpr[5] = 0x30000000;
           fixture->cpu.run_interpreted_block(0);
           fixture->cpu.set_pc(0xffffffff80001000);
@@ -46,10 +46,10 @@ void native_memory_tests() {
         unsigned expected_requests = 0;
         for (auto *fixture : {&actual, &expected}) {
           fixture->cpu.state().gpr[1] = 0xffffffff80000200;
-          fixture->code(0, i(35, 1, 2, 0), false);
-          fixture->code(4, i(43, 1, 2, 4), false);
-          fixture->code(8, 0x08000400, false);
-          fixture->code(12, i(35, 1, 3, 8), false);
+          fixture->code(0, i(35, 1, 2, 0));
+          fixture->code(4, i(43, 1, 2, 4));
+          fixture->code(8, 0x08000400);
+          fixture->code(12, i(35, 1, 3, 8));
           fixture->cpu.run_interpreted_block(0);
           fixture->cpu.advance_clocks(unsigned(odd));
           fixture->cpu.write_control(Count, count);
@@ -87,12 +87,12 @@ void native_memory_tests() {
             fixture->cpu.execute(i(43, 1, 2, 0));
             fixture->cpu.state().gpr[1] = address;
             fixture->cpu.set_pc(0xffffffff80001000);
-            fixture->code(0, layout == 1 ? 0x08000400 : 0, little);
-            fixture->code(4, i(operation, 1, 2, 0), little);
-            fixture->code(8, i(35, 1, 3, 4), little);
-            fixture->code(12, i(43, 1, 3, 8), little);
-            fixture->code(16, 0x08000400, little);
-            fixture->code(20, i(operation, 1, 2, 0), little);
+            fixture->code(0, layout == 1 ? 0x08000400 : 0);
+            fixture->code(4, i(operation, 1, 2, 0));
+            fixture->code(8, i(35, 1, 3, 4));
+            fixture->code(12, i(43, 1, 3, 8));
+            fixture->code(16, 0x08000400);
+            fixture->code(20, i(operation, 1, 2, 0));
             if (layout == 2) {
               fixture->cpu.step();
               fixture->cpu.set_pc(0xffffffff80001000);
@@ -128,9 +128,9 @@ void native_memory_tests() {
                 fixture->cpu.execute(i(35, 1, 3, static_cast<std::uint16_t>(offset & ~15u)));
               fixture->cpu.state().gpr[1] += offset + 7;
               fixture->cpu.set_pc(0xffffffff80001000);
-              fixture->code(0, i(operation, 1, target, 0xfff9), little);
-              fixture->code(4, 0x08000400, little);
-              fixture->code(8, 0, little);
+              fixture->code(0, i(operation, 1, target, 0xfff9));
+              fixture->code(4, 0x08000400);
+              fixture->code(8, 0);
             }
             const std::uint64_t limit = 0;
             equal(actual.cpu.run_block(limit), expected.cpu.run_interpreted_block(limit));

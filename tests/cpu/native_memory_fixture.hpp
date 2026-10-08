@@ -38,8 +38,8 @@ struct CachedFixture {
     for (unsigned n = 0; n < 1024; ++n)
       memory.words[n] = 0x8091a2b3 ^ (n * 0x172345);
   }
-  void code(unsigned offset, std::uint32_t instruction, bool little) {
-    memory.words[(1024 + offset / 4) ^ unsigned(little)] = instruction;
+  void code(unsigned offset, std::uint32_t instruction) {
+    memory.words[1024 + offset / 4] = instruction;
   }
 };
 

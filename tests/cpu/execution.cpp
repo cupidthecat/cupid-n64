@@ -88,13 +88,13 @@ void execution_tests() {
                                               static_cast<unsigned>(next() & 31))
                                           : i(opcodes[next() % opcodes.size()], rs, dest,
                                               static_cast<std::uint16_t>(next()));
-        const auto offset = (word ^ unsigned(little)) * 4;
+        const auto offset = word * 4;
         native.code(offset, instruction);
         interpreted.code(offset, instruction);
       }
       for (auto *fixture : {&native, &interpreted}) {
-        fixture->code((64 ^ unsigned(little)) * 4, 0x08000400);
-        fixture->code((65 ^ unsigned(little)) * 4, 0);
+        fixture->code(64 * 4, 0x08000400);
+        fixture->code(65 * 4, 0);
       }
       for (unsigned run = 0; run < 3; ++run) {
         equal(native.cpu.run_block(native.target), true);

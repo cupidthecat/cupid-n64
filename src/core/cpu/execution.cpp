@@ -43,7 +43,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     return false;
   const auto start_pc = state_.pc;
   const auto first = (physical & 4095) >> 2;
-  const unsigned reverse = little_endian() ? 1 : 0;
+  const unsigned reverse = reverse_endian() ? 1 : 0;
   std::array<std::uint32_t, 1024> instructions;
   unsigned count = 0;
   bool stop_after_delay = false;
@@ -65,6 +65,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     stop_after_delay = info.stop_after_delay;
   }
   const auto end_pc = start_pc + count * 4;
+  const auto ram_bytes = bus_.instruction_data(0).size_bytes();
   bool first_instruction = true;
   bool conditional_delay = false;
   while (state_.pc >= start_pc && state_.pc < end_pc) {
@@ -89,7 +90,10 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     }
     const auto info = block_instruction(instruction);
     begin_instruction();
+    const auto memory_order = native_memory_order_;
+    native_memory_order_ = native_cache_hit(instruction, ram_bytes);
     decode(instruction);
+    native_memory_order_ = memory_order;
     advance_clocks(2);
     const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
     if (instruction == 0x1000ffff || instruction == self_jump)

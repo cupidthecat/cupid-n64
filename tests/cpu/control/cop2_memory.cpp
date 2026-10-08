@@ -102,8 +102,8 @@ void blocks() {
                 const auto offset = delay ? 4088u : 4092u;
                 const auto start = 0xffffffff80001000ull + offset;
                 f.cpu.set_pc(start);
-                f.code(offset, delay ? i(4, 0, 0, 8) : i(operation, base, target, 1), little);
-                f.code(4092, i(operation, base, target, 1), little);
+                f.code(offset, delay ? i(4, 0, 0, 8) : i(operation, base, target, 1));
+                f.code(4092, i(operation, base, target, 1));
                 const auto registers = f.cpu.state().gpr;
                 const auto clocks = f.cpu.state().clocks;
                 equal(interpreted ? f.cpu.run_interpreted_block(clocks) : f.cpu.run_block(clocks),

@@ -22,6 +22,7 @@ void Cpu::power() {
   control_latch_ = cop2_latch_ = count_ticks_ = 0;
   count_clock_ = 0;
   llbit_ = nmi_pending_ = false;
+  native_memory_order_ = false;
   control_[Status] = 0x3450ff04;
   control_[Config] = 0x7006e460;
   control_[PrId] = 0x0b22;
@@ -48,9 +49,14 @@ bool Cpu::extended_addressing() const {
 }
 
 bool Cpu::little_endian() const {
+  if (native_memory_order_)
+    return reverse_endian();
   const bool big = control_[Config] & 0x8000;
-  const bool reverse = mode() == Mode::User && (control_[Status] & 0x02000000);
-  return !(big ^ reverse);
+  return !(big ^ reverse_endian());
+}
+
+bool Cpu::reverse_endian() const {
+  return mode() == Mode::User && (control_[Status] & 0x02000000);
 }
 
 bool Cpu::require_doubleword() {

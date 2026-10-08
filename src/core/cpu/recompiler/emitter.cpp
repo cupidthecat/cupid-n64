@@ -45,7 +45,7 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
     return 1;
   if (!cpu->fill(line, physical, static_cast<std::uint32_t>(cpu->state_.pc) & 0xfe0, true))
     return 0;
-  const unsigned reverse = cpu->little_endian() ? 1 : 0;
+  const unsigned reverse = cpu->reverse_endian() ? 1 : 0;
   for (unsigned n = 0; n < view->count; ++n)
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {
       helper(cpu, line.words[((physical >> 2) ^ reverse) & 7], 0);

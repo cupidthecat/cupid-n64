@@ -72,7 +72,7 @@ void native_count_read() {
       const std::uint32_t code[] = {c(0, 8, Cause), c(transfer, 9, Count), c(0, 10, Cause),
                                     r(8, 31, 0, 0), 0};
       for (unsigned word = 0; word < 5; ++word)
-        f.code(word * 4, code[word], false);
+        f.code(word * 4, code[word]);
       const auto start = f.cpu.state().clocks;
       equal(native ? f.cpu.run_block(start + 10000) : f.cpu.run_interpreted_block(start + 10000),
             true);

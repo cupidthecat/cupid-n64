@@ -46,12 +46,12 @@ void run(CachedFixture &actual, CachedFixture &expected) {
 
 void program(CachedFixture &fixture, std::uint32_t instruction, bool little, unsigned layout = 0) {
   fixture.cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
-  fixture.code(0, layout == 1 ? i(4, 0, 0, 2) : layout == 2 ? 0 : instruction, little);
-  fixture.code(4, layout ? instruction : 0, little);
-  fixture.code(8, 0x08000410, little);
-  fixture.code(12, 0, little);
-  fixture.code(64, 0x08000410, little);
-  fixture.code(68, 0, little);
+  fixture.code(0, layout == 1 ? i(4, 0, 0, 2) : layout == 2 ? 0 : instruction);
+  fixture.code(4, layout ? instruction : 0);
+  fixture.code(8, 0x08000410);
+  fixture.code(12, 0);
+  fixture.code(64, 0x08000410);
+  fixture.code(68, 0);
 }
 
 void state(CachedFixture &fixture, unsigned mode, unsigned control, std::uint64_t a,
@@ -237,12 +237,12 @@ void branches() {
           for (auto *fixture : {&actual, &expected}) {
             state(*fixture, enabled ? 0x34000000 : 0x14000000, compare_bit, 0, 0);
             fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
-            fixture->code(0, i(17, 8, condition, 3), little);
-            fixture->code(4, fp(16, 6, 0, 0, 1), little);
-            fixture->code(8, 0x08000410, little);
-            fixture->code(12, 0, little);
-            fixture->code(16, 0x08000410, little);
-            fixture->code(20, 0, little);
+            fixture->code(0, i(17, 8, condition, 3));
+            fixture->code(4, fp(16, 6, 0, 0, 1));
+            fixture->code(8, 0x08000410);
+            fixture->code(12, 0);
+            fixture->code(16, 0x08000410);
+            fixture->code(20, 0);
           }
           run(actual, expected);
         }
@@ -290,9 +290,9 @@ void timing() {
           unsigned actual_sync = 0, expected_sync = 0;
           for (auto *fixture : {&actual, &expected}) {
             state(*fixture, 0x34000000, 0x01000000, 0x3ff8000000000000, 0x4008000000000000);
-            fixture->code(0, fp(17, operation), false);
-            fixture->code(4, i(4, 0, 0, 0xfffe), false);
-            fixture->code(8, fp(17, operation), false);
+            fixture->code(0, fp(17, operation));
+            fixture->code(4, i(4, 0, 0, 0xfffe));
+            fixture->code(8, fp(17, operation));
             fixture->cpu.advance_clocks(parity);
             fixture->cpu.run_interpreted_block(0);
             fixture->cpu.write_control(Count, count);
@@ -331,13 +331,13 @@ void control_changes() {
       state(*fixture, 0x34000000, 0, 0x3ff800003fc00000, 0x4008000040400000);
       fixture->cpu.state().gpr[10] = control;
       fixture->cpu.state().gpr[11] = 0x30000000;
-      fixture->code(0, fp(16, 0x24, 2, 0, 7), false);
-      fixture->code(4, fp(6, 0, 31, 10, 0), false);
-      fixture->code(8, fp(16, 0x24, 2, 0, 8), false);
-      fixture->code(12, c(4, 11, Status), false);
-      fixture->code(16, fp(16, 0, 3, 4, 9), false);
-      fixture->code(20, 0x08000400, false);
-      fixture->code(24, 0, false);
+      fixture->code(0, fp(16, 0x24, 2, 0, 7));
+      fixture->code(4, fp(6, 0, 31, 10, 0));
+      fixture->code(8, fp(16, 0x24, 2, 0, 8));
+      fixture->code(12, c(4, 11, Status));
+      fixture->code(16, fp(16, 0, 3, 4, 9));
+      fixture->code(20, 0x08000400);
+      fixture->code(24, 0);
     }
     for (unsigned repeat = 0; repeat < 4; ++repeat) {
       for (unsigned block = 0; block < 3; ++block) {

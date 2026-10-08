@@ -25,14 +25,13 @@ struct EntryMemory : Memory {
 struct EntryFixture {
   EntryMemory memory;
   Cpu cpu{memory};
-  bool little;
-  explicit EntryFixture(bool little) : little(little) {
+  explicit EntryFixture(bool little) {
     cpu.write_control(Status, 0x30000000);
     cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
     cpu.set_pc(0xffffffff80001000);
   }
   void code(unsigned address, std::uint32_t instruction) {
-    memory.words[(address >> 2) ^ unsigned(little)] = instruction;
+    memory.words[address >> 2] = instruction;
   }
   void program(bool likely) {
     code(0x1000, i(9, 3, 3, 1));
@@ -194,6 +193,8 @@ void native_entry_tests() {
         }
         for (auto *fixture : {&actual, &expected}) {
           fixture->code(0x101c, i(9, 8, 8, 7));
+          // This comparison uses ordinary fetching for the stale cache contents.
+          fixture->cpu.write_control(Config, 0x7006e460);
           fixture->cpu.set_pc(0xffffffff8000101c);
         }
         const auto budget = actual.cpu.state().clocks;
@@ -206,6 +207,7 @@ void native_entry_tests() {
         compare(actual, expected);
         equal(actual.cpu.state().gpr[8], cached_result + 1);
         for (auto *fixture : {&actual, &expected}) {
+          fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
           fixture->cpu.state().gpr[30] = 0xffffffff80001000;
           fixture->cpu.execute(i(47, 30, 16, 0));
           fixture->cpu.set_pc(0xffffffff8000101c);

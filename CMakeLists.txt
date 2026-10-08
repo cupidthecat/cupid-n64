@@ -8,6 +8,7 @@ add_library(cupid_core
   src/core/arcade/controls.cpp
   src/core/cpu/cpu.cpp
   src/core/cpu/execution.cpp
+  src/core/cpu/execution/memory.cpp
   src/core/cpu/recompiler/cache.cpp
   src/core/cpu/recompiler/clocks.cpp
   src/core/cpu/recompiler/pipeline.cpp
@@ -211,6 +212,7 @@ if(BUILD_TESTING)
     tests/cpu/native/merge_linked.cpp
     tests/cpu/native/control_traps.cpp
     tests/cpu/native/control_noops.cpp
+    tests/cpu/native/byte_order.cpp
     tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_fpu.cpp
     tests/cpu/native_branches.cpp

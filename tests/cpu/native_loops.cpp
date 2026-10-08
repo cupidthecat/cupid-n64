@@ -43,9 +43,8 @@ struct LoopFixture {
     cpu.write_control(Status, 0x30000000);
     cpu.set_pc(start);
   }
-  void code(unsigned offset, std::uint32_t instruction, bool little = false) {
-    memory.words[((static_cast<unsigned>(start) & 0x1fff) + offset) / 4 ^ unsigned(little)] =
-        instruction;
+  void code(unsigned offset, std::uint32_t instruction) {
+    memory.words[((static_cast<unsigned>(start) & 0x1fff) + offset) / 4] = instruction;
   }
 };
 
@@ -75,32 +74,30 @@ void native_loop_tests() {
         for (auto *fixture : {&actual, &expected}) {
           fixture->cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
           fixture->cpu.state().gpr[4] = 0xffffffff80000200;
-          fixture->code(0, i(9, 0, 1, 0), little);
-          fixture->code(4, i(9, 1, 1, 1), little);
-          fixture->code(8,
-                        program == 1   ? i(5, 1, 0, 0xfffe)
-                        : program == 2 ? i(20, 0, 0, 0xfffe)
-                        : program == 3 ? 0x0c000401
-                                       : 0x08000401,
-                        little);
-          fixture->code(12, i(9, 3, 3, 1), little);
-          fixture->code(16, 0x08000404, little);
-          fixture->code(20, 0, little);
+          fixture->code(0, i(9, 0, 1, 0));
+          fixture->code(4, i(9, 1, 1, 1));
+          fixture->code(8, program == 1   ? i(5, 1, 0, 0xfffe)
+                           : program == 2 ? i(20, 0, 0, 0xfffe)
+                           : program == 3 ? 0x0c000401
+                                          : 0x08000401);
+          fixture->code(12, i(9, 3, 3, 1));
+          fixture->code(16, 0x08000404);
+          fixture->code(20, 0);
           if (program == 4) {
-            fixture->code(0, i(4, 0, 0, 3), little);
-            fixture->code(4, i(9, 3, 3, 1), little);
-            fixture->code(8, 0, little);
-            fixture->code(12, 0, little);
-            fixture->code(16, i(9, 1, 1, 1), little);
-            fixture->code(20, 0x08000400, little);
-            fixture->code(24, i(9, 3, 3, 1), little);
+            fixture->code(0, i(4, 0, 0, 3));
+            fixture->code(4, i(9, 3, 3, 1));
+            fixture->code(8, 0);
+            fixture->code(12, 0);
+            fixture->code(16, i(9, 1, 1, 1));
+            fixture->code(20, 0x08000400);
+            fixture->code(24, i(9, 3, 3, 1));
           }
           if (program == 5) {
-            fixture->code(0, i(35, 4, 2, 0), little);
-            fixture->code(4, i(9, 2, 2, 1), little);
-            fixture->code(8, i(43, 4, 2, 0), little);
-            fixture->code(12, 0x08000400, little);
-            fixture->code(16, i(9, 3, 3, 1), little);
+            fixture->code(0, i(35, 4, 2, 0));
+            fixture->code(4, i(9, 2, 2, 1));
+            fixture->code(8, i(43, 4, 2, 0));
+            fixture->code(12, 0x08000400);
+            fixture->code(16, i(9, 3, 3, 1));
           }
         }
         equal(actual.cpu.run_block(budget), true);
@@ -139,9 +136,9 @@ void native_loop_tests() {
           constexpr std::array<std::uint32_t, 7> slots{
               i(9, 2, 2, 1),  i(35, 4, 2, 0), i(43, 4, 2, 0), i(35, 4, 2, 0),
               i(43, 4, 2, 0), 0x46052180,     i(55, 4, 2, 0)};
-          fixture->code(0, i(9, 3, 3, 1), little);
-          fixture->code(4, branch, little);
-          fixture->code(8, slots[slot], little);
+          fixture->code(0, i(9, 3, 3, 1));
+          fixture->code(4, branch);
+          fixture->code(8, slots[slot]);
         }
         const std::uint64_t budget = 257;
         equal(actual.cpu.run_block(budget), true);

@@ -65,8 +65,8 @@ void linked_load_tests() {
         f.cpu.set_pc(0xffffffff80001000);
         f.cpu.state().gpr[1] = 0x4000;
         f.cpu.state().gpr[2] = 0x1122334455667788;
-        f.code(0, delay ? i(4, 0, 0, 3) : i(0x34, 1, 2, 4), false);
-        f.code(4, delay ? i(0x34, 1, 2, 4) : c(4, 0, Status), false);
+        f.code(0, delay ? i(4, 0, 0, 3) : i(0x34, 1, 2, 4));
+        f.code(4, delay ? i(0x34, 1, 2, 4) : c(4, 0, Status));
         const auto target = f.cpu.state().clocks + 4096;
         equal(interpreted ? f.cpu.run_interpreted_block(target) : f.cpu.run_block(target), true);
         fault(f.cpu, 2, present ? 0xffffffff80000180 : 0xffffffff80000000, 0x4004,

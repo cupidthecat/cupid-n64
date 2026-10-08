@@ -14,7 +14,7 @@ void CpuCompiler::Emitter::cached_merge(Cpu *cpu, sljit_s32 encoded, Cpu::CacheL
       std::int64_t(std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction))));
   const auto address = cpu->state_.gpr[(instruction >> 21) & 31] + offset;
   const unsigned lane =
-      cpu->little_endian() ? bytes - 1 - (address & (bytes - 1)) : address & (bytes - 1);
+      cpu->reverse_endian() ? bytes - 1 - (address & (bytes - 1)) : address & (bytes - 1);
   const unsigned shift = (left ? lane : bytes - 1 - lane) * 8;
   const auto word = (physical & (16 - bytes)) >> 2;
   const std::uint64_t memory =

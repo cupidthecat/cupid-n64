@@ -1,3 +1,4 @@
+#include "core/cpu/execution/memory.hpp"
 #include "core/cpu/recompiler/compiler.hpp"
 
 namespace cupid::n64 {
@@ -5,61 +6,20 @@ namespace cupid::n64 {
 bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool defer_exit,
                                   bool delay) {
   const auto opcode = instruction >> 26;
-  unsigned bytes;
-  switch (opcode) {
-  case 32:
-  case 36:
-  case 40:
-    bytes = 1;
-    break;
-  case 33:
-  case 37:
-  case 41:
-    bytes = 2;
-    break;
-  case 34:
-  case 35:
-  case 38:
-  case 39:
-  case 42:
-  case 43:
-  case 46:
-  case 48:
-  case 49:
-  case 56:
-  case 57:
-    bytes = 4;
-    break;
-  case 26:
-  case 27:
-  case 44:
-  case 45:
-  case 52:
-  case 55:
-  case 60:
-  case 63:
-    if (!wide)
-      return false;
-    [[fallthrough]];
-  case 53:
-  case 61:
-    bytes = 8;
-    break;
-  default:
+  const auto memory = memory_instruction(instruction);
+  if (!memory.bytes || (memory.wide && !wide))
     return false;
-  }
-  const bool floating = opcode == 49 || opcode == 53 || opcode == 57 || opcode == 61;
-  const bool partial = opcode == 26 || opcode == 27 || opcode == 34 || opcode == 38 ||
-                       opcode == 42 || opcode == 44 || opcode == 45 || opcode == 46;
-  const bool linked = opcode == 48 || opcode == 52 || opcode == 56 || opcode == 60;
+  const auto bytes = memory.bytes;
+  const bool floating = memory.floating;
+  const bool partial = memory.partial;
+  const bool linked = memory.linked;
   if (floating && !(cpu.control_[Status] & 0x20000000))
     return false;
   const auto source = (instruction >> 21) & 31;
   const auto target = (instruction >> 16) & 31;
   const auto offset = static_cast<std::uint64_t>(
       std::int64_t(std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction))));
-  const bool write = (opcode >= 40 && opcode <= 46) || opcode == 56 || opcode == 57 ||
-                     opcode == 60 || opcode == 61 || opcode == 63;
+  const bool write = memory.write;
   auto transfer = gpr(target);
   if (floating) {
     transfer = state(offsetof(CpuState, fpr) + cpu.fpu_source(target) * 8);
@@ -68,7 +28,10 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
       transfer.value += (high == (std::endian::native == std::endian::little)) ? 4 : 0;
     }
   }
-  const bool little = cpu.little_endian();
+  const auto ram_bytes = cpu.bus_.instruction_data(0).size_bytes();
+  if (!ram_bytes)
+    return false;
+  const bool little = cpu.reverse_endian();
   const auto address = [&] {
     op2(SLJIT_ADD, reg(SLJIT_R0), gpr(source), imm(offset));
     op2(SLJIT_SUB, reg(SLJIT_R1), reg(SLJIT_R0), imm(0xffffffff80000000ull));
@@ -85,7 +48,8 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   commit_pipeline();
   SlowPath path{{}, nullptr, instruction, cycles, defer_exit, delay ? 0u : 2u};
   address();
-  path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, 0x1fffffff));
+  path.enter.push_back(
+      sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, ram_bytes - 1));
   if (bytes > 1 && !partial) {
     op2(SLJIT_AND, reg(SLJIT_R2), reg(SLJIT_R1), imm(bytes - 1));
     path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0));
