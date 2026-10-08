@@ -116,6 +116,49 @@ void device_order() {
   }
 }
 
+void dispatch_budget() {
+  auto machine = std::make_unique<Console>();
+  auto &cpu = machine->cpu();
+  constexpr std::uint64_t period = 1ull << 33;
+  cpu.write_control(Count, 100);
+  cpu.write_control(Compare, 50);
+  equal(cpu.synchronization_limit(), period - 100);
+  cpu.advance_clocks(40);
+  equal(cpu.synchronization_limit(), period - 120);
+  machine->synchronize();
+  equal(cpu.read_control(Cause) & 0x8000, 0);
+  equal(cpu.synchronization_limit(), period - 120);
+
+  cpu.write_control(Count, 50);
+  cpu.write_control(Compare, 50);
+  equal(cpu.synchronization_limit(), period);
+  cpu.advance_clocks(4);
+  machine->synchronize();
+  equal(cpu.read_control(Cause) & 0x8000, 0);
+  equal(cpu.synchronization_limit(), period - 2);
+
+  for (unsigned start : {0u, 0xffffffffu}) {
+    cpu.write_control(Count, start);
+    cpu.write_control(Compare, start + 1);
+    equal(cpu.synchronization_limit(), 2);
+    cpu.advance_clocks(3);
+    equal(cpu.synchronization_limit(), 1);
+    cpu.advance_clocks(1);
+    equal(cpu.synchronization_limit(), 0);
+    equal(cpu.read_control(Cause) & 0x8000, 0);
+    machine->synchronize();
+    equal(cpu.read_control(Cause) & 0x8000, 0x8000);
+    equal(cpu.synchronization_limit(), period);
+    cpu.advance_clocks(8);
+    equal(cpu.synchronization_limit(), period - 4);
+    machine->synchronize();
+    equal(cpu.read_control(Cause) & 0x8000, 0x8000);
+    cpu.write_control(Compare, start + 8);
+    equal(cpu.read_control(Cause) & 0x8000, 0);
+    equal(cpu.synchronization_limit(), 10);
+  }
+}
+
 } // namespace
 
 void timer_phase_tests() {
@@ -123,6 +166,7 @@ void timer_phase_tests() {
   odd_synchronization();
   native_count_read();
   device_order();
+  dispatch_budget();
 }
 
 } // namespace test
