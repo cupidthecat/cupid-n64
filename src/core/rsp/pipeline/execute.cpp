@@ -1,5 +1,6 @@
 #include "core/rsp/recompiler.hpp"
 #include "core/rsp/rsp.hpp"
+#include <algorithm>
 
 namespace cupid::n64 {
 
@@ -107,11 +108,19 @@ void Rsp::advance(std::uint32_t clocks) {
   run();
 }
 
+std::uint32_t Rsp::idle_clocks() const {
+  if (dma_busy())
+    return 128;
+  // Preserve the halted clock phase; pending DMA still advances one quantum at a time.
+  const auto quanta = std::uint64_t(-(clock_ + 1)) / 128 + 1;
+  return static_cast<std::uint32_t>(std::min(quanta, std::uint64_t(0xffffffffu / 128)) * 128);
+}
+
 void Rsp::run() {
   while (clock_ < 0) {
     if (!status_.halted && compiler_->run())
       continue;
-    const auto elapsed = status_.halted ? 128u : step();
+    const auto elapsed = status_.halted ? idle_clocks() : step();
     clock_ += elapsed;
     advance_dma(elapsed);
   }
@@ -119,7 +128,7 @@ void Rsp::run() {
 
 void Rsp::run_interpreted() {
   while (clock_ < 0) {
-    const auto elapsed = status_.halted ? 128u : step();
+    const auto elapsed = status_.halted ? idle_clocks() : step();
     clock_ += elapsed;
     advance_dma(elapsed);
   }

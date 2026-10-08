@@ -109,6 +109,7 @@ private:
   static bool dual_issue(const OpInfo &first, const OpInfo &second);
   void begin_instruction();
   void end_instruction();
+  std::uint32_t idle_clocks() const;
   void decode(std::uint32_t instruction);
   void scalar_special(std::uint32_t instruction);
   void vector_transfer(std::uint32_t instruction);

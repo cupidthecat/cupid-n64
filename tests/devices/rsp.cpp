@@ -1,5 +1,6 @@
 #include "core/rsp/rsp.hpp"
 #include "fixture.hpp"
+#include <algorithm>
 
 namespace test {
 using namespace cupid::n64;
@@ -8,6 +9,69 @@ void rsp_tests() {
   MemoryFixture f;
   f.initialize();
   Rsp rsp(f.ram, f.mi, f.random);
+  for (unsigned address = 0x7000; address < 0xd000; address += 8)
+    f.ram.write(address, 8, 0x0123456789abcdefull ^ address);
+  for (bool native : {false, true}) {
+    for (unsigned clocks : {0u, 1u, 127u, 128u, 129u, 4096u, 65535u, 0xffffffffu}) {
+      rsp.power();
+      rsp.elapse(clocks);
+      if (native)
+        rsp.run();
+      else
+        rsp.run_interpreted();
+      equal(rsp.clocks(), (128 - (std::uint64_t(clocks) % 128)) % 128);
+      equal(rsp.pc(), 0);
+      equal(rsp.status().halted, true);
+      rsp.elapse(1000);
+      if (native)
+        rsp.run();
+      else
+        rsp.run_interpreted();
+      equal(rsp.clocks(), (128 - ((std::uint64_t(clocks) + 1000) % 128)) % 128);
+    }
+  }
+  for (bool native : {false, true}) {
+    for (unsigned region : {0u, 0x1000u}) {
+      for (unsigned length : {0u, 248u, 4088u}) {
+        for (unsigned clocks : {1u, 127u, 128u, 129u, 257u, 4096u, 65535u}) {
+          rsp.power();
+          Rsp expected(f.ram, f.mi, f.random);
+          unsigned actual_invalidations = 0, expected_invalidations = 0;
+          rsp.connect_invalidation([&](unsigned, unsigned) { ++actual_invalidations; });
+          expected.connect_invalidation([&](unsigned, unsigned) { ++expected_invalidations; });
+          for (auto *processor : {&rsp, &expected}) {
+            processor->write_io(0, region | 0xff8);
+            processor->write_io(4, 0x7000);
+            processor->write_io(8, length | (2u << 12) | (16u << 20), -17);
+            processor->write_io(0, region | 0x800);
+            processor->write_io(4, 0xa000);
+            processor->write_io(8, 248);
+          }
+          rsp.elapse(clocks);
+          if (native)
+            rsp.run();
+          else
+            rsp.run_interpreted();
+          // Small elapsed intervals retain the original individual halted quanta.
+          for (unsigned elapsed = 0; elapsed < clocks;) {
+            const auto part = std::min(128u, clocks - elapsed);
+            expected.elapse(part);
+            expected.run_interpreted();
+            elapsed += part;
+          }
+          equal(rsp.clocks(), expected.clocks());
+          equal(rsp.dma_clocks(), expected.dma_clocks());
+          equal(actual_invalidations, expected_invalidations);
+          for (unsigned reg : {0u, 4u, 8u, 12u, 16u, 20u, 24u})
+            equal(rsp.read_io(reg), expected.read_io(reg));
+          for (unsigned address = 0; address < 8192; address += 8)
+            equal(rsp.read_local(address, 8), expected.read_local(address, 8));
+        }
+      }
+    }
+  }
+  rsp.connect_invalidation({});
+  rsp.power();
   equal(rsp.read_io(16), 1);
   equal(rsp.read_io(28), 0);
   equal(rsp.read_io(28), 1);
