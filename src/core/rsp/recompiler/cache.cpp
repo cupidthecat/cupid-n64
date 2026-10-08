@@ -65,7 +65,8 @@ bool RspCompiler::run() {
     block.generation = impl_->generation;
     return true;
   };
-  if (context && context->key == key && (!impl_->external_memory || matches(*context))) {
+  // Retain the selected schedule until its instruction range changes.
+  if (context && (!impl_->external_memory || matches(*context))) {
     execute(*context);
     return true;
   }

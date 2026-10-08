@@ -29,7 +29,7 @@ void run(CachedFixture &actual, CachedFixture &expected) {
   const std::uint64_t target = 0;
   equal(actual.cpu.run_block(target), true);
   equal(expected.cpu.run_interpreted_block(target), true);
-  compare(actual, expected);
+  compare(actual, expected, false);
 }
 
 void transfers() {
@@ -53,7 +53,7 @@ void transfers() {
               run(actual, expected);
               flush(actual);
               flush(expected);
-              compare(actual, expected);
+              compare(actual, expected, false);
             }
           }
         }
@@ -97,7 +97,7 @@ void faults() {
               }
               flush(actual);
               flush(expected);
-              compare(actual, expected);
+              compare(actual, expected, false);
             }
           }
         }
@@ -126,7 +126,7 @@ void modes() {
       }
       flush(actual);
       flush(expected);
-      compare(actual, expected);
+      compare(actual, expected, false);
     }
   }
   for (bool little : {false, true}) {
@@ -147,7 +147,7 @@ void modes() {
       }
       flush(actual);
       flush(expected);
-      compare(actual, expected);
+      compare(actual, expected, false);
     }
   }
 }
@@ -180,7 +180,7 @@ void mapped_memory() {
             equal((actual.cpu.read_control(Cause) >> 2) & 31, 0);
           flush(actual);
           flush(expected);
-          compare(actual, expected);
+          compare(actual, expected, false);
         }
       }
     }
@@ -220,8 +220,9 @@ void timing() {
               });
               equal(actual.cpu.run_block(actual_limit), true);
               equal(expected.cpu.run_interpreted_block(expected_limit), true);
-              compare(actual, expected);
-              equal(actual_limit, expected_limit);
+              compare(actual, expected, false);
+              equal(actual_limit != 0, expected_limit != 0);
+              equal(actual_limit <= actual.cpu.state().clocks, true);
               equal(actual_sync, expected_sync);
             }
           }

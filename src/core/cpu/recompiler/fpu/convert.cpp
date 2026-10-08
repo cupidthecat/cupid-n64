@@ -52,7 +52,7 @@ void CpuCompiler::Emitter::floating_convert(SlowPath &path) {
   if (!dest_dual)
     op1(SLJIT_MOV_U32, reg(SLJIT_R1), reg(SLJIT_R1));
   op1(SLJIT_MOV, fpr((instruction >> 6) & 31), reg(SLJIT_R1));
-  advance(source_integer || dest_integer ? 8 : source_dual ? 2 : 0);
+  cycles += source_integer || dest_integer ? 8 : source_dual ? 2 : 0;
 }
 
 } // namespace cupid::n64

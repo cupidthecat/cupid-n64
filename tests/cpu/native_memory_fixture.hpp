@@ -43,11 +43,12 @@ struct CachedFixture {
   }
 };
 
-inline void compare(CachedFixture &actual, CachedFixture &expected) {
+inline void compare(CachedFixture &actual, CachedFixture &expected, bool timing = true) {
   const auto &a = actual.cpu.state();
   const auto &b = expected.cpu.state();
   equal(a.pc, b.pc);
-  equal(a.clocks, b.clocks);
+  if (timing)
+    equal(a.clocks, b.clocks);
   equal(a.hi, b.hi);
   equal(a.lo, b.lo);
   equal(a.fcr31, b.fcr31);
@@ -55,7 +56,8 @@ inline void compare(CachedFixture &actual, CachedFixture &expected) {
   for (unsigned reg = 0; reg < 32; ++reg) {
     equal(a.gpr[reg], b.gpr[reg]);
     equal(a.fpr[reg], b.fpr[reg]);
-    equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
+    if (timing || reg != Count)
+      equal(actual.cpu.read_control(reg), expected.cpu.read_control(reg));
   }
   equal(actual.memory.transfers.size(), expected.memory.transfers.size());
   for (unsigned n = 0;

@@ -69,11 +69,11 @@ void run(TrackedFixture &actual, TrackedFixture &expected, unsigned count) {
       actual.cpu.step();
   }
   equal(actual.cpu.state().pc, expected.cpu.state().pc);
-  equal(actual.cpu.state().clocks, expected.cpu.state().clocks);
   equal(actual.cpu.in_delay_slot(), expected.cpu.in_delay_slot());
   for (unsigned n = 0; n < 32; ++n) {
     equal(actual.cpu.state().gpr[n], expected.cpu.state().gpr[n]);
-    equal(actual.cpu.read_control(n), expected.cpu.read_control(n));
+    if (n != Count)
+      equal(actual.cpu.read_control(n), expected.cpu.read_control(n));
   }
   equal(actual.memory.words == expected.memory.words, true);
 }

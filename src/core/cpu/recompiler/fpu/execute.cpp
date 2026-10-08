@@ -2,7 +2,8 @@
 
 namespace cupid::n64 {
 
-bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool defer_exit) {
+bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool defer_exit,
+                                    bool delay) {
   if ((instruction >> 26) != 17 || !(cpu.control_[Status] & 0x20000000))
     return false;
   const auto format = (instruction >> 21) & 31;
@@ -31,18 +32,17 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
   if (!floating_host() || (!arithmetic && !compare && !convert))
     return false;
   commit_pipeline();
-  advance(cycles);
-  cycles = 0;
-  SlowPath path{{}, nullptr, instruction, 0, defer_exit};
+  SlowPath path{{}, nullptr, instruction, cycles, defer_exit};
   if (arithmetic)
     floating_arithmetic(path);
   else if (compare)
     floating_compare(path);
   else
     floating_convert(path);
+  path.completion_clocks = delay ? 0 : cycles - path.clocks + 2;
   // All fault checks precede the result and pipeline updates.
   if (full)
-    begin();
+    begin(false);
   if (full)
     end(defer_exit);
   else {

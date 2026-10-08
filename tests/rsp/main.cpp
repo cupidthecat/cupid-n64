@@ -8,6 +8,7 @@ int main() {
   test::rsp_native_memory_tests();
   test::rsp_native_vector_tests();
   test::rsp_block_tests();
+  test::rsp_context_tests();
   test::rsp_memory_tests();
   test::rsp_pipeline_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";

@@ -14,6 +14,7 @@ int main() {
   test::cache_refill_tests();
   test::execution_tests();
   test::native_memory_tests();
+  test::native_timing_tests();
   test::native_fpu_memory_tests();
   test::native_fpu_tests();
   test::native_loop_tests();

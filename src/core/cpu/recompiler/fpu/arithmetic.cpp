@@ -35,11 +35,11 @@ void CpuCompiler::Emitter::floating_arithmetic(SlowPath &path) {
   if (!dual)
     op1(SLJIT_MOV_U32, reg(SLJIT_R1), reg(SLJIT_R1));
   op1(SLJIT_MOV, fpr(dest), reg(SLJIT_R1));
-  const unsigned latency = operation <= 1   ? 4
+  const unsigned latency = operation <= 1   ? 8
                            : operation == 2 ? (dual ? 14 : 8)
                            : operation <= 4 ? (dual ? 114 : 56)
                                             : 0;
-  advance(latency);
+  cycles += latency;
 }
 
 } // namespace cupid::n64

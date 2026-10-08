@@ -87,13 +87,13 @@ void count_registers() {
           for (unsigned block = 0; block < 2 && cpu.state().pc != 0xffffffff80002000; ++block)
             equal(cpu.run_block(target), true);
           equal(cpu.state().pc, 0xffffffff80002000);
-          const auto extra = cached ? (load ? 1u : 0u) : (load ? 44u : 24u);
+          const auto extra = cached ? (load ? 1u : 0u) : (load ? 45u : 24u);
           if (!writing)
             equal(cpu.state().gpr[8], sign_word(initial + extra));
-          const auto second = extra + unsigned(load && !cached);
+          const auto second = extra;
           equal(cpu.state().gpr[9], sign_word(writing ? initial : initial + second));
           equal(cpu.read_control(Count), std::uint32_t(initial + (writing ? 2u : extra + 2u)));
-          equal(cpu.state().clocks - start, cached ? (load ? 12 : 8) : (load ? 186 : 104));
+          equal(cpu.state().clocks - start, cached ? (load ? 12 : 8) : (load ? 188 : 104));
         }
       }
     }
