@@ -192,9 +192,9 @@ void native_address_tests() {
               f.cpu.state().gpr[31] = target;
               f.cpu.set_pc(address);
               for (unsigned word = 0; word < before; ++word)
-                f.code(word * 4, i(9, 6, 6, 1), false);
-              f.code(before * 4, r(8, 31, 0, 0), false);
-              f.code((before + 1) * 4, 0, false);
+                f.code(word * 4, i(9, 6, 6, 1));
+              f.code(before * 4, r(8, 31, 0, 0));
+              f.code((before + 1) * 4, 0);
               const auto start = f.cpu.state().clocks;
               equal(interpreted ? f.cpu.run_interpreted_block(start + 10000)
                                 : f.cpu.run_block(start + 10000),

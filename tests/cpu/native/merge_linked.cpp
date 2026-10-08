@@ -42,15 +42,15 @@ void batches() {
                 fixture->cpu.state().gpr[8] = 0x89abcdef01234567;
                 fixture->cpu.state().gpr[31] = 0xffffffff80003000;
                 for (unsigned word = 0; word < before; ++word)
-                  fixture->code(word * 4, i(9, 6, 6, 1), false);
+                  fixture->code(word * 4, i(9, 6, 6, 1));
                 unsigned word = before;
                 if (delay) {
-                  fixture->code(word++ * 4, r(8, 31, 0, 0), false);
-                  fixture->code(word++ * 4, i(operation, 2, 8, offset), false);
+                  fixture->code(word++ * 4, r(8, 31, 0, 0));
+                  fixture->code(word++ * 4, i(operation, 2, 8, offset));
                 } else {
-                  fixture->code(word++ * 4, i(operation, 2, 8, offset), false);
-                  fixture->code(word++ * 4, r(8, 31, 0, 0), false);
-                  fixture->code(word++ * 4, 0, false);
+                  fixture->code(word++ * 4, i(operation, 2, 8, offset));
+                  fixture->code(word++ * 4, r(8, 31, 0, 0));
+                  fixture->code(word++ * 4, 0);
                 }
                 fixture->cpu.set_pc(0xffffffff80001000);
                 fixture->cpu.write_control(Count, 0);
@@ -121,12 +121,12 @@ void registers() {
                 fixture->cpu.state().gpr[1] += offset + 7;
                 fixture->cpu.state().gpr[31] = 0xffffffff80003000;
                 if (delay) {
-                  fixture->code(0, r(8, 31, 0, 0), little);
-                  fixture->code(4, i(operation, 1, target, 0xfff9), little);
+                  fixture->code(0, r(8, 31, 0, 0));
+                  fixture->code(4, i(operation, 1, target, 0xfff9));
                 } else {
-                  fixture->code(0, i(operation, 1, target, 0xfff9), little);
-                  fixture->code(4, r(8, 31, 0, 0), little);
-                  fixture->code(8, 0, little);
+                  fixture->code(0, i(operation, 1, target, 0xfff9));
+                  fixture->code(4, r(8, 31, 0, 0));
+                  fixture->code(8, 0);
                 }
                 fixture->cpu.set_pc(0xffffffff80001000);
               }

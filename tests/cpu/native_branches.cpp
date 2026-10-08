@@ -24,8 +24,8 @@ struct BranchFixture {
     cpu.write_control(Status, 0x30000000);
     cpu.set_pc(0xffffffff80001000);
   }
-  void code(unsigned word, std::uint32_t instruction, bool little) {
-    memory.words[(1024 + word) ^ unsigned(little)] = instruction;
+  void code(unsigned word, std::uint32_t instruction) {
+    memory.words[1024 + word] = instruction;
   }
 };
 
@@ -59,15 +59,15 @@ void native_branch_tests() {
                     instruction = r(family == 18 ? 8u : 9u, rs, 0, rt);
                   }
                   for (unsigned word = 0; word < prefix; ++word)
-                    fixture->code(word, 0, little);
+                    fixture->code(word, 0);
                   if (nested) {
-                    fixture->code(prefix, 0x08000800, little);
-                    fixture->code(prefix + 1, instruction, little);
+                    fixture->code(prefix, 0x08000800);
+                    fixture->code(prefix + 1, instruction);
                   } else {
-                    fixture->code(prefix, instruction, little);
-                    fixture->code(prefix + 1, i(9, 3, 3, 1), little);
+                    fixture->code(prefix, instruction);
+                    fixture->code(prefix + 1, i(9, 3, 3, 1));
                   }
-                  fixture->code(prefix + 2, i(9, 0, 28, 7), little);
+                  fixture->code(prefix + 2, i(9, 0, 28, 7));
                 }
                 const std::uint64_t budget = 0;
                 equal(actual.cpu.run_block(budget), expected.cpu.run_interpreted_block(budget));

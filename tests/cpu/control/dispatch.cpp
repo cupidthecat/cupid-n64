@@ -99,8 +99,8 @@ void control_dispatch_tests() {
           f.cpu.write_control(Status, status);
           f.cpu.write_control(Epc, 0x12345678);
           f.cpu.state().gpr[2] = 0x1122334455667788;
-          f.code(0, delay ? (2u << 26) | (0x80001010 >> 2 & 0x03ffffff) : instruction, false);
-          f.code(4, delay ? instruction : i(9, 0, 28, 1), false);
+          f.code(0, delay ? (2u << 26) | (0x80001010 >> 2 & 0x03ffffff) : instruction);
+          f.code(4, delay ? instruction : i(9, 0, 28, 1));
           const auto target = f.cpu.state().clocks + 4096;
           equal(interpreted ? f.cpu.run_interpreted_block(target) : f.cpu.run_block(target), true);
           const bool invalid = instruction == c(3, 2, Status) || instruction == co(0x10);

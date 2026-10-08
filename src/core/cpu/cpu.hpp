@@ -60,6 +60,8 @@ private:
   Mode mode() const;
   bool extended_addressing() const;
   bool little_endian() const;
+  bool reverse_endian() const;
+  bool native_cache_hit(std::uint32_t instruction, std::uint64_t ram_bytes) const;
   bool require_doubleword();
   bool poll_interrupt();
   void begin_instruction();
@@ -138,6 +140,7 @@ private:
   bool next_block_exit_ = false;
   bool llbit_ = false;
   bool nmi_pending_ = false;
+  bool native_memory_order_ = false;
   std::function<void()> synchronize_;
   std::unique_ptr<CpuCompiler> compiler_;
 };

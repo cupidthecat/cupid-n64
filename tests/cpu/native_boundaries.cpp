@@ -31,7 +31,7 @@ struct BoundaryFixture {
     const std::array code{i(9, 1, 1, 1), program == 1 ? i(35, 4, 2, 0) : i(13, 2, 2, 7),
                           i(program == 2 ? 20 : 4, 0, 0, 1), i(9, 3, 3, 1), c(4, 5, Status)};
     for (unsigned n = 0; n < code.size(); ++n)
-      memory.words[(0x400 + n) ^ unsigned(little)] = code[n];
+      memory.words[0x400 + n] = code[n];
     memory.words[0] = 0x12345678;
     memory.words[1] = 0x87654321;
     if (cached) {
@@ -148,8 +148,7 @@ void native_boundary_tests() {
                 }
                 const auto target = actual.cpu.state().clocks;
                 equal(actual.cpu.run_block(target), true);
-                for (unsigned n = 0; n < 4; ++n)
-                  expected.cpu.step();
+                equal(expected.cpu.run_interpreted_block(target), true);
                 actual.cpu.synchronize_timer();
                 expected.cpu.synchronize_timer();
                 compare(actual, expected);
@@ -168,8 +167,7 @@ void native_boundary_tests() {
     }
     const auto target = actual.cpu.state().clocks;
     equal(actual.cpu.run_block(target), true);
-    for (unsigned n = 0; n < 4; ++n)
-      expected.cpu.step();
+    equal(expected.cpu.run_interpreted_block(target), true);
     actual.cpu.synchronize_timer();
     expected.cpu.synchronize_timer();
     compare(actual, expected);

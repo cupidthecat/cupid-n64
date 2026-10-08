@@ -33,7 +33,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto physical = access->physical;
   const auto page = physical & ~4095u;
   const auto first = (physical & 4095) >> 2;
-  const unsigned reverse = cpu.little_endian() ? 1 : 0;
+  const unsigned reverse = cpu.reverse_endian() ? 1 : 0;
   const bool wide = cpu.mode() == Cpu::Mode::Kernel || cpu.extended_addressing();
   const auto floating_mode = static_cast<unsigned>(cpu.control_[Status] & 0x24000000);
   const auto floating_control =

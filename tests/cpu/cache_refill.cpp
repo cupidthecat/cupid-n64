@@ -38,26 +38,25 @@ struct RefillMemory : Memory {
 struct RefillFixture {
   RefillMemory memory;
   Cpu cpu{memory};
-  bool little;
   unsigned base;
   unsigned target;
-  RefillFixture(bool little, unsigned base, unsigned word, bool cached)
-      : little(little), base(base), target(base + 32 + word * 4) {
+  RefillFixture(unsigned base, unsigned word, bool cached)
+      : base(base), target(base + 32 + word * 4) {
     code(base + 28, i(43, 1, 2, 0));
     code(target, i(9, 4, 4, 1));
     code(target + 4, c(4, 5, Status));
     configure(cached);
   }
   void code(unsigned address, std::uint32_t instruction) {
-    memory.words[(address >> 2) ^ unsigned(little)] = instruction;
+    memory.words[address >> 2] = instruction;
   }
   void configure(bool cached) {
     cpu.write_control(Status, 0x30000000);
-    cpu.write_control(Config, little ? 0x70066460 : 0x7006e460);
+    cpu.write_control(Config, 0x7006e460);
     cpu.state().gpr[1] = 0xffffffffa0000000 | target;
     cpu.state().gpr[2] = i(9, 4, 4, 7);
     cpu.state().gpr[5] = 0x30000000;
-    cpu.state().gpr[6] = little ? 0x7006e460 : 0x70066460;
+    cpu.state().gpr[6] = 0x70066460;
     cpu.set_pc(0xffffffff80000000 | base);
     cpu.step();
     if (cached) {
@@ -98,71 +97,67 @@ void run(RefillFixture &actual, RefillFixture &expected, bool native, unsigned i
 } // namespace
 
 void cache_refill_tests() {
-  for (bool little : {false, true}) {
-    for (bool native : {false, true}) {
-      for (unsigned bytes : {1u, 2u, 8u}) {
-        RefillFixture actual(little, 0x1000, 0, false);
-        RefillFixture expected(little, 0x1000, 0, false);
-        for (auto *fixture : {&actual, &expected}) {
-          fixture->code(0x101c, i(bytes == 1 ? 40 : bytes == 2 ? 41 : 63, 1, 2, 0));
-          fixture->cpu.state().gpr[1] += bytes < 4 && !little ? 4 - bytes : 0;
-          const auto opcode = i(9, 4, 4, 7);
-          const auto terminal = c(4, 5, Status);
-          fixture->cpu.state().gpr[2] = bytes < 4 ? 7
-                                        : little  ? (std::uint64_t(terminal) << 32) | opcode
-                                                  : (std::uint64_t(opcode) << 32) | terminal;
-          fixture->cpu.state().gpr[30] = 0xffffffff80001000;
-          fixture->cpu.execute(i(47, 30, 16, 0));
-          fixture->cpu.set_pc(0xffffffff8000101c);
-        }
-        run(actual, expected, native, 3);
-        equal(actual.cpu.state().gpr[4], 7);
+  for (bool native : {false, true}) {
+    for (unsigned bytes : {1u, 2u, 8u}) {
+      RefillFixture actual(0x1000, 0, false);
+      RefillFixture expected(0x1000, 0, false);
+      for (auto *fixture : {&actual, &expected}) {
+        fixture->code(0x101c, i(bytes == 1 ? 40 : bytes == 2 ? 41 : 63, 1, 2, 0));
+        fixture->cpu.state().gpr[1] += bytes < 4 ? 4 - bytes : 0;
+        const auto opcode = i(9, 4, 4, 7);
+        const auto terminal = c(4, 5, Status);
+        fixture->cpu.state().gpr[2] = bytes < 4 ? 7 : (std::uint64_t(opcode) << 32) | terminal;
+        fixture->cpu.state().gpr[30] = 0xffffffff80001000;
+        fixture->cpu.execute(i(47, 30, 16, 0));
+        fixture->cpu.set_pc(0xffffffff8000101c);
       }
-      for (unsigned base : {0xfe0u, 0x1000u}) {
-        for (unsigned word = 0; word < 8; ++word) {
-          for (bool cached : {false, true}) {
-            RefillFixture actual(little, base, word, cached);
-            RefillFixture expected(little, base, word, cached);
-            for (unsigned repeat = 0; repeat < 3; ++repeat) {
-              run(actual, expected, native, word + 3);
-              if (!repeat)
-                equal(actual.cpu.state().gpr[4], cached ? 1 : 7);
-              for (auto *fixture : {&actual, &expected}) {
-                fixture->cpu.state().gpr[2] = i(9, 4, 4, repeat & 1 ? 7 : 1);
-                fixture->cpu.set_pc(0xffffffff80000000 | (base + 28));
-              }
-            }
-            for (auto *fixture : {&actual, &expected}) {
-              fixture->cpu.power();
-              fixture->memory.wrote = false;
-              fixture->configure(cached);
-            }
-            run(actual, expected, native, word + 3);
-          }
-        }
-      }
-      for (unsigned word : {0u, 1u, 7u}) {
-        for (unsigned operation = 0; operation < 4; ++operation) {
-          RefillFixture actual(little, 0x1000, word, false);
-          RefillFixture expected(little, 0x1000, word, false);
-          constexpr std::array<std::uint32_t, 4> replacements{r(12, 0, 0, 0), r(13, 0, 0, 0),
-                                                              i(4, 0, 0, 2), c(4, 6, Config)};
-          for (auto *fixture : {&actual, &expected})
-            fixture->cpu.state().gpr[2] = replacements[operation];
-          run(actual, expected, native, word + (operation == 2 ? 3 : 2));
-          if (operation < 2) {
-            equal(actual.cpu.read_control(Epc), 0xffffffff80000000 | actual.target);
-            equal(actual.cpu.read_control(Cause) & 0x7c, (operation + 8) << 2);
-          }
-        }
-      }
-      RefillFixture actual(little, 0x1000, 1, false);
-      RefillFixture expected(little, 0x1000, 1, false);
-      actual.memory.fail_fill = expected.memory.fail_fill = true;
-      run(actual, expected, native, 2);
-      equal(actual.cpu.read_control(Epc), 0xffffffff80001020);
-      equal(actual.cpu.read_control(Cause) & 0x7c, 6 << 2);
+      run(actual, expected, native, 3);
+      equal(actual.cpu.state().gpr[4], 7);
     }
+    for (unsigned base : {0xfe0u, 0x1000u}) {
+      for (unsigned word = 0; word < 8; ++word) {
+        for (bool cached : {false, true}) {
+          RefillFixture actual(base, word, cached);
+          RefillFixture expected(base, word, cached);
+          for (unsigned repeat = 0; repeat < 3; ++repeat) {
+            run(actual, expected, native, word + 3);
+            if (!repeat)
+              equal(actual.cpu.state().gpr[4], cached ? 1 : 7);
+            for (auto *fixture : {&actual, &expected}) {
+              fixture->cpu.state().gpr[2] = i(9, 4, 4, repeat & 1 ? 7 : 1);
+              fixture->cpu.set_pc(0xffffffff80000000 | (base + 28));
+            }
+          }
+          for (auto *fixture : {&actual, &expected}) {
+            fixture->cpu.power();
+            fixture->memory.wrote = false;
+            fixture->configure(cached);
+          }
+          run(actual, expected, native, word + 3);
+        }
+      }
+    }
+    for (unsigned word : {0u, 1u, 7u}) {
+      for (unsigned operation = 0; operation < 4; ++operation) {
+        RefillFixture actual(0x1000, word, false);
+        RefillFixture expected(0x1000, word, false);
+        constexpr std::array<std::uint32_t, 4> replacements{r(12, 0, 0, 0), r(13, 0, 0, 0),
+                                                            i(4, 0, 0, 2), c(4, 6, Config)};
+        for (auto *fixture : {&actual, &expected})
+          fixture->cpu.state().gpr[2] = replacements[operation];
+        run(actual, expected, native, word + (operation == 2 ? 3 : 2));
+        if (operation < 2) {
+          equal(actual.cpu.read_control(Epc), 0xffffffff80000000 | actual.target);
+          equal(actual.cpu.read_control(Cause) & 0x7c, (operation + 8) << 2);
+        }
+      }
+    }
+    RefillFixture actual(0x1000, 1, false);
+    RefillFixture expected(0x1000, 1, false);
+    actual.memory.fail_fill = expected.memory.fail_fill = true;
+    run(actual, expected, native, 2);
+    equal(actual.cpu.read_control(Epc), 0xffffffff80001020);
+    equal(actual.cpu.read_control(Cause) & 0x7c, 6 << 2);
   }
 }
 

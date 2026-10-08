@@ -24,17 +24,17 @@ void fallback_timing() {
             f.cpu.state().fpr[2] = kind == 5 ? 0 : kind == 6 ? 0x7fbfffff : 0x3fc00000;
             f.cpu.state().fpr[3] = f.cpu.state().fpr[2];
             for (unsigned n = 0; n < before; ++n)
-              f.code(n * 4, i(9, 3, 3, 1), false);
+              f.code(n * 4, i(9, 3, 3, 1));
             unsigned word = before;
             if (delay) {
-              f.code(word++ * 4, r(8, 31, 0, 0), false);
-              f.code(word++ * 4, instruction, false);
+              f.code(word++ * 4, r(8, 31, 0, 0));
+              f.code(word++ * 4, instruction);
             } else {
-              f.code(word++ * 4, instruction, false);
+              f.code(word++ * 4, instruction);
               for (unsigned n = 0; n < after; ++n)
-                f.code(word++ * 4, i(9, 3, 3, 1), false);
-              f.code(word++ * 4, r(8, 31, 0, 0), false);
-              f.code(word++ * 4, 0, false);
+                f.code(word++ * 4, i(9, 3, 3, 1));
+              f.code(word++ * 4, r(8, 31, 0, 0));
+              f.code(word++ * 4, 0);
             }
             f.cpu.set_pc(0xffffffff80001000);
             f.cpu.write_control(Count, 0);

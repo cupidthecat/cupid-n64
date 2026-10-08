@@ -36,8 +36,8 @@ struct StoreFixture {
     const auto instruction = i(operation, 1, 2, static_cast<std::uint16_t>(offset));
     if (native) {
       cpu.set_pc(0xffffffff80001000);
-      memory.words[1024 ^ unsigned(little)] = instruction;
-      memory.words[1025 ^ unsigned(little)] = c(4, 5, Status);
+      memory.words[1024] = instruction;
+      memory.words[1025] = c(4, 5, Status);
       equal(cpu.run_block(cpu.state().clocks), true);
     } else {
       cpu.set_pc(0xffffffffa0001000);

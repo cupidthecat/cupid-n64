@@ -46,9 +46,9 @@ void transfers() {
                   fixture->cpu.execute(i(35, 1, 3, static_cast<std::uint16_t>(offset & ~15u)));
                 fixture->cpu.state().gpr[1] += offset + 7;
                 fixture->cpu.set_pc(0xffffffff80001000);
-                fixture->code(0, i(operation, 1, reg, 0xfff9), little);
-                fixture->code(4, 0x08000400, little);
-                fixture->code(8, 0, little);
+                fixture->code(0, i(operation, 1, reg, 0xfff9));
+                fixture->code(4, 0x08000400);
+                fixture->code(8, 0);
               }
               run(actual, expected);
               flush(actual);
@@ -75,11 +75,11 @@ void faults() {
                 prepare(*fixture, little, fr, enabled);
                 fixture->cpu.execute(i(43, 1, 2, 0));
                 fixture->cpu.state().gpr[1] = address;
-                fixture->code(0, layout == 1 ? 0x08000400 : 0, little);
-                fixture->code(4, i(operation, 1, 3, 0), little);
-                fixture->code(8, i(49, 1, 4, 4), little);
-                fixture->code(12, 0x08000400, little);
-                fixture->code(16, i(57, 1, 5, 8), little);
+                fixture->code(0, layout == 1 ? 0x08000400 : 0);
+                fixture->code(4, i(operation, 1, 3, 0));
+                fixture->code(8, i(49, 1, 4, 4));
+                fixture->code(12, 0x08000400);
+                fixture->code(16, i(57, 1, 5, 8));
                 if (layout >= 2) {
                   fixture->cpu.set_pc(0xffffffff80001000);
                   fixture->cpu.step();
@@ -112,9 +112,9 @@ void modes() {
       CachedFixture actual, expected;
       for (auto *fixture : {&actual, &expected}) {
         prepare(*fixture, little, false, true);
-        fixture->code(0, i(operation, 1, 1, 0), little);
-        fixture->code(4, 0x08000400, little);
-        fixture->code(8, i(operation, 1, 0, 8), little);
+        fixture->code(0, i(operation, 1, 1, 0));
+        fixture->code(4, 0x08000400);
+        fixture->code(8, i(operation, 1, 0, 8));
       }
       // Revisit each layout after compiling the same addresses in the other modes.
       for (unsigned mode : {0u, 1u, 2u, 3u, 2u, 0u, 3u, 1u}) {
@@ -135,11 +135,11 @@ void modes() {
       for (auto *fixture : {&actual, &expected}) {
         prepare(*fixture, little, fr, true);
         fixture->cpu.state().gpr[3] = 0x30000000 | (unsigned(!fr) << 26);
-        fixture->code(0, i(49, 1, 1, 0), little);
-        fixture->code(4, c(4, 3, Status), little);
-        fixture->code(8, i(49, 1, 1, 4), little);
-        fixture->code(12, 0x08000400, little);
-        fixture->code(16, i(61, 1, 1, 8), little);
+        fixture->code(0, i(49, 1, 1, 0));
+        fixture->code(4, c(4, 3, Status));
+        fixture->code(8, i(49, 1, 1, 4));
+        fixture->code(12, 0x08000400);
+        fixture->code(16, i(61, 1, 1, 8));
       }
       for (unsigned repeat = 0; repeat < 4; ++repeat) {
         run(actual, expected);
@@ -166,9 +166,9 @@ void mapped_memory() {
             fixture->cpu.write_control(EntryLo1, 0x40 | flags);
             fixture->cpu.execute(co(2));
             fixture->cpu.state().gpr[1] = 0x4200;
-            fixture->code(0, i(operation, 1, 1, 0), little);
-            fixture->code(4, 0x08000400, little);
-            fixture->code(8, i(operation, 1, 0, 8), little);
+            fixture->code(0, i(operation, 1, 1, 0));
+            fixture->code(4, 0x08000400);
+            fixture->code(8, i(operation, 1, 0, 8));
             fixture->cpu.set_pc(0xffffffff80001000);
           }
           run(actual, expected);
@@ -200,10 +200,10 @@ void timing() {
               for (auto *fixture : {&actual, &expected}) {
                 prepare(*fixture, little, fr, true);
                 fixture->memory.clocks = parity;
-                fixture->code(0, i(operation, 1, 1, 0), little);
-                fixture->code(4, i(operation, 1, 0, 8), little);
-                fixture->code(8, i(4, 0, 0, 0xfffd), little);
-                fixture->code(12, i(operation, 1, 3, 0), little);
+                fixture->code(0, i(operation, 1, 1, 0));
+                fixture->code(4, i(operation, 1, 0, 8));
+                fixture->code(8, i(4, 0, 0, 0xfffd));
+                fixture->code(12, i(operation, 1, 3, 0));
                 fixture->cpu.run_interpreted_block(0);
                 fixture->cpu.advance_clocks(parity);
                 fixture->cpu.write_control(Count, count);
