@@ -61,6 +61,10 @@ int main(int argc, char **argv) {
     output.begin_frame(console.video().field());
     console.ram().write(0x1000, 4, 0x07c0ffff);
     const auto frame = output.read_frame();
+    const auto consumed = output.read_frame();
+    test::equal(consumed.width, 0);
+    test::equal(consumed.height, 0);
+    test::equal(consumed.rgba.size(), 0);
     test::equal(frame.width, 640);
     test::equal(frame.height, 480);
     test::equal(frame.rgba.size(), 640 * 480 * 4);

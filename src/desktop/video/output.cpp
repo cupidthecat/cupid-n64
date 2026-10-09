@@ -75,7 +75,7 @@ void VideoOutput::begin_frame(bool field) {
 
 n64::VideoFrame VideoOutput::read_frame() {
   auto &state = *implementation_;
-  return state.read ? state.read() : std::move(state.software_frame);
+  return state.read ? state.read() : std::exchange(state.software_frame, {});
 }
 
 bool VideoOutput::requires_hardware() const {
