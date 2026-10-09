@@ -119,44 +119,54 @@ void device_order() {
 void dispatch_budget() {
   auto machine = std::make_unique<Console>();
   auto &cpu = machine->cpu();
-  constexpr std::uint64_t period = 1ull << 33;
   cpu.write_control(Count, 100);
   cpu.write_control(Compare, 50);
-  equal(cpu.synchronization_limit(), period - 100);
+  equal(cpu.synchronization_limit(), 0);
   cpu.advance_clocks(40);
-  equal(cpu.synchronization_limit(), period - 120);
+  equal(cpu.synchronization_limit(), 0);
   machine->synchronize();
   equal(cpu.read_control(Cause) & 0x8000, 0);
-  equal(cpu.synchronization_limit(), period - 120);
+  equal(cpu.synchronization_limit(), 0);
 
   cpu.write_control(Count, 50);
   cpu.write_control(Compare, 50);
-  equal(cpu.synchronization_limit(), period);
+  equal(cpu.synchronization_limit(), 0);
   cpu.advance_clocks(4);
   machine->synchronize();
   equal(cpu.read_control(Cause) & 0x8000, 0);
-  equal(cpu.synchronization_limit(), period - 2);
+  equal(cpu.synchronization_limit(), 0);
 
   for (unsigned start : {0u, 0xffffffffu}) {
     cpu.write_control(Count, start);
     cpu.write_control(Compare, start + 1);
-    equal(cpu.synchronization_limit(), 2);
+    equal(cpu.synchronization_limit(), start ? 0 : 2);
     cpu.advance_clocks(3);
-    equal(cpu.synchronization_limit(), 1);
+    equal(cpu.synchronization_limit(), start ? 0 : 1);
     cpu.advance_clocks(1);
     equal(cpu.synchronization_limit(), 0);
     equal(cpu.read_control(Cause) & 0x8000, 0);
     machine->synchronize();
     equal(cpu.read_control(Cause) & 0x8000, 0x8000);
-    equal(cpu.synchronization_limit(), period);
+    equal(cpu.synchronization_limit(), 0);
     cpu.advance_clocks(8);
-    equal(cpu.synchronization_limit(), period - 4);
+    equal(cpu.synchronization_limit(), 0);
     machine->synchronize();
     equal(cpu.read_control(Cause) & 0x8000, 0x8000);
     cpu.write_control(Compare, start + 8);
     equal(cpu.read_control(Cause) & 0x8000, 0);
     equal(cpu.synchronization_limit(), 10);
   }
+
+  cpu.write_control(Count, 0xfffffffe);
+  cpu.write_control(Compare, 0xffffffff);
+  equal(cpu.synchronization_limit(), 2);
+  cpu.advance_clocks(8);
+  equal(cpu.read_control(Count), 0);
+  equal(cpu.synchronization_limit(), (1ull << 33) - 2);
+  equal(cpu.read_control(Cause) & 0x8000, 0);
+  machine->synchronize();
+  equal(cpu.read_control(Cause) & 0x8000, 0x8000);
+  equal(cpu.synchronization_limit(), (1ull << 33) - 2);
 }
 
 } // namespace

@@ -7,12 +7,9 @@
 namespace cupid::n64 {
 
 std::uint64_t Cpu::synchronization_limit() const {
-  constexpr std::uint64_t period = 1ull << 33;
-  const auto remaining = ((control_[Compare] << 1) - count_ticks_) & (period - 1);
-  const auto distance = remaining ? remaining : period;
-  const auto pending = (state_.clocks - count_clock_) >> 1;
-  // A passed comparison waits for wraparound; an uncommitted match still needs a boundary.
-  return pending < distance ? distance - pending : 0;
+  const auto count = (count_ticks_ + ((state_.clocks - count_clock_) >> 1)) & ((1ull << 33) - 1);
+  const auto target = control_[Compare] << 1;
+  return target > count ? target - count : 0;
 }
 
 void Cpu::interrupt_changed() {
