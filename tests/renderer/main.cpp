@@ -7,7 +7,9 @@ using namespace cupid::n64;
 
 namespace test {
 void gpu_cache_visibility_tests(Console &console, HardwareRenderer &renderer);
-}
+void gpu_depth_cache_tests(Console &console, HardwareRenderer &renderer);
+void gpu_cache_overlap_tests(Console &console, HardwareRenderer &renderer);
+} // namespace test
 
 namespace {
 
@@ -123,6 +125,8 @@ int main() {
     test::equal(frame.rgba[center + 2], 0);
   }
   test::gpu_cache_visibility_tests(console, *renderer);
+  test::gpu_depth_cache_tests(console, *renderer);
+  test::gpu_cache_overlap_tests(console, *renderer);
   auto &cpu = console.cpu();
   cpu.power();
   cpu.write_control(Status, 0x30000000);
