@@ -142,5 +142,6 @@ void cpu_replay_priority_tests();
 void cpu_replay_endian_tests();
 void cpu_replay_endian_linked_tests();
 void cpu_replay_cop2_memory_tests();
+void cpu_replay_cache_maintenance_tests();
 
 } // namespace test
