@@ -32,5 +32,6 @@ void rsp_context_tests();
 void rsp_halt_context_tests();
 void rsp_memory_tests();
 void rsp_pipeline_tests();
+void rsp_dma_replay_tests();
 
 } // namespace test
