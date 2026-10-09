@@ -139,5 +139,6 @@ void cpu_replay_memory_tests();
 void cpu_replay_linked_tests();
 void cpu_replay_priority_tests();
 void cpu_replay_endian_tests();
+void cpu_replay_endian_linked_tests();
 
 } // namespace test
