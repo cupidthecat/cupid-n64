@@ -48,6 +48,7 @@ int main() {
   test::cpu_replay_endian_tests();
   test::cpu_replay_endian_linked_tests();
   test::cpu_replay_cop2_memory_tests();
+  test::cpu_replay_cache_maintenance_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

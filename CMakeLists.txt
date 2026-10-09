@@ -270,6 +270,7 @@ if(BUILD_TESTING)
     tests/cpu/replay/endian/replay.cpp
     tests/cpu/replay/endian/linked/replay.cpp
     tests/cpu/replay/cop2_memory/replay.cpp
+    tests/cpu/replay/cache/maintenance/replay.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
   if(MSVC)
