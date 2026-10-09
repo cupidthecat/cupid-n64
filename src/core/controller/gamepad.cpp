@@ -1,4 +1,5 @@
 #include "core/controller/gamepad.hpp"
+#include "core/controller/stick/response.hpp"
 #include <algorithm>
 #include <array>
 
@@ -10,6 +11,11 @@ void Gamepad::input(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
   buttons_ = buttons;
   x_ = x;
   y_ = y;
+}
+
+void Gamepad::input_host(std::uint16_t buttons, std::int16_t x, std::int16_t y) {
+  const auto position = stick_response(x, y);
+  input(buttons, position.x, static_cast<std::int8_t>(-position.y));
 }
 
 std::uint32_t Gamepad::state() const {

@@ -11,7 +11,10 @@ namespace cupid::n64 {
 class Gamepad : public JoybusDevice {
 public:
   explicit Gamepad(RandomGenerator &random);
+  // Coordinates are calibrated N64 stick values.
   void input(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  // Host axes use signed 16-bit coordinates with positive Y pointing down.
+  void input_host(std::uint16_t buttons, std::int16_t x, std::int16_t y);
   void memory_pak(unsigned banks = 1);
   void rumble_pak();
   void transfer_pak(std::shared_ptr<TransferCartridge> cartridge = {});

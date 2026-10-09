@@ -68,6 +68,7 @@ void cached_delay_slot_tests();
 void cic_tests();
 void pif_tests();
 void gamepad_tests();
+void stick_tests();
 void accessory_tests();
 void handheld_tests();
 void disk_drive_tests();
