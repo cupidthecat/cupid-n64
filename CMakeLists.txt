@@ -266,6 +266,7 @@ if(BUILD_TESTING)
     tests/cpu/replay/memory/replay.cpp
     tests/cpu/replay/linked/replay.cpp
     tests/cpu/replay/priority/replay.cpp
+    tests/cpu/replay/endian/replay.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
   if(MSVC)

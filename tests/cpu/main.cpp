@@ -44,6 +44,7 @@ int main() {
   test::cpu_replay_memory_tests();
   test::cpu_replay_linked_tests();
   test::cpu_replay_priority_tests();
+  test::cpu_replay_endian_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
