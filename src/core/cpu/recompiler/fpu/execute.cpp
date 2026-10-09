@@ -49,8 +49,7 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
     cycles += 2;
     pipeline_dirty = true;
   }
-  path.resume = sljit_emit_label(compiler);
-  slow_paths.push_back(std::move(path));
+  finish_slow_path(std::move(path), delay);
   return true;
 }
 

@@ -142,6 +142,7 @@ struct CpuCompiler::Emitter {
   bool control_noop(std::uint32_t instruction, bool full, bool defer_exit);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
+  void finish_slow_path(SlowPath path, bool delay);
   void emit_slow_paths();
   bool floating(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   void floating_transfer(std::uint32_t instruction);
