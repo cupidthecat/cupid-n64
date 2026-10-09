@@ -3,6 +3,7 @@
 int main() {
   test::integer_tests();
   test::memory_tests();
+  test::tlb_lookup_tests();
   test::ram_address_tests();
   test::native_address_tests();
   test::linked_load_tests();

@@ -47,6 +47,11 @@ private:
   enum class Mode { Kernel, Supervisor, User };
   enum class Segment { Invalid, Mapped, Cached, Direct, Cached32, Direct32 };
 
+  struct TlbLookup {
+    const TlbEntry *entry = nullptr;
+    std::uint32_t frequency = 0;
+  };
+
   struct CacheLine {
     std::array<std::uint32_t, 8> words{};
     std::uint32_t tag = 0;
@@ -99,6 +104,7 @@ private:
   Segment segment(std::uint64_t address) const;
   std::optional<Address> translate(std::uint64_t address, unsigned bytes, bool store,
                                    bool alignment = true);
+  std::optional<Address> translate_tlb(std::uint64_t address, bool store);
   std::optional<std::uint64_t> read(std::uint64_t address, unsigned bytes,
                                     bool instruction = false);
   bool write(std::uint64_t address, unsigned bytes, std::uint64_t value, bool alignment = true);
@@ -123,6 +129,8 @@ private:
   CpuState state_{};
   std::array<std::uint64_t, 32> control_{};
   std::array<TlbEntry, 32> tlb_{};
+  // Entry slots stay in place across reset and TLB writes; lookup history follows them.
+  std::array<TlbLookup, 4> tlb_lookup_{};
   std::array<CacheLine, 512> icache_{};
   std::array<CacheLine, 512> dcache_{};
   std::uint64_t instruction_cache_generation_ = 1;
