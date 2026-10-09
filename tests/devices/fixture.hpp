@@ -62,6 +62,7 @@ void cartridge_profile_tests();
 void eeprom_reset_tests();
 void rtc_tests();
 void timing_tests();
+void timer_dispatch_tests();
 void cic_tests();
 void pif_tests();
 void gamepad_tests();

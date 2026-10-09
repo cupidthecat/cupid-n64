@@ -249,6 +249,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/eeprom_reset.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp
+    tests/devices/system/timer_dispatch.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp

@@ -17,6 +17,7 @@ int main() {
   test::eeprom_reset_tests();
   test::rtc_tests();
   test::timing_tests();
+  test::timer_dispatch_tests();
   test::cic_tests();
   test::pif_tests();
   test::gamepad_tests();
