@@ -32,6 +32,7 @@ int main() {
   test::disk_image_tests();
   test::rsp_tests();
   test::video_tests();
+  test::software_video_tests();
   test::audio_tests();
   test::rdp_tests();
   test::console_tests();

@@ -2,8 +2,8 @@
 
 #include "core/system/console.hpp"
 #include "desktop/storage/save.hpp"
+#include "desktop/video/output.hpp"
 #include "desktop/windows/audio.hpp"
-#include "renderer/vulkan/renderer.hpp"
 #include <filesystem>
 #include <memory>
 
@@ -14,7 +14,7 @@ public:
   Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio,
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
           n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled,
-          std::optional<std::uint64_t> random_seed = {});
+          std::optional<std::uint64_t> random_seed = {}, bool hardware_rendering = true);
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void finish_frame();
   void reset();
@@ -33,7 +33,8 @@ private:
   std::filesystem::path clock_path_, disk_path_;
   std::vector<std::uint8_t> saved_clock_, saved_disk_;
   std::unique_ptr<n64::Console> console_;
-  std::unique_ptr<n64::HardwareRenderer> renderer_;
+  std::unique_ptr<VideoOutput> output_;
+  bool hardware_rendering_ = true;
   bool frame_pending_ = false;
 };
 

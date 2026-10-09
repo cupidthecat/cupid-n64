@@ -15,6 +15,7 @@ void VideoInterface::power() {
   field_ = false;
   clock_ = 0;
   frames_ = 0;
+  software_frame_ = {};
 }
 
 void VideoInterface::connect_frame(std::function<void(bool)> callback) {

@@ -7,8 +7,9 @@ namespace cupid::desktop {
 
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
-                 n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed)
-    : audio_(audio) {
+                 n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed,
+                 bool hardware_rendering)
+    : audio_(audio), hardware_rendering_(hardware_rendering) {
   auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read_file(rom, 0x0fc00000);
   auto pif = read_file(firmware, arcade == n64::ArcadeProfile::Disabled ? 0x7c0 : 0x800);
   const auto profile =
@@ -96,40 +97,31 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       saved_cartridge_clock_.assign(clock.begin(), clock.end());
     }
   }
-  renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_);
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
-  console_->display().connect(
-      [this](std::span<const std::uint32_t> words) { renderer_->submit(words); },
-      [this] { renderer_->synchronize(); },
-      [this] {
-        if (renderer_->crashed())
-          console_->display().crash();
-      });
-  console_->video().connect_registers(
-      [this](unsigned index, std::uint32_t value) { renderer_->write_video(index, value); });
   console_->video().connect_frame([this](bool field) {
     finish_frame();
-    renderer_->begin_frame(field);
+    output_->begin_frame(field);
     frame_pending_ = true;
     ++frames;
   });
 }
 
 void Session::reset() {
-  renderer_.reset();
+  output_.reset();
   frame_pending_ = false;
   console_->power(true);
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
-  renderer_ = std::make_unique<n64::HardwareRenderer>(console_->ram());
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_);
   frame = {};
   frames = 0;
 }
 
 void Session::finish_frame() {
   if (frame_pending_) {
-    frame = renderer_->read_frame();
+    frame = output_->read_frame();
     frame_pending_ = false;
   }
 }
@@ -153,8 +145,10 @@ void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
     console_->controller(0).input(buttons, x, y);
   }
   console_->run_interval();
-  if (console_->frozen() || renderer_->crashed() ||
-      console_->pif().state() == n64::Pif::State::Error)
+  if (output_->requires_hardware())
+    throw std::runtime_error(
+        "Hardware rendering is unavailable. This game requires it for RDP graphics.");
+  if (console_->frozen() || output_->crashed() || console_->pif().state() == n64::Pif::State::Error)
     throw std::runtime_error(
         "Emulation stopped. Check the game and firmware files, then use Reset.");
 }
