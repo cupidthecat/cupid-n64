@@ -35,7 +35,7 @@ void console_tests() {
   equal(cartridge.load(invalid), false);
   equal(cartridge.load(std::span(rom).first(8)), false);
 
-  Console console;
+  Console console({.random_seed = 0});
   std::array<std::uint8_t, 0x7c0> firmware{};
   auto instruction = [&](unsigned address, std::uint32_t value) {
     for (unsigned n = 0; n < 4; ++n)
@@ -180,6 +180,7 @@ void console_tests() {
 
   for (bool expansion : {false, true}) {
     ConsoleConfig config;
+    config.random_seed = 0;
     config.expansion = expansion;
     config.eeprom_size = 512;
     config.sram_size = 32768;

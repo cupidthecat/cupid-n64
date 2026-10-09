@@ -98,6 +98,7 @@ void flash_bus() {
 
 void console_storage() {
   ConsoleConfig config;
+  config.random_seed = 0;
   config.sram_size = 98304;
   auto console = std::make_unique<Console>(config);
   equal(console->sram().data().size(), 98304);

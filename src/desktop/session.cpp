@@ -7,7 +7,7 @@ namespace cupid::desktop {
 
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
-                 n64::ArcadeProfile arcade)
+                 n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed)
     : audio_(audio) {
   auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read_file(rom, 0x0fc00000);
   auto pif = read_file(firmware, arcade == n64::ArcadeProfile::Disabled ? 0x7c0 : 0x800);
@@ -16,6 +16,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
   if (!profile)
     throw std::runtime_error("Select a valid Nintendo 64 cartridge image.");
   n64::ConsoleConfig config;
+  config.random_seed = random_seed;
   config.arcade_profile = arcade;
   if (arcade != n64::ArcadeProfile::Disabled) {
     if (rom.empty() || !ipl.empty() || !disk.empty())

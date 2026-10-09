@@ -233,8 +233,9 @@ void Window::load() {
   if (session_)
     session_->save();
   audio_.clear();
-  auto next = std::make_unique<Session>(options_.rom, options_.firmware, audio_, options_.ipl,
-                                        options_.disk, options_.arcade_profile);
+  auto next = std::make_unique<Session>(
+      options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
+      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt);
   session_ = std::move(next);
   pixels_.clear();
   pixel_width_ = pixel_height_ = 0;

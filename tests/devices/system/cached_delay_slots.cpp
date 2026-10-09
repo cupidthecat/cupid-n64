@@ -5,7 +5,7 @@ namespace test {
 using namespace cupid::n64;
 
 void cached_delay_slot_tests() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   for (unsigned opcode : {40u, 41u, 43u, 63u, 57u, 61u})
     for (unsigned before : {0u, 1u, 7u})
       for (unsigned iterations : {1u, 2u, 4u})

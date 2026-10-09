@@ -13,7 +13,8 @@ class Session {
 public:
   Session(const std::filesystem::path &rom, const std::filesystem::path &firmware, Audio &audio,
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
-          n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled);
+          n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled,
+          std::optional<std::uint64_t> random_seed = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void finish_frame();
   void reset();

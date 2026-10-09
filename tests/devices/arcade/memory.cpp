@@ -7,6 +7,7 @@ using namespace cupid::n64;
 void arcade_memory_tests() {
   for (auto profile : {ArcadeProfile::Standard, ArcadeProfile::MagicalTetris}) {
     ConsoleConfig config;
+    config.random_seed = 0;
     config.expansion = false;
     config.region = VideoRegion::Pal;
     config.cic = CicModel::N7102;
@@ -83,7 +84,7 @@ void arcade_memory_tests() {
     console.read(0xc0000000, 8);
     equal(console.frozen(), true);
   }
-  Console console;
+  Console console({.random_seed = 0});
   equal(console.arcade() == nullptr, true);
   console.read(0xc0000000, 4);
   equal(console.frozen(), true);

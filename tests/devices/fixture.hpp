@@ -65,6 +65,7 @@ void rtc_timing_tests();
 void timing_tests();
 void timer_dispatch_tests();
 void cached_delay_slot_tests();
+void entropy_tests();
 void cic_tests();
 void pif_tests();
 void gamepad_tests();

@@ -12,6 +12,7 @@ struct EepromReset {
   unsigned size;
   explicit EepromReset(unsigned capacity) : size(capacity) {
     ConsoleConfig config;
+    config.random_seed = 0;
     config.eeprom_size = size;
     console = std::make_unique<Console>(config);
   }
