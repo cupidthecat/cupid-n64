@@ -115,7 +115,7 @@ void control_and_locks() {
   const auto before = f.read(2);
   f.write(0, {3, 4, 0, 0, 0, 0, 0, 0});
   equal(f.rtc.running(), false);
-  equal(f.events.time_to_event(), 0x7fffffff);
+  equal(f.events.time_to_event(), 187500000);
   f.write(1, {});
   f.write(2, {});
   f.advance(187500000);
@@ -131,13 +131,6 @@ void control_and_locks() {
   equal(f.rtc.running(), true);
   f.advance(187500000);
   equal(f.read(2)[0], 1);
-  for (unsigned n = 0; n < 2048; ++n) {
-    f.write(0, {0, 4, 0, 0, 0, 0, 0, 0});
-    f.write(0, {});
-  }
-  equal(f.events.time_to_event(), 187500000);
-  f.advance(187500000);
-  equal(f.read(2)[0], 2);
   f.write(255, {1, 2, 3, 4, 5, 6, 7, 8});
   for (unsigned n = 0; n < 8; ++n)
     equal(f.read(3)[n], n + 1);

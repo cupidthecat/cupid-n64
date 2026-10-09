@@ -248,6 +248,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/eeprom_reset.cpp
     tests/devices/cartridge/rtc.cpp
+    tests/devices/cartridge/rtc_timing.cpp
     tests/devices/timing.cpp
     tests/devices/system/timer_dispatch.cpp
     tests/devices/cic.cpp

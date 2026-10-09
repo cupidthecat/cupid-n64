@@ -16,7 +16,7 @@ Rtc::Rtc(EventQueue &events, bool present, HostClock clock)
 
 void Rtc::run(bool enabled) {
   status_ = static_cast<std::uint8_t>((status_ & 0x7f) | (enabled ? 0 : 0x80));
-  events_.remove(Event::RtcTick);
+  events_.cancel(Event::RtcTick);
   if (enabled && present_)
     events_.insert(Event::RtcTick, 187500000);
 }
