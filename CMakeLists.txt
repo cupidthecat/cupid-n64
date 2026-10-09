@@ -246,6 +246,7 @@ if(BUILD_TESTING)
     tests/cpu/native/merge_linked.cpp
     tests/cpu/native/control_traps.cpp
     tests/cpu/native/control_noops.cpp
+    tests/cpu/native/cop2.cpp
     tests/cpu/native/byte_order.cpp
     tests/cpu/native/code_write.cpp
     tests/cpu/native_fpu_memory.cpp
@@ -259,6 +260,8 @@ if(BUILD_TESTING)
     tests/cpu/native_loops.cpp
     tests/cpu/native_boundaries.cpp
     tests/cpu/fpu.cpp
+    tests/cpu/replay/decode/replay.cpp
+    tests/cpu/replay/cached/replay.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
   if(MSVC)

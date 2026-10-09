@@ -4,10 +4,7 @@ namespace cupid::n64 {
 
 bool CpuCompiler::Emitter::control_noop(std::uint32_t instruction, bool full, bool defer_exit,
                                         bool delay) {
-  if ((instruction >> 26) != 16)
-    return false;
-  const auto format = (instruction >> 21) & 31;
-  if (format != 2 && format != 6 && format != 8)
+  if (!native_control_noop(instruction))
     return false;
   if (full)
     begin(false);

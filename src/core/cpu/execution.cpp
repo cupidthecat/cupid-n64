@@ -97,7 +97,8 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     begin_instruction();
     const auto memory_order = native_memory_order_;
     native_memory_order_ = native_cache_hit(instruction, ram_bytes);
-    decode(instruction);
+    if (changed || !native_control_noop(instruction))
+      decode(instruction);
     native_memory_order_ = memory_order;
     const bool written = tracker && tracker->generation(page) != generation;
     advance_clocks(2);

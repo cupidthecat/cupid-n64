@@ -24,6 +24,7 @@ int main() {
   test::native_merge_linked_timing_tests();
   test::native_control_trap_timing_tests();
   test::native_control_noop_timing_tests();
+  test::native_cop2_noop_tests();
   test::native_byte_order_tests();
   test::native_code_write_tests();
   test::native_fpu_memory_tests();
@@ -37,6 +38,8 @@ int main() {
   test::native_entry_tests();
   test::section_invalidation_tests();
   test::fpu_tests();
+  test::cpu_replay_decode_tests();
+  test::cpu_replay_cached_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

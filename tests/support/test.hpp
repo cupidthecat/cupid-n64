@@ -119,6 +119,7 @@ void native_arithmetic_timing_tests();
 void native_merge_linked_timing_tests();
 void native_control_trap_timing_tests();
 void native_control_noop_timing_tests();
+void native_cop2_noop_tests();
 void native_byte_order_tests();
 void native_code_write_tests();
 void native_fpu_memory_tests();
@@ -131,5 +132,7 @@ void native_boundary_tests();
 void native_branch_tests();
 void native_entry_tests();
 void fpu_tests();
+void cpu_replay_decode_tests();
+void cpu_replay_cached_tests();
 
 } // namespace test
