@@ -168,13 +168,13 @@ bool CpuCompiler::Emitter::compile() {
         begin();
       integer(instruction);
       if (full)
-        end(defer_exit);
+        end(defer_exit, previous_branch);
       else {
         cycles += 2;
         pipeline_dirty = true;
       }
-    } else if (!control_noop(instruction, !n || previous_branch || internal_entries[n],
-                             defer_exit) &&
+    } else if (!control_noop(instruction, !n || previous_branch || internal_entries[n], defer_exit,
+                             previous_branch) &&
                !branch(instruction) &&
                !arithmetic(instruction, !n || previous_branch || internal_entries[n], defer_exit,
                            previous_branch) &&

@@ -38,14 +38,15 @@ void CpuCompiler::Emitter::begin(bool flush) {
   op1(SLJIT_MOV_U8, reg(SLJIT_S3), field(&cpu.block_exit_));
 }
 
-void CpuCompiler::Emitter::end(bool defer_exit) {
+void CpuCompiler::Emitter::end(bool defer_exit, bool delay) {
   cycles += 2;
   op1(SLJIT_MOV, gpr(0), imm(0));
   op1(SLJIT_MOV, state(offsetof(CpuState, pc)), field(&cpu.pipeline_pc_));
   op1(SLJIT_MOV_U8, field(&cpu.delay_slot_), imm(0));
   op1(SLJIT_MOV_U8, field(&cpu.block_exit_), imm(0));
+  // Early exits keep the deferred clock charge only for compiled delay slots.
   if (!defer_exit)
-    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), cycles);
+    return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), delay ? cycles : 0);
 }
 
 } // namespace cupid::n64

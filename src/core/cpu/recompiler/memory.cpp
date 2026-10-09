@@ -128,7 +128,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
     }
   }
   if (full)
-    end(defer_exit);
+    end(defer_exit, delay);
   else {
     cycles += 2;
     pipeline_dirty = true;

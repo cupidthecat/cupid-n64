@@ -50,7 +50,7 @@ bool CpuCompiler::Emitter::arithmetic(std::uint32_t instruction, bool full, bool
   cycles += latency;
   if (full) {
     begin(false);
-    end(defer_exit);
+    end(defer_exit, delay);
   } else {
     cycles += 2;
     pipeline_dirty = true;

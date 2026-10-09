@@ -221,6 +221,7 @@ if(BUILD_TESTING)
     tests/cpu/native_fpu.cpp
     tests/cpu/native/fpu/timing.cpp
     tests/cpu/native/fpu/conditional.cpp
+    tests/cpu/native/interrupt_entry.cpp
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
     tests/cpu/section_invalidation.cpp

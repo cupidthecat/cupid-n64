@@ -139,7 +139,7 @@ struct CpuCompiler::Emitter {
   bool integer(std::uint32_t instruction);
   bool arithmetic(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   bool trap(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
-  bool control_noop(std::uint32_t instruction, bool full, bool defer_exit);
+  bool control_noop(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   void finish_slow_path(SlowPath path, bool delay);
@@ -174,7 +174,7 @@ struct CpuCompiler::Emitter {
   void dispatch_internal(unsigned target);
   void execute(std::uint32_t instruction, bool defer_exit);
   void begin(bool flush = true);
-  void end(bool defer_exit);
+  void end(bool defer_exit, bool delay);
 
   static Operand reg(sljit_s32 index) {
     return {index};
