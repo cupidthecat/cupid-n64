@@ -55,6 +55,8 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
   } else if (!cpu->fill(line, physical, index, true)) {
     return 0;
   }
+  if (const auto *tracker = cpu->bus_.instruction_tracker(); tracker && tracker->fully_tracked())
+    return 1;
   const unsigned reverse = cpu->reverse_endian() ? 1 : 0;
   for (unsigned n = 0; n < view->count; ++n)
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {

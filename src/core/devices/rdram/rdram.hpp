@@ -24,7 +24,6 @@ public:
   void write_word(std::uint32_t address, std::uint32_t value, unsigned repeat_length = 0);
   std::span<std::uint32_t> words() {
     // Retained mutable views cannot report later writes.
-    exposed_ = true;
     instructions_.set_fully_tracked(false);
     return data_;
   }
@@ -47,19 +46,6 @@ public:
 
 private:
   friend class HardwareRenderer;
-  void begin_external_write() {
-    if (!external_writers_ && !exposed_)
-      instructions_.capture(data_);
-    ++external_writers_;
-    instructions_.set_fully_tracked(false);
-  }
-  void end_external_write() {
-    --external_writers_;
-    if (!external_writers_ && !exposed_) {
-      instructions_.compare(data_);
-      instructions_.set_fully_tracked(true);
-    }
-  }
   struct Chip {
     bool present = false;
     bool enabled = false;
@@ -103,8 +89,6 @@ private:
   std::span<std::uint8_t> hidden_view_;
   std::array<Chip, 4> chips_{};
   bool identity_ = false;
-  bool exposed_ = false;
-  unsigned external_writers_ = 0;
 };
 
 } // namespace cupid::n64

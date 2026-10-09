@@ -5,6 +5,10 @@
 
 using namespace cupid::n64;
 
+namespace test {
+void gpu_cache_visibility_tests(Console &console, HardwareRenderer &renderer);
+}
+
 namespace {
 
 VideoFrame coverage_scanout(HardwareRenderer &renderer) {
@@ -118,7 +122,9 @@ int main() {
     test::equal(frame.rgba[center + 1], 0);
     test::equal(frame.rgba[center + 2], 0);
   }
+  test::gpu_cache_visibility_tests(console, *renderer);
   auto &cpu = console.cpu();
+  cpu.power();
   cpu.write_control(Status, 0x30000000);
   cpu.state().gpr[5] = 0x30000000;
   console.ram().write(0x100000, 4, test::i(9, 0, 4, 1));
@@ -143,12 +149,12 @@ int main() {
     for (const auto &packet : packets)
       renderer->submit(packet);
     test::equal(console.instruction_tracker() == tracker, true);
-    test::equal(tracker->fully_tracked(), false);
+    test::equal(tracker->fully_tracked(), true);
     if (pass != 2) {
       const auto queued_frame = renderer->read_frame();
       test::equal(queued_frame.rgba.empty(), false);
       test::equal(console.instruction_tracker() == tracker, true);
-      test::equal(tracker->fully_tracked(), false);
+      test::equal(tracker->fully_tracked(), true);
     }
     if (pass == 2)
       renderer.reset();
@@ -156,11 +162,14 @@ int main() {
       renderer->synchronize();
     test::equal(console.instruction_tracker() == tracker, true);
     test::equal(tracker->fully_tracked(), true);
-    test::equal(tracker->generation(0x100000) != generation, pass != 1);
+    test::equal(tracker->generation(0x100000), generation);
     cpu.state().gpr[30] = 0xffffffff80100000;
     cpu.execute(test::i(47, 30, 16, 0));
     cpu.set_pc(0xffffffff80100000);
     test::equal(cpu.run_block(cpu.state().clocks), true);
+    test::equal(cpu.state().gpr[4], 1);
+    cpu.set_pc(0xffffffff80100000);
+    cpu.step();
     test::equal(cpu.state().gpr[4], value);
   }
   std::cout << test::checks << " checks, " << test::failures << " failures\n";

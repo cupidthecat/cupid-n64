@@ -56,9 +56,10 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     section.generation = generation;
   }
   auto *found = section.find(key);
-  // RAM writes cannot replace instructions already held in an unchanged CPU cache.
+  // Guest cache maintenance retains tracked compiled blocks until a bus write invalidates them.
   const bool cache_unchanged =
-      found && found->cache_generation == cpu.instruction_cache_generation_;
+      found && (found->cache_generation == cpu.instruction_cache_generation_ ||
+                (fully_tracked && found->tracked));
   std::span<const std::uint32_t> data;
   if (!cache_unchanged) {
     data = cpu.bus_.instruction_data(page);

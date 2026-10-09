@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <array>
 #include <bitset>
 #include <cstdint>
 #include <span>
@@ -47,44 +46,11 @@ public:
       ++section.generation;
   }
 
-  void capture(std::span<const std::uint32_t> memory) {
-    snapshots_.clear();
-    const auto count = std::min(sections_.size(), memory.size() / 1024);
-    for (unsigned index = 0; index < count; ++index) {
-      if (sections_[index].lines.none())
-        continue;
-      auto &snapshot = snapshots_.emplace_back();
-      snapshot.index = index;
-      snapshot.lines = sections_[index].lines;
-      std::copy_n(memory.begin() + index * 1024, 1024, snapshot.words.begin());
-    }
-  }
-
-  void compare(std::span<const std::uint32_t> memory) {
-    for (const auto &snapshot : snapshots_) {
-      for (unsigned line = 0; line < 128; ++line) {
-        if (snapshot.lines.test(line) &&
-            !std::equal(snapshot.words.begin() + line * 8, snapshot.words.begin() + (line + 1) * 8,
-                        memory.begin() + snapshot.index * 1024 + line * 8)) {
-          ++sections_[snapshot.index].generation;
-          break;
-        }
-      }
-    }
-    snapshots_.clear();
-  }
-
 private:
   struct Section {
     std::bitset<128> lines;
     std::uint64_t generation = 1;
   };
-  struct Snapshot {
-    unsigned index;
-    std::bitset<128> lines;
-    std::array<std::uint32_t, 1024> words;
-  };
-
   template <typename Function>
   void visit(std::uint32_t address, std::uint32_t bytes, Function function) {
     const auto end =
@@ -98,7 +64,6 @@ private:
   }
 
   std::vector<Section> sections_;
-  std::vector<Snapshot> snapshots_;
   bool fully_tracked_ = true;
 };
 
