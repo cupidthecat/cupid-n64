@@ -297,7 +297,9 @@ if(BUILD_TESTING)
     add_test(NAME frame_readback COMMAND renderer_readback_tests)
     set_tests_properties(frame_readback PROPERTIES TIMEOUT 15)
     add_executable(renderer_tests tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
-      tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp)
+      tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp
+      tests/renderer/replay/render.cpp tests/renderer/replay/reset.cpp
+      tests/renderer/replay/scanout.cpp)
     target_link_libraries(renderer_tests PRIVATE cupid_renderer)
     add_test(NAME hardware_renderer COMMAND renderer_tests)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
