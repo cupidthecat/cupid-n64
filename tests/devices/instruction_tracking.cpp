@@ -18,7 +18,7 @@ void instruction_tracking_tests() {
     const auto second = tracker->generation(0x2000);
     f.ram.write(0x1fff, width, 0xabcdef);
     equal(tracker->generation(0x1000) != first, true);
-    equal(tracker->generation(0x2000), second);
+    equal(tracker->generation(0x2000) != second, width == 8);
   }
   const auto first = tracker->generation(0x1000);
   const auto second = tracker->generation(0x2000);
