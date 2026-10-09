@@ -16,10 +16,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Vulkan
+        if: runner.os == 'Linux'
+        run: bash .github/scripts/setup-vulkan.sh
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           -DCUPID_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.ipo }}
+          -DCUPID_REQUIRE_HARDWARE_RENDERER_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }}
       - name: Build
         run: cmake --build build --config Release --parallel 2
       - name: Test
@@ -36,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Set up Vulkan
+        run: bash .github/scripts/setup-vulkan.sh
       - name: Check formatting
         run: find src tests -type f \( -name '*.hpp' -o -name '*.cpp' \) -print0 | xargs -0 clang-format --dry-run --Werror
       - name: Configure with sanitizers
@@ -43,6 +49,7 @@ jobs:
           cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++
           -DCMAKE_BUILD_TYPE=Debug
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCUPID_REQUIRE_HARDWARE_RENDERER_TESTS=ON
       - name: Build
         run: cmake --build build --parallel 2
       - name: Test
