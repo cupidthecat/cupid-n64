@@ -33,5 +33,11 @@ void rsp_halt_context_tests();
 void rsp_memory_tests();
 void rsp_pipeline_tests();
 void rsp_dma_replay_tests();
+void rsp_replay_arithmetic_tests();
+void rsp_replay_memory_tests();
+void rsp_replay_blocks_tests();
+void rsp_replay_memory_blocks_tests();
+void rsp_replay_pipeline_tests();
+void rsp_replay_nested_tests();
 
 } // namespace test

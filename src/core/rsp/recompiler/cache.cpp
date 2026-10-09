@@ -104,7 +104,7 @@ bool RspCompiler::run() {
   auto &cache = *impl_;
   auto &rsp = cache.rsp;
   bool executed = false;
-  while (!rsp.delay_slot_ && !rsp.status_.halted) {
+  while (!rsp.status_.halted) {
     if (cache.dirty.any())
       cache.clear_dirty();
     // Retain the selected schedule until its instruction range changes.

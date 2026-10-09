@@ -13,6 +13,12 @@ int main() {
   test::rsp_memory_tests();
   test::rsp_pipeline_tests();
   test::rsp_dma_replay_tests();
+  test::rsp_replay_arithmetic_tests();
+  test::rsp_replay_memory_tests();
+  test::rsp_replay_blocks_tests();
+  test::rsp_replay_memory_blocks_tests();
+  test::rsp_replay_pipeline_tests();
+  test::rsp_replay_nested_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
