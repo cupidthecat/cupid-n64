@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <span>
 
@@ -26,6 +27,15 @@ public:
   }
   virtual std::span<const std::uint32_t> instruction_data(std::uint32_t) const {
     return {};
+  }
+  virtual std::span<const std::uint32_t> cache_fill_data(std::uint32_t) const {
+    return {};
+  }
+  virtual bool instruction_coherent(std::uint32_t address, std::span<const std::uint32_t> words) {
+    const auto data = instruction_data(address & ~4095u);
+    const auto offset = (address & 4095) >> 2;
+    return data.size() >= offset + words.size() &&
+           std::equal(words.begin(), words.end(), data.begin() + offset);
   }
   virtual InstructionTracker *instruction_tracker() {
     return nullptr;

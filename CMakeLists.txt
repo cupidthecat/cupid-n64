@@ -196,6 +196,7 @@ if(BUILD_TESTING)
     tests/cpu/integer.cpp
     tests/cpu/memory.cpp
     tests/cpu/memory/tlb_lookup.cpp
+    tests/cpu/memory/frozen_cache.cpp
     tests/cpu/memory/addressing.cpp
     tests/cpu/linked.cpp
     tests/cpu/merge_store.cpp

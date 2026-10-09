@@ -11,10 +11,10 @@ bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, boo
   const auto transfer =
       bus_.read_burst(line.tag | index, std::span(line.words).first(instruction ? 8 : 4));
   advance_clocks(transfer.clocks);
-  line.valid = transfer.success;
+  line.valid = instruction || transfer.success;
   if (!transfer.success && !bus_.frozen())
     raise(instruction ? Exception::BusInstruction : Exception::BusData);
-  return transfer.success;
+  return transfer.success || (instruction && bus_.frozen());
 }
 
 bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
