@@ -235,6 +235,7 @@ if(BUILD_TESTING)
     tests/cpu/control/timer.cpp
     tests/cpu/control/dispatch.cpp
     tests/cpu/control/cop2_memory.cpp
+    tests/cpu/control/nmi.cpp
     tests/cpu/random.cpp
     tests/cpu/cache.cpp
     tests/cpu/cache_coherence.cpp
@@ -264,6 +265,7 @@ if(BUILD_TESTING)
     tests/cpu/replay/cached/replay.cpp
     tests/cpu/replay/memory/replay.cpp
     tests/cpu/replay/linked/replay.cpp
+    tests/cpu/replay/priority/replay.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
   if(MSVC)
