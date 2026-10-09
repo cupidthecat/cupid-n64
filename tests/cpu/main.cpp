@@ -40,6 +40,8 @@ int main() {
   test::fpu_tests();
   test::cpu_replay_decode_tests();
   test::cpu_replay_cached_tests();
+  test::cpu_replay_memory_tests();
+  test::cpu_replay_linked_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }
