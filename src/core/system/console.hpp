@@ -6,6 +6,7 @@
 #include "core/cartridge/joybus.hpp"
 #include "core/cartridge/rom.hpp"
 #include "core/cartridge/sram.hpp"
+#include "core/controller/gamecube/gamecube.hpp"
 #include "core/controller/gamepad.hpp"
 #include "core/controller/mouse/mouse.hpp"
 #include "core/cpu/cpu.hpp"
@@ -53,6 +54,7 @@ public:
   void synchronize();
   void connect_controller(unsigned port, bool connected);
   void connect_mouse(unsigned port, bool connected = true);
+  void connect_gamecube_controller(unsigned port, bool connected = true);
   bool frozen() const override {
     return frozen_;
   }
@@ -95,6 +97,9 @@ public:
   }
   Mouse &mouse(unsigned port) {
     return mice_.at(port);
+  }
+  GameCubePad &gamecube_controller(unsigned port) {
+    return gamecube_controllers_.at(port);
   }
   Eeprom &eeprom() {
     return eeprom_;
@@ -144,6 +149,7 @@ private:
   FlashRam flash_;
   std::array<Gamepad, 4> controllers_;
   std::array<Mouse, 4> mice_;
+  std::array<GameCubePad, 4> gamecube_controllers_;
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;

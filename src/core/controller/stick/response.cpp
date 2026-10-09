@@ -5,10 +5,13 @@
 
 namespace cupid::n64 {
 
-StickPosition stick_response(std::int16_t x, std::int16_t y) {
-  constexpr double cardinal = 85, diagonal = 69, deadzone = 7;
+StickPosition stick_response(std::int16_t x, std::int16_t y, StickGate gate) {
+  const bool n64 = gate == StickGate::Nintendo64;
+  const double cardinal = n64 ? 85 : gate == StickGate::GameCubeMain ? 100 : 76;
+  const double diagonal = n64 ? 69 : cardinal * 0.75;
+  const double deadzone = n64 ? 7 : cardinal * 0.08;
   const double half_span = (diagonal + deadzone) / std::numbers::sqrt2;
-  // A full circular diagonal reaches 69 after the axial deadzone.
+  // A full circular diagonal reaches the gate corner after the axial deadzone.
   const double radius =
       half_span + std::sqrt(half_span * half_span - std::numbers::sqrt2 * diagonal * deadzone);
   auto axis = [&](std::int16_t host) {
