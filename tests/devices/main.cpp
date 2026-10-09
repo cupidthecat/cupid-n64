@@ -4,6 +4,8 @@ int main() {
   test::mi_tests();
   test::ri_tests();
   test::rdram_tests();
+  test::memory_word_pair_tests();
+  test::memory_bus_tests();
   test::instruction_tracking_tests();
   test::pi_tests();
   test::sram_tests();

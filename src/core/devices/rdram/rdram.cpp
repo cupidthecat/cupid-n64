@@ -196,22 +196,25 @@ std::uint64_t Rdram::degrade(std::uint64_t value, const Chip &chip) {
 }
 
 std::uint64_t Rdram::read_raw(std::uint32_t address, unsigned bytes) const {
-  address &= ~(bytes - 1u);
+  address &= ~(std::min(bytes, 4u) - 1u);
   const auto word = data_[address >> 2];
   if (bytes == 8)
-    return (std::uint64_t(word) << 32) | data_[(address >> 2) + 1];
+    return (std::uint64_t(word) << 32) | data_[((address >> 2) + 1) & (data_.size() - 1)];
   if (bytes == 4)
     return word;
   return (word >> ((4 - bytes - (address & 3)) * 8)) & ((1u << (bytes * 8)) - 1);
 }
 
 void Rdram::write_raw(std::uint32_t address, unsigned bytes, std::uint64_t value) {
-  address &= ~(bytes - 1u);
+  address &= ~(std::min(bytes, 4u) - 1u);
   instructions_.invalidate(address, bytes);
   auto &word = data_[address >> 2];
   if (bytes == 8) {
     word = static_cast<std::uint32_t>(value >> 32);
-    data_[(address >> 2) + 1] = static_cast<std::uint32_t>(value);
+    const auto next = (address + 4) & (size() - 1);
+    data_[next >> 2] = static_cast<std::uint32_t>(value);
+    if (next == 0)
+      instructions_.invalidate(0, 4);
   } else if (bytes == 4)
     word = static_cast<std::uint32_t>(value);
   else {
@@ -222,17 +225,18 @@ void Rdram::write_raw(std::uint32_t address, unsigned bytes, std::uint64_t value
 }
 
 std::uint32_t Rdram::hidden_nibble(std::uint32_t address) const {
-  return ((hidden_view_[address >> 1] & 3) << 2) | (hidden_view_[(address >> 1) + 1] & 3);
+  const auto mask = hidden_view_.size() - 1;
+  return ((hidden_view_[(address >> 1) & mask] & 3) << 2) |
+         (hidden_view_[((address >> 1) + 1) & mask] & 3);
 }
 
 void Rdram::write_hidden_bit(std::uint32_t address, bool value) {
   const auto shift = 1 - (address & 1);
-  auto &bits = hidden_view_[address >> 1];
+  auto &bits = hidden_view_[(address >> 1) & (hidden_view_.size() - 1)];
   bits = static_cast<std::uint8_t>((bits & ~(1u << shift)) | (unsigned(value) << shift));
 }
 
 void Rdram::update_hidden(std::uint32_t address, unsigned bytes, std::uint64_t value, bool ebus) {
-  address &= ~(bytes - 1u);
   if (ebus) {
     for (unsigned n = 0; n < bytes; ++n) {
       bool bit;
@@ -248,7 +252,8 @@ void Rdram::update_hidden(std::uint32_t address, unsigned bytes, std::uint64_t v
     write_hidden_bit(address, (address & 1) && (value & 1));
   else {
     for (unsigned n = 0; n < bytes; n += 2)
-      hidden_view_[(address + n) >> 1] = ((value >> ((bytes - 2 - n) * 8)) & 1) * 3;
+      hidden_view_[((address + n) >> 1) & (hidden_view_.size() - 1)] =
+          ((value >> ((bytes - 2 - n) * 8)) & 1) * 3;
   }
 }
 
@@ -257,9 +262,9 @@ std::uint64_t Rdram::read(std::uint32_t address, unsigned bytes, bool ebus) {
   if (!mapped)
     return 0;
   if (ebus) {
-    const auto word = hidden_nibble(*mapped & ~3u);
     if (bytes == 8)
-      return (std::uint64_t(word) << 32) | hidden_nibble((*mapped & ~7u) + 4);
+      return (std::uint64_t(hidden_nibble(*mapped)) << 32) | hidden_nibble(*mapped + 4);
+    const auto word = hidden_nibble(*mapped & ~3u);
     if (bytes == 4)
       return word;
     return (word >> ((4 - bytes - (*mapped & (4 - bytes))) * 8)) & ((1u << (bytes * 8)) - 1);

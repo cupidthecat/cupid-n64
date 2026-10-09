@@ -268,6 +268,8 @@ if(BUILD_TESTING)
     tests/devices/mi.cpp
     tests/devices/ri.cpp
     tests/devices/rdram.cpp
+    tests/devices/memory/word_pairs.cpp
+    tests/devices/memory/bus_boundaries.cpp
     tests/devices/instruction_tracking.cpp
     tests/devices/pi.cpp
     tests/devices/cartridge/sram.cpp
