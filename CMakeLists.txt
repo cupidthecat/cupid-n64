@@ -219,6 +219,7 @@ if(BUILD_TESTING)
     tests/cpu/native/code_write.cpp
     tests/cpu/native_fpu_memory.cpp
     tests/cpu/native_fpu.cpp
+    tests/cpu/native/fpu/timing.cpp
     tests/cpu/native_branches.cpp
     tests/cpu/native_entries.cpp
     tests/cpu/section_invalidation.cpp

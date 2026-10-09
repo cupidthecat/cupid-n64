@@ -123,6 +123,7 @@ void native_byte_order_tests();
 void native_code_write_tests();
 void native_fpu_memory_tests();
 void native_fpu_tests();
+void native_fpu_timing_tests();
 void native_loop_tests();
 void native_boundary_tests();
 void native_branch_tests();

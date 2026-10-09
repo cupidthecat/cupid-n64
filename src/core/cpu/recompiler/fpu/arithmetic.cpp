@@ -10,10 +10,10 @@ void CpuCompiler::Emitter::floating_arithmetic(SlowPath &path) {
   const auto dest = (instruction >> 6) & 31;
   op1(dual ? SLJIT_MOV : SLJIT_MOV_U32, reg(SLJIT_R0),
       fpr(cpu.fpu_source((instruction >> 11) & 31), !dual));
-  floating_input(path, SLJIT_R0, dual);
+  floating_input(path, SLJIT_R0, dual, operation >= 5);
   if (operation <= 3) {
     op1(dual ? SLJIT_MOV : SLJIT_MOV_U32, reg(SLJIT_R1), fpr((instruction >> 16) & 31, !dual));
-    floating_input(path, SLJIT_R1, dual);
+    floating_input(path, SLJIT_R1, dual, false);
   }
   sljit_emit_fcopy(compiler, SLJIT_COPY_TO_F64 | narrow, SLJIT_FR0, SLJIT_R0);
   if (operation <= 3)
@@ -35,7 +35,7 @@ void CpuCompiler::Emitter::floating_arithmetic(SlowPath &path) {
   if (!dual)
     op1(SLJIT_MOV_U32, reg(SLJIT_R1), reg(SLJIT_R1));
   op1(SLJIT_MOV, fpr(dest), reg(SLJIT_R1));
-  const unsigned latency = operation <= 1   ? 8
+  const unsigned latency = operation <= 1   ? (dual ? 4 : 8)
                            : operation == 2 ? (dual ? 14 : 8)
                            : operation <= 4 ? (dual ? 114 : 56)
                                             : 0;
