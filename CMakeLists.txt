@@ -97,6 +97,7 @@ add_library(cupid_core
   src/core/rsp/vector/divide.cpp
   src/core/devices/vi/video_interface.cpp
   src/core/devices/vi/io.cpp
+  src/core/devices/vi/scanout.cpp
   src/core/devices/audio/audio_interface.cpp
   src/core/devices/audio/io.cpp
   src/core/rdp/rdp.cpp
@@ -138,7 +139,18 @@ if(CUPID_HARDWARE_RENDERER)
 endif()
 
 option(CUPID_DESKTOP "Build the Windows desktop frontend" ON)
-if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
+add_library(cupid_video_output src/desktop/video/output.cpp)
+target_link_libraries(cupid_video_output PUBLIC cupid_core)
+if(CUPID_HARDWARE_RENDERER)
+  target_compile_definitions(cupid_video_output PRIVATE CUPID_HARDWARE_RENDERER)
+  target_link_libraries(cupid_video_output PRIVATE cupid_renderer)
+endif()
+if(MSVC)
+  target_compile_options(cupid_video_output PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(cupid_video_output PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+if(WIN32 AND CUPID_DESKTOP)
   add_executable(cupid_desktop WIN32
     src/desktop/windows/main.cpp
     src/desktop/windows/window.cpp
@@ -151,7 +163,7 @@ if(WIN32 AND CUPID_DESKTOP AND CUPID_HARDWARE_RENDERER)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_renderer comdlg32 shell32 winmm gdi32)
+  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
   endif()
@@ -159,6 +171,12 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(video_output_tests tests/desktop/video_output.cpp)
+  target_link_libraries(video_output_tests PRIVATE cupid_video_output)
+  add_test(NAME cpu_video_output COMMAND video_output_tests)
+  add_test(NAME cpu_video_output_unavailable COMMAND video_output_tests --unavailable)
+  set_tests_properties(cpu_video_output_unavailable PROPERTIES ENVIRONMENT
+    "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
   add_executable(desktop_resampler_tests tests/desktop/resampler.cpp src/desktop/audio/resampler.cpp)
   target_include_directories(desktop_resampler_tests PRIVATE src)
   target_compile_features(desktop_resampler_tests PRIVATE cxx_std_20)
@@ -176,6 +194,15 @@ if(BUILD_TESTING)
   target_compile_features(desktop_clock_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_playback_clock COMMAND desktop_clock_tests)
   if(TARGET cupid_desktop)
+    add_executable(session_video_tests tests/desktop/session_video.cpp
+      src/desktop/session.cpp src/desktop/storage/save.cpp
+      src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
+    target_compile_definitions(session_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(session_video_tests PRIVATE cupid_video_output winmm)
+    add_test(NAME desktop_software_video COMMAND session_video_tests)
+    add_test(NAME desktop_software_video_unavailable COMMAND session_video_tests --unavailable)
+    set_tests_properties(desktop_software_video_unavailable PROPERTIES ENVIRONMENT
+      "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
     add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
     target_include_directories(desktop_audio_tests PRIVATE src)
     target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
@@ -269,6 +296,7 @@ if(BUILD_TESTING)
     tests/devices/disk/image.cpp
     tests/devices/rsp.cpp
     tests/devices/video.cpp
+    tests/devices/video/scanout.cpp
     tests/devices/audio.cpp
     tests/devices/rdp.cpp
     tests/devices/console.cpp

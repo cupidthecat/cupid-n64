@@ -12,7 +12,7 @@ struct MemoryFixture : cupid::n64::Bus {
   cupid::n64::MipsInterface mi{ram};
   cupid::n64::Cpu cpu{*this};
 
-  MemoryFixture() {
+  explicit MemoryFixture(bool expansion = true) : ram(ri, random, expansion) {
     mi.connect([this](bool line) { cpu.set_interrupt(2, line); });
     cpu.write_control(cupid::n64::Status, 0x30000000);
     cpu.set_pc(0xffffffffa0001000);
@@ -77,6 +77,7 @@ void disk_clock_tests();
 void disk_image_tests();
 void rsp_tests();
 void video_tests();
+void software_video_tests();
 void audio_tests();
 void rdp_tests();
 void console_tests();

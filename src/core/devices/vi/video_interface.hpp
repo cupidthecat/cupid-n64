@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/devices/mi/mips_interface.hpp"
+#include "core/devices/vi/frame.hpp"
 #include "core/timing/frequencies.hpp"
 #include <functional>
 
@@ -20,6 +21,7 @@ public:
   void connect_frame(std::function<void(bool)> callback);
   void connect_registers(std::function<void(unsigned, std::uint32_t)> callback);
   void connect_sync(std::function<void()> callback);
+  const VideoFrame &scanout(Rdram &ram);
   bool active() const {
     return (registers_[0] & 3) != 0;
   }
@@ -51,6 +53,7 @@ private:
   std::function<void(bool)> frame_;
   std::function<void(unsigned, std::uint32_t)> write_register_;
   std::function<void()> sync_;
+  VideoFrame software_frame_;
 };
 
 } // namespace cupid::n64
