@@ -59,6 +59,7 @@ void arcade_memory_tests();
 void arcade_control_tests();
 void arcade_native_tests();
 void cartridge_profile_tests();
+void eeprom_reset_tests();
 void rtc_tests();
 void timing_tests();
 void cic_tests();
