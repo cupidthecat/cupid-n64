@@ -58,6 +58,8 @@ add_library(cupid_core
   src/core/cartridge/flash/io.cpp
   src/core/cartridge/flash/commands.cpp
   src/core/controller/gamepad.cpp
+  src/core/controller/gamecube/gamecube.cpp
+  src/core/controller/gamecube/report.cpp
   src/core/controller/stick/response.cpp
   src/core/controller/pak.cpp
   src/core/controller/mouse/mouse.cpp
@@ -291,6 +293,9 @@ if(BUILD_TESTING)
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp
     tests/devices/controller/stick.cpp
+    tests/devices/controller/gamecube/commands.cpp
+    tests/devices/controller/gamecube/pif.cpp
+    tests/devices/controller/gamecube/replay.cpp
     tests/devices/controller/accessories.cpp
     tests/devices/controller/handheld.cpp
     tests/devices/disk/drive.cpp

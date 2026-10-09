@@ -126,6 +126,8 @@ void Console::power(bool reset) {
 }
 
 void Console::connect_controller(unsigned port, bool connected) {
+  if (port < gamecube_controllers_.size())
+    gamecube_controllers_[port].reset();
   if (arcade_ && port < 2)
     pif_.attach(port, connected ? &arcade_->controller(port) : nullptr);
   else if (port < controllers_.size())
@@ -133,8 +135,17 @@ void Console::connect_controller(unsigned port, bool connected) {
 }
 
 void Console::connect_mouse(unsigned port, bool connected) {
-  if (port < mice_.size())
+  if (port < mice_.size()) {
+    gamecube_controllers_[port].reset();
     pif_.attach(port, connected ? &mice_[port] : nullptr);
+  }
+}
+
+void Console::connect_gamecube_controller(unsigned port, bool connected) {
+  if (port < gamecube_controllers_.size()) {
+    gamecube_controllers_[port].reset();
+    pif_.attach(port, connected ? &gamecube_controllers_[port] : nullptr);
+  }
 }
 
 std::int64_t Console::pending_clocks() const {
