@@ -56,6 +56,8 @@ public:
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words) override;
   BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words) override;
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override;
+  std::span<const std::uint32_t> cache_fill_data(std::uint32_t address) const override;
+  bool instruction_coherent(std::uint32_t address, std::span<const std::uint32_t> words) override;
   InstructionTracker *instruction_tracker() override {
     return arcade_ ? nullptr : ram_.instruction_tracker();
   }

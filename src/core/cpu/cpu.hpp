@@ -71,6 +71,7 @@ private:
   bool poll_interrupt();
   void begin_instruction();
   void end_instruction();
+  void step_instruction();
   void decode(std::uint32_t instruction);
   void special(std::uint32_t instruction);
   void regimm(std::uint32_t instruction);

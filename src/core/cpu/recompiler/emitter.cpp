@@ -43,8 +43,18 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
   auto &line = cpu->icache_[(cpu->state_.pc >> 5) & 511];
   if (line.hit(physical))
     return 1;
-  if (!cpu->fill(line, physical, static_cast<std::uint32_t>(cpu->state_.pc) & 0xfe0, true))
+  const auto index = static_cast<std::uint32_t>(cpu->state_.pc) & 0xfe0;
+  const auto data = cpu->bus_.cache_fill_data((physical & ~0xfffu) | index);
+  if (data.size() >= line.words.size()) {
+    ++cpu->instruction_cache_generation_;
+    cpu->advance_clocks(96);
+    line.tag = physical & ~0xfffu;
+    line.dirty = false;
+    line.valid = true;
+    std::copy_n(data.begin(), line.words.size(), line.words.begin());
+  } else if (!cpu->fill(line, physical, index, true)) {
     return 0;
+  }
   const unsigned reverse = cpu->reverse_endian() ? 1 : 0;
   for (unsigned n = 0; n < view->count; ++n)
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {

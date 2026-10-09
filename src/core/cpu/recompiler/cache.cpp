@@ -94,9 +94,13 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     if (word == first || !(word & 7)) {
       const auto virtual_address = cpu.state_.pc + (word - first) * 4;
       const auto &line = cpu.icache_[(virtual_address >> 5) & 511];
-      if (line.hit(address) &&
-          !std::equal(line.words.begin(), line.words.end(), data.begin() + (word & ~7u)))
+      if (line.hit(address) && !cpu.bus_.instruction_coherent(address & ~31u, line.words)) {
+        if (cpu.bus_.frozen()) {
+          cpu.step_instruction();
+          return true;
+        }
         return false;
+      }
     }
     if (found) {
       word |= 7;

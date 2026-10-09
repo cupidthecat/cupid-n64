@@ -53,9 +53,13 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     if (word == first || !(word & 7)) {
       const auto virtual_address = start_pc + (word - first) * 4;
       const auto &line = icache_[(virtual_address >> 5) & 511];
-      if (line.hit(address) &&
-          !std::equal(line.words.begin(), line.words.end(), data.begin() + (word & ~7u)))
+      if (line.hit(address) && !bus_.instruction_coherent(address & ~31u, line.words)) {
+        if (bus_.frozen()) {
+          step_instruction();
+          return true;
+        }
         return false;
+      }
     }
     const auto instruction = data[word ^ reverse];
     instructions[count++] = instruction;

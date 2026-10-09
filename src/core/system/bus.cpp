@@ -10,6 +10,17 @@ std::span<const std::uint32_t> Console::instruction_data(std::uint32_t address) 
   return ram_.words().subspan(address >> 2);
 }
 
+std::span<const std::uint32_t> Console::cache_fill_data(std::uint32_t address) const {
+  return ram_.identity() ? instruction_data(address) : std::span<const std::uint32_t>();
+}
+
+bool Console::instruction_coherent(std::uint32_t address, std::span<const std::uint32_t> words) {
+  std::array<std::uint32_t, 8> data{};
+  read_burst(address, data);
+  return words.size() <= data.size() && !frozen_ &&
+         std::equal(words.begin(), words.end(), data.begin());
+}
+
 BusRead Console::read(std::uint32_t address, unsigned bytes) {
   if (address <= 0x03ffffff)
     return mi_.read_rdram(address, bytes);

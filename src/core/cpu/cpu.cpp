@@ -118,6 +118,10 @@ void Cpu::step() {
     advance_clocks(2);
     return;
   }
+  step_instruction();
+}
+
+void Cpu::step_instruction() {
   const auto instruction = read(state_.pc, 4, true);
   if (!instruction)
     return;

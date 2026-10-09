@@ -111,6 +111,7 @@ void random_tests();
 void cache_tests();
 void cache_coherence_tests();
 void cache_refill_tests();
+void frozen_cache_tests();
 void execution_tests();
 void native_memory_tests();
 void native_timing_tests();
