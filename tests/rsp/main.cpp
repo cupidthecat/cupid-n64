@@ -12,6 +12,7 @@ int main() {
   test::rsp_halt_context_tests();
   test::rsp_memory_tests();
   test::rsp_pipeline_tests();
+  test::rsp_dma_replay_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

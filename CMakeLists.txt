@@ -323,6 +323,7 @@ if(BUILD_TESTING)
     tests/rsp/recompiler/halt.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
+    tests/rsp/dma/replay.cpp
   )
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
