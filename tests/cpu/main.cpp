@@ -12,6 +12,7 @@ int main() {
   test::timer_phase_tests();
   test::control_dispatch_tests();
   test::cop2_memory_tests();
+  test::cop2_memory_modes_tests();
   test::random_tests();
   test::cache_tests();
   test::cache_coherence_tests();
@@ -46,6 +47,7 @@ int main() {
   test::cpu_replay_priority_tests();
   test::cpu_replay_endian_tests();
   test::cpu_replay_endian_linked_tests();
+  test::cpu_replay_cop2_memory_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

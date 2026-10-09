@@ -66,11 +66,15 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
   return 1;
 }
 
-sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
+template <bool InvalidCop2>
+sljit_sw CpuCompiler::Emitter::helper_impl(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
   cpu->advance_clocks(clocks);
   const auto pc = cpu->state_.pc;
   cpu->begin_instruction();
-  cpu->decode(instruction);
+  if constexpr (InvalidCop2)
+    cpu->cop2_invalid();
+  else
+    cpu->decode(instruction);
   const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
   if (instruction == 0x1000ffff || instruction == self_jump)
     cpu->advance_clocks(126);
@@ -78,6 +82,15 @@ sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit
                     (cpu->compiler_->impl_->active.changed() ? 4u : 0u);
   cpu->end_instruction();
   return exit;
+}
+
+sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
+  return helper_impl<false>(cpu, instruction, clocks);
+}
+
+sljit_sw CpuCompiler::Emitter::cop2_memory_helper(Cpu *cpu, std::uint32_t instruction,
+                                                  sljit_uw clocks) {
+  return helper_impl<true>(cpu, instruction, clocks);
 }
 
 void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
@@ -109,8 +122,9 @@ void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(instruction));
   op1(SLJIT_MOV, reg(SLJIT_R2), imm(cycles));
-  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
-                   SLJIT_FUNC_ADDR(helper));
+  const auto handler = cop2_memory_instruction(instruction) ? SLJIT_FUNC_ADDR(cop2_memory_helper)
+                                                            : SLJIT_FUNC_ADDR(helper);
+  sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM, handler);
   op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
   advance(2);
   cycles = 0;

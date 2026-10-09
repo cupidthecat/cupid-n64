@@ -107,6 +107,7 @@ void control_tests();
 void timer_phase_tests();
 void control_dispatch_tests();
 void cop2_memory_tests();
+void cop2_memory_modes_tests();
 void random_tests();
 void cache_tests();
 void cache_coherence_tests();
@@ -140,5 +141,6 @@ void cpu_replay_linked_tests();
 void cpu_replay_priority_tests();
 void cpu_replay_endian_tests();
 void cpu_replay_endian_linked_tests();
+void cpu_replay_cop2_memory_tests();
 
 } // namespace test

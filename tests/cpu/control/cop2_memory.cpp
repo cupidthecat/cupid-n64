@@ -36,6 +36,28 @@ void check_exception(Cpu &cpu, unsigned status, std::uint64_t start, bool delay,
   equal(cpu.state().gpr[8], latch);
 }
 
+void check_scalar(Cpu &cpu, unsigned status, std::uint64_t start, bool delay, unsigned base,
+                  unsigned target, const std::array<std::uint64_t, 32> &registers) {
+  if (!(status & 0x40000000) || (base > 2 && (base < 4 || base > 6)))
+    return check_exception(cpu, status, start, delay, registers);
+  auto expected = registers;
+  if (base <= 2 && target)
+    expected[target] = base == 1 ? latch : 0xffffffff89abcdefull;
+  const auto expected_latch = base >= 4 ? registers[target] : latch;
+  equal(cpu.read_control(Cause), 0);
+  equal(cpu.read_control(Status), status);
+  equal(cpu.read_control(Epc), saved_epc);
+  equal(cpu.read_control(BadVAddr), 0);
+  equal(cpu.state().pc, start + (delay ? 36 : 4));
+  equal(cpu.in_delay_slot(), false);
+  for (unsigned reg = 0; reg < expected.size(); ++reg)
+    equal(cpu.state().gpr[reg], expected[reg]);
+  cpu.write_control(Status, 0x70000000);
+  cpu.set_pc(0xffffffffa0001000);
+  cpu.execute((0x12u << 26) | (1u << 21) | (8u << 16));
+  equal(cpu.state().gpr[8], expected_latch);
+}
+
 void direct() {
   Fixture f;
   for (auto status : {0x30000000u, 0x70000000u, 0x70000008u, 0x70000010u, 0x70000030u, 0x70400000u,
@@ -55,7 +77,7 @@ void direct() {
               f.cpu.execute(i(operation, base, target, static_cast<std::uint16_t>(offset)));
               equal(f.cpu.state().clocks, clocks + 2);
               equal(f.memory.transfers.size(), 0);
-              check_exception(f.cpu, status, 0xffffffffa0001000, delay, registers);
+              check_scalar(f.cpu, status, 0xffffffffa0001000, delay, base, target, registers);
             }
           }
         }
@@ -81,7 +103,7 @@ void fetched() {
             f.cpu.step();
           equal(f.cpu.state().clocks, clocks + (delay ? 4 : 2));
           equal(f.memory.transfers.size(), delay ? 2 : 1);
-          check_exception(f.cpu, status, 0xffffffffa0001000, delay, registers);
+          check_scalar(f.cpu, status, 0xffffffffa0001000, delay, base, 2, registers);
         }
       }
     }

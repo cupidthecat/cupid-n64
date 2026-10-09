@@ -10,6 +10,11 @@ struct BlockInstruction {
   bool terminal = false;
 };
 
+constexpr bool cop2_memory_instruction(std::uint32_t instruction) {
+  const auto opcode = instruction >> 26;
+  return opcode == 50 || opcode == 54 || opcode == 58 || opcode == 62;
+}
+
 constexpr bool native_control_noop(std::uint32_t instruction) {
   const auto opcode = instruction >> 26;
   const auto format = (instruction >> 21) & 31;
