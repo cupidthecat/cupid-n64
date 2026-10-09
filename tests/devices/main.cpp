@@ -23,6 +23,7 @@ int main() {
   test::cic_tests();
   test::pif_tests();
   test::gamepad_tests();
+  test::stick_tests();
   test::accessory_tests();
   test::handheld_tests();
   test::disk_drive_tests();
