@@ -1,0 +1,106 @@
+#pragma once
+#include "../decode/scenarios.hpp"
+namespace test::cpu_replay::memory {
+constexpr std::array modes{0x30000000u, 0x30000080u, 0x30000010u, 0x30000030u};
+constexpr std::array<std::uint64_t, 3> addresses{0xffffffff80002000ull, 0xffffffffa0002000ull,
+                                                 0x50000ull};
+template <class P>
+void run(P &p, unsigned route, unsigned mode, unsigned region, bool little, bool warm, bool delay,
+         unsigned operation, unsigned offset, unsigned target) {
+  const auto instruction = operation << 26 | 1u << 21 | target << 16 | offset;
+  decode::prepare(p, mode, (operation + offset) & 15, instruction);
+  p.mapping(mode);
+  p.control(12, 0x10000000);
+  p.control(0, 2);
+  p.control(2, (0x2000 >> 6) | 0x1f);
+  p.control(3, (0x3000 >> 6) | 0x1f);
+  p.control(5, 0);
+  p.control(10, 0x50000);
+  p.execute(0x42000002);
+  p.control(12, mode);
+  p.control(16, little ? 0x70066460u : 0x7006e460u);
+  for (unsigned word = 0; word < 32; ++word)
+    p.physical_write(0x2000 + word * 4,
+                     0x10203040u ^ (word * 0x172345u) ^ ((operation + offset) << 24));
+  if (warm) {
+    p.control(12, 0x30000080);
+    p.gpr(27, 0xffffffff80002000ull);
+    p.execute(35u << 26 | 27u << 21 | 28u << 16);
+    p.control(12, mode);
+  }
+  const auto address = addresses[region];
+  p.gpr(1, address);
+  p.gpr(2, decode::values[(operation + offset) & 15]);
+  const std::uint64_t start = mode & 0x18 ? 0x40000ull : 0xffffffff80001000ull;
+  p.gpr(26, start + 0x200);
+  for (unsigned word = 0; word < 32; ++word)
+    p.code(word * 4, 0);
+  const auto before = delay ? 7u : 1u;
+  for (unsigned word = 0; word < before; ++word)
+    p.code(word * 4, 0x24a50001u);
+  unsigned word = before;
+  if (delay)
+    p.code(word++ * 4, 0x08000000u | unsigned(((start + 0x200) >> 2) & 0x03ffffff));
+  p.code(word++ * 4, instruction);
+  p.code(word++ * 4, 26u << 21 | 8u);
+  p.code(word++ * 4, 0);
+  p.pc(start);
+  for (auto value :
+       {std::uint64_t(route), std::uint64_t(instruction), address, std::uint64_t(mode),
+        std::uint64_t(little), std::uint64_t(warm), std::uint64_t(delay), std::uint64_t(target)})
+    p.emit(value);
+  p.observe();
+  for (unsigned n = 0; n < 32; ++n)
+    p.emit(p.physical_read(0x2000 + n * 4));
+  if (route == 0) {
+    if (delay)
+      p.execute(0x10000002u);
+    p.execute(instruction);
+  } else
+    p.run(route == 2, start, start + word * 4);
+  p.observe();
+  for (unsigned n = 0; n < 32; ++n)
+    p.emit(p.physical_read(0x2000 + n * 4));
+  for (unsigned n = 0; n < 32; ++n)
+    p.emit(p.word(n * 4));
+  p.control(12, 0x30000080);
+  p.control(16, 0x7006e460);
+  p.pc(0xffffffffa0003000ull);
+  // Inspect tags before readback fills additional data-cache lines.
+  for (unsigned operation : {4u, 5u})
+    for (unsigned index = 0; index < 512; ++index) {
+      p.gpr(27, 0xffffffff80000000ull + index * (operation == 4 ? 32 : 16));
+      p.execute(47u << 26 | 27u << 21 | operation << 16);
+      p.emit(p.read_control(28));
+      p.emit(p.read_control(29));
+    }
+  for (unsigned index = 0; index < 32; ++index) {
+    p.control(0, index);
+    p.execute(0x42000001u);
+    for (unsigned reg : {2u, 3u, 5u, 10u})
+      p.emit(p.read_control(reg));
+  }
+  p.gpr(27, 0xffffffff80002000ull);
+  for (unsigned offset = 0; offset < 128; offset += 8) {
+    p.execute(55u << 26 | 27u << 21 | 28u << 16 | offset);
+    p.emit(p.reg(28));
+  }
+  p.observe();
+  p.finish();
+}
+template <class P> void scenarios(P &p) {
+  for (unsigned route = 0; route < 3; ++route)
+    for (auto mode : modes)
+      for (unsigned region = 0; region < 3; ++region)
+        for (bool little : {false, true})
+          for (bool warm : {false, true})
+            for (bool delay : {false, true})
+              for (unsigned operation = 26; operation < 64; ++operation) {
+                if (operation >= 28 && operation < 32)
+                  continue;
+                for (unsigned offset = 0; offset < 8; ++offset)
+                  for (unsigned target : {0u, 2u})
+                    run(p, route, mode, region, little, warm, delay, operation, offset, target);
+              }
+}
+} // namespace test::cpu_replay::memory

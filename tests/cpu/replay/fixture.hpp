@@ -104,6 +104,15 @@ struct Probe {
   std::uint32_t word(unsigned offset) {
     return bus.words[(0x1000 + offset) / 4];
   }
+  void physical_write(unsigned address, unsigned value) {
+    bus.write(address, 4, value);
+  }
+  std::uint32_t physical_read(unsigned address) {
+    return bus.words[address / 4];
+  }
+  std::uint64_t reg(unsigned index) {
+    return cpu.state().gpr[index];
+  }
   void run(bool native, std::uint64_t start, std::uint64_t end) {
     if (native) {
       if (!cpu.run_block(cpu.state().clocks + 1))

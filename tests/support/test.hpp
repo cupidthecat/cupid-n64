@@ -134,5 +134,7 @@ void native_entry_tests();
 void fpu_tests();
 void cpu_replay_decode_tests();
 void cpu_replay_cached_tests();
+void cpu_replay_memory_tests();
+void cpu_replay_linked_tests();
 
 } // namespace test
