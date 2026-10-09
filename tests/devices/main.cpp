@@ -14,6 +14,7 @@ int main() {
   test::arcade_control_tests();
   test::arcade_native_tests();
   test::cartridge_profile_tests();
+  test::eeprom_reset_tests();
   test::rtc_tests();
   test::timing_tests();
   test::cic_tests();

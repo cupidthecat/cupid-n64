@@ -246,6 +246,7 @@ if(BUILD_TESTING)
     tests/devices/arcade/controls.cpp
     tests/devices/arcade/native.cpp
     tests/devices/cartridge/profile.cpp
+    tests/devices/cartridge/eeprom_reset.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/timing.cpp
     tests/devices/cic.cpp

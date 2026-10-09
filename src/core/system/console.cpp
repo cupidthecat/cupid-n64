@@ -95,7 +95,6 @@ void Console::power(bool reset) {
   if (!reset)
     random_.seed(0);
   events_.reset();
-  eeprom_.complete_write();
   flash_.power();
   isviewer_.power();
   if (arcade_)
