@@ -188,7 +188,7 @@ void Cpu::load_store(std::uint32_t instruction) {
   case 0x36:
   case 0x3a:
   case 0x3e:
-    return cop2_invalid();
+    return cop2(instruction);
   case 0x33:
   case 0x3b:
     return raise(Exception::ReservedInstruction);

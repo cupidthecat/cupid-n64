@@ -194,6 +194,9 @@ struct CpuCompiler::Emitter {
   }
   static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
+  static sljit_sw cop2_memory_helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
+  template <bool InvalidCop2>
+  static sljit_sw helper_impl(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
   static void hi_lo(Cpu *cpu, sljit_s32 instruction);
   static void cached_merge(Cpu *cpu, sljit_s32 instruction, Cpu::CacheLine *line,
                            sljit_uw physical);
