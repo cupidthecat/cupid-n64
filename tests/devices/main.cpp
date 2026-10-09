@@ -16,6 +16,7 @@ int main() {
   test::cartridge_profile_tests();
   test::eeprom_reset_tests();
   test::rtc_tests();
+  test::rtc_timing_tests();
   test::timing_tests();
   test::timer_dispatch_tests();
   test::cic_tests();
