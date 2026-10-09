@@ -205,6 +205,12 @@ void control_tests() {
     equal(f.cpu.state().pc, 0xffffffffbfc00000);
     equal(f.cpu.read_control(ErrorEpc), 0xffffffffa0001000);
     f.cpu.execute(co(0x18));
+    equal(f.cpu.state().pc, 0xffffffffbfc00000);
+    equal(f.cpu.read_control(ErrorEpc), 0xffffffffbfc00000);
+    equal(f.cpu.read_control(Status) & 4, 4);
+    f.cpu.power();
+    f.cpu.write_control(ErrorEpc, 0xffffffffa0001000);
+    f.cpu.execute(co(0x18));
     equal(f.cpu.state().pc, 0xffffffffa0001000);
     equal(f.cpu.read_control(Status) & 4, 0);
   }

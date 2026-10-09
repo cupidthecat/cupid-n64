@@ -87,7 +87,6 @@ bool Cpu::poll_interrupt() {
     return true;
   }
   if (nmi_pending_) {
-    nmi_pending_ = false;
     advance_clocks(2);
     control_[Status] = (control_[Status] | 0x00400004) & ~0x00300000ull;
     control_[ErrorEpc] = state_.pc;

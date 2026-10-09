@@ -88,6 +88,16 @@ struct Probe {
   void execute(unsigned instruction) {
     cpu.execute(instruction);
   }
+  void nmi() {
+    cpu.request_nmi();
+  }
+  void interrupt(unsigned bit, bool pending) {
+    cpu.set_interrupt(bit, pending);
+  }
+  void single(bool native) {
+    if (!native || !cpu.run_block(cpu.state().clocks + 1))
+      cpu.step();
+  }
   void mapping(unsigned mode) {
     control(12, 0x10000000);
     control(0, 1);
