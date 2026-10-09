@@ -123,11 +123,59 @@ void edges() {
   }
 }
 
+void conditional_delays() {
+  for (unsigned function : {26u, 27u, 30u, 31u})
+    for (unsigned denominator : {0u, 3u})
+      for (unsigned before : {0u, 1u, 7u})
+        for (bool taken : {false, true})
+          for (bool expired : {false, true})
+            for (bool warm : {false, true}) {
+              native_memory::CachedFixture f;
+              f.cpu.write_control(Status, 0x34000000);
+              f.cpu.state().gpr[2] = 5;
+              f.cpu.state().gpr[3] = denominator;
+              f.cpu.state().gpr[12] = taken ? 0 : 1;
+              f.cpu.state().gpr[31] = 0xffffffff80003000;
+              unsigned word = 0;
+              for (; word < before; ++word)
+                f.code(word * 4, i(9, 10, 10, 1));
+              const auto displacement = (0x3000 - (0x1000 + word * 4 + 4)) / 4;
+              f.code(word++ * 4, i(4, 11, 12, static_cast<std::uint16_t>(displacement)));
+              f.code(word++ * 4, r(function, 2, 3, 0));
+              f.code(word++ * 4, r(8, 31, 0, 0));
+              f.code(word++ * 4, 0);
+              if (warm)
+                for (unsigned line = 0; line < (word + 7) / 8; ++line) {
+                  f.cpu.state().gpr[1] = 0xffffffff80001000ull + line * 32;
+                  f.cpu.execute(i(47, 1, 20, 0));
+                }
+              f.cpu.set_pc(0xffffffff80001000);
+              f.cpu.write_control(Count, 0);
+              f.cpu.write_control(Compare, expired ? 0 : 0xffffffff);
+              const auto start = f.cpu.state().clocks;
+              equal(f.cpu.run_block(expired ? start : start + 4096), true);
+              const bool tail = !taken && !expired;
+              const auto fetched = before + 2 + (tail ? 2 : 0);
+              const auto clocks = before * 2 + (function >= 30 ? 136 : 72) + (denominator ? 4 : 2) +
+                                  (tail ? 4 : 0) + (warm ? 0 : 96 * ((fetched + 7) / 8));
+              equal(f.cpu.state().clocks - start, clocks);
+              equal(f.cpu.read_control(Count), clocks / 4);
+              equal(f.cpu.state().hi, denominator ? 2 : 5);
+              equal(f.cpu.state().lo, denominator ? 1 : ~0ull);
+              equal(f.cpu.state().gpr[10], before);
+              equal(f.cpu.state().pc, taken || !expired ? 0xffffffff80003000ull
+                                                        : 0xffffffff80001000ull + (before + 2) * 4);
+              equal(f.cpu.read_control(Cause), 0);
+              equal(f.cpu.read_control(Epc), 0);
+            }
+}
+
 } // namespace
 
 void native_arithmetic_timing_tests() {
   batches();
   edges();
+  conditional_delays();
 }
 
 } // namespace test

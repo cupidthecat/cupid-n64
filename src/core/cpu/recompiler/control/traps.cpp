@@ -23,7 +23,7 @@ bool CpuCompiler::Emitter::trap(std::uint32_t instruction, bool full, bool defer
       sljit_emit_cmp(compiler, condition, source.type, source.value, operand.type, operand.value));
   if (full) {
     begin(false);
-    end(defer_exit);
+    end(defer_exit, delay);
   } else {
     cycles += 2;
     pipeline_dirty = true;

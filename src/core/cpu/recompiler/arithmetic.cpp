@@ -50,15 +50,13 @@ bool CpuCompiler::Emitter::arithmetic(std::uint32_t instruction, bool full, bool
   cycles += latency;
   if (full) {
     begin(false);
-    end(defer_exit);
+    end(defer_exit, delay);
   } else {
     cycles += 2;
     pipeline_dirty = true;
   }
-  if (!path.enter.empty()) {
-    path.resume = sljit_emit_label(compiler);
-    slow_paths.push_back(std::move(path));
-  }
+  if (!path.enter.empty())
+    finish_slow_path(std::move(path), delay);
   return true;
 }
 

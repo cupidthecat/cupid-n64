@@ -16,7 +16,7 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
       begin();
     floating_transfer(instruction);
     if (full)
-      end(defer_exit);
+      end(defer_exit, delay);
     else {
       cycles += 2;
       pipeline_dirty = true;
@@ -44,13 +44,12 @@ bool CpuCompiler::Emitter::floating(std::uint32_t instruction, bool full, bool d
   if (full)
     begin(false);
   if (full)
-    end(defer_exit);
+    end(defer_exit, delay);
   else {
     cycles += 2;
     pipeline_dirty = true;
   }
-  path.resume = sljit_emit_label(compiler);
-  slow_paths.push_back(std::move(path));
+  finish_slow_path(std::move(path), delay);
   return true;
 }
 

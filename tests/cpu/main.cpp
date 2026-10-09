@@ -28,6 +28,9 @@ int main() {
   test::native_code_write_tests();
   test::native_fpu_memory_tests();
   test::native_fpu_tests();
+  test::native_fpu_timing_tests();
+  test::native_fpu_conditional_tests();
+  test::native_interrupt_entry_tests();
   test::native_loop_tests();
   test::native_boundary_tests();
   test::native_branch_tests();

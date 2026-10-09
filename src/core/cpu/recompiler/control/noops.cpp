@@ -2,7 +2,8 @@
 
 namespace cupid::n64 {
 
-bool CpuCompiler::Emitter::control_noop(std::uint32_t instruction, bool full, bool defer_exit) {
+bool CpuCompiler::Emitter::control_noop(std::uint32_t instruction, bool full, bool defer_exit,
+                                        bool delay) {
   if ((instruction >> 26) != 16)
     return false;
   const auto format = (instruction >> 21) & 31;
@@ -11,7 +12,7 @@ bool CpuCompiler::Emitter::control_noop(std::uint32_t instruction, bool full, bo
   if (full)
     begin(false);
   if (full)
-    end(defer_exit);
+    end(defer_exit, delay);
   else {
     cycles += 2;
     pipeline_dirty = true;

@@ -128,14 +128,23 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
     }
   }
   if (full)
-    end(defer_exit);
+    end(defer_exit, delay);
   else {
     cycles += 2;
     pipeline_dirty = true;
   }
+  finish_slow_path(std::move(path), delay);
+  return true;
+}
+
+void CpuCompiler::Emitter::finish_slow_path(SlowPath path, bool delay) {
+  if (delay) {
+    // Successful helpers skip clocks charged only by the native delay slot.
+    advance(cycles);
+    cycles = 0;
+  }
   path.resume = sljit_emit_label(compiler);
   slow_paths.push_back(std::move(path));
-  return true;
 }
 
 void CpuCompiler::Emitter::emit_slow_paths() {
