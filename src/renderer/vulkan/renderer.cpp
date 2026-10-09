@@ -14,8 +14,6 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   std::unique_ptr<RDP::CommandProcessor> processor;
   RDP::VIScanoutBuffer scanout;
   std::atomic<bool> crashed = false;
-  bool pending_writes = false;
-  std::uint64_t write_epoch = 0, scanout_epoch = 0;
   std::unique_ptr<FrameReadback> readback;
 
   explicit Implementation(Rdram &memory) : ram(memory) {
@@ -40,7 +38,6 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
     readback.reset();
     if (processor) {
       processor->idle();
-      finish_writes();
       ram.bind_hidden({});
     }
   }
@@ -59,18 +56,6 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
     return frame;
   }
 
-  void finish_frame_writes() {
-    if (scanout.fence && scanout.width && scanout.height && scanout_epoch == write_epoch)
-      finish_writes();
-  }
-
-  void finish_writes() {
-    if (pending_writes) {
-      ram.end_external_write();
-      pending_writes = false;
-    }
-  }
-
   void report_rdp_crash(RDP::ValidationError, const char *) override {
     crashed.store(true, std::memory_order_relaxed);
   }
@@ -82,18 +67,12 @@ HardwareRenderer::HardwareRenderer(Rdram &ram)
 HardwareRenderer::~HardwareRenderer() = default;
 
 void HardwareRenderer::submit(std::span<const std::uint32_t> words) {
-  if (!implementation_->pending_writes) {
-    implementation_->ram.begin_external_write();
-    implementation_->pending_writes = true;
-  }
-  ++implementation_->write_epoch;
   implementation_->processor->enqueue_command(static_cast<unsigned>(words.size()), words.data());
 }
 
 void HardwareRenderer::synchronize() {
   auto &processor = *implementation_->processor;
   processor.wait_for_timeline(processor.signal_timeline());
-  implementation_->finish_writes();
 }
 
 void HardwareRenderer::write_video(unsigned index, std::uint32_t value) {
@@ -107,7 +86,6 @@ bool HardwareRenderer::crashed() const {
 void HardwareRenderer::begin_frame(bool field) {
   auto &state = *implementation_;
   state.readback->wait();
-  state.finish_frame_writes();
   state.processor->set_vi_register(RDP::VIRegister::VCurrentLine, unsigned(field));
   RDP::ScanoutOptions options;
   options.persist_frame_on_invalid_input = true;
@@ -116,15 +94,12 @@ void HardwareRenderer::begin_frame(bool field) {
     state.scanout.fence->wait();
   state.processor->scanout_async_buffer(state.scanout, options);
   state.processor->begin_frame_context();
-  state.scanout_epoch = state.write_epoch;
   state.readback->start();
 }
 
 VideoFrame HardwareRenderer::read_frame() {
   auto &state = *implementation_;
-  auto frame = state.readback->take();
-  state.finish_frame_writes();
-  return frame;
+  return state.readback->take();
 }
 
 VideoFrame HardwareRenderer::frame(bool field) {
