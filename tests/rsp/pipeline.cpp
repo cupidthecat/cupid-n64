@@ -47,6 +47,24 @@ void rsp_pipeline_tests() {
   equal(rsp.status().broken, true);
   equal(rsp.clocks(), 2);
   equal(rsp.pc(), 4);
+
+  for (bool native : {false, true}) {
+    for (unsigned cut = 0; cut < 4; ++cut) {
+      rsp.power();
+      for (unsigned address = 0; address < 4096; address += 4)
+        rsp.write_local(0x1000 | address, 4, 0);
+      rsp.write_local(0x1000, 4, cut == 1 ? 0 : 0x08000004);
+      rsp.write_local(0x1004, 4, cut == 2 ? 0 : 0x08000006);
+      rsp.write_local(0x1014, 4, cut == 3 ? 0 : i(9, 2, 2, 1));
+      rsp.write_io(16, 1);
+      rsp.elapse(64);
+      if (native)
+        rsp.run();
+      else
+        rsp.run_interpreted();
+      equal(rsp.state().gpr[2], cut == 2 || (cut == 0 && native) ? 1u : 0u);
+    }
+  }
 }
 
 } // namespace test

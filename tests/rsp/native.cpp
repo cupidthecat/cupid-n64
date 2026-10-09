@@ -185,6 +185,7 @@ void rsp_native_tests() {
         lane = static_cast<std::uint16_t>(next());
     }
     expected.rsp.state() = actual.rsp.state();
+    std::uint32_t previous_instruction = 0;
     for (unsigned word = 0; word < 64; ++word) {
       const auto rs = static_cast<unsigned>(next() & 31);
       const auto rt = static_cast<unsigned>(next() & 31);
@@ -202,6 +203,10 @@ void rsp_native_tests() {
       else
         instruction =
             i(operations[next() % operations.size()], rs, rt, static_cast<std::uint16_t>(next()));
+      // The sequential model excludes nested branches; replay fixtures cover each mode.
+      if (SequentialRsp::branch(previous_instruction) && SequentialRsp::branch(instruction))
+        instruction = 0;
+      previous_instruction = instruction;
       for (auto *fixture : {&actual, static_cast<RspFixture *>(&expected)})
         fixture->rsp.write_local(0x1000 | ((start + word * 4) & 0xfff), 4, instruction);
     }
