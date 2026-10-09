@@ -7,6 +7,7 @@ using namespace cupid::n64;
 
 void arcade_native_tests() {
   ConsoleConfig config;
+  config.random_seed = 0;
   config.arcade_profile = ArcadeProfile::Standard;
   Console console(config);
   auto &cpu = console.cpu();

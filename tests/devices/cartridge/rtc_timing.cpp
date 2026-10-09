@@ -134,6 +134,7 @@ void reset_recovery() {
   for (bool warm : {false, true})
     for (bool running : {false, true}) {
       ConsoleConfig config;
+      config.random_seed = 0;
       config.rtc_present = true;
       config.rtc_clock = [] { return 1700000000; };
       auto machine = std::make_unique<Console>(config);

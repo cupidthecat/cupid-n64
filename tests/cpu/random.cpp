@@ -78,6 +78,7 @@ void random_tests() {
 
   for (bool expansion : {false, true}) {
     ConsoleConfig config;
+    config.random_seed = 0;
     config.expansion = expansion;
     Console console(config);
     RandomGenerator expected;

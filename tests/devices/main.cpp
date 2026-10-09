@@ -20,6 +20,7 @@ int main() {
   test::timing_tests();
   test::timer_dispatch_tests();
   test::cached_delay_slot_tests();
+  test::entropy_tests();
   test::cic_tests();
   test::pif_tests();
   test::gamepad_tests();

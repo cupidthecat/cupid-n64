@@ -5,7 +5,7 @@ namespace test {
 using namespace cupid::n64;
 
 void timer_dispatch_tests() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   for (unsigned initial : {0u, 10u, 0xffffffffu}) {
     machine->power();
     machine->write(0x04700008, 4, 0);

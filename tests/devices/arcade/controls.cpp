@@ -70,6 +70,7 @@ void arcade_control_tests() {
   equal(arcade_profile("mtetrisc").value() == ArcadeProfile::MagicalTetris, true);
   equal(arcade_profile("other").has_value(), false);
   ConsoleConfig config;
+  config.random_seed = 0;
   config.arcade_profile = ArcadeProfile::Standard;
   Console console(config);
   auto &input = console.arcade()->input();

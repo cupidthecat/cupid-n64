@@ -256,6 +256,7 @@ if(BUILD_TESTING)
     tests/devices/timing.cpp
     tests/devices/system/timer_dispatch.cpp
     tests/devices/system/cached_delay_slots.cpp
+    tests/devices/system/entropy.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/gamepad.cpp

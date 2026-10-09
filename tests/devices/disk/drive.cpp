@@ -167,6 +167,7 @@ void transfers() {
 
 void console_bus() {
   ConsoleConfig config;
+  config.random_seed = 0;
   config.disk_drive = true;
   auto console = std::make_unique<Console>(config);
   std::array<std::uint8_t, 0x7c0> pif{};
@@ -182,7 +183,7 @@ void console_bus() {
   console->power();
   equal(console->disk_drive().read_register(8), 0x59);
   equal(console->read(0x06000000, 4).value, 0x80270740);
-  auto regular = std::make_unique<Console>();
+  auto regular = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   equal(regular->load_disk(ipl(), pif), false);
 }
 

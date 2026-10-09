@@ -6,7 +6,7 @@ using namespace cupid::n64;
 namespace {
 
 void commit_boundaries() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   constexpr std::uint32_t initial[] = {0, 0xfffffffe, 0xffffffff};
   constexpr std::uint32_t compare[] = {0, 1, 2, 0xffffffff};
   constexpr unsigned deadlines[3][4] = {{0, 4, 8, 0}, {8, 12, 16, 4}, {4, 8, 12, 0}};
@@ -45,7 +45,7 @@ void commit_boundaries() {
 }
 
 void odd_synchronization() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   for (unsigned clocks : {1u, 3u}) {
     machine->power();
     auto &cpu = machine->cpu();
@@ -86,7 +86,7 @@ void native_count_read() {
 }
 
 void device_order() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   for (unsigned action = 0; action < 3; ++action) {
     machine->power();
     auto &cpu = machine->cpu();
@@ -117,7 +117,7 @@ void device_order() {
 }
 
 void dispatch_budget() {
-  auto machine = std::make_unique<Console>();
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   auto &cpu = machine->cpu();
   cpu.write_control(Count, 100);
   cpu.write_control(Compare, 50);

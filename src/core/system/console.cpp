@@ -1,5 +1,6 @@
 #include "core/system/console.hpp"
 #include <algorithm>
+#include <ctime>
 
 namespace cupid::n64 {
 namespace {
@@ -92,8 +93,12 @@ bool Console::load_disk(std::span<const std::uint8_t> ipl, std::span<const std::
 }
 
 void Console::power(bool reset) {
-  if (!reset)
-    random_.seed(0);
+  if (!reset) {
+    const auto seed = config_.random_seed     ? *config_.random_seed
+                      : config_.entropy_clock ? config_.entropy_clock()
+                                              : static_cast<std::uint64_t>(std::clock());
+    random_.seed(seed);
+  }
   events_.reset();
   flash_.power();
   isviewer_.power();

@@ -15,7 +15,9 @@
 #include "core/devices/vi/video_interface.hpp"
 #include "core/disk/drive.hpp"
 #include "core/rdp/rdp.hpp"
+#include <functional>
 #include <memory>
+#include <optional>
 
 namespace cupid::n64 {
 
@@ -31,6 +33,9 @@ struct ConsoleConfig {
   bool disk_drive = false;
   DiskClock::HostClock disk_clock = {};
   ArcadeProfile arcade_profile = ArcadeProfile::Disabled;
+  // Cold boots use this seed when present, otherwise the host clock.
+  std::optional<std::uint64_t> random_seed = {};
+  std::function<std::uint64_t()> entropy_clock = {};
 };
 
 class Console : public Bus {

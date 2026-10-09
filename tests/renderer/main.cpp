@@ -39,7 +39,7 @@ VideoFrame coverage_scanout(HardwareRenderer &renderer) {
 } // namespace
 
 int main() {
-  Console console;
+  Console console({.random_seed = 0});
   console.write(0x04700008, 4, 0);
   console.write(0x0470000c, 4, 0x14);
   console.write(0x04300000, 4, 0x10f);

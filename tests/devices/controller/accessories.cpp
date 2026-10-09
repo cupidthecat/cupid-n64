@@ -293,7 +293,7 @@ void accessory_tests() {
     equal(f.identify(), 2);
   }
   {
-    Console console;
+    Console console({.random_seed = 0});
     boot(console.pif());
     console.connect_mouse(2);
     console.mouse(2).input(true, false, -24, 37);

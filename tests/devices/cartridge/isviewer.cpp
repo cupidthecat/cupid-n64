@@ -13,7 +13,7 @@ void console_bus() {
   cartridge[2] = 0x12;
   cartridge[3] = 0x40;
   std::array<std::uint8_t, 0x7c0> firmware{};
-  Console console;
+  Console console({.random_seed = 0});
   equal(console.load(cartridge, firmware), true);
   for (unsigned bytes : {1u, 2u, 4u}) {
     const auto value = console.read(0x13ff0020, bytes);
@@ -44,7 +44,7 @@ void console_bus() {
 }
 
 void cartridge_mapping() {
-  Console console;
+  Console console({.random_seed = 0});
   equal(console.read(0x13ff0020, 4).value, 0x00200020);
   std::vector<std::uint8_t> cartridge(0x03ff0004);
   cartridge[0] = 0x80;

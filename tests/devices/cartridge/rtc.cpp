@@ -203,6 +203,7 @@ void cartridge_packets() {
   command[0] = 0;
   equal(only_clock.communicate(command, response).valid, false);
   ConsoleConfig config;
+  config.random_seed = 0;
   config.rtc_present = true;
   config.rtc_clock = [] { return 1700000000; };
   auto console = std::make_unique<Console>(config);
