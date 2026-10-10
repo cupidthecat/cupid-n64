@@ -44,6 +44,7 @@ int main() {
   test::video_tests();
   test::software_video_tests();
   test::audio_tests();
+  test::audio_boundary_tests();
   test::rdp_tests();
   test::console_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";

@@ -89,6 +89,7 @@ void rsp_tests();
 void video_tests();
 void software_video_tests();
 void audio_tests();
+void audio_boundary_tests();
 void rdp_tests();
 void console_tests();
 
