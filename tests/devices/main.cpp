@@ -30,6 +30,9 @@ int main() {
   test::si_boundary_tests();
   test::cartridge_status_tests();
   test::gamepad_tests();
+  test::peripheral_bus_tests();
+  test::peripheral_wire_tests();
+  test::peripheral_input_tests();
   test::stick_tests();
   test::gamecube_tests();
   test::gamecube_route_tests();
