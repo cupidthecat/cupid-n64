@@ -2,6 +2,7 @@ name: build
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -64,6 +65,7 @@ jobs:
         run: >-
           cmake -S . -B build -DCMAKE_CXX_COMPILER=clang++
           -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS_DEBUG="-O1 -g"
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
           -DCUPID_REQUIRE_HARDWARE_RENDERER_TESTS=ON
       - name: Build
