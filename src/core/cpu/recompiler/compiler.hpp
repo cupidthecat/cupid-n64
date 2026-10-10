@@ -61,6 +61,12 @@ struct CpuCompiler::Impl {
     InstructionTracker *tracker = nullptr;
     std::uint64_t generation = 0;
     std::size_t bytes = 0;
+    void reset() {
+      for (auto &entry : entries)
+        entry.reset();
+      tracker = nullptr;
+      generation = bytes = 0;
+    }
     Entry *find(const Key &key) const {
       auto *entry = entries[(key.pc >> 2) & 1023].get();
       while (entry && entry->key != key)
