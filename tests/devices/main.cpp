@@ -8,6 +8,7 @@ int main() {
   test::memory_bus_tests();
   test::instruction_tracking_tests();
   test::pi_tests();
+  test::pi_boundary_tests();
   test::sram_tests();
   test::flash_tests();
   test::cartridge_bus_tests();

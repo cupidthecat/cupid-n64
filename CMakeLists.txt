@@ -288,6 +288,7 @@ if(BUILD_TESTING)
     tests/devices/memory/bus_boundaries.cpp
     tests/devices/instruction_tracking.cpp
     tests/devices/pi.cpp
+    tests/devices/pi/boundaries/replay.cpp
     tests/devices/cartridge/sram.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/integration.cpp

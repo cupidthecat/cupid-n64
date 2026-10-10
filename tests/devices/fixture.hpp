@@ -53,6 +53,7 @@ void memory_word_pair_tests();
 void memory_bus_tests();
 void instruction_tracking_tests();
 void pi_tests();
+void pi_boundary_tests();
 void sram_tests();
 void flash_tests();
 void cartridge_bus_tests();
