@@ -70,6 +70,7 @@ void cached_delay_slot_tests();
 void entropy_tests();
 void cic_tests();
 void pif_tests();
+void cartridge_status_tests();
 void gamepad_tests();
 void stick_tests();
 void gamecube_tests();
