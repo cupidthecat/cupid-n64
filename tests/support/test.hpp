@@ -143,6 +143,7 @@ void cpu_replay_endian_tests();
 void cpu_replay_endian_linked_tests();
 void cpu_replay_cop2_memory_tests();
 void cpu_replay_cache_maintenance_tests();
+void cpu_replay_translation_tests();
 void cpu_replay_fpu_numeric_tests();
 
 } // namespace test
