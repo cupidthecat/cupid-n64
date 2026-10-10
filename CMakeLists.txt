@@ -306,6 +306,7 @@ if(BUILD_TESTING)
     tests/devices/system/entropy.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
+    tests/devices/si/boundaries/replay.cpp
     tests/devices/pif/cartridge_status.cpp
     tests/devices/gamepad.cpp
     tests/devices/controller/stick.cpp
