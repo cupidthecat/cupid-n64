@@ -81,6 +81,15 @@ std::vector<std::uint8_t> RendererState::capture(HardwareRenderer &renderer) {
   return archive.finish();
 }
 
+StateCheckpoint RendererState::checkpoint(HardwareRenderer &renderer) {
+  fence(renderer);
+  state::Archive archive(true);
+  visit(archive, renderer);
+  auto ranges = archive.ranges();
+  auto bytes = archive.finish();
+  return {std::move(bytes), std::move(ranges)};
+}
+
 std::unique_ptr<state::Archive> RendererState::prepare(HardwareRenderer &renderer,
                                                        std::span<const std::uint8_t> data) {
   auto archive = std::make_unique<state::Archive>(data);
@@ -94,20 +103,23 @@ std::unique_ptr<state::Archive> RendererState::prepare(HardwareRenderer &rendere
 void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
   auto &s = *renderer.implementation_;
   auto &p = *s.processor;
+  a.label("gpu.identity");
   a.identity<std::uint64_t>(0x4554415453445052ull);
   a.identity<std::uint32_t>(1);
   a.identity<std::uint64_t>(0x1cecd042b2619bc5ull);
   a.identity(static_cast<std::uint32_t>(p.rdram_size));
   registers(a, p);
+  a.label("gpu.crashed");
   const auto crashed = a.literal(s.crashed.load(std::memory_order_relaxed));
   a.defer([&s, crashed] { s.crashed.store(crashed, std::memory_order_relaxed); });
   auto tmem = std::make_shared<std::vector<std::uint8_t>>();
   if (!a.loading())
     *tmem = read_buffer(s.device, *p.tmem);
-  *tmem = a.owned_vector(*tmem, 4096);
+  *tmem = a.owned_vector(*tmem, 4096, "gpu.tmem");
   state::Archive::require(tmem->size() == 4096);
 
   auto &v = p.vi;
+  a.label("gpu.previous_image.present");
   const bool has_image = a.literal(bool(v.prev_scanout_image));
   auto pixels = std::make_shared<std::vector<std::uint8_t>>();
   std::uint32_t width = 0, height = 0, format = VK_FORMAT_R8G8B8A8_UNORM;
@@ -119,22 +131,28 @@ void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
     state::Archive::require(format == VK_FORMAT_R8G8B8A8_UNORM);
     *pixels = read_image(s.device, *v.prev_scanout_image, v.prev_image_layout);
   }
+  a.label("gpu.previous_image.width", 4);
   width = a.literal(width);
+  a.label("gpu.previous_image.height", 4);
   height = a.literal(height);
+  a.label("gpu.previous_image.format", 4);
   format = a.literal(format);
   state::Archive::require(width <= 4096 && height <= 4096);
   state::Archive::require(format == VK_FORMAT_R8G8B8A8_UNORM);
-  *pixels = a.owned_vector(*pixels, 4096 * 4096 * 4);
+  *pixels = a.owned_vector(*pixels, 4096 * 4096 * 4, "gpu.previous_image.rgba");
   state::Archive::require(pixels->size() == std::uint64_t(width) * height * 4);
   state::Archive::require(has_image ? width && height : !width && !height);
   auto restored_readback = std::make_shared<VideoFrame>();
   if (!a.loading())
     *restored_readback = s.readback->capture();
+  a.label("gpu.readback.width", 4);
   restored_readback->width = a.literal(restored_readback->width);
+  a.label("gpu.readback.height", 4);
   restored_readback->height = a.literal(restored_readback->height);
   state::Archive::require(restored_readback->width <= 4096 && restored_readback->height <= 4096);
   state::Archive::require(bool(restored_readback->width) == bool(restored_readback->height));
-  restored_readback->rgba = a.owned_vector(restored_readback->rgba, 4096 * 4096 * 4);
+  restored_readback->rgba =
+      a.owned_vector(restored_readback->rgba, 4096 * 4096 * 4, "gpu.readback.rgba");
   state::Archive::require(restored_readback->rgba.size() ==
                           std::uint64_t(restored_readback->width) * restored_readback->height * 4);
   if (a.loading()) {

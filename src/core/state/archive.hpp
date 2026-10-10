@@ -9,6 +9,8 @@
 #include <memory>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -21,9 +23,36 @@ public:
   using std::runtime_error::runtime_error;
 };
 
+struct StateRange {
+  std::string name;
+  std::size_t offset = 0, bytes = 0;
+  unsigned element_bytes = 1;
+};
+
 class Archive {
 public:
   Archive() = default;
+  explicit Archive(bool describe) : describe_(describe) {}
+  void label(std::string_view name, unsigned element_bytes = 1) {
+    if (!describe_)
+      return;
+    close_range();
+    ranges_.push_back({std::string(name), output_.size(), 0, element_bytes});
+  }
+  void member_label(std::string_view name, std::string_view member, unsigned element_bytes = 1) {
+    if (describe_)
+      label(std::string(name) + "." + std::string(member), element_bytes);
+  }
+  void indexed_label(std::string_view name, std::size_t index, std::string_view member,
+                     unsigned element_bytes = 1) {
+    if (describe_)
+      label(std::string(name) + "[" + std::to_string(index) + "]." + std::string(member),
+            element_bytes);
+  }
+  std::vector<StateRange> ranges() {
+    close_range();
+    return std::move(ranges_);
+  }
   explicit Archive(std::span<const std::uint8_t> input);
   bool loading() const {
     return loading_;
@@ -103,9 +132,23 @@ public:
     }
   }
 
-  template <typename T> void fixed_vector(std::vector<T> &values) {
+  template <typename T> void fixed_vector(std::vector<T> &values, std::string_view name = {}) {
+    if (!name.empty())
+      member_label(name, "size", 4);
     identity(static_cast<std::uint32_t>(values.size()));
+    if (!name.empty())
+      member_label(name, "data", sizeof(T));
     span(std::span(values));
+  }
+
+  template <typename T>
+  void indexed_fixed_vector(std::vector<T> &values, std::string_view name, std::size_t index,
+                            std::string_view member) {
+    if (describe_)
+      fixed_vector(values,
+                   std::string(name) + "[" + std::to_string(index) + "]." + std::string(member));
+    else
+      fixed_vector(values);
   }
 
   template <typename T> std::uint32_t vector(std::vector<T> &values, std::uint32_t maximum) {
@@ -124,8 +167,13 @@ public:
   }
 
   template <typename T>
-  std::vector<T> owned_vector(const std::vector<T> &values, std::uint32_t maximum) {
+  std::vector<T> owned_vector(const std::vector<T> &values, std::uint32_t maximum,
+                              std::string_view name = {}) {
+    if (!name.empty())
+      member_label(name, "size", 4);
     const auto size = literal(static_cast<std::uint32_t>(values.size()));
+    if (!name.empty())
+      member_label(name, "data", sizeof(T));
     require(size <= maximum);
     if (loading_) {
       require(size <= (input_.size() - position_) / sizeof(T));
@@ -151,6 +199,12 @@ public:
   void validate() const;
 
 private:
+  void close_range() {
+    if (!ranges_.empty())
+      ranges_.back().bytes = output_.size() - ranges_.back().offset;
+  }
+  bool describe_ = false;
+  std::vector<StateRange> ranges_;
   bool loading_ = false;
   std::span<const std::uint8_t> input_;
   std::size_t position_ = 0;
