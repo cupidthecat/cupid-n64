@@ -11,6 +11,7 @@ int main() {
   test::pi_boundary_tests();
   test::sram_tests();
   test::flash_tests();
+  test::flash_boundary_tests();
   test::cartridge_bus_tests();
   test::isviewer_tests();
   test::arcade_memory_tests();
