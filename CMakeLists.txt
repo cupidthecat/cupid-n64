@@ -327,6 +327,7 @@ if(BUILD_TESTING)
     tests/devices/video.cpp
     tests/devices/video/scanout.cpp
     tests/devices/audio.cpp
+    tests/devices/audio/boundaries/replay.cpp
     tests/devices/rdp.cpp
     tests/devices/console.cpp
   )
