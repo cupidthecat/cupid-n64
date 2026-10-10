@@ -34,6 +34,7 @@ public:
   void write_nibble(unsigned value);
 
 private:
+  friend class CoreState;
   enum class State { Region, Seed, Checksum, Run, Challenge, Dead };
   void poll();
   void push(bool value);

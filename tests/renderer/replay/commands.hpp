@@ -219,33 +219,34 @@ template <class Memory> void initialize_render(Memory &memory, const RenderCase 
   }
   const auto kind = texture_kinds[input.texture];
   std::vector<std::uint8_t> bytes;
+  const auto append_byte = [&](auto value) { bytes.push_back(static_cast<std::uint8_t>(value)); };
   for (unsigned y = 0; y < 8; ++y)
     for (unsigned x = 0; x < 8; ++x) {
       const unsigned index = x + y * 8;
       if (kind.format == 0 && kind.size == 2) {
         auto color = pixel16(x * 2, y * 3) | 1;
-        bytes.push_back(color >> 8);
-        bytes.push_back(color);
+        append_byte(color >> 8);
+        append_byte(color);
       } else if (kind.format == 0) {
         auto color = pixel32(x * 2, y * 3) | 255;
         for (unsigned shift : {24u, 16u, 8u, 0u})
-          bytes.push_back(color >> shift);
+          append_byte(color >> shift);
       } else if (kind.format == 1) {
-        bytes.push_back((x & 1) ? 160 + y * 5 : 64 + y * 11);
-        bytes.push_back(32 + x * 23 + y * 9);
+        append_byte((x & 1) ? 160 + y * 5 : 64 + y * 11);
+        append_byte(32 + x * 23 + y * 9);
       } else if (kind.size == 2) {
-        bytes.push_back(32 + x * 23 + y * 9);
-        bytes.push_back((x + y) & 1 ? 255 : 96);
+        append_byte(32 + x * 23 + y * 9);
+        append_byte((x + y) & 1 ? 255 : 96);
       } else if (kind.size == 1)
-        bytes.push_back(kind.format == 2   ? index * 3
-                        : kind.format == 3 ? ((index & 15) << 4) | ((index & 1) ? 15 : 7)
-                                           : index * 3);
+        append_byte(kind.format == 2   ? index * 3
+                    : kind.format == 3 ? ((index & 15) << 4) | ((index & 1) ? 15 : 7)
+                                       : index * 3);
       else {
         auto nibble = kind.format == 2   ? index & 15
                       : kind.format == 3 ? ((index & 7) << 1) | (index & 1)
                                          : index & 15;
         if (!(x & 1))
-          bytes.push_back(nibble << 4);
+          append_byte(nibble << 4);
         else
           bytes.back() |= nibble;
       }

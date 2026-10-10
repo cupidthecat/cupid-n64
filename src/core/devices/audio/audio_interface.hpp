@@ -55,6 +55,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   void update_decay();
   Rdram &ram_;
   MipsInterface &interrupts_;

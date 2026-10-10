@@ -18,6 +18,7 @@ public:
   void write_half(std::uint16_t value, PeripheralTiming timing) override;
 
 private:
+  friend class CoreState;
   PeripheralInterface &pi_;
   std::vector<std::uint8_t> ram_;
   std::uint32_t offset_ = 0;

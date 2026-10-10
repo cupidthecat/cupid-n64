@@ -15,6 +15,7 @@ public:
   void reset();
 
 private:
+  friend class CoreState;
   struct Impl;
   struct Emitter;
   std::unique_ptr<Impl> impl_;

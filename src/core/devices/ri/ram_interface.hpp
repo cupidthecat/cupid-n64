@@ -18,6 +18,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   std::array<std::uint32_t, 8> registers_{};
   bool current_loaded_ = false;
 };

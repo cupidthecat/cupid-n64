@@ -3,8 +3,14 @@
 namespace cupid::n64 {
 
 RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block)
-    : rsp(rsp), block(block), compiler(sljit_create_compiler(nullptr)), pipeline(rsp.pipeline_),
-      start(rsp.pc_) {}
+    : rsp(rsp), block(block), compiler(sljit_create_compiler(nullptr)), start(block.key.pc) {
+  pipeline.single_issue = block.key.flags & 8;
+  for (unsigned n = 0; n < pipeline.previous.size(); ++n) {
+    pipeline.previous[n].gpr = static_cast<std::uint32_t>(block.key.registers[n]);
+    pipeline.previous[n].vector = static_cast<std::uint32_t>(block.key.registers[n] >> 32);
+    pipeline.previous[n].load = (block.key.flags >> n) & 1;
+  }
+}
 
 RspCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);

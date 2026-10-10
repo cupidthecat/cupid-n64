@@ -51,6 +51,7 @@ public:
   std::vector<std::uint8_t> save_clock() const;
 
 private:
+  friend class CoreState;
   struct Implementation;
   std::unique_ptr<Implementation> implementation_;
 };

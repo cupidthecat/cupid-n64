@@ -26,6 +26,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   void poll();
   void freeze();
   void repeat_write(std::uint32_t address, unsigned bytes, std::uint64_t value);

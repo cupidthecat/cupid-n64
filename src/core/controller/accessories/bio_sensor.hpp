@@ -15,6 +15,7 @@ public:
   std::uint8_t read(std::uint16_t address) const;
 
 private:
+  friend class CoreState;
   HostClock clock_;
   std::uint64_t next_ = 0;
   std::uint64_t start_ = 0;

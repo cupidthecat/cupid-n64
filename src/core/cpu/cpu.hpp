@@ -54,6 +54,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   friend class CpuCompiler;
   enum class Mode { Kernel, Supervisor, User };
   enum class Segment { Invalid, Mapped, Cached, Direct, Cached32, Direct32 };

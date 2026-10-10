@@ -19,6 +19,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   EventQueue &events_;
   std::vector<std::uint8_t> data_;
   bool busy_ = false;

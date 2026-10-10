@@ -45,6 +45,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   friend class HardwareRenderer;
   struct Chip {
     bool present = false;

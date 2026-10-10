@@ -36,6 +36,7 @@ public:
                            std::span<std::uint8_t> output) override;
 
 private:
+  friend class CoreState;
   void sample();
   std::array<std::uint8_t, 8> report(unsigned mode) const;
   GameCubeInput input_;

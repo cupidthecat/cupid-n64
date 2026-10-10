@@ -116,6 +116,8 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   }
   if (!found) {
     auto block = std::make_shared<Impl::Block>();
+    block->key = key;
+    block->physical = physical;
     block->words = std::move(words);
     Emitter emitter(cpu, *block, key.pc, physical, wide);
     if (!emitter.compile())
@@ -128,6 +130,21 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
     for (auto index : block->entries)
       section.insert(Impl::Key{key.pc + index * 4, key.mode}, block, index);
     found = section.find(key);
+  }
+  if (!found->block->code) {
+    auto &block = *found->block;
+    const auto old_bytes = block.bytes;
+    auto entries = std::move(block.entries);
+    block.entries.clear();
+    Emitter emitter(cpu, block, block.key.pc, block.physical, (block.key.mode & 2) != 0);
+    if (!emitter.compile()) {
+      block.entries = std::move(entries);
+      block.bytes = old_bytes;
+      block.views.clear();
+      return cpu.run_interpreted_block(clock_target);
+    }
+    impl_->bytes = impl_->bytes - old_bytes + block.bytes;
+    section.bytes = section.bytes - old_bytes + block.bytes;
   }
   if (tracker && !found->tracked)
     tracker->watch(physical,

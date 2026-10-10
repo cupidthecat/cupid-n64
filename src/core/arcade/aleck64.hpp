@@ -54,6 +54,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   class Controller : public JoybusDevice {
   public:
     Controller(Aleck64 &board, unsigned player) : board_(board), player_(player) {}

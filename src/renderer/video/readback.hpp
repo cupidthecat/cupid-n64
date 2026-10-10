@@ -18,6 +18,8 @@ public:
   void start();
   void wait();
   VideoFrame take();
+  VideoFrame capture();
+  void restore(VideoFrame frame);
 
 private:
   void run();

@@ -21,6 +21,7 @@ public:
   void write(std::uint16_t address, std::uint8_t value);
 
 private:
+  friend class CoreState;
   std::shared_ptr<TransferCartridge> cartridge_;
   unsigned bank_ = 0;
   unsigned reset_ = 0;
