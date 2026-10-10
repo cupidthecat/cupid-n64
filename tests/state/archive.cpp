@@ -139,12 +139,84 @@ void archive_tests() {
   test::equal(values[2], 3);
 }
 
+enum class ArrayValue : std::int16_t { Negative = -2, Positive = 0x1234 };
+
+template <typename T, std::size_t Size>
+void array_roundtrip(std::array<T, Size> values, std::span<const std::uint8_t> golden) {
+  Archive writer;
+  writer.array(values);
+  const auto encoded = writer.finish();
+  test::equal(encoded.size(), golden.size() + 8);
+  test::equal(std::equal(golden.begin(), golden.end(), encoded.begin()), true);
+  std::array<T, Size> target{};
+  Archive reader(encoded);
+  reader.array(target);
+  test::equal(target == std::array<T, Size>{}, true);
+  reader.finish();
+  for (unsigned n = 0; n < Size; ++n) {
+    if constexpr (std::is_same_v<T, double>)
+      test::equal(std::bit_cast<std::uint64_t>(target[n]), std::bit_cast<std::uint64_t>(values[n]));
+    else if constexpr (std::is_enum_v<T>)
+      test::equal(static_cast<std::underlying_type_t<T>>(target[n]),
+                  static_cast<std::underlying_type_t<T>>(values[n]));
+    else
+      test::equal(target[n], values[n]);
+  }
+}
+
+void array_tests() {
+  const std::array<std::uint8_t, 4> bytes{0, 0x7f, 0x80, 0xff};
+  array_roundtrip(bytes, bytes);
+  const std::array<std::uint8_t, 8> signed_golden{0xfe, 0xff, 0xff, 0xff, 0x78, 0x56, 0x34, 0x12};
+  array_roundtrip(std::array<std::int32_t, 2>{-2, 0x12345678}, signed_golden);
+  const std::array<std::uint8_t, 4> enum_golden{0xfe, 0xff, 0x34, 0x12};
+  array_roundtrip(std::array<ArrayValue, 2>{ArrayValue::Negative, ArrayValue::Positive},
+                  enum_golden);
+  const std::array<std::uint8_t, 4> bool_golden{0, 1, 1, 0};
+  array_roundtrip(std::array<bool, 4>{false, true, true, false}, bool_golden);
+  const std::array<double, 3> floating{-0.0, std::bit_cast<double>(0x7ff800000000cafeull),
+                                       std::bit_cast<double>(0xfff0000000000123ull)};
+  const std::array<std::uint8_t, 24> floating_golden{0,    0,    0, 0, 0, 0, 0,    0x80,
+                                                     0xfe, 0xca, 0, 0, 0, 0, 0xf8, 0x7f,
+                                                     0x23, 1,    0, 0, 0, 0, 0xf0, 0xff};
+  array_roundtrip(floating, floating_golden);
+  array_roundtrip(std::array<std::uint64_t, 0>{}, std::span<const std::uint8_t>{});
+
+  const std::vector<std::uint32_t> values{0x12345678, 0xa5f0b3c2};
+  Archive writer;
+  writer.owned_vector(values, 2);
+  const auto encoded = writer.finish();
+  Archive reader(encoded);
+  const auto decoded = reader.owned_vector(std::vector<std::uint32_t>{}, 2);
+  reader.finish();
+  test::equal(decoded == values, true);
+  for (unsigned fault = 0; fault < 3; ++fault) {
+    auto damaged = encoded;
+    if (fault == 0)
+      damaged[0] = 3;
+    if (fault == 1)
+      damaged.erase(damaged.end() - 9);
+    if (fault == 2)
+      damaged.insert(damaged.end() - 8, 0);
+    checksum(damaged);
+    std::vector<std::uint32_t> target{0xdeadbeef};
+    test::equal(rejects([&] {
+                  Archive malformed(damaged);
+                  malformed.vector(target, 2);
+                  malformed.finish();
+                }),
+                true);
+    test::equal(target == std::vector<std::uint32_t>{0xdeadbeef}, true);
+  }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   if (argc > 1)
     return core_state_file_test(argc, argv);
   archive_tests();
+  array_tests();
   core_state_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
