@@ -21,12 +21,10 @@ void Cpu::flush_count() {
 }
 
 void Cpu::synchronize_timer(const std::function<void()> &devices) {
-  const auto ticks = (state_.clocks - count_clock_) >> 1;
-  // A synchronization boundary discards an incomplete timer tick.
-  count_clock_ = state_.clocks;
-  if (devices)
-    devices();
-  commit_count(ticks);
+  synchronize_timer([&] {
+    if (devices)
+      devices();
+  });
 }
 
 } // namespace cupid::n64
