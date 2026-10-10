@@ -66,7 +66,7 @@ void archive_tests() {
   for (std::size_t length = 0; length < bytes.size(); ++length) {
     word = 91;
     test::equal(rejects([&] {
-                  Archive reader(std::span(bytes).first(length));
+                  Archive reader{std::span(bytes).first(length)};
                   reader.fields(word, negative, enabled, number);
                   reader.array(array);
                   reader.finish();
