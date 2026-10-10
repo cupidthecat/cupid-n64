@@ -49,7 +49,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   if (tracker && section.tracker &&
       (section.tracker != tracker || section.generation != generation)) {
     impl_->bytes -= section.bytes;
-    section = {};
+    section.reset();
   }
   if (tracker) {
     section.tracker = tracker;
