@@ -61,7 +61,8 @@ void CoreState::visit(state::Archive &a, CpuCompiler &compiler, InstructionTrack
     std::sort(pages.begin(), pages.end());
   }
   const auto count = a.literal(static_cast<std::uint32_t>(pages.size()));
-  state::Archive::require(count <= 4096);
+  constexpr unsigned physical_page_count = 1u << 20;
+  state::Archive::require(count <= physical_page_count);
   auto restored = std::make_shared<Cache>(cache.cpu);
   std::uint32_t previous_page = 0;
   for (unsigned n = 0; n < count; ++n) {

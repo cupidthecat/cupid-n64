@@ -272,6 +272,120 @@ void dispatch_history_tests() {
     }
 }
 
+void cache_page_tests() {
+  Machine machine;
+  auto &c = machine.console;
+  c.run_interval(1);
+  for (unsigned page = 0; page < 4096; ++page) {
+    const auto offset = 0x00800040ull + page * 4096ull;
+    const auto pc = 0xffffffff80000000ull + offset + (offset >= 0x01000000 ? 0x01000000 : 0);
+    c.cpu().set_pc(pc);
+    const auto clocks = c.cpu().state().clocks;
+    c.run_interval(1);
+    test::equal(c.frozen(), false);
+    test::equal(c.cpu().state().pc, pc + 4);
+    test::equal(c.cpu().state().clocks > clocks, true);
+    if (page == 4094) {
+      const auto boundary = CoreState::capture(c);
+      CoreState::restore(c, boundary);
+      test::equal(CoreState::capture(c) == boundary, true);
+    }
+  }
+  std::vector<std::uint8_t> initial;
+  try {
+    initial = CoreState::capture(c);
+  } catch (const state::InvalidState &) {
+    test::equal(false, true);
+    return;
+  }
+  const std::array<std::uint8_t, 9> cache_start{1, 0x10, 0, 0, 0, 0x10, 0, 0, 1};
+  const auto count =
+      std::search(initial.begin(), initial.end(), cache_start.begin(), cache_start.end());
+  test::equal(count != initial.end(), true);
+  if (count != initial.end()) {
+    auto broken = initial;
+    const auto offset = static_cast<std::size_t>(count - initial.begin());
+    broken[offset + 2] = 0x10;
+    rewrite_checksum(broken);
+    test::equal(rejects(c, broken), true);
+    test::equal(CoreState::capture(c) == initial, true);
+  }
+  CoreState::restore(c, initial);
+  test::equal(CoreState::capture(c) == initial, true);
+  Machine fresh;
+  CoreState::restore(fresh.console, initial);
+  test::equal(CoreState::capture(fresh.console) == initial, true);
+  c.cpu().set_pc(0xffffffff80001000ull);
+  c.run_interval(33);
+  const auto expected = CoreState::capture(c);
+  fresh.console.cpu().set_pc(0xffffffff80001000ull);
+  fresh.console.run_interval(33);
+  test::equal(CoreState::capture(fresh.console) == expected, true);
+  CoreState::restore(c, initial);
+  c.cpu().set_pc(0xffffffff80001000ull);
+  c.run_interval(33);
+  test::equal(CoreState::capture(c) == expected, true);
+}
+
+void rsp_cache_history_tests() {
+  Machine machine;
+  auto &rsp = machine.console.signal();
+  for (unsigned block = 0; block < 65537; ++block) {
+    const auto pc = (block & 1023) * 4;
+    const auto opcode = 13 | ((block >> 10) << 6);
+    rsp.write_local(0x1000 | pc, 4, opcode);
+    rsp.write_local(0x1000 | ((pc + 4) & 0xfff), 4, 0);
+    rsp.write_status(0, pc);
+    rsp.write_io(16, 5);
+    rsp.advance(static_cast<std::uint32_t>(rsp.clocks() + 1));
+    test::equal(rsp.status().halted, true);
+    test::equal(rsp.status().broken, true);
+    test::equal(rsp.read_local(0x1000 | pc, 4), opcode);
+  }
+  std::vector<std::uint8_t> initial;
+  try {
+    initial = CoreState::capture(machine.console);
+  } catch (const state::InvalidState &) {
+    test::equal(false, true);
+    return;
+  }
+  const std::array<std::uint8_t, 33> cache_start{1, 0, 1, 0};
+  const auto count =
+      std::search(initial.begin(), initial.end(), cache_start.begin(), cache_start.end());
+  test::equal(count != initial.end(), true);
+  if (count != initial.end()) {
+    auto broken = initial;
+    const auto offset = static_cast<std::size_t>(count - initial.begin());
+    broken[offset + 2] = 0x40;
+    broken[offset + 3] = 2;
+    rewrite_checksum(broken);
+    test::equal(rejects(machine.console, broken), true);
+    test::equal(CoreState::capture(machine.console) == initial, true);
+  }
+  CoreState::restore(machine.console, initial);
+  test::equal(CoreState::capture(machine.console) == initial, true);
+  Machine fresh;
+  CoreState::restore(fresh.console, initial);
+  test::equal(CoreState::capture(fresh.console) == initial, true);
+  const auto resume = [](Machine &m) {
+    auto &signal = m.console.signal();
+    signal.write_local(0x1000, 4, test::i(9, 1, 1, 1));
+    signal.write_local(0x1004, 4, 13);
+    signal.write_status(0, 0);
+    signal.write_io(16, 5);
+    signal.advance(static_cast<std::uint32_t>(signal.clocks() + 1));
+    test::equal(signal.state().gpr[1], 1);
+    test::equal(signal.status().halted, true);
+  };
+  resume(machine);
+  const auto expected = CoreState::capture(machine.console);
+  resume(fresh);
+  test::equal(CoreState::capture(fresh.console) == expected, true);
+  CoreState::restore(machine.console, initial);
+  resume(machine);
+  test::equal(CoreState::capture(machine.console) == expected, true);
+}
+
 void memory_binding_tests() {
   for (unsigned memory = 0; memory < 2; ++memory) {
     Machine machine;
@@ -328,6 +442,8 @@ void accessory_tests() {
 void core_state_tests() {
   continuation_tests();
   dispatch_history_tests();
+  cache_page_tests();
+  rsp_cache_history_tests();
   memory_binding_tests();
   invalid_tests();
   accessory_tests();

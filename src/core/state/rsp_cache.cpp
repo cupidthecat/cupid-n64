@@ -9,6 +9,7 @@ namespace cupid::n64 {
 void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
   using Cache = RspCompiler::Impl;
   using Block = Cache::Block;
+  constexpr std::uint64_t maximum_cache_bytes = 36ull * 1024 * 1024;
   auto &cache = *compiler.impl_;
   const auto pipeline = [&](Rsp::Pipeline &p) {
     for (auto &stage : p.previous) {
@@ -72,7 +73,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
         ordered.push_back(block.get());
   }
   const auto count = a.literal(static_cast<std::uint32_t>(ordered.size()));
-  state::Archive::require(count <= 65536);
+  state::Archive::require(count <= maximum_cache_bytes);
   auto restored = std::make_shared<Cache>(cache.rsp);
   for (unsigned n = 0; n < count; ++n) {
     std::unique_ptr<Block> decoded;
@@ -104,7 +105,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       for (unsigned word = 0; word < block->words.size(); ++word)
         block->lines.set(((block->key.pc + word * 4) & 0xfff) >> 5);
       restored->bytes += block->bytes;
-      state::Archive::require(restored->bytes <= 36 * 1024 * 1024);
+      state::Archive::require(restored->bytes <= maximum_cache_bytes);
       ordered.push_back(block);
       restored->blocks[block->key].push_back(std::move(decoded));
     }
