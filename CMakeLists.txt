@@ -292,6 +292,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/sram.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/flash/replay.cpp
+    tests/devices/cartridge/flash/cpu/replay.cpp
     tests/devices/cartridge/integration.cpp
     tests/devices/cartridge/isviewer.cpp
     tests/devices/arcade/memory.cpp
