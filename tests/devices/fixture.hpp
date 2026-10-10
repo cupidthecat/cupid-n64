@@ -91,6 +91,7 @@ void gamecube_replay_tests();
 void accessory_tests();
 void handheld_tests();
 void disk_drive_tests();
+void disk_cpu_tests();
 void disk_boundary_tests();
 void disk_clock_tests();
 void disk_image_tests();

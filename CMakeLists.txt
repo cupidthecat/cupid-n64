@@ -350,6 +350,7 @@ if(BUILD_TESTING)
     tests/devices/controller/accessories.cpp
     tests/devices/controller/handheld.cpp
     tests/devices/disk/drive.cpp
+    tests/devices/disk/cpu/replay.cpp
     tests/devices/disk/boundaries/fixture.cpp
     tests/devices/disk/boundaries/commands.cpp
     tests/devices/disk/boundaries/transfers.cpp

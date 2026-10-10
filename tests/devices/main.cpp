@@ -46,6 +46,7 @@ int main() {
   test::accessory_tests();
   test::handheld_tests();
   test::disk_drive_tests();
+  test::disk_cpu_tests();
   test::disk_boundary_tests();
   test::disk_clock_tests();
   test::disk_image_tests();
