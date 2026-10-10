@@ -121,6 +121,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   std::uint32_t read_register(std::uint32_t address);
   void write_register(std::uint32_t address, std::uint32_t value);
   std::int64_t pending_clocks() const;

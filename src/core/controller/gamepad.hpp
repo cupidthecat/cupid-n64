@@ -37,6 +37,7 @@ public:
                            std::span<std::uint8_t> output) override;
 
 private:
+  friend class CoreState;
   enum class Pak { None, Memory, Rumble, Transfer, BioSensor };
   void format();
   RandomGenerator &random_;

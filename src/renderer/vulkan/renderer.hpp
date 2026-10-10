@@ -21,6 +21,7 @@ public:
   bool crashed() const;
 
 private:
+  friend class RendererState;
   struct Implementation;
   std::unique_ptr<Implementation> implementation_;
 };

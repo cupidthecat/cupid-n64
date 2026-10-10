@@ -109,6 +109,12 @@ add_library(cupid_core
   src/core/cartridge/profile/boot.cpp
   src/core/cartridge/profile/profile.cpp
   src/core/system/console.cpp
+  src/core/state/archive.cpp
+  src/core/state/core_state.cpp
+  src/core/state/rsp_cache.cpp
+  src/core/state/cpu_cache.cpp
+  src/core/state/devices.cpp
+  src/core/state/controllers.cpp
   src/core/disk/drive.cpp
   src/core/disk/controller/commands.cpp
   src/core/disk/controller/transfers.cpp
@@ -173,6 +179,18 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(core_state_tests
+    tests/state/archive.cpp
+    tests/state/core.cpp
+  )
+  target_link_libraries(core_state_tests PRIVATE cupid_core)
+  add_test(NAME core_state COMMAND core_state_tests)
+  add_test(NAME core_state_file_write COMMAND core_state_tests --write-state
+    "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
+  add_test(NAME core_state_file_read COMMAND core_state_tests --read-state
+    "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
+  set_tests_properties(core_state_file_write PROPERTIES FIXTURES_SETUP core_state_file)
+  set_tests_properties(core_state_file_read PROPERTIES FIXTURES_REQUIRED core_state_file)
   add_executable(video_output_tests tests/desktop/video_output.cpp)
   target_link_libraries(video_output_tests PRIVATE cupid_video_output)
   add_test(NAME cpu_video_output COMMAND video_output_tests)
@@ -369,6 +387,12 @@ if(BUILD_TESTING)
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
   if(CUPID_HARDWARE_RENDERER)
+    add_executable(renderer_state_tests tests/state/renderer.cpp)
+    target_link_libraries(renderer_state_tests PRIVATE cupid_renderer)
+    add_test(NAME renderer_state COMMAND renderer_state_tests)
+    add_test(NAME renderer_state_fallback COMMAND renderer_state_tests)
+    set_tests_properties(renderer_state_fallback PROPERTIES
+      ENVIRONMENT "PARALLEL_RDP_ALLOW_EXTERNAL_HOST=0")
     add_executable(renderer_readback_tests tests/renderer/readback.cpp)
     target_link_libraries(renderer_readback_tests PRIVATE cupid_renderer)
     add_test(NAME frame_readback COMMAND renderer_readback_tests)
@@ -380,7 +404,8 @@ if(BUILD_TESTING)
     target_link_libraries(renderer_tests PRIVATE cupid_renderer)
     add_test(NAME hardware_renderer COMMAND renderer_tests)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
-      set_tests_properties(hardware_renderer PROPERTIES SKIP_RETURN_CODE 77)
+      set_tests_properties(hardware_renderer renderer_state renderer_state_fallback
+        PROPERTIES SKIP_RETURN_CODE 77)
     endif()
   endif()
 endif()

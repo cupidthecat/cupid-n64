@@ -39,6 +39,21 @@ VideoFrame FrameReadback::take() {
   return std::exchange(frame_, {});
 }
 
+VideoFrame FrameReadback::capture() {
+  std::unique_lock lock(mutex_);
+  condition_.wait(lock, [this] { return !pending_; });
+  if (error_)
+    std::rethrow_exception(error_);
+  return frame_;
+}
+
+void FrameReadback::restore(VideoFrame frame) {
+  std::unique_lock lock(mutex_);
+  condition_.wait(lock, [this] { return !pending_; });
+  frame_ = std::move(frame);
+  error_ = {};
+}
+
 void FrameReadback::run() {
   std::unique_lock lock(mutex_);
   for (;;) {

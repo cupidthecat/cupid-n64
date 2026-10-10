@@ -14,6 +14,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   std::vector<std::uint8_t> data_;
 };
 

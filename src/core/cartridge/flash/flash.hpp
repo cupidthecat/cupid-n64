@@ -31,6 +31,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   struct Model {
     std::uint16_t manufacturer, device;
     bool word_indexed;

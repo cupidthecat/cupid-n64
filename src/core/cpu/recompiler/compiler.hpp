@@ -34,6 +34,8 @@ struct CpuCompiler::Impl {
       unsigned count = 0;
     };
     using Function = void (*)(const std::uint64_t *);
+    Key key{};
+    std::uint32_t physical = 0;
     std::vector<std::uint32_t> words;
     std::vector<unsigned> entries;
     std::vector<InstructionView> views;

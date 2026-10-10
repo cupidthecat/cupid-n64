@@ -12,6 +12,7 @@ public:
                            std::span<std::uint8_t> output) override;
 
 private:
+  friend class CoreState;
   std::int8_t x_ = 0;
   std::int8_t y_ = 0;
   bool left_ = false;

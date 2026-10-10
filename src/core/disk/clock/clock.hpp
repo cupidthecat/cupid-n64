@@ -19,6 +19,7 @@ public:
   bool valid() const;
 
 private:
+  friend class CoreState;
   void initialize();
   void advance(std::uint64_t seconds);
   HostClock clock_;
