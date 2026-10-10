@@ -34,6 +34,8 @@ int main() {
   test::peripheral_wire_tests();
   test::peripheral_input_tests();
   test::pak_bank_tests();
+  test::transfer_board_tests();
+  test::transfer_special_tests();
   test::stick_tests();
   test::gamecube_tests();
   test::gamecube_route_tests();
