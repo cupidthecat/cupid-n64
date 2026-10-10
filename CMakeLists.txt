@@ -317,6 +317,8 @@ if(BUILD_TESTING)
     tests/devices/controller/commands/wire_replay.cpp
     tests/devices/controller/commands/input_replay.cpp
     tests/devices/controller/banks/replay.cpp
+    tests/devices/controller/transfer/board_replay.cpp
+    tests/devices/controller/transfer/special_replay.cpp
     tests/devices/controller/stick.cpp
     tests/devices/controller/gamecube/commands.cpp
     tests/devices/controller/gamecube/pif.cpp
