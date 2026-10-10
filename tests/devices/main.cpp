@@ -25,6 +25,7 @@ int main() {
   test::entropy_tests();
   test::cic_tests();
   test::pif_tests();
+  test::cartridge_status_tests();
   test::gamepad_tests();
   test::stick_tests();
   test::gamecube_tests();
