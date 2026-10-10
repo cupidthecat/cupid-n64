@@ -17,11 +17,16 @@ class CoreState {
 public:
   static std::vector<std::uint8_t> capture(Console &console);
   static void restore(Console &console, std::span<const std::uint8_t> data);
+  static std::unique_ptr<state::Archive> prepare(Console &console,
+                                                 std::span<const std::uint8_t> data);
 
 private:
   static void visit(state::Archive &archive, Console &console);
   static void visit(state::Archive &archive, Cpu &cpu);
   static void visit(state::Archive &archive, Rsp &rsp);
+  static void visit(state::Archive &archive, RspCompiler &compiler);
+  static void visit(state::Archive &archive, CpuCompiler &compiler, InstructionTracker &tracker);
+  static void visit(state::Archive &archive, InstructionTracker &tracker);
   static void visit(state::Archive &archive, Rdram &ram);
   static void visit(state::Archive &archive, EventQueue &events);
   static void visit(state::Archive &archive, RandomGenerator &random);

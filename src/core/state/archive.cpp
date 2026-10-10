@@ -25,7 +25,7 @@ void Archive::require(bool condition) {
 
 std::vector<std::uint8_t> Archive::finish() {
   if (loading_) {
-    require(position_ == input_.size());
+    validate();
     for (auto &mutation : mutations_)
       mutation();
     mutations_.clear();
@@ -33,6 +33,10 @@ std::vector<std::uint8_t> Archive::finish() {
   }
   literal(fingerprint(output_));
   return std::move(output_);
+}
+
+void Archive::validate() const {
+  require(loading_ && position_ == input_.size());
 }
 
 } // namespace cupid::n64::state

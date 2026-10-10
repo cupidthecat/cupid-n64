@@ -111,6 +111,8 @@ add_library(cupid_core
   src/core/system/console.cpp
   src/core/state/archive.cpp
   src/core/state/core_state.cpp
+  src/core/state/rsp_cache.cpp
+  src/core/state/cpu_cache.cpp
   src/core/state/devices.cpp
   src/core/state/controllers.cpp
   src/core/disk/drive.cpp
@@ -384,6 +386,12 @@ if(BUILD_TESTING)
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
   if(CUPID_HARDWARE_RENDERER)
+    add_executable(renderer_state_tests tests/state/renderer.cpp)
+    target_link_libraries(renderer_state_tests PRIVATE cupid_renderer)
+    add_test(NAME renderer_state COMMAND renderer_state_tests)
+    add_test(NAME renderer_state_fallback COMMAND renderer_state_tests)
+    set_tests_properties(renderer_state_fallback PROPERTIES
+      ENVIRONMENT "PARALLEL_RDP_ALLOW_EXTERNAL_HOST=0")
     add_executable(renderer_readback_tests tests/renderer/readback.cpp)
     target_link_libraries(renderer_readback_tests PRIVATE cupid_renderer)
     add_test(NAME frame_readback COMMAND renderer_readback_tests)
@@ -395,7 +403,8 @@ if(BUILD_TESTING)
     target_link_libraries(renderer_tests PRIVATE cupid_renderer)
     add_test(NAME hardware_renderer COMMAND renderer_tests)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
-      set_tests_properties(hardware_renderer PROPERTIES SKIP_RETURN_CODE 77)
+      set_tests_properties(hardware_renderer renderer_state renderer_state_fallback
+        PROPERTIES SKIP_RETURN_CODE 77)
     endif()
   endif()
 endif()

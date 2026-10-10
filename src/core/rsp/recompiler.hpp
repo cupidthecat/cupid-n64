@@ -17,6 +17,7 @@ public:
   void expose_memory();
 
 private:
+  friend class CoreState;
   struct Impl;
   struct Emitter;
   std::unique_ptr<Impl> impl_;

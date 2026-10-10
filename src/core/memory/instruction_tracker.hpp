@@ -47,6 +47,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   struct Section {
     std::bitset<128> lines;
     std::uint64_t generation = 1;

@@ -12,17 +12,26 @@ std::vector<std::uint8_t> CoreState::capture(Console &console) {
 }
 
 void CoreState::restore(Console &console, std::span<const std::uint8_t> data) {
+  auto archive = prepare(console, data);
+  archive->finish();
+}
+
+std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
+                                                   std::span<const std::uint8_t> data) {
   const auto frequency = console.audio_.frequency_;
-  state::Archive archive(data);
-  visit(archive, console);
-  archive.finish();
-  if (console.audio_.frequency_ != frequency && console.audio_.rate_)
-    console.audio_.rate_(console.audio_.frequency_);
+  auto archive = std::make_unique<state::Archive>(data);
+  visit(*archive, console);
+  archive->validate();
+  archive->defer([&console, frequency] {
+    if (console.audio_.frequency_ != frequency && console.audio_.rate_)
+      console.audio_.rate_(console.audio_.frequency_);
+  });
+  return archive;
 }
 
 void CoreState::visit(state::Archive &a, Console &c) {
   a.identity<std::uint64_t>(0x4554415453445043ull);
-  a.identity<std::uint32_t>(1);
+  a.identity<std::uint32_t>(3);
   a.identity(c.config_.region);
   a.identity(c.config_.expansion);
   a.identity(c.config_.cic);
@@ -82,11 +91,9 @@ void CoreState::visit(state::Archive &a, Console &c) {
   a.fields(c.synchronized_clock_, c.clock_target_, c.frozen_);
   if (c.arcade_)
     visit(a, *c.arcade_);
-  a.defer([&c] {
-    c.cpu_.compiler_->reset();
-    c.rsp_.compiler_->reset();
-    c.ram_.instructions_.invalidate_all();
-  });
+  visit(a, *c.rsp_.compiler_);
+  visit(a, c.ram_.instructions_);
+  visit(a, *c.cpu_.compiler_, c.ram_.instructions_);
 }
 
 void CoreState::visit(state::Archive &a, RandomGenerator &r) {

@@ -59,7 +59,7 @@ public:
   }
 
   template <typename T> T field(T &value) {
-    const auto decoded = literal(value);
+    const auto decoded = literal(loading_ ? T{} : value);
     defer([&value, decoded] { value = decoded; });
     return decoded;
   }
@@ -69,7 +69,7 @@ public:
   }
 
   template <typename T> T bounded(T &value, T minimum, T maximum) {
-    const auto decoded = literal(value);
+    const auto decoded = literal(loading_ ? T{} : value);
     require(decoded >= minimum && decoded <= maximum);
     defer([&value, decoded] { value = decoded; });
     return decoded;
@@ -90,7 +90,7 @@ public:
     }
   }
 
-  template <typename T> void span(std::span<T> values) {
+  template <typename T, std::size_t Extent> void span(std::span<T, Extent> values) {
     if (loading_) {
       require(values.size() <= (input_.size() - position_) / sizeof(T));
       auto decoded = std::make_shared<std::vector<T>>(values.size());
@@ -123,6 +123,22 @@ public:
     return size;
   }
 
+  template <typename T>
+  std::vector<T> owned_vector(const std::vector<T> &values, std::uint32_t maximum) {
+    const auto size = literal(static_cast<std::uint32_t>(values.size()));
+    require(size <= maximum);
+    if (loading_) {
+      require(size <= (input_.size() - position_) / sizeof(T));
+      std::vector<T> decoded(size);
+      for (auto &value : decoded)
+        value = literal(T{});
+      return decoded;
+    }
+    for (const auto value : values)
+      literal(value);
+    return values;
+  }
+
   void bytes_identity(std::span<const std::uint8_t> bytes) {
     identity(static_cast<std::uint64_t>(bytes.size()));
     identity(fingerprint(bytes));
@@ -132,6 +148,7 @@ public:
       mutations_.push_back(std::move(mutation));
   }
   std::vector<std::uint8_t> finish();
+  void validate() const;
 
 private:
   bool loading_ = false;

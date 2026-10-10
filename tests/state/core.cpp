@@ -53,10 +53,11 @@ struct Machine {
     console.cpu().write_control(Compare, 0x10000000);
     console.cpu().set_pc(0xffffffff80001000ull);
     console.cpu().state().gpr[2] = 0xffffffff80002000ull;
-    console.ram().write_word(0x1000, test::i(9, 1, 1, 1));
-    console.ram().write_word(0x1004, test::i(0x2b, 2, 1, 0));
-    console.ram().write_word(0x1008, test::i(4, 0, 0, 0xfffd));
-    console.ram().write_word(0x100c, test::i(9, 3, 3, 7));
+    console.write(0x1000, 4, test::i(9, 1, 1, 1));
+    console.write(0x1004, 4, test::i(0x2b, 2, 1, 0));
+    console.write(0x1008, 4, test::i(4, 0, 0, 0xfffd));
+    console.write(0x100c, 4, test::i(9, 3, 3, 7));
+    test::equal(console.read(0x1000, 4).value, test::i(9, 1, 1, 1));
     console.connect_controller(0, true);
     console.connect_mouse(1);
     console.connect_gamecube_controller(2);
@@ -123,7 +124,7 @@ void continuation_tests() {
         std::array<std::uint8_t, 1> response{};
         test::equal(c.eeprom().communicate(command, response).valid, true);
         for (unsigned n = 0; n < 64; ++n)
-          c.ram().write_word(0x2800 + n * 4, 0x20008000 + n);
+          c.write(0x2800 + n * 4, 4, 0x20008000 + n);
         c.audio().write_word(16, 0);
         c.audio().advance(static_cast<std::uint32_t>(c.audio().clocks()));
         c.audio().write_word(0, 0x2800);
@@ -138,13 +139,13 @@ void continuation_tests() {
         c.cpu().execute(test::i(0x2f, 2, 0x15, 0));
         const auto expected = CoreState::capture(c);
         const auto expected_audio = machine.audio;
-        c.ram().write_word(0x1000, test::i(9, 1, 1, 0x77));
+        c.write(0x1000, 4, test::i(9, 1, 1, 0x77));
         c.cpu().state().gpr[5] = 0xffffffff80001000ull;
         c.cpu().execute(test::i(0x2f, 5, 0x10, 0));
         c.cpu().set_pc(0xffffffff80001000ull);
         machine.run(mode, 10);
         c.cpu().request_nmi();
-        c.ram().write_word(0x2000, 0xdeadbeef);
+        c.write(0x2000, 4, 0xdeadbeef);
         c.controller(0).pak_data()[0x9000] = 0x57;
         c.flash().data()[0x8000] = 0x31;
         c.eeprom().data()[31] = 0x83;
@@ -180,7 +181,7 @@ void invalid_tests() {
     if (fault == 0)
       bytes[0] ^= 1;
     if (fault == 1) {
-      bytes[8] = 2;
+      bytes[8] = 4;
       rewrite_checksum(bytes);
     }
     if (fault == 2) {
@@ -208,6 +209,88 @@ void invalid_tests() {
   const auto before = CoreState::capture(wrong_ram.console);
   test::equal(rejects(wrong_ram.console, valid), true);
   test::equal(CoreState::capture(wrong_ram.console) == before, true);
+}
+
+void dispatch_history_tests() {
+  for (unsigned length : {4u, 8u, 16u, 31u})
+    for (unsigned budget : {1u, 3u, 9u, 33u}) {
+      Machine machine;
+      auto &c = machine.console;
+      c.write(0x1800, 4, test::i(4, 0, 0, static_cast<std::uint16_t>(length + 1)));
+      c.write(0x1804, 4, 0);
+      for (unsigned n = 0; n < length; ++n)
+        c.write(0x1808 + n * 4, 4, test::i(9, 6, 6, 1));
+      c.write(0x1808 + length * 4, 4, test::r(8, 31, 0, 0));
+      c.write(0x180c + length * 4, 4, test::i(9, 7, 7, 1));
+      c.cpu().state().gpr[31] = 0xffffffff80001800ull;
+      c.cpu().set_pc(0xffffffff80001800ull);
+      c.run_interval(1);
+      test::equal(c.cpu().state().pc, 0xffffffff80001808ull + length * 4);
+      c.cpu().state().gpr[5] = 0xffffffff80001800ull;
+      c.cpu().execute(test::i(0x2f, 5, 0x10, 0));
+      c.cpu().set_pc(0xffffffff80001808ull);
+      const auto initial = CoreState::capture(c);
+      if (length == 4 && budget == 1) {
+        const auto put = [](std::vector<std::uint8_t> &bytes, unsigned size, std::uint64_t value) {
+          for (unsigned n = 0; n < size; ++n)
+            bytes.push_back(static_cast<std::uint8_t>(value >> (n * 8)));
+        };
+        std::vector<std::uint8_t> recipe;
+        put(recipe, 8, 0xffffffff80001800ull);
+        put(recipe, 4, 0x20000002);
+        put(recipe, 4, 0x1800);
+        const auto start =
+            std::search(initial.begin(), initial.end(), recipe.begin(), recipe.end());
+        test::equal(start != initial.end(), true);
+        if (start != initial.end()) {
+          const auto offset = static_cast<std::size_t>(start - initial.begin());
+          for (unsigned fault = 0; fault < 4; ++fault) {
+            auto broken = initial;
+            if (fault == 0)
+              broken[offset + 12] ^= 1;
+            if (fault == 1)
+              broken[offset + 11] |= 0x80;
+            if (fault == 2)
+              std::fill_n(broken.begin() + offset + 16, 8, std::uint8_t{0xff});
+            if (fault == 3)
+              broken[offset + 28 + (length + 4) * 4] = 1;
+            rewrite_checksum(broken);
+            test::equal(rejects(c, broken), true);
+            test::equal(CoreState::capture(c) == initial, true);
+          }
+        }
+      }
+      c.run_interval(budget);
+      const auto expected = CoreState::capture(c);
+      CoreState::restore(c, initial);
+      c.run_interval(budget);
+      test::equal(CoreState::capture(c) == expected, true);
+      Machine fresh;
+      CoreState::restore(fresh.console, initial);
+      fresh.console.run_interval(budget);
+      test::equal(CoreState::capture(fresh.console) == expected, true);
+    }
+}
+
+void memory_binding_tests() {
+  for (unsigned memory = 0; memory < 2; ++memory) {
+    Machine machine;
+    machine.run(2, 3);
+    const auto original = CoreState::capture(machine.console);
+    if (memory == 0)
+      static_cast<void>(machine.console.ram().words());
+    else
+      static_cast<void>(machine.console.signal().imem());
+    const auto exposed = CoreState::capture(machine.console);
+    test::equal(original != exposed, true);
+    test::equal(rejects(machine.console, original), true);
+    test::equal(CoreState::capture(machine.console) == exposed, true);
+    CoreState::restore(machine.console, exposed);
+    test::equal(CoreState::capture(machine.console) == exposed, true);
+    Machine fresh;
+    CoreState::restore(fresh.console, exposed);
+    test::equal(CoreState::capture(fresh.console) == exposed, true);
+  }
 }
 
 void accessory_tests() {
@@ -244,6 +327,8 @@ void accessory_tests() {
 
 void core_state_tests() {
   continuation_tests();
+  dispatch_history_tests();
+  memory_binding_tests();
   invalid_tests();
   accessory_tests();
 }

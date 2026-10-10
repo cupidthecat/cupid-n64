@@ -21,10 +21,11 @@ FetchContent_Declare(renderer_loader
   SOURCE_SUBDIR .cupid-package
 )
 FetchContent_MakeAvailable(renderer_rdp renderer_backend renderer_headers renderer_loader)
+include(cmake/RendererState.cmake)
 
 set(renderer_sources)
 foreach(source command_ring rdp_device rdp_dump_write rdp_renderer video_interface)
-  list(APPEND renderer_sources "${renderer_rdp_SOURCE_DIR}/parallel-rdp/${source}.cpp")
+  list(APPEND renderer_sources "${renderer_state_sources}/${source}.cpp")
 endforeach()
 foreach(source
   buffer buffer_pool command_buffer command_pool context cookie descriptor_set device
@@ -42,7 +43,7 @@ list(APPEND renderer_sources "${renderer_loader_SOURCE_DIR}/volk.c")
 add_library(cupid_renderer_dependency STATIC ${renderer_sources})
 target_compile_features(cupid_renderer_dependency PUBLIC cxx_std_17)
 target_include_directories(cupid_renderer_dependency SYSTEM PUBLIC
-  "${renderer_rdp_SOURCE_DIR}/parallel-rdp"
+  "${renderer_state_sources}"
   "${renderer_backend_SOURCE_DIR}/vulkan"
   "${renderer_backend_SOURCE_DIR}/util"
   "${renderer_loader_SOURCE_DIR}"
@@ -60,6 +61,9 @@ endif()
 
 add_library(cupid_renderer
   src/renderer/vulkan/renderer.cpp
+  src/renderer/state/renderer_state.cpp
+  src/renderer/state/registers.cpp
+  src/renderer/state/machine_state.cpp
   src/renderer/video/readback.cpp
 )
 target_link_libraries(cupid_renderer PUBLIC cupid_core PRIVATE cupid_renderer_dependency)
