@@ -161,7 +161,7 @@ std::uint32_t Console::run_interval(std::uint32_t limit) {
   const auto start = cpu_.state().clocks;
   const auto queue_limit = static_cast<std::uint64_t>(std::max(0, events_.time_to_event()));
   clock_target_ =
-      start + std::min({std::uint64_t(limit), queue_limit, cpu_.synchronization_limit()});
+      start + std::min(std::uint64_t(limit), std::min(queue_limit, cpu_.synchronization_limit()));
   do {
     if (!cpu_.run_block(clock_target_)) {
       cpu_.step();
