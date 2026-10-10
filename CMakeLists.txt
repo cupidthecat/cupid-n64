@@ -271,6 +271,7 @@ if(BUILD_TESTING)
     tests/cpu/replay/endian/linked/replay.cpp
     tests/cpu/replay/cop2_memory/replay.cpp
     tests/cpu/replay/cache/maintenance/replay.cpp
+    tests/cpu/replay/translation/replay.cpp
     tests/cpu/replay/fpu/numeric/replay.cpp
   )
   target_link_libraries(cpu_tests PRIVATE cupid_core)
