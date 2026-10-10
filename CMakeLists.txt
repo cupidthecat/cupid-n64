@@ -313,6 +313,9 @@ if(BUILD_TESTING)
     tests/devices/si/boundaries/replay.cpp
     tests/devices/pif/cartridge_status.cpp
     tests/devices/gamepad.cpp
+    tests/devices/controller/bus/replay.cpp
+    tests/devices/controller/commands/wire_replay.cpp
+    tests/devices/controller/commands/input_replay.cpp
     tests/devices/controller/stick.cpp
     tests/devices/controller/gamecube/commands.cpp
     tests/devices/controller/gamecube/pif.cpp
