@@ -47,6 +47,9 @@ int main() {
   test::audio_boundary_tests();
   test::rdp_tests();
   test::console_tests();
+  test::machine_reset_tests();
+  test::reset_reuse_tests();
+  test::cpu_event_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

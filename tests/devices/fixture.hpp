@@ -92,5 +92,8 @@ void audio_tests();
 void audio_boundary_tests();
 void rdp_tests();
 void console_tests();
+void machine_reset_tests();
+void reset_reuse_tests();
+void cpu_event_tests();
 
 } // namespace test

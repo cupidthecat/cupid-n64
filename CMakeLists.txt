@@ -304,6 +304,9 @@ if(BUILD_TESTING)
     tests/devices/system/timer_dispatch.cpp
     tests/devices/system/cached_delay_slots.cpp
     tests/devices/system/entropy.cpp
+    tests/devices/system/reset/immediate/replay.cpp
+    tests/devices/system/reset/native/replay.cpp
+    tests/devices/system/events/replay.cpp
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/pif/boot/replay.cpp
