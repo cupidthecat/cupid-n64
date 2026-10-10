@@ -78,6 +78,7 @@ void gamepad_tests();
 void peripheral_bus_tests();
 void peripheral_wire_tests();
 void peripheral_input_tests();
+void pak_bank_tests();
 void stick_tests();
 void gamecube_tests();
 void gamecube_route_tests();

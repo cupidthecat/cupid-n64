@@ -33,6 +33,7 @@ int main() {
   test::peripheral_bus_tests();
   test::peripheral_wire_tests();
   test::peripheral_input_tests();
+  test::pak_bank_tests();
   test::stick_tests();
   test::gamecube_tests();
   test::gamecube_route_tests();
