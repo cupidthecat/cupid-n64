@@ -4,6 +4,7 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -94,12 +95,10 @@ public:
     if (loading_) {
       require(values.size() <= (input_.size() - position_) / sizeof(T));
       auto decoded = std::make_shared<std::vector<T>>(values.size());
-      for (auto &value : *decoded)
-        value = literal(T{});
+      read_elements(std::span(*decoded));
       defer([values, decoded] { std::copy(decoded->begin(), decoded->end(), values.begin()); });
     } else {
-      for (const auto value : values)
-        literal(value);
+      write_elements(std::span<const T>(values));
     }
   }
 
@@ -114,8 +113,7 @@ public:
     if (loading_) {
       require(size <= (input_.size() - position_) / sizeof(T));
       auto decoded = std::make_shared<std::vector<T>>(size);
-      for (auto &value : *decoded)
-        value = literal(T{});
+      read_elements(std::span(*decoded));
       defer([&values, decoded] { values.swap(*decoded); });
     } else {
       span(std::span(values));
@@ -130,12 +128,10 @@ public:
     if (loading_) {
       require(size <= (input_.size() - position_) / sizeof(T));
       std::vector<T> decoded(size);
-      for (auto &value : decoded)
-        value = literal(T{});
+      read_elements(std::span(decoded));
       return decoded;
     }
-    for (const auto value : values)
-      literal(value);
+    write_elements(std::span<const T>(values));
     return values;
   }
 
@@ -151,6 +147,35 @@ public:
   void validate() const;
 
 private:
+  template <typename T>
+  static constexpr bool native_bytes =
+      (std::is_integral_v<T> && !std::is_same_v<T, bool> && sizeof(T) <= 8 &&
+       (sizeof(T) == 1 || std::endian::native == std::endian::little)) ||
+      (std::is_same_v<T, double> && sizeof(T) == 8 && std::numeric_limits<T>::is_iec559 &&
+       std::endian::native == std::endian::little);
+
+  template <typename T> void read_elements(std::span<T> values) {
+    if constexpr (native_bytes<T>) {
+      if (!values.empty())
+        std::memcpy(values.data(), input_.data() + position_, values.size_bytes());
+      position_ += values.size_bytes();
+    } else {
+      for (auto &value : values)
+        value = literal(T{});
+    }
+  }
+
+  template <typename T> void write_elements(std::span<const T> values) {
+    if constexpr (native_bytes<T>) {
+      if (values.empty())
+        return;
+      const auto *first = reinterpret_cast<const std::uint8_t *>(values.data());
+      output_.insert(output_.end(), first, first + values.size_bytes());
+    } else {
+      for (const auto value : values)
+        literal(value);
+    }
+  }
   bool loading_ = false;
   std::span<const std::uint8_t> input_;
   std::size_t position_ = 0;
