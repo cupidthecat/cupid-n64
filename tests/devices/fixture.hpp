@@ -56,6 +56,7 @@ void pi_tests();
 void pi_boundary_tests();
 void sram_tests();
 void flash_tests();
+void flash_boundary_tests();
 void cartridge_bus_tests();
 void isviewer_tests();
 void arcade_memory_tests();
