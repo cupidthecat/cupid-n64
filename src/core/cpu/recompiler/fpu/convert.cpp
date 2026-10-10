@@ -16,16 +16,12 @@ void CpuCompiler::Emitter::floating_convert(SlowPath &path) {
       fpr(cpu.fpu_source((instruction >> 11) & 31), !source_dual));
   if (!source_integer) {
     floating_input(path, SLJIT_R0, source_dual);
-    if (dest_integer) {
-      const auto limit = dest_dual ? (source_dual ? 0x4340000000000000ull : 0x5a000000ull)
-                                   : (source_dual ? 0x41e0000000000000ull : 0x4f000000ull);
+    if (dest_integer && dest_dual) {
+      const auto limit = source_dual ? 0x4340000000000000ull : 0x5a000000ull;
       op2(SLJIT_AND, reg(SLJIT_R2), reg(SLJIT_R0),
           imm(source_dual ? 0x7fffffffffffffffull : 0x7fffffffull));
-      path.enter.push_back(sljit_emit_cmp(compiler, dest_dual ? SLJIT_GREATER_EQUAL : SLJIT_GREATER,
-                                          SLJIT_R2, 0, SLJIT_IMM, static_cast<sljit_sw>(limit)));
-      if (!dest_dual)
-        path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM,
-                                            static_cast<sljit_sw>(limit)));
+      path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_GREATER_EQUAL, SLJIT_R2, 0, SLJIT_IMM,
+                                          static_cast<sljit_sw>(limit)));
     }
     sljit_emit_fcopy(compiler, SLJIT_COPY_TO_F64 | source_narrow, SLJIT_FR0, SLJIT_R0);
   } else if (source_dual) {
