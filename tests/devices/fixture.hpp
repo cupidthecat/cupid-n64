@@ -78,6 +78,7 @@ void gamepad_tests();
 void peripheral_bus_tests();
 void peripheral_wire_tests();
 void peripheral_input_tests();
+void bio_clock_tests();
 void pak_bank_tests();
 void transfer_board_tests();
 void transfer_special_tests();

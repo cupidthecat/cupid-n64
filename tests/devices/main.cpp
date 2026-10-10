@@ -33,6 +33,7 @@ int main() {
   test::peripheral_bus_tests();
   test::peripheral_wire_tests();
   test::peripheral_input_tests();
+  test::bio_clock_tests();
   test::pak_bank_tests();
   test::transfer_board_tests();
   test::transfer_special_tests();
