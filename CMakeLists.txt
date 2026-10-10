@@ -109,6 +109,10 @@ add_library(cupid_core
   src/core/cartridge/profile/boot.cpp
   src/core/cartridge/profile/profile.cpp
   src/core/system/console.cpp
+  src/core/state/archive.cpp
+  src/core/state/core_state.cpp
+  src/core/state/devices.cpp
+  src/core/state/controllers.cpp
   src/core/disk/drive.cpp
   src/core/disk/controller/commands.cpp
   src/core/disk/controller/transfers.cpp
@@ -173,6 +177,18 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
+  add_executable(core_state_tests
+    tests/state/archive.cpp
+    tests/state/core.cpp
+  )
+  target_link_libraries(core_state_tests PRIVATE cupid_core)
+  add_test(NAME core_state COMMAND core_state_tests)
+  add_test(NAME core_state_file_write COMMAND core_state_tests --write-state
+    "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
+  add_test(NAME core_state_file_read COMMAND core_state_tests --read-state
+    "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
+  set_tests_properties(core_state_file_write PROPERTIES FIXTURES_SETUP core_state_file)
+  set_tests_properties(core_state_file_read PROPERTIES FIXTURES_REQUIRED core_state_file)
   add_executable(video_output_tests tests/desktop/video_output.cpp)
   target_link_libraries(video_output_tests PRIVATE cupid_video_output)
   add_test(NAME cpu_video_output COMMAND video_output_tests)

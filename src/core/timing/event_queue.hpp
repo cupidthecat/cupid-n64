@@ -102,6 +102,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   struct Entry {
     std::uint32_t clock = 0;
     Event event{};

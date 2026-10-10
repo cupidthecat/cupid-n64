@@ -20,6 +20,7 @@ public:
   void connect_sync(std::function<void()> callback);
 
 private:
+  friend class CoreState;
   std::uint32_t read_word(std::uint32_t address);
   void write_word(std::uint32_t address, std::uint32_t value);
   void complete_dma();

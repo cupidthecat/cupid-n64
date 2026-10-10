@@ -47,6 +47,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   void render();
   Rdram &ram_;
   Rsp &rsp_;

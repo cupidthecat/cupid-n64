@@ -74,6 +74,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   friend class RspCompiler;
   enum OpFlag : unsigned {
     Load = 1,

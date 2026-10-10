@@ -47,6 +47,7 @@ public:
   }
 
 protected:
+  friend class CoreState;
   std::span<std::uint8_t> view_;
   std::uint32_t offset_ = 0;
   bool writable_ = false;

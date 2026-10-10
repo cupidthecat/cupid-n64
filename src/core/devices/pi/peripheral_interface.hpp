@@ -23,6 +23,7 @@ public:
   std::uint32_t dma_duration(bool read) const;
 
 private:
+  friend class CoreState;
   struct Domain : PeripheralTiming {
     unsigned page_size = 0;
   };

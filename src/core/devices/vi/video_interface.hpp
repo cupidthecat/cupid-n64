@@ -39,6 +39,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   void step(std::uint32_t clocks);
   void line();
   MipsInterface &interrupts_;

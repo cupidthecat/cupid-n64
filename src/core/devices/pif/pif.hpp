@@ -37,6 +37,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   std::uint32_t read_internal(std::uint32_t address) const;
   void write_internal(std::uint32_t address, std::uint32_t value);
   void access(bool read, bool wide);

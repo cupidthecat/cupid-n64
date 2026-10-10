@@ -25,6 +25,7 @@ public:
   }
 
 private:
+  friend class CoreState;
   std::uint32_t step() {
     const auto value = state_;
     state_ = value * 6364136223846793005ull + increment_;

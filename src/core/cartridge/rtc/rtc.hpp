@@ -25,6 +25,7 @@ public:
                            std::span<std::uint8_t> output) override;
 
 private:
+  friend class CoreState;
   void run(bool enabled);
   void restore_time();
   EventQueue &events_;
