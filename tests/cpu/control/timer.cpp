@@ -1,5 +1,6 @@
 #include "../native_memory_fixture.hpp"
 #include "core/system/console.hpp"
+#include <stdexcept>
 
 namespace test {
 using namespace cupid::n64;
@@ -116,6 +117,64 @@ void device_order() {
   }
 }
 
+void callback_order() {
+  for (bool direct : {false, true})
+    for (unsigned action = 0; action < 5; ++action)
+      for (unsigned clocks : {0u, 1u, 3u, 8u}) {
+        auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
+        auto &cpu = machine->cpu();
+        cpu.write_control(Count, 0);
+        cpu.write_control(Compare, 2);
+        cpu.advance_clocks(clocks);
+        unsigned calls = 0;
+        auto devices = [&] {
+          ++calls;
+          equal(cpu.read_control(Cause) & 0x8000, 0);
+          equal(cpu.read_control(Count), 0);
+          if (action == 1)
+            cpu.write_control(Count, 10);
+          if (action == 2)
+            cpu.write_control(Compare, 3);
+          if (action == 3)
+            cpu.advance_clocks(7);
+          if (action == 4)
+            cpu.write_control(Compare, 1);
+        };
+        if (direct)
+          cpu.synchronize_timer(devices);
+        else
+          cpu.synchronize_timer(std::function<void()>(devices));
+        equal(calls, 1);
+        const auto pending = action == 1 || action == 2 ? 0u
+                             : action == 4              ? (clocks >= 4 ? 0x8000u : 0u)
+                             : clocks >= 8              ? 0x8000u
+                                                        : 0u;
+        equal(cpu.read_control(Cause) & 0x8000, pending);
+        const auto ticks = clocks / 2 + (action == 3 ? 7 / 2 : 0);
+        equal(cpu.read_control(Count), (action == 1 ? 10 : 0) + ticks / 2);
+      }
+  auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
+  auto &cpu = machine->cpu();
+  cpu.advance_clocks(3);
+  std::function<void()> empty;
+  cpu.synchronize_timer(empty);
+  equal(cpu.read_control(Count), 0);
+  cpu.advance_clocks(1);
+  cpu.synchronize_timer(nullptr);
+  equal(cpu.read_control(Count), 0);
+  bool threw = false;
+  cpu.advance_clocks(8);
+  try {
+    cpu.synchronize_timer([] { throw std::runtime_error("Device callback failed"); });
+  } catch (const std::runtime_error &) {
+    threw = true;
+  }
+  equal(threw, true);
+  equal(cpu.read_control(Count), 0);
+  cpu.synchronize_timer();
+  equal(cpu.read_control(Count), 0);
+}
+
 void dispatch_budget() {
   auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
   auto &cpu = machine->cpu();
@@ -176,6 +235,7 @@ void timer_phase_tests() {
   odd_synchronization();
   native_count_read();
   device_order();
+  callback_order();
   dispatch_budget();
 }
 

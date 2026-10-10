@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <type_traits>
 
 namespace cupid::n64 {
 
@@ -23,6 +24,16 @@ public:
   void request_nmi();
   void advance_clocks(std::uint64_t clocks);
   void synchronize_timer(const std::function<void()> &devices = {});
+  template <typename Devices>
+    requires(std::is_invocable_v<Devices &> &&
+             !std::is_same_v<std::remove_cvref_t<Devices>, std::function<void()>>)
+  void synchronize_timer(Devices &&devices) {
+    const auto ticks = (state_.clocks - count_clock_) >> 1;
+    // A synchronization boundary discards an incomplete timer tick.
+    count_clock_ = state_.clocks;
+    devices();
+    commit_count(ticks);
+  }
   bool run_block(const std::uint64_t &clock_target);
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
