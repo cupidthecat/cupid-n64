@@ -24,6 +24,7 @@ struct Machine {
     config.flash_model = FlashModel::Mx29l1101A;
     config.rtc_present = true;
     config.rtc_clock = [] { return std::int64_t(946684800); };
+    config.disk_clock = config.rtc_clock;
     config.random_seed = 0;
     return config;
   }
