@@ -53,6 +53,10 @@ public:
   void run_clocks(std::uint64_t clocks);
   void synchronize(Rsp::Execution signal = Rsp::Execution::Native,
                    std::int64_t signal_clock_target = 0);
+  // Measured from the last synchronized CPU clock.
+  std::int32_t next_event_clocks() const {
+    return events_.time_to_event();
+  }
   void connect_controller(unsigned port, bool connected);
   void connect_mouse(unsigned port, bool connected = true);
   void connect_gamecube_controller(unsigned port, bool connected = true);

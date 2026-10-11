@@ -180,25 +180,23 @@ endif()
 
 include(CTest)
 if(BUILD_TESTING)
-  add_executable(core_state_tests
+  include(cmake/Tests.cmake)
+  cupid_add_core_test(core_state_tests core_state_test_entry
     tests/state/archive.cpp
     tests/state/core.cpp
   )
-  target_link_libraries(core_state_tests PRIVATE cupid_core)
-  add_test(NAME core_state COMMAND core_state_tests)
-  add_executable(machine_replay_tests tests/replay/main.cpp tests/replay/input.cpp
+  add_test(NAME core_state COMMAND ${core_state_tests_command})
+  cupid_add_core_test(machine_replay_tests machine_replay_test_entry tests/replay/main.cpp tests/replay/input.cpp
     tests/replay/engine.cpp tests/replay/cpu.cpp tests/replay/rsp.cpp tests/replay/reduction.cpp)
-  target_link_libraries(machine_replay_tests PRIVATE cupid_core)
-  add_test(NAME machine_replay COMMAND machine_replay_tests)
-  add_test(NAME core_state_file_write COMMAND core_state_tests --write-state
+  add_test(NAME machine_replay COMMAND ${machine_replay_tests_command})
+  add_test(NAME core_state_file_write COMMAND ${core_state_tests_command} --write-state
     "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
-  add_test(NAME core_state_file_read COMMAND core_state_tests --read-state
+  add_test(NAME core_state_file_read COMMAND ${core_state_tests_command} --read-state
     "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
   set_tests_properties(core_state_file_write PROPERTIES FIXTURES_SETUP core_state_file)
   set_tests_properties(core_state_file_read PROPERTIES FIXTURES_REQUIRED core_state_file)
-  add_executable(disk_state_tests tests/state/disk.cpp)
-  target_link_libraries(disk_state_tests PRIVATE cupid_core)
-  add_test(NAME disk_state COMMAND disk_state_tests)
+  cupid_add_core_test(disk_state_tests disk_state_test_entry tests/state/disk.cpp)
+  add_test(NAME disk_state COMMAND ${disk_state_tests_command})
   add_executable(video_output_tests tests/desktop/video_output.cpp)
   target_link_libraries(video_output_tests PRIVATE cupid_video_output)
   add_test(NAME cpu_video_output COMMAND video_output_tests)
@@ -316,6 +314,7 @@ if(BUILD_TESTING)
     tests/devices/pi.cpp
     tests/devices/pi/boundaries/replay.cpp
     tests/devices/cartridge/sram.cpp
+    tests/devices/cartridge/sram/cpu/replay.cpp
     tests/devices/cartridge/flash.cpp
     tests/devices/cartridge/flash/replay.cpp
     tests/devices/cartridge/flash/cpu/replay.cpp
@@ -328,6 +327,8 @@ if(BUILD_TESTING)
     tests/devices/cartridge/eeprom_reset.cpp
     tests/devices/cartridge/rtc.cpp
     tests/devices/cartridge/rtc_timing.cpp
+    tests/devices/cartridge/joybus/eeprom/replay.cpp
+    tests/devices/cartridge/joybus/rtc/replay.cpp
     tests/devices/timing.cpp
     tests/devices/system/timer_dispatch.cpp
     tests/devices/system/cached_delay_slots.cpp
@@ -368,6 +369,7 @@ if(BUILD_TESTING)
     tests/devices/audio.cpp
     tests/devices/audio/boundaries/replay.cpp
     tests/devices/rdp.cpp
+    tests/devices/rdp/cpu/replay.cpp
     tests/devices/console.cpp
   )
   target_link_libraries(device_tests PRIVATE cupid_core)
@@ -395,9 +397,8 @@ if(BUILD_TESTING)
   )
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
-  add_executable(rsp_vector_execution_tests tests/rsp/vector/execution.cpp)
-  target_link_libraries(rsp_vector_execution_tests PRIVATE cupid_core)
-  add_test(NAME signal_processor_vector_execution COMMAND rsp_vector_execution_tests)
+  cupid_add_core_test(rsp_vector_execution_tests rsp_vector_test_entry tests/rsp/vector/execution.cpp)
+  add_test(NAME signal_processor_vector_execution COMMAND ${rsp_vector_execution_tests_command})
   if(CUPID_HARDWARE_RENDERER)
     add_executable(renderer_undefined_tests tests/renderer/undefined/main.cpp
       tests/renderer/undefined/subpasses.cpp tests/renderer/undefined/primitive_lod.cpp)
