@@ -16,7 +16,17 @@ enum Command : unsigned {
   LoadState,
   UndoStateSave,
   UndoStateLoad,
-  StateSlotFirst = 100
+  FastForward,
+  HoldFastForward,
+  ReleaseFastForward,
+  BeginRewind,
+  EndRewind,
+  RewindEnabled,
+  RewindMute,
+  StateSlotFirst = 100,
+  RewindIntervalFirst = 200,
+  RewindCapacityFirst = 210,
+  RewindMemoryFirst = 220
 };
 
 } // namespace cupid::desktop

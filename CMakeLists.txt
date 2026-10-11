@@ -164,12 +164,14 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/main.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
+    src/desktop/windows/playback.cpp
     src/desktop/windows/audio.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
     src/desktop/session.cpp
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
+    src/desktop/state/rewind.cpp
     src/desktop/storage/save.cpp
     src/desktop/timing/playback_clock.cpp
   )
@@ -221,6 +223,10 @@ if(BUILD_TESTING)
   target_compile_features(desktop_state_slots_tests PRIVATE cxx_std_20)
   target_compile_definitions(desktop_state_slots_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   add_test(NAME desktop_state_slots COMMAND desktop_state_slots_tests)
+  add_executable(desktop_rewind_tests tests/desktop/state/rewind.cpp src/desktop/state/rewind.cpp)
+  target_include_directories(desktop_rewind_tests PRIVATE src)
+  target_compile_features(desktop_rewind_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_rewind_history COMMAND desktop_rewind_tests)
   add_executable(desktop_clock_tests
     tests/desktop/playback_clock.cpp
     src/desktop/timing/playback_clock.cpp
@@ -241,7 +247,8 @@ if(BUILD_TESTING)
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
     add_executable(session_state_tests tests/desktop/state/session.cpp
       src/desktop/session.cpp src/desktop/storage/save.cpp src/desktop/state/session_state.cpp
-      src/desktop/state/slots.cpp src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
+      src/desktop/state/slots.cpp src/desktop/state/rewind.cpp
+      src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
     target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(session_state_tests PRIVATE cupid_video_output winmm)
     add_test(NAME desktop_session_state COMMAND session_state_tests)

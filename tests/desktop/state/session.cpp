@@ -1,5 +1,6 @@
 #include "../../support/test.hpp"
 #include "core/state/archive.hpp"
+#include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
 #include "fixture.hpp"
 #if defined(CUPID_SESSION_HARDWARE_TESTS)
@@ -200,6 +201,35 @@ void short_period_stepping(unsigned line_clocks) {
   test::equal(resumed.capture_state() == session.capture_state(), true);
 }
 
+void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
+  using namespace cupid::desktop;
+  Audio audio;
+  audio.muted = true;
+  Session session(directory / "game.z64", directory / "pif.bin", audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, hardware);
+  RewindHistory history([&] { return session.capture_state(); },
+                        [&](std::span<const std::uint8_t> bytes) { session.restore_state(bytes); },
+                        {1, 3, StateSlots::maximum_bytes});
+  session_test::advance(session, 2);
+  history.record(session.frames);
+  const auto state2 = session.capture_state();
+  session_test::advance(session, 3);
+  history.record(session.frames);
+  const auto state3 = session.capture_state();
+  session_test::advance(session, 4);
+  history.record(session.frames);
+  test::equal(history.rewind(session.frames), true);
+  test::equal(session.capture_state() == state3, true);
+  test::equal(history.rewind(session.frames), true);
+  test::equal(session.capture_state() == state2, true);
+  test::equal(history.rewind(session.frames), false);
+  session_test::advance(session, 3);
+  test::equal(session.capture_state() == state3, true);
+  test::equal(history.record(session.frames), true);
+  test::equal(history.size(), 2);
+  test::equal(history.memory() <= StateSlots::maximum_bytes, true);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -235,6 +265,7 @@ int main(int argc, char **argv) {
       continuation(directory.path, false, hardware);
       invalid_and_undo(directory.path, hardware);
       stepping(directory.path, hardware);
+      rewind_gameplay(directory.path, hardware);
       if (!hardware) {
         short_period_stepping(32);
         short_period_stepping(2);
