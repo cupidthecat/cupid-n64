@@ -129,6 +129,27 @@ void Session::finish_frame() {
   }
 }
 
+void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
+  struct QuietAudio {
+    Audio &audio;
+    bool muted;
+    ~QuietAudio() {
+      audio.clear();
+      audio.muted = muted;
+    }
+  } quiet{audio_, audio_.muted};
+  audio_.clear();
+  audio_.muted = true;
+  const auto before = frames;
+  const auto started = clocks();
+  while (frames == before) {
+    run(buttons, x, y);
+    if (clocks() - started > 10 * n64::clock_frequency)
+      throw std::runtime_error("Frame advance stopped because no video frame was produced.");
+  }
+  finish_frame();
+}
+
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
   if (auto *arcade = console_->arcade()) {
     auto &player = arcade->input().players[0];

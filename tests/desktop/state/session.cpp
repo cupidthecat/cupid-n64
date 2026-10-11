@@ -138,6 +138,38 @@ void invalid_and_undo(const std::filesystem::path &directory, bool hardware) {
   test::equal(session.capture_state() == before, true);
 }
 
+void stepping(const std::filesystem::path &directory, bool hardware) {
+  using namespace cupid::desktop;
+  Audio regular_audio, step_audio;
+  regular_audio.muted = true;
+  Session regular(directory / "game.z64", directory / "pif.bin", regular_audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, hardware);
+  Session step(directory / "game.z64", directory / "pif.bin", step_audio, {}, {},
+               cupid::n64::ArcadeProfile::Disabled, 0, hardware);
+  session_test::advance(regular, 2);
+  session_test::advance(step, 2);
+  regular.finish_frame();
+  step.finish_frame();
+  for (unsigned frame = 3; frame <= 7; ++frame) {
+    const bool muted = (frame & 1) != 0;
+    step_audio.muted = muted;
+    step.advance_frame(static_cast<std::uint16_t>((step.frames & 1) ? 0x8000 : 0), 22, -35);
+    session_test::advance(regular, frame);
+    regular.finish_frame();
+    test::equal(step.frames, frame);
+    test::equal(step.clocks(), regular.clocks());
+    test::equal(step.frame.rgba == regular.frame.rgba, true);
+    test::equal(step_audio.muted, muted);
+  }
+  session_test::advance(regular, 10);
+  session_test::advance(step, 10);
+  regular.finish_frame();
+  step.finish_frame();
+  test::equal(step.frames, regular.frames);
+  test::equal(step.clocks(), regular.clocks());
+  test::equal(step.frame.rgba == regular.frame.rgba, true);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -172,6 +204,7 @@ int main(int argc, char **argv) {
       continuation(directory.path, true, hardware);
       continuation(directory.path, false, hardware);
       invalid_and_undo(directory.path, hardware);
+      stepping(directory.path, hardware);
     } else {
       throw std::runtime_error("Invalid session-state fixture arguments.");
     }

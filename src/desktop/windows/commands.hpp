@@ -11,6 +11,7 @@ enum Command : unsigned {
   Fullscreen,
   Mute,
   Controls,
+  FrameAdvance,
   SaveState,
   LoadState,
   UndoStateSave,

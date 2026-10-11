@@ -12,7 +12,8 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"Start: Enter     L / R: Q / E\n"
                       L"C buttons / camera: Arrow keys\n"
                       L"D-pad: I / U / O / P (up / left / down / right)\n\n"
-                      L"Pause: F5 or Escape     Reset: F6\n"
+                      L"Pause: F5 or Escape     Frame advance while paused: F4\n"
+                      L"Reset: F6\n"
                       L"Save state: F2     Load state: F3\n"
                       L"Undo save: Ctrl+F2     Undo load: Ctrl+F3\n"
                       L"State slots: Ctrl+1 through Ctrl+9; Ctrl+0 selects slot 10.\n"
@@ -63,6 +64,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
   AppendMenuW(emulation, MF_STRING, Pause, L"&Pause\tF5");
+  AppendMenuW(emulation, MF_STRING | MF_GRAYED, FrameAdvance, L"Frame &advance\tF4");
   AppendMenuW(emulation, MF_STRING, Reset, L"&Reset\tF6");
   AppendMenuW(emulation, MF_STRING, Mute, L"&Mute\tF8");
   state_menu_ = CreatePopupMenu();
@@ -202,6 +204,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
         command(control ? UndoStateSave : SaveState);
       if (wparam == VK_F3)
         command(control ? UndoStateLoad : LoadState);
+      if (wparam == VK_F4)
+        command(FrameAdvance);
       if (control && wparam >= '0' && wparam <= '9') {
         const auto slot = wparam == '0' ? StateSlots::count : static_cast<unsigned>(wparam - '0');
         command(StateSlotFirst + slot - 1);
@@ -328,8 +332,13 @@ void Window::command(unsigned id) {
   } else if (id == Pause) {
     paused_ = !paused_;
     audio_.clear();
-    if (paused_ && session_)
+    if (paused_ && session_) {
       session_->save();
+      session_->finish_frame();
+      frame_ready_ = false;
+      last_frame_ = session_->frames;
+      refresh_frame();
+    }
     rebase();
   } else if (id == Reset) {
     if (session_) {
@@ -343,6 +352,13 @@ void Window::command(unsigned id) {
       keys_.fill(false);
       rebase();
     }
+  } else if (id == FrameAdvance && session_ && paused_) {
+    const auto control = input();
+    session_->advance_frame(control.buttons, control.x, control.y);
+    frame_ready_ = false;
+    last_frame_ = session_->frames;
+    refresh_frame();
+    rebase();
   } else if (id == Mute) {
     audio_.muted = !audio_.muted;
     audio_.clear();
@@ -357,6 +373,8 @@ void Window::command(unsigned id) {
   }
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   CheckMenuItem(menu_, Mute, MF_BYCOMMAND | (audio_.muted ? MF_CHECKED : MF_UNCHECKED));
+  EnableMenuItem(menu_, FrameAdvance,
+                 MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
 }
 
 void Window::fullscreen() {
@@ -439,7 +457,7 @@ void Window::paint() {
   EndPaint(window_, &painting);
 }
 
-void Window::advance() {
+Window::Input Window::input() const {
   std::uint16_t buttons = 0;
   constexpr std::array<unsigned, 14> codes{'J',   'K',     VK_SPACE, VK_RETURN, 'I',
                                            'O',   'U',     'P',      'Q',       'E',
@@ -462,9 +480,14 @@ void Window::advance() {
     x = 0;
     y = frame >= 4800 ? -58 : 0;
   }
+  return {buttons, x, y};
+}
+
+void Window::advance() {
+  const auto control = input();
   const auto interval_start = session_->clocks();
   do {
-    session_->run(buttons, x, y);
+    session_->run(control.buttons, control.x, control.y);
   } while (session_->frames == last_frame_ && session_->clocks() - interval_start < 1875000);
   if (session_->frames == last_frame_)
     return;

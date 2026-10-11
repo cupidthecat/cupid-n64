@@ -72,10 +72,6 @@ inline void media(const std::filesystem::path &directory) {
   const auto loop = code.size();
   store(0xa4500000, 0x3000);
   store(0xa4500004, 8);
-  code.push_back(0x3c01a000);
-  code.push_back(0x8c221000);
-  code.push_back(0x24420002);
-  code.push_back(0xac221000);
   const auto distance = static_cast<int>(loop) - static_cast<int>(code.size()) - 1;
   code.push_back(0x10000000 | static_cast<std::uint16_t>(distance));
   code.push_back(0);

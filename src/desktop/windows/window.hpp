@@ -33,6 +33,11 @@ private:
   void load();
   void paint();
   void advance();
+  struct Input {
+    std::uint16_t buttons;
+    std::int8_t x, y;
+  };
+  Input input() const;
   void present();
   void rebase();
   void fullscreen();
