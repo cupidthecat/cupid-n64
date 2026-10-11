@@ -10,6 +10,7 @@ int main() {
   test::pi_tests();
   test::pi_boundary_tests();
   test::sram_tests();
+  test::sram_cpu_tests();
   test::flash_tests();
   test::flash_boundary_tests();
   test::flash_cpu_tests();
@@ -20,8 +21,10 @@ int main() {
   test::arcade_native_tests();
   test::cartridge_profile_tests();
   test::eeprom_reset_tests();
+  test::eeprom_cpu_tests();
   test::rtc_tests();
   test::rtc_timing_tests();
+  test::rtc_cpu_tests();
   test::timing_tests();
   test::timer_dispatch_tests();
   test::cached_delay_slot_tests();
@@ -56,6 +59,7 @@ int main() {
   test::audio_tests();
   test::audio_boundary_tests();
   test::rdp_tests();
+  test::rdp_cpu_tests();
   test::console_tests();
   test::machine_reset_tests();
   test::reset_reuse_tests();
