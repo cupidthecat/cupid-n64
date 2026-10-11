@@ -56,7 +56,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
       throw std::runtime_error("--arcade requires --rom FILE and --pif FILE.");
     LocalFree(arguments);
     arguments = nullptr;
-    SetProcessDPIAware();
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     cupid::desktop::Window window(std::move(options));
     return window.run(instance, show);
   } catch (const std::exception &exception) {

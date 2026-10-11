@@ -3,7 +3,10 @@
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
+#include "desktop/storage/recent.hpp"
 #include "desktop/timing/playback_clock.hpp"
+#include "desktop/video/viewport.hpp"
+#include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
 #include <array>
@@ -30,6 +33,23 @@ private:
   void command(unsigned id);
   bool state_command(unsigned id);
   bool playback_command(unsigned id);
+  bool display_command(unsigned id);
+  bool file_command(unsigned id);
+  void load_recent();
+  void save_recent();
+  void update_recent();
+  void open_rom(const std::filesystem::path &path);
+  void drop_rom(WPARAM drop);
+  void load_display_settings();
+  void save_display_settings();
+  void create_display_menu(HMENU view);
+  void update_display();
+  void refresh_monitors();
+  void apply_window_size();
+  void remember_window_size();
+  void position_fullscreen();
+  int status_height() const;
+  void screenshot();
   void update_playback();
   void update_fast_forward();
   void stop_fast_forward();
@@ -62,6 +82,22 @@ private:
   HMENU menu_ = nullptr;
   HMENU state_menu_ = nullptr;
   HMENU rewind_menu_ = nullptr;
+  HMENU monitor_menu_ = nullptr;
+  HMENU recent_menu_ = nullptr;
+  RecentRoms recent_;
+  struct Monitor {
+    std::wstring device;
+    RECT bounds, work;
+    bool primary;
+  };
+  std::vector<Monitor> monitors_;
+  static constexpr std::array<ViewportSize, 4> viewport_presets{
+      ViewportSize{320, 240}, ViewportSize{640, 480}, ViewportSize{960, 720},
+      ViewportSize{1280, 960}};
+  ViewportSize viewport_size_;
+  DisplayScale display_scale_ = DisplayScale::Fit;
+  DisplayAspect display_aspect_ = DisplayAspect::Standard;
+  std::wstring fullscreen_monitor_;
   WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
   Options options_;
   std::filesystem::path settings_;

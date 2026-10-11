@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <commdlg.h>
 #include <fstream>
+#include <shellapi.h>
 #include <stdexcept>
 
 namespace cupid::desktop {
@@ -20,6 +21,10 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"Undo save: Ctrl+F2     Undo load: Ctrl+F3\n"
                       L"State slots: Ctrl+1 through Ctrl+9; Ctrl+0 selects slot 10.\n"
                       L"Mute: F8     Fullscreen: F11\n\n"
+                      L"Screenshot of the displayed game image: F12\n"
+                      L"View selects scaling, aspect, window size, and fullscreen monitor.\n"
+                      L"Integer scaling uses whole output-height multiples, or best fit when "
+                      L"the window is smaller than one frame.\n\n"
                       L"The game pauses when this window loses focus.\n"
                       L"Cartridge saves use .eep, .sra, .fla or .rtc; Controller Paks use .pak.\n"
                       L"Disk saves use .disk and .rtc.\n"
@@ -57,6 +62,8 @@ Window::Window(Options options) : options_(std::move(options)) {
     rewind_settings_.capacity = choice(L"Capacity", rewind_capacities, 10);
     rewind_settings_.memory = std::size_t(choice(L"MemoryMB", rewind_memory, 256)) * 1024 * 1024;
   }
+  load_display_settings();
+  load_recent();
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -71,7 +78,10 @@ int Window::run(HINSTANCE instance, int show) {
   menu_ = CreateMenu();
   const auto file = CreatePopupMenu(), emulation = CreatePopupMenu(), view = CreatePopupMenu();
   AppendMenuW(file, MF_STRING, Open, L"&Open ROM...");
+  recent_menu_ = CreatePopupMenu();
+  AppendMenuW(file, MF_POPUP, reinterpret_cast<UINT_PTR>(recent_menu_), L"&Recent ROMs");
   AppendMenuW(file, MF_STRING, Firmware, L"Select &PIF firmware...");
+  AppendMenuW(file, MF_STRING | MF_GRAYED, Screenshot, L"&Screenshot...\tF12");
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
   AppendMenuW(emulation, MF_STRING, Pause, L"&Pause\tF5");
@@ -111,20 +121,26 @@ int Window::run(HINSTANCE instance, int show) {
   for (unsigned slot = 1; slot <= StateSlots::count; ++slot)
     AppendMenuW(state_menu_, MF_STRING, StateSlotFirst + slot - 1, L"Slot");
   AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen\tF11");
+  create_display_menu(view);
   AppendMenuW(view, MF_STRING, Controls, L"&Keyboard controls\tF1");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(view), L"&View");
-  RECT bounds{0, 0, 960, 744};
+  RECT bounds{0, 0, static_cast<LONG>(viewport_size_.width),
+              static_cast<LONG>(viewport_size_.height + 24)};
   AdjustWindowRect(&bounds, WS_OVERLAPPEDWINDOW, TRUE);
   window_ = CreateWindowW(type.lpszClassName, L"Cupid-N64", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
                           CW_USEDEFAULT, bounds.right - bounds.left, bounds.bottom - bounds.top,
                           nullptr, menu_, instance, this);
   if (!window_)
     throw std::runtime_error("Could not create the desktop window.");
+  apply_window_size();
+  DragAcceptFiles(window_, TRUE);
+  update_recent();
   update_states();
   update_playback();
+  update_display();
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
@@ -221,9 +237,16 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_COMMAND:
     command(LOWORD(wparam));
     return 0;
+  case WM_DROPFILES:
+    drop_rom(wparam);
+    return 0;
   case WM_INITMENUPOPUP:
     if (reinterpret_cast<HMENU>(wparam) == state_menu_)
       update_states();
+    if (reinterpret_cast<HMENU>(wparam) == monitor_menu_)
+      refresh_monitors();
+    if (reinterpret_cast<HMENU>(wparam) == recent_menu_)
+      update_recent();
     return 0;
   case WM_ACTIVATE:
     active_ = LOWORD(wparam) != WA_INACTIVE || options_.frames != 0;
@@ -245,6 +268,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_EXITSIZEMOVE:
     modal_ = false;
     update_fast_forward();
+    if (event == WM_EXITSIZEMOVE)
+      remember_window_size();
     rebase();
     return 0;
   case WM_KEYDOWN:
@@ -276,6 +301,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
         command(HoldFastForward);
       if (wparam == VK_F11)
         command(Fullscreen);
+      if (wparam == VK_F12)
+        command(Screenshot);
       if (wparam == VK_F1)
         command(Controls);
     }
@@ -295,6 +322,23 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
     return 0;
   case WM_SIZE:
     InvalidateRect(window_, nullptr, FALSE);
+    return 0;
+  case WM_DPICHANGED:
+    if (fullscreen_) {
+      position_fullscreen();
+    } else {
+      const auto &bounds = *reinterpret_cast<const RECT *>(lparam);
+      SetWindowPos(window_, nullptr, bounds.left, bounds.top, bounds.right - bounds.left,
+                   bounds.bottom - bounds.top, SWP_NOZORDER | SWP_NOACTIVATE);
+      apply_window_size();
+    }
+    return 0;
+  case WM_DISPLAYCHANGE:
+    refresh_monitors();
+    if (fullscreen_)
+      position_fullscreen();
+    else
+      apply_window_size();
     return 0;
   default:
     return DefWindowProcW(window_, event, wparam, lparam);
@@ -361,10 +405,20 @@ void Window::load() {
   rebase();
   update_states();
   update_playback();
+  update_display();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
     WritePrivateProfileStringW(L"Files", L"Firmware", options_.firmware.c_str(), settings_.c_str());
+  }
+  if (!options_.rom.empty()) {
+    recent_.remember(options_.rom);
+    try {
+      save_recent();
+    } catch (const std::exception &error) {
+      status_error(L"Recent ROMs could not be saved", error);
+    }
+    update_recent();
   }
 }
 
@@ -386,20 +440,21 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (file_command(id))
+    return;
+  if (display_command(id))
+    return;
   if (playback_command(id))
     return;
   if (state_command(id))
     return;
-  if (id == Open || id == Firmware) {
-    auto path = choose(id == Firmware);
+  if (id == Screenshot) {
+    screenshot();
+  } else if (id == Firmware) {
+    auto path = choose(true);
     if (path.empty())
       return;
-    if (id == Open)
-      options_.rom = path;
-    else
-      options_.firmware = path;
-    if (options_.firmware.empty())
-      options_.firmware = choose(true);
+    options_.firmware = path;
     load();
   } else if (id == Exit) {
     SendMessageW(window_, WM_CLOSE, 0, 0);
@@ -426,6 +481,7 @@ void Window::command(unsigned id) {
       session_->reset();
       pixels_.clear();
       pixel_width_ = pixel_height_ = 0;
+      update_display();
       frame_ready_ = false;
       last_frame_ = 0;
       paused_ = false;
@@ -452,30 +508,7 @@ void Window::command(unsigned id) {
     MessageBoxW(window_, text.c_str(), L"Cupid-N64 controls", MB_OK);
     rebase();
   }
-  CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   update_playback();
-  EnableMenuItem(menu_, FrameAdvance,
-                 MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
-}
-
-void Window::fullscreen() {
-  fullscreen_ = !fullscreen_;
-  if (fullscreen_) {
-    GetWindowPlacement(window_, &placement_);
-    MONITORINFO monitor{sizeof(MONITORINFO)};
-    GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor);
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-    SetMenu(window_, nullptr);
-    SetWindowPos(window_, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top,
-                 monitor.rcMonitor.right - monitor.rcMonitor.left,
-                 monitor.rcMonitor.bottom - monitor.rcMonitor.top, SWP_FRAMECHANGED);
-  } else {
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-    SetMenu(window_, menu_);
-    SetWindowPlacement(window_, &placement_);
-    SetWindowPos(window_, nullptr, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-  }
 }
 
 void Window::paint() {
@@ -490,7 +523,7 @@ void Window::paint() {
   try {
     const auto dc = paint_buffer_.begin(target, client.right, client.bottom);
     FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-    const int width = client.right, height = std::max(0L, client.bottom - 24);
+    const int width = client.right, height = std::max(0L, client.bottom - status_height());
     if (session_ && !pixels_.empty()) {
       BITMAPINFO info{};
       info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
@@ -499,13 +532,14 @@ void Window::paint() {
       info.bmiHeader.biPlanes = 1;
       info.bmiHeader.biBitCount = 32;
       info.bmiHeader.biCompression = BI_RGB;
-      const int scaled_width = std::min(width, height * 4 / 3);
-      const int scaled_height = scaled_width * 3 / 4;
+      const auto viewport =
+          image_viewport(pixel_width_, pixel_height_, static_cast<unsigned>(width),
+                         static_cast<unsigned>(height), display_scale_, display_aspect_);
       SetStretchBltMode(dc, COLORONCOLOR);
-      StretchDIBits(dc, (width - scaled_width) / 2, (height - scaled_height) / 2, scaled_width,
-                    scaled_height, 0, 0, static_cast<int>(pixel_width_),
-                    static_cast<int>(pixel_height_), pixels_.data(), &info, DIB_RGB_COLORS,
-                    SRCCOPY);
+      StretchDIBits(dc, static_cast<int>(viewport.x), static_cast<int>(viewport.y),
+                    static_cast<int>(viewport.width), static_cast<int>(viewport.height), 0, 0,
+                    static_cast<int>(pixel_width_), static_cast<int>(pixel_height_), pixels_.data(),
+                    &info, DIB_RGB_COLORS, SRCCOPY);
     } else {
       SetTextColor(dc, RGB(220, 220, 220));
       SetBkMode(dc, TRANSPARENT);

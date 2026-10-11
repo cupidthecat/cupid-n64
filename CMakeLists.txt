@@ -165,6 +165,10 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
+    src/desktop/windows/display.cpp
+    src/desktop/windows/files.cpp
+    src/desktop/windows/display/size_dialog.cpp
+    src/desktop/windows/display/screenshot.cpp
     src/desktop/windows/audio.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
@@ -173,6 +177,9 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/state/slots.cpp
     src/desktop/state/rewind.cpp
     src/desktop/storage/save.cpp
+    src/desktop/storage/recent.cpp
+    src/desktop/video/viewport.cpp
+    src/desktop/video/bitmap.cpp
     src/desktop/timing/playback_clock.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
@@ -217,6 +224,15 @@ if(BUILD_TESTING)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
   target_compile_definitions(desktop_storage_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   add_test(NAME desktop_save_storage COMMAND desktop_storage_tests)
+  add_executable(desktop_recent_tests tests/desktop/recent.cpp src/desktop/storage/recent.cpp)
+  target_include_directories(desktop_recent_tests PRIVATE src)
+  target_compile_features(desktop_recent_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_recent_roms COMMAND desktop_recent_tests)
+  add_executable(desktop_display_tests tests/desktop/display.cpp
+    src/desktop/video/viewport.cpp src/desktop/video/bitmap.cpp)
+  target_include_directories(desktop_display_tests PRIVATE src)
+  target_compile_features(desktop_display_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_display COMMAND desktop_display_tests)
   add_executable(desktop_state_slots_tests tests/desktop/state/slots.cpp
     src/desktop/state/slots.cpp src/desktop/storage/save.cpp)
   target_include_directories(desktop_state_slots_tests PRIVATE src)
