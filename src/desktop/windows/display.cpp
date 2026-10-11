@@ -134,22 +134,37 @@ void Window::apply_window_size() {
   if (!window_ || fullscreen_)
     return;
   const auto dpi = GetDpiForWindow(window_);
+  const int client_height =
+      MulDiv(static_cast<int>(viewport_size_.height), static_cast<int>(dpi), 96) + status_height();
   RECT bounds{0, 0, MulDiv(static_cast<int>(viewport_size_.width), static_cast<int>(dpi), 96),
-              MulDiv(static_cast<int>(viewport_size_.height), static_cast<int>(dpi), 96) +
-                  status_height()};
+              client_height};
   AdjustWindowRectExForDpi(&bounds, static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_STYLE)),
-                           GetMenu(window_) != nullptr, 0, dpi);
+                           FALSE, static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_EXSTYLE)), dpi);
   RECT current{};
   GetWindowRect(window_, &current);
   MONITORINFO monitor{sizeof(MONITORINFO)};
   GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor);
   const int width =
       std::min(bounds.right - bounds.left, monitor.rcWork.right - monitor.rcWork.left);
-  const int height =
-      std::min(bounds.bottom - bounds.top, monitor.rcWork.bottom - monitor.rcWork.top);
   const int x = std::clamp(current.left, monitor.rcWork.left, monitor.rcWork.right - width);
-  const int y = std::clamp(current.top, monitor.rcWork.top, monitor.rcWork.bottom - height);
-  SetWindowPos(window_, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
+  const auto position = [&](int height) {
+    height = std::min<int>(height, monitor.rcWork.bottom - monitor.rcWork.top);
+    const int y = std::clamp(current.top, monitor.rcWork.top, monitor.rcWork.bottom - height);
+    // Small custom viewports can be narrower than the system's default tracking size.
+    SetWindowPos(window_, nullptr, x, y, width, height,
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+  };
+  const bool menu = GetMenu(window_) != nullptr;
+  position(bounds.bottom - bounds.top + (menu ? GetSystemMetricsForDpi(SM_CYMENU, dpi) : 0));
+  MENUBARINFO info{sizeof(MENUBARINFO)};
+  if (menu && GetMenuBarInfo(window_, OBJID_MENU, 0, &info))
+    position(bounds.bottom - bounds.top + info.rcBar.bottom - info.rcBar.top);
+  RECT client{}, resized{};
+  GetClientRect(window_, &client);
+  GetWindowRect(window_, &resized);
+  if (client.bottom > 0 && client.bottom != client_height &&
+      resized.bottom - resized.top < monitor.rcWork.bottom - monitor.rcWork.top)
+    position(resized.bottom - resized.top + client_height - client.bottom);
 }
 
 void Window::remember_window_size() {

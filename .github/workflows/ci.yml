@@ -26,7 +26,11 @@ jobs:
           -DCUPID_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.ipo }}
           -DCUPID_REQUIRE_HARDWARE_RENDERER_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }}
       - name: Build
+        if: runner.os != 'Windows'
         run: cmake --build build --config Release --parallel 2
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: cmake --build build --config Release --parallel 2 -- /p:CL_MP=true /p:CL_MPCount=2
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure --parallel 2
       - name: Upload Windows frontend
@@ -49,7 +53,11 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           -DCUPID_HARDWARE_RENDERER=OFF
       - name: Build
+        if: runner.os != 'Windows'
         run: cmake --build build --config Release --parallel 2
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: cmake --build build --config Release --parallel 2 -- /p:CL_MP=true /p:CL_MPCount=2
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure --parallel 2
 
