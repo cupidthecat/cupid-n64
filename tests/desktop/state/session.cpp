@@ -170,6 +170,36 @@ void stepping(const std::filesystem::path &directory, bool hardware) {
   test::equal(step.frame.rgba == regular.frame.rgba, true);
 }
 
+void short_period_stepping(unsigned line_clocks) {
+  using namespace cupid::desktop;
+  session_test::Directory directory;
+  session_test::media(directory.path, line_clocks);
+  Audio audio;
+  audio.muted = true;
+  Session session(directory.path / "game.z64", directory.path / "pif.bin", audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, false);
+  for (unsigned frame = 1; frame <= 12; ++frame) {
+    session.advance_frame(0, 0, 0);
+    test::equal(session.frames, frame);
+    test::equal(!session.frame.rgba.empty(), true);
+  }
+  Audio resumed_audio;
+  resumed_audio.muted = true;
+  Session resumed(directory.path / "game.z64", directory.path / "pif.bin", resumed_audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 913, false);
+  resumed.restore_state(session.capture_state());
+  for (unsigned frame = 13; frame <= 16; ++frame) {
+    session.advance_frame(0, 0, 0);
+    resumed.advance_frame(0, 0, 0);
+    test::equal(session.frames, frame);
+    test::equal(resumed.capture_state() == session.capture_state(), true);
+  }
+  session.run(0, 0, 0);
+  resumed.run(0, 0, 0);
+  test::equal(session.frames > 17, true);
+  test::equal(resumed.capture_state() == session.capture_state(), true);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -205,6 +235,10 @@ int main(int argc, char **argv) {
       continuation(directory.path, false, hardware);
       invalid_and_undo(directory.path, hardware);
       stepping(directory.path, hardware);
+      if (!hardware) {
+        short_period_stepping(32);
+        short_period_stepping(2);
+      }
     } else {
       throw std::runtime_error("Invalid session-state fixture arguments.");
     }

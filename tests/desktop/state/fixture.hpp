@@ -29,7 +29,8 @@ struct Directory {
   bool temporary = false;
 };
 
-inline void media(const std::filesystem::path &directory) {
+inline void media(const std::filesystem::path &directory, unsigned short_line_clocks = 0) {
+  const bool short_video_period = short_line_clocks != 0;
   std::vector<std::uint8_t> cartridge(4096);
   cartridge[0] = 0x80;
   cartridge[1] = 0x37;
@@ -58,20 +59,34 @@ inline void media(const std::filesystem::path &directory) {
   store(0xa0001000, 0xf80007c0);
   store(0xa4400004, 0x1000);
   store(0xa4400008, 1);
-  store(0xa4400018, 525);
-  store(0xa440001c, 3092);
-  store(0xa4400020, 0x0c150c15);
+  store(0xa4400018, short_video_period ? 3 : 525);
+  store(0xa440001c, short_video_period ? short_line_clocks - 1 : 3092);
+  store(0xa4400020,
+        short_video_period ? ((short_line_clocks << 16) | short_line_clocks) : 0x0c150c15);
   store(0xa4400024, (108u << 16) | 128);
-  store(0xa4400028, (34u << 16) | 36);
+  store(0xa4400028, short_video_period ? 2 : ((34u << 16) | 36));
   store(0xa4400000, 2);
   store(0xa0003000, 0x4000c000);
   store(0xa0003004, 0x2000e000);
   store(0xa4500008, 1);
   store(0xa4500010, 1519);
   store(0xa4500014, 15);
+  if (short_video_period) {
+    store(0xa0002000, 0x1000ffff);
+    store(0xa0002004, 0);
+    code.push_back(0x3c017fff);
+    code.push_back(0x3421ffff);
+    code.push_back(0x40815800);
+    code.push_back(0x3c018000);
+    code.push_back(0x34212000);
+    code.push_back(0x00200008);
+    code.push_back(0);
+  }
   const auto loop = code.size();
-  store(0xa4500000, 0x3000);
-  store(0xa4500004, 8);
+  if (!short_video_period) {
+    store(0xa4500000, 0x3000);
+    store(0xa4500004, 8);
+  }
   const auto distance = static_cast<int>(loop) - static_cast<int>(code.size()) - 1;
   code.push_back(0x10000000 | static_cast<std::uint16_t>(distance));
   code.push_back(0);

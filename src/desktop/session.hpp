@@ -30,6 +30,7 @@ public:
 
 private:
   friend class SessionState;
+  void run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y, bool frame_boundary);
   Audio &audio_;
   std::vector<MemorySave> saves_;
   std::filesystem::path cartridge_clock_path_;

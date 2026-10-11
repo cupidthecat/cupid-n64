@@ -143,7 +143,7 @@ void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y)
   const auto before = frames;
   const auto started = clocks();
   while (frames == before) {
-    run(buttons, x, y);
+    run_interval(buttons, x, y, true);
     if (clocks() - started > 10 * n64::clock_frequency)
       throw std::runtime_error("Frame advance stopped because no video frame was produced.");
   }
@@ -151,6 +151,11 @@ void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y)
 }
 
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
+  run_interval(buttons, x, y, false);
+}
+
+void Session::run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y,
+                           bool frame_boundary) {
   if (auto *arcade = console_->arcade()) {
     auto &player = arcade->input().players[0];
     player.up = buttons & 0x0800;
@@ -168,7 +173,10 @@ void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
   } else {
     console_->controller(0).input(buttons, x, y);
   }
-  console_->run_interval();
+  if (frame_boundary)
+    console_->run_frame_interval();
+  else
+    console_->run_interval();
   if (output_->requires_hardware())
     throw std::runtime_error(
         "Hardware rendering is unavailable. This game requires it for RDP graphics.");
