@@ -1,5 +1,6 @@
 #include "core/rsp/recompiler/compiler.hpp"
 #include <algorithm>
+#include <stdexcept>
 
 namespace cupid::n64 {
 
@@ -8,6 +9,37 @@ RspCompiler::~RspCompiler() = default;
 
 void RspCompiler::reset() {
   impl_->reset();
+}
+
+void RspCompiler::recompile() {
+  auto replacement = std::make_unique<Impl>(impl_->rsp);
+  replacement->dirty = impl_->dirty;
+  replacement->external_memory = impl_->external_memory;
+  replacement->generation = impl_->generation;
+  std::unordered_map<Impl::Block *, Impl::Block *> pointers;
+  for (const auto &[key, blocks] : impl_->blocks) {
+    auto &rebuilt = replacement->blocks[key];
+    for (const auto &block : blocks) {
+      auto next = std::make_unique<Impl::Block>();
+      next->key = block->key;
+      next->words = block->words;
+      next->lines = block->lines;
+      next->generation = block->generation;
+      Emitter emitter(impl_->rsp, *next);
+      if (!emitter.compile() || next->words != block->words)
+        throw std::runtime_error("Signal processor recompilation failed");
+      replacement->bytes += next->bytes;
+      pointers.emplace(block.get(), next.get());
+      rebuilt.push_back(std::move(next));
+    }
+  }
+  for (unsigned n = 0; n < impl_->context.size(); ++n) {
+    if (impl_->context[n])
+      replacement->context[n] = pointers.at(impl_->context[n]);
+    if (impl_->alternate[n])
+      replacement->alternate[n] = pointers.at(impl_->alternate[n]);
+  }
+  impl_.swap(replacement);
 }
 
 void RspCompiler::Impl::reset() {

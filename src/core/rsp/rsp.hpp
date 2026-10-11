@@ -21,6 +21,7 @@ struct RspStatus {
 class Rsp {
 public:
   enum class Execution { Interpreted, Native };
+  enum class VectorExecution { Scalar, Simd };
   Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random);
   ~Rsp();
   void power();
@@ -47,6 +48,11 @@ public:
   void run();
   // Scalar replay may continue to the completed clock boundary of a native batch.
   void run_interpreted(std::int64_t clock_target = 0);
+  // Select the host vector path between execution intervals.
+  void set_vector_execution(VectorExecution execution);
+  VectorExecution vector_execution() const {
+    return vector_execution_;
+  }
   void connect_display(std::function<std::uint32_t(unsigned)> read,
                        std::function<void(unsigned, std::uint32_t)> write);
   RspState &state() {
@@ -158,6 +164,7 @@ private:
   std::function<std::uint32_t(unsigned)> display_read_;
   std::function<void(unsigned, std::uint32_t)> display_write_;
   std::unique_ptr<RspCompiler> compiler_;
+  VectorExecution vector_execution_ = VectorExecution::Simd;
 };
 
 } // namespace cupid::n64

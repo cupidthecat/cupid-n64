@@ -62,8 +62,11 @@ constexpr sljit_s32 simd = SLJIT_SIMD_REG_128 | SLJIT_SIMD_ELEM_8;
 } // namespace
 
 bool RspCompiler::Emitter::vector_arithmetic_simd(std::uint32_t instruction) {
+  if (rsp.vector_execution_ == Rsp::VectorExecution::Scalar)
+    return false;
   const auto operation = instruction & 63;
-  if (operation != 29 && (operation < 40 || operation > 45))
+  if (operation != 29 && operation != 50 && operation != 51 && operation != 54 &&
+      (operation < 40 || operation > 45))
     return false;
   if (!sljit_has_cpu_feature(SLJIT_HAS_SIMD))
     return false;
@@ -80,6 +83,38 @@ bool RspCompiler::Emitter::vector_arithmetic_simd(std::uint32_t instruction) {
                         : element == 10 ? accumulator(offsetof(RspAccumulator, low))
                                         : field(&zero);
     sljit_emit_simd_mov(compiler, simd, SLJIT_VR0, source.type, source.value);
+  } else if (operation == 50 || operation == 51 || operation == 54) {
+    if (element >= 2 &&
+        sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE | SLJIT_SIMD_TEST, SLJIT_VR0,
+                            SLJIT_VR0, SLJIT_VR1, 0) != SLJIT_SUCCESS)
+      return false;
+    const auto target = (instruction >> 16) & 31;
+    const auto lane = (instruction >> 11) & 7;
+    const auto selected = element < 2   ? lane
+                          : element < 4 ? (lane & 6) | (element & 1)
+                          : element < 8 ? (lane & 4) | (element & 3)
+                                        : element & 7;
+    op1(SLJIT_MOV_U16, reg(SLJIT_R0),
+        vector_half(target, operation == 51 ? selected : element & 7));
+    if (operation != 51)
+      op1(SLJIT_MOV_U16, reg(SLJIT_R1), field(&rsp.state_.divide_output));
+    const Operand source{SLJIT_MEM1(SLJIT_S0), static_cast<sljit_sw>(offsetof(RspState, vectors) +
+                                                                     target * sizeof(RspVector))};
+    sljit_emit_simd_mov(compiler, simd, SLJIT_VR0, source.type, source.value);
+    if (element >= 2) {
+      const auto mask = field(&tables.select[element]);
+      sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE, SLJIT_VR0, SLJIT_VR0, mask.type,
+                          mask.value);
+    }
+    const auto low = accumulator(offsetof(RspAccumulator, low));
+    sljit_emit_simd_mov(compiler, simd | SLJIT_SIMD_STORE, SLJIT_VR0, low.type, low.value);
+    if (operation != 51) {
+      op1(SLJIT_MOV_U16, field(&rsp.state_.divide_input), reg(SLJIT_R0));
+      op1(SLJIT_MOV_U8, field(&rsp.state_.divide_double), imm(1));
+    }
+    op1(SLJIT_MOV_U16, vector_half((instruction >> 6) & 31, lane),
+        reg(operation == 51 ? SLJIT_R0 : SLJIT_R1));
+    return true;
   } else {
     const auto logic = operation < 42   ? SLJIT_SIMD_OP2_AND
                        : operation < 44 ? SLJIT_SIMD_OP2_OR
@@ -116,7 +151,8 @@ bool RspCompiler::Emitter::vector_arithmetic_simd(std::uint32_t instruction) {
 }
 
 bool RspCompiler::Emitter::vector_quad_simd(std::uint32_t instruction) {
-  if (!sljit_has_cpu_feature(SLJIT_HAS_SIMD) ||
+  if (rsp.vector_execution_ == Rsp::VectorExecution::Scalar ||
+      !sljit_has_cpu_feature(SLJIT_HAS_SIMD) ||
       sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE | SLJIT_SIMD_TEST, SLJIT_VR0,
                           SLJIT_VR0, SLJIT_VR1, 0) != SLJIT_SUCCESS)
     return false;
