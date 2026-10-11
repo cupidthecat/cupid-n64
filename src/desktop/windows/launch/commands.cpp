@@ -56,6 +56,7 @@ void Window::update_launch() {
 
 void Window::disk_changed() {
   options_.disk = session_->disk_image();
+  const bool controllers_changed = stage_controller_settings();
   if (options_.rom.empty())
     game_image_ = options_.disk.empty() ? options_.ipl : options_.disk;
   states_ = std::make_unique<StateSlots>(
@@ -67,6 +68,8 @@ void Window::disk_changed() {
   state_message_ = options_.disk.empty()
                        ? L"64DD drive empty"
                        : L"64DD disk inserted: " + options_.disk.filename().wstring();
+  if (controllers_changed)
+    state_message_ += L"; reload the game to apply its controller setup";
   update_states();
   save_launch_settings();
 }

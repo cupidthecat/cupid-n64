@@ -1,5 +1,6 @@
 #include "desktop/windows/controls/mapping_dialog.hpp"
 #include "desktop/windows/dialogs/form.hpp"
+#include "desktop/windows/dialogs/scroll.hpp"
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
@@ -22,6 +23,7 @@ struct DialogState {
   MappingForm form;
   unsigned player = 0;
   std::vector<Choice> choices;
+  ScrollForm layout;
 };
 
 std::wstring key_name(unsigned code) {
@@ -246,14 +248,24 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
     dialog_control(dialog, L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, IDCANCEL, 620, 430, 50,
                    16);
     refresh(dialog, *state);
+    try {
+      state->layout.initialize(dialog, 420);
+    } catch (const std::exception &error) {
+      MessageBoxA(dialog, error.what(), "Input mappings", MB_OK | MB_ICONERROR);
+      EndDialog(dialog, IDCANCEL);
+      return TRUE;
+    }
     center_dialog(dialog);
     SetTimer(dialog, 20, 1000, nullptr);
     return TRUE;
   }
   if (!state)
     return FALSE;
+  if (state->layout.message(event, wparam))
+    return TRUE;
+  const auto controls = state->layout.content();
   if (event == WM_TIMER && wparam == 20) {
-    status(dialog, *state);
+    status(controls, *state);
     return TRUE;
   }
   if (event != WM_COMMAND)
@@ -265,20 +277,20 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
   }
   try {
     if (id == IDOK) {
-      read(dialog, *state);
+      read(controls, *state);
       for (const auto &mapping : state->form.mappings)
         validate_mapping(mapping);
       EndDialog(dialog, IDOK);
     } else if (id == player_id && HIWORD(wparam) == CBN_SELCHANGE) {
-      read(dialog, *state);
+      read(controls, *state);
       state->player =
-          static_cast<unsigned>(SendDlgItemMessageW(dialog, player_id, CB_GETCURSEL, 0, 0));
-      refresh(dialog, *state);
+          static_cast<unsigned>(SendDlgItemMessageW(controls, player_id, CB_GETCURSEL, 0, 0));
+      refresh(controls, *state);
     } else if (id == source_id && HIWORD(wparam) == CBN_SELCHANGE) {
-      read(dialog, *state);
+      read(controls, *state);
       auto &mapping = state->form.mappings[state->player];
       const auto source =
-          static_cast<HostSource>(SendDlgItemMessageW(dialog, source_id, CB_GETCURSEL, 0, 0));
+          static_cast<HostSource>(SendDlgItemMessageW(controls, source_id, CB_GETCURSEL, 0, 0));
       if ((source >= HostSource::Gamepad1) != (mapping.source >= HostSource::Gamepad1)) {
         const bool feedback = mapping.feedback;
         mapping = default_mapping(source);
@@ -286,9 +298,9 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
       } else {
         mapping.source = source;
       }
-      refresh(dialog, *state);
+      refresh(controls, *state);
     } else if (id == defaults_id || id == clear_id) {
-      read(dialog, *state);
+      read(controls, *state);
       auto &mapping = state->form.mappings[state->player];
       if (id == defaults_id)
         mapping = default_mapping(mapping.source);
@@ -297,7 +309,7 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
         mapping.axes.fill({});
         mapping.slow = {};
       }
-      refresh(dialog, *state);
+      refresh(controls, *state);
     }
   } catch (const std::exception &error) {
     MessageBoxA(dialog, error.what(), "Input mappings", MB_OK | MB_ICONERROR);
@@ -308,7 +320,7 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
 } // namespace
 
 std::optional<PlayerMappings> choose_mappings(HWND owner, MappingForm form) {
-  DialogState state{std::move(form), 0, {}};
+  DialogState state{std::move(form), 0, {}, {}};
   const auto data = dialog_template(L"Input mappings for four players", 680, 456);
   const auto result = DialogBoxIndirectParamW(GetModuleHandleW(nullptr),
                                               reinterpret_cast<const DLGTEMPLATE *>(data.data()),

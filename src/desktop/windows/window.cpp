@@ -427,8 +427,7 @@ void Window::load() {
     session_->save();
   audio_.clear();
   gamepads_.stop();
-  const auto controller_key =
-      controller_settings_key(options_.rom.empty() ? options_.ipl : options_.rom);
+  const auto controller_key = selected_controller_key();
   auto selected_settings = session_settings_;
   selected_settings.ports =
       options_.frames ? ControllerPorts{} : read_ports(settings_, controller_key);

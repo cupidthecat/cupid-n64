@@ -172,6 +172,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/launch/forms.cpp
     src/desktop/windows/launch/commands.cpp
     src/desktop/windows/dialogs/files.cpp
+    src/desktop/windows/dialogs/scroll.cpp
     src/desktop/windows/dialogs/paths.cpp
     src/desktop/windows/display/size_dialog.cpp
     src/desktop/windows/display/screenshot.cpp

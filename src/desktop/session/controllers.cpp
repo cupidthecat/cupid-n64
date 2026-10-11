@@ -160,6 +160,19 @@ void Session::input(const PlayerInputs &inputs) {
   }
 }
 
+void Session::legacy_input(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
+  if (auto *arcade = console_->arcade()) {
+    PortInput input;
+    input.buttons = buttons;
+    input.x = x;
+    input.y = y;
+    input.calibrated_stick = true;
+    arcade_input(arcade->input().players[0], input);
+  } else {
+    console_->controller(0).input(buttons, x, y);
+  }
+}
+
 FeedbackState Session::feedback_state(unsigned port) const {
   const auto &status = ports_.at(port);
   if (status.controller == ControllerType::GameCube) {

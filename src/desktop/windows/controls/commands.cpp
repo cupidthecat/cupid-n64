@@ -5,6 +5,24 @@
 
 namespace cupid::desktop {
 
+std::wstring Window::selected_controller_key() const {
+  return controller_settings_key(!options_.rom.empty()    ? options_.rom
+                                 : !options_.disk.empty() ? options_.disk
+                                                          : options_.ipl);
+}
+
+bool Window::stage_controller_settings() {
+  const auto key = selected_controller_key();
+  if (key == controller_key_)
+    return false;
+  auto ports = options_.frames ? ControllerPorts{} : read_ports(settings_, key);
+  const bool changed = ports != session_settings_.ports;
+  controller_key_ = key;
+  session_settings_.ports = std::move(ports);
+  reload_pending_ |= changed;
+  return changed;
+}
+
 void Window::create_controller_menus(HMENU emulation, HMENU view) {
   AppendMenuW(emulation, MF_STRING | MF_GRAYED, ControllerSetup,
               L"Controller &ports for this game...");

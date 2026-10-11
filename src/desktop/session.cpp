@@ -62,8 +62,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     if (!disk.empty())
       change_disk(disk);
   }
-  const auto controller_save =
-      rom.empty() ? settings_.storage.save_image(ipl, ipl_identity_) : cartridge_save;
+  const auto controller_save = rom.empty() ? storage_image_ : cartridge_save;
   configure_ports(profile->accessories, controller_save);
   if (!console_->load(cartridge, pif))
     throw std::runtime_error(
@@ -159,26 +158,6 @@ void Session::run(const PlayerInputs &inputs) {
 
 void Session::run() {
   run_interval(false);
-}
-
-void Session::legacy_input(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
-  if (auto *arcade = console_->arcade()) {
-    auto &player = arcade->input().players[0];
-    player.up = buttons & 0x0800;
-    player.down = buttons & 0x0400;
-    player.left = buttons & 0x0200;
-    player.right = buttons & 0x0100;
-    player.buttons[0] = buttons & 0x8000;
-    player.buttons[1] = buttons & 0x4000;
-    player.buttons[2] = buttons & 0x0010;
-    player.buttons[3] = buttons & 0x0001;
-    player.start = buttons & 0x1000;
-    player.coin = buttons & 0x2000;
-    player.x = x;
-    player.y = y;
-  } else {
-    console_->controller(0).input(buttons, x, y);
-  }
 }
 
 void Session::run_interval(bool frame_boundary) {

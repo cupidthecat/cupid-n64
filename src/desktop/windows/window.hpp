@@ -38,6 +38,8 @@ private:
   bool controller_command(unsigned id);
   void create_controller_menus(HMENU emulation, HMENU view);
   void update_controllers();
+  std::wstring selected_controller_key() const;
+  bool stage_controller_settings();
   void controller_dialog();
   void mapping_dialog();
   HostInputs host_inputs() const;
