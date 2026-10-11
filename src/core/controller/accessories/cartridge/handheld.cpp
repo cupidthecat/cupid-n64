@@ -193,6 +193,9 @@ std::uint8_t HandheldCartridge::read(std::uint16_t address) {
 }
 
 void HandheldCartridge::write(std::uint16_t address, std::uint8_t value) {
+  if (!implementation_->rom.empty() && implementation_->config.board == Board::Mbc5 &&
+      address >= 0x4000 && address < 0x6000)
+    ++rumble_commands_;
   if (address <= 0x7fff || (address >= 0xa000 && address <= 0xbfff))
     implementation_->write(address, value);
 }

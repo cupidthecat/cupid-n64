@@ -167,6 +167,7 @@ struct CpuCompiler::Emitter {
   static Operand fpr(unsigned index, bool word = false, bool high = false);
   bool special(std::uint32_t instruction);
   void op1(sljit_s32 op, Operand dest, Operand source);
+  void host_address(sljit_s32 dest, const void *source);
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
   void compare(Operand dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source, bool word = false);

@@ -1,6 +1,10 @@
 #pragma once
 
+#include "core/cartridge/profile/profile.hpp"
+#include "core/controller/accessories/cartridge/handheld.hpp"
 #include "core/system/console.hpp"
+#include "desktop/controls/feedback.hpp"
+#include "desktop/controls/input.hpp"
 #include "desktop/session/settings.hpp"
 #include "desktop/storage/save.hpp"
 #include "desktop/video/output.hpp"
@@ -19,6 +23,18 @@ public:
           SessionSettings settings = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  void run(const PlayerInputs &input);
+  void run();
+  void advance_frame(const PlayerInputs &input);
+  void input(const PlayerInputs &input);
+  const PortStatus &port_status(unsigned port) const {
+    return ports_.at(port);
+  }
+  const std::array<PortStatus, 4> &automatic_ports() const {
+    return automatic_ports_;
+  }
+  FeedbackState feedback_state(unsigned port) const;
+  void heart_rate(unsigned port, unsigned value);
   void finish_frame();
   void reset();
   void save();
@@ -41,9 +57,23 @@ public:
 
 private:
   friend class SessionState;
-  void run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y, bool frame_boundary);
+  void configure_ports(const std::array<n64::ControllerAccessory, 4> &defaults,
+                       const std::filesystem::path &save_image);
+  void attach_transfer(unsigned port, const std::filesystem::path &path);
+  void save_transfers();
+  void advance_to_frame();
+  void legacy_input(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  void run_interval(bool frame_boundary);
   Audio &audio_;
   SessionSettings settings_;
+  std::array<PortStatus, 4> ports_;
+  std::array<PortStatus, 4> automatic_ports_;
+  struct TransferMedia {
+    std::shared_ptr<n64::HandheldCartridge> cartridge;
+    std::filesystem::path clock_path;
+    std::vector<std::uint8_t> saved_clock;
+  };
+  std::array<TransferMedia, 4> transfer_media_;
   std::filesystem::path disk_image_, storage_image_;
   std::filesystem::path cartridge_image_, ipl_image_;
   std::uint64_t ipl_identity_ = 0;

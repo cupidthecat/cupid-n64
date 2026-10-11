@@ -172,16 +172,25 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/launch/forms.cpp
     src/desktop/windows/launch/commands.cpp
     src/desktop/windows/dialogs/files.cpp
+    src/desktop/windows/dialogs/scroll.cpp
     src/desktop/windows/dialogs/paths.cpp
     src/desktop/windows/display/size_dialog.cpp
     src/desktop/windows/display/screenshot.cpp
     src/desktop/windows/audio.cpp
     src/desktop/windows/audio/devices.cpp
+    src/desktop/windows/controls/gamepads.cpp
+    src/desktop/windows/controls/preferences.cpp
+    src/desktop/windows/controls/ports_dialog.cpp
+    src/desktop/windows/controls/mapping_dialog.cpp
+    src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
     src/desktop/audio/levels.cpp
     src/desktop/session.cpp
     src/desktop/session/disk.cpp
+    src/desktop/session/controllers.cpp
+    src/desktop/controls/ports.cpp
+    src/desktop/controls/mapping.cpp
     src/desktop/launch/files.cpp
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
@@ -234,6 +243,15 @@ if(BUILD_TESTING)
   target_include_directories(desktop_audio_levels_tests PRIVATE src)
   target_compile_features(desktop_audio_levels_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_audio_levels COMMAND desktop_audio_levels_tests)
+  add_executable(desktop_controls_tests tests/desktop/controls/mapping.cpp
+    src/desktop/controls/mapping.cpp src/desktop/controls/ports.cpp)
+  target_link_libraries(desktop_controls_tests PRIVATE cupid_core)
+  if(MSVC)
+    target_compile_options(desktop_controls_tests PRIVATE /W4 /WX /permissive-)
+  else()
+    target_compile_options(desktop_controls_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME desktop_controls COMMAND desktop_controls_tests)
   add_executable(desktop_storage_tests tests/desktop/storage.cpp src/desktop/storage/save.cpp)
   target_include_directories(desktop_storage_tests PRIVATE src)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
@@ -272,8 +290,18 @@ if(BUILD_TESTING)
   target_compile_features(desktop_clock_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_playback_clock COMMAND desktop_clock_tests)
   if(TARGET cupid_desktop)
+    add_executable(desktop_control_preferences_tests tests/desktop/controls/preferences.cpp
+      src/desktop/windows/controls/preferences.cpp src/desktop/controls/ports.cpp
+      src/desktop/controls/mapping.cpp src/desktop/storage/save.cpp)
+    target_compile_definitions(desktop_control_preferences_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(desktop_control_preferences_tests PRIVATE cupid_core)
+    if(MSVC)
+      target_compile_options(desktop_control_preferences_tests PRIVATE /W4 /WX /permissive-)
+    endif()
+    add_test(NAME desktop_control_preferences COMMAND desktop_control_preferences_tests)
     add_executable(session_video_tests tests/desktop/session_video.cpp
       src/desktop/session.cpp src/desktop/session/disk.cpp
+      src/desktop/session/controllers.cpp src/desktop/controls/ports.cpp
       src/desktop/storage/save.cpp src/desktop/storage/paths.cpp
       src/desktop/state/session_state.cpp
       src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
@@ -286,6 +314,7 @@ if(BUILD_TESTING)
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
     add_executable(session_state_tests tests/desktop/state/session.cpp
       src/desktop/session.cpp src/desktop/session/disk.cpp
+      src/desktop/session/controllers.cpp src/desktop/controls/ports.cpp
       src/desktop/storage/save.cpp src/desktop/storage/paths.cpp src/desktop/state/session_state.cpp
       src/desktop/state/slots.cpp src/desktop/state/rewind.cpp
       src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp

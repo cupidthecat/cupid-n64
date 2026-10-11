@@ -42,8 +42,13 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
     op2(SLJIT_LSHR, reg(SLJIT_R2), reg(SLJIT_R1), imm(4));
     op2(SLJIT_AND, reg(SLJIT_R2), reg(SLJIT_R2), imm(511));
     op2(SLJIT_MUL, reg(SLJIT_R2), reg(SLJIT_R2), imm(sizeof(Cpu::CacheLine)));
+#if SLJIT_CONFIG_ARM_64
+    op2(SLJIT_ADD, reg(SLJIT_R2), reg(SLJIT_R2), reg(SLJIT_S2));
+    op2(SLJIT_ADD, reg(SLJIT_R2), reg(SLJIT_R2), imm(field(cpu.dcache_.data()).value));
+#else
     op2(SLJIT_ADD, reg(SLJIT_R2), reg(SLJIT_R2),
         imm(reinterpret_cast<std::uintptr_t>(cpu.dcache_.data())));
+#endif
   };
   commit_pipeline();
   SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};

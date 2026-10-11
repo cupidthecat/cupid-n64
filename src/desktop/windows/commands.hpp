@@ -44,6 +44,8 @@ enum Command : unsigned {
   DiskEject,
   ExpansionPak,
   Reload,
+  ControllerSetup,
+  InputMappings,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,

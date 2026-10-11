@@ -9,6 +9,8 @@
 #include "desktop/timing/playback_settings.hpp"
 #include "desktop/video/viewport.hpp"
 #include "desktop/windows/audio/devices.hpp"
+#include "desktop/windows/controls/gamepads.hpp"
+#include "desktop/windows/controls/preferences.hpp"
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
@@ -33,6 +35,17 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool controller_command(unsigned id);
+  void create_controller_menus(HMENU emulation, HMENU view);
+  void update_controllers();
+  std::wstring selected_controller_key() const;
+  bool stage_controller_settings();
+  void controller_dialog();
+  void mapping_dialog();
+  HostInputs host_inputs() const;
+  PlayerInputs inputs();
+  std::array<FeedbackState, 4> feedback_state() const;
+  void update_feedback();
   bool launch_command(unsigned id);
   void launch_dialog();
   void firmware_dialog();
@@ -108,6 +121,11 @@ private:
   HMENU memory_menu_ = nullptr;
   FirmwareFiles firmware_files_;
   SessionSettings session_settings_;
+  std::wstring controller_key_;
+  PlayerMappings player_mappings_;
+  Gamepads gamepads_;
+  HostInputs last_host_inputs_;
+  FeedbackLatch feedback_;
   bool reload_pending_ = false;
   std::vector<AudioDevice> audio_devices_;
   static constexpr std::array<unsigned, 8> audio_latencies{20, 40, 60, 80, 120, 160, 240, 320};

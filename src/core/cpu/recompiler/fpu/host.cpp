@@ -50,15 +50,13 @@ bool CpuCompiler::Emitter::floating_host() {
 void CpuCompiler::Emitter::floating_environment(unsigned rounding, bool flush) {
 #if SLJIT_CONFIG_X86_64
   constexpr unsigned modes[] = {0, 0x6000, 0x4000, 0x2000};
-  op1(SLJIT_MOV, reg(SLJIT_R2),
-      imm(reinterpret_cast<std::uintptr_t>(block.floating_control.data())));
+  host_address(SLJIT_R2, block.floating_control.data());
   control(compiler, false, 0);
   op1(SLJIT_MOV32, {SLJIT_MEM1(SLJIT_R2), 4},
       imm(0x1f80 | (flush ? 0x8000 : 0) | modes[rounding & 3]));
   control(compiler, true, 4);
 #elif SLJIT_CONFIG_ARM_64
-  op1(SLJIT_MOV, reg(SLJIT_R2),
-      imm(reinterpret_cast<std::uintptr_t>(block.floating_control.data())));
+  host_address(SLJIT_R2, block.floating_control.data());
   control(compiler, false, false, SLJIT_R3);
   op1(SLJIT_MOV, {SLJIT_MEM1(SLJIT_R2), 0}, reg(SLJIT_R3));
   control(compiler, false, true, SLJIT_R3);
@@ -76,15 +74,13 @@ void CpuCompiler::Emitter::floating_environment(unsigned rounding, bool flush) {
 
 void CpuCompiler::Emitter::floating_restore() {
 #if SLJIT_CONFIG_X86_64
-  op1(SLJIT_MOV, reg(SLJIT_R2),
-      imm(reinterpret_cast<std::uintptr_t>(block.floating_control.data())));
+  host_address(SLJIT_R2, block.floating_control.data());
   control(compiler, false, 4);
   control(compiler, true, 0);
   op1(SLJIT_MOV_U32, reg(SLJIT_R3), {SLJIT_MEM1(SLJIT_R2), 4});
 #elif SLJIT_CONFIG_ARM_64
   control(compiler, false, true, SLJIT_R3);
-  op1(SLJIT_MOV, reg(SLJIT_R2),
-      imm(reinterpret_cast<std::uintptr_t>(block.floating_control.data())));
+  host_address(SLJIT_R2, block.floating_control.data());
   op1(SLJIT_MOV, reg(SLJIT_R0), {SLJIT_MEM1(SLJIT_R2), 0});
   control(compiler, true, false, SLJIT_R0);
   op1(SLJIT_MOV, reg(SLJIT_R0), {SLJIT_MEM1(SLJIT_R2), 8});

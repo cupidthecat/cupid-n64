@@ -24,6 +24,9 @@ public:
   bool rumbling() const {
     return motor_;
   }
+  std::uint64_t rumble_commands() const {
+    return rumble_commands_;
+  }
   std::span<std::uint8_t> pak_data() {
     return ram_;
   }
@@ -51,6 +54,8 @@ private:
   std::int8_t y_ = 0;
   bool detect_ = false;
   bool motor_ = false;
+  // Host feedback detects fresh motor commands after reset.
+  std::uint64_t rumble_commands_ = 0;
 };
 
 } // namespace cupid::n64
