@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/launch/files.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
@@ -17,11 +18,10 @@
 
 namespace cupid::desktop {
 
-struct Options {
-  std::filesystem::path rom, firmware, capture, ipl, disk;
+struct Options : LaunchFiles {
+  std::filesystem::path capture;
   unsigned frames = 0;
   bool test_input = false;
-  n64::ArcadeProfile arcade_profile = n64::ArcadeProfile::Disabled;
 };
 
 class Window {
@@ -33,6 +33,17 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool launch_command(unsigned id);
+  void launch_dialog();
+  void firmware_dialog();
+  void folders_dialog();
+  void load_launch_settings();
+  void save_launch_settings();
+  void create_launch_menus(HMENU file, HMENU emulation);
+  void update_launch();
+  void disk_changed();
+  std::filesystem::path application_directory() const;
+  std::filesystem::path debugging_path(const wchar_t *extension) const;
   bool state_command(unsigned id);
   bool playback_command(unsigned id);
   bool playback_settings_command(unsigned id);
@@ -94,6 +105,10 @@ private:
   HMENU monitor_menu_ = nullptr;
   HMENU recent_menu_ = nullptr;
   HMENU audio_menu_ = nullptr, audio_device_menu_ = nullptr;
+  HMENU memory_menu_ = nullptr;
+  FirmwareFiles firmware_files_;
+  SessionSettings session_settings_;
+  bool reload_pending_ = false;
   std::vector<AudioDevice> audio_devices_;
   static constexpr std::array<unsigned, 8> audio_latencies{20, 40, 60, 80, 120, 160, 240, 320};
   PlaybackSync playback_sync_ = PlaybackSync::Audio;

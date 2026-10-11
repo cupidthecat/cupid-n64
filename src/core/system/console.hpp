@@ -26,6 +26,7 @@ struct ConsoleConfig {
   VideoRegion region = VideoRegion::Ntsc;
   bool expansion = true;
   CicModel cic = CicModel::N6102;
+  BootVerification boot_verification;
   unsigned eeprom_size = 0;
   unsigned sram_size = 0;
   std::optional<FlashModel> flash_model = {};

@@ -43,7 +43,11 @@ void CoreState::visit(state::Archive &a, Console &c) {
   a.identity<std::uint32_t>(3);
   a.identity(c.config_.region);
   a.identity(c.config_.expansion);
-  a.identity(c.config_.cic);
+  // Keep the normal configuration compatible with existing state files.
+  const auto cic_identity = static_cast<std::uint32_t>(c.config_.cic) |
+                            (c.config_.boot_verification.checksum ? 0u : 0x100u) |
+                            (c.config_.boot_verification.region ? 0x200u : 0u);
+  a.identity(cic_identity);
   a.identity(c.config_.eeprom_size);
   a.identity(c.config_.sram_size);
   a.identity(c.config_.flash_model.has_value());

@@ -19,12 +19,12 @@ ConsoleConfig configure(ConsoleConfig config) {
 
 Console::Console(ConsoleConfig config)
     : config_(configure(config)), ram_(ri_, random_, config_.expansion), mi_(ram_),
-      cic_(config_.cic), pif_(cic_, ram_), si_(pif_, mi_, events_), pi_(ram_, mi_, events_),
-      disk_(events_, config_.disk_clock), rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_),
-      vi_(mi_, config_.region), audio_(ram_, mi_, config_.region), isviewer_(pi_),
-      eeprom_(events_, config_.eeprom_size), rtc_(events_, config_.rtc_present, config_.rtc_clock),
-      cartridge_joybus_(eeprom_, rtc_), sram_(config_.sram_size),
-      flash_(events_, config_.flash_model),
+      cic_(config_.cic), pif_(cic_, ram_, config_.boot_verification, config_.region),
+      si_(pif_, mi_, events_), pi_(ram_, mi_, events_), disk_(events_, config_.disk_clock),
+      rsp_(ram_, mi_, random_), rdp_(ram_, rsp_, mi_), vi_(mi_, config_.region),
+      audio_(ram_, mi_, config_.region), isviewer_(pi_), eeprom_(events_, config_.eeprom_size),
+      rtc_(events_, config_.rtc_present, config_.rtc_clock), cartridge_joybus_(eeprom_, rtc_),
+      sram_(config_.sram_size), flash_(events_, config_.flash_model),
       controllers_{Gamepad(random_), Gamepad(random_), Gamepad(random_), Gamepad(random_)},
       cpu_(*this, &random_), arcade_(config_.arcade_profile == ArcadeProfile::Disabled
                                          ? nullptr

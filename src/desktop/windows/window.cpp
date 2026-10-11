@@ -30,12 +30,6 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"Disk saves use .disk and .rtc.\n"
                       L"Save states use the game's .states folder. Undo lasts until another game "
                       L"is opened or the app closes.";
-std::filesystem::path setting(const std::filesystem::path &file, const wchar_t *name) {
-  std::array<wchar_t, 32768> buffer{};
-  GetPrivateProfileStringW(L"Files", name, L"", buffer.data(), static_cast<DWORD>(buffer.size()),
-                           file.c_str());
-  return buffer.data();
-}
 } // namespace
 
 Window::Window(Options options) : options_(std::move(options)) {
@@ -46,10 +40,6 @@ Window::Window(Options options) : options_(std::move(options)) {
     settings_ = std::filesystem::path(directory.data()) / L"Cupid-N64";
     std::filesystem::create_directories(settings_);
     settings_ /= L"settings.ini";
-    if (options_.rom.empty() && options_.ipl.empty())
-      options_.rom = setting(settings_, L"ROM");
-    if (options_.firmware.empty())
-      options_.firmware = setting(settings_, L"Firmware");
     state_slot_ = std::clamp(GetPrivateProfileIntW(L"States", L"Slot", 1, settings_.c_str()), 1u,
                              StateSlots::count);
     rewind_enabled_ = GetPrivateProfileIntW(L"Rewind", L"Enabled", 0, settings_.c_str()) != 0;
@@ -65,6 +55,7 @@ Window::Window(Options options) : options_(std::move(options)) {
   load_display_settings();
   load_recent();
   load_playback_settings();
+  load_launch_settings();
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -81,7 +72,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(file, MF_STRING, Open, L"&Open ROM...");
   recent_menu_ = CreatePopupMenu();
   AppendMenuW(file, MF_POPUP, reinterpret_cast<UINT_PTR>(recent_menu_), L"&Recent ROMs");
-  AppendMenuW(file, MF_STRING, Firmware, L"Select &PIF firmware...");
+  create_launch_menus(file, emulation);
   AppendMenuW(file, MF_STRING | MF_GRAYED, Screenshot, L"&Screenshot...\tF12");
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
@@ -143,6 +134,7 @@ int Window::run(HINSTANCE instance, int show) {
   update_states();
   update_playback();
   update_display();
+  update_launch();
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
@@ -370,9 +362,16 @@ void Window::error(const std::exception &exception) {
   audio_.clear();
   if (options_.frames) {
     if (!options_.capture.empty()) {
-      auto log = options_.capture;
-      log += L".error.txt";
-      std::ofstream(log) << exception.what() << '\n';
+      try {
+        std::ofstream log(debugging_path(L".error.txt"));
+        log << exception.what() << '\n';
+        if (!log)
+          throw std::runtime_error("Could not write the debugging report.");
+      } catch (const std::exception &report_error) {
+        OutputDebugStringA(report_error.what());
+        MessageBoxA(window_, report_error.what(), "Cupid-N64 debugging output",
+                    MB_OK | MB_ICONERROR);
+      }
     }
     exit_code_ = 1;
     quit_ = true;
@@ -399,10 +398,9 @@ void Window::load() {
   audio_.clear();
   auto next = std::make_unique<Session>(
       options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
-      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt);
+      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, session_settings_);
   auto states = std::make_unique<StateSlots>(
-      options_.rom.empty() ? (options_.disk.empty() ? options_.ipl : options_.disk) : options_.rom,
-      [this] { return session_->capture_state(); },
+      next->storage_image(), [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
   states->select(state_slot_);
   auto rewind = std::make_unique<RewindHistory>(
@@ -412,6 +410,7 @@ void Window::load() {
   rewind_ = std::move(rewind);
   states_ = std::move(states);
   session_ = std::move(next);
+  reload_pending_ = false;
   state_message_.clear();
   game_image_ =
       options_.rom.empty() ? (options_.disk.empty() ? options_.ipl : options_.disk) : options_.rom;
@@ -425,10 +424,24 @@ void Window::load() {
   update_states();
   update_playback();
   update_display();
+  update_launch();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
     WritePrivateProfileStringW(L"Files", L"Firmware", options_.firmware.c_str(), settings_.c_str());
+  }
+  if (!options_.frames) {
+    if (options_.arcade_profile == n64::ArcadeProfile::Disabled)
+      firmware_files_.n64 = options_.firmware;
+    else
+      firmware_files_.arcade = options_.firmware;
+    if (!options_.ipl.empty())
+      firmware_files_.ipl = options_.ipl;
+    try {
+      save_launch_settings();
+    } catch (const std::exception &error) {
+      status_error(L"Launch settings could not be saved", error);
+    }
   }
   if (!options_.rom.empty()) {
     recent_.remember(options_.rom);
@@ -454,11 +467,19 @@ std::filesystem::path Window::choose(bool firmware) {
                                : L"Open Nintendo 64 ROM";
   dialog.lpstrFilter = firmware ? L"PIF firmware\0*.bin;*.rom\0All files\0*.*\0"
                                 : L"N64 cartridge\0*.z64;*.n64;*.v64\0All files\0*.*\0";
+  const auto directory = firmware ? session_settings_.storage.directory(StorageLocation::Firmware,
+                                                                        {}, application_directory())
+                                  : game_image_.parent_path();
+  if (firmware)
+    validate_directory(directory, false);
+  dialog.lpstrInitialDir = directory.empty() ? nullptr : directory.c_str();
   dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
   return GetOpenFileNameW(&dialog) ? std::filesystem::path(path.data()) : std::filesystem::path{};
 }
 
 void Window::command(unsigned id) {
+  if (launch_command(id))
+    return;
   if (playback_settings_command(id))
     return;
   if (file_command(id))
@@ -471,12 +492,6 @@ void Window::command(unsigned id) {
     return;
   if (id == Screenshot) {
     screenshot();
-  } else if (id == Firmware) {
-    auto path = choose(true);
-    if (path.empty())
-      return;
-    options_.firmware = path;
-    load();
   } else if (id == Exit) {
     SendMessageW(window_, WM_CLOSE, 0, 0);
   } else if (id == Pause) {
@@ -567,7 +582,8 @@ void Window::paint() {
       RECT content{20, 20, width - 20, height - 20};
       DrawTextW(dc,
                 L"CUPID-N64\n\nFile > Open ROM to load a Nintendo 64 game.\n"
-                L"Select the game's PIF firmware when prompted.\n\n"
+                L"File > Launch setup also starts 64DD and Aleck64 games.\n"
+                L"Review local firmware and output folders in File.\n\n"
                 L"Press F1 for keyboard controls.",
                 -1, &content, DT_CENTER);
     }
@@ -582,6 +598,13 @@ void Window::paint() {
             : L"WASD Move  |  J Jump  |  K Punch  |  Enter Start  |  F1 Controls  |  F5 Pause";
     if (states_)
       status = L"Slot " + std::to_wstring(state_slot_) + L"  |  F2 Save  |  F3 Load  |  " + status;
+    if (session_ && session_->has_disk_drive())
+      status = (session_->disk_image().empty()
+                    ? L"64DD drive empty"
+                    : L"64DD: " + session_->disk_image().filename().wstring()) +
+               L"  |  " + status;
+    if (reload_pending_)
+      status = L"Settings pending: Emulation > Reload game  |  " + status;
     if (!state_message_.empty())
       status = state_message_ + L"  |  " + status;
     DrawTextW(dc, status.c_str(), -1, &bar, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
@@ -678,10 +701,12 @@ void Window::capture() {
   stream.close();
   if (!stream)
     throw std::runtime_error("Could not save the captured frame.");
-  auto report = options_.capture;
-  report += L".txt";
-  std::wofstream(report) << L"Frames: " << session_->frames << L"\nAudio: "
-                         << (audio_.available() ? L"Ready" : audio_.error()) << L'\n';
+  std::wofstream report(debugging_path(L".txt"));
+  report << L"Frames: " << session_->frames << L"\nAudio: "
+         << (audio_.available() ? L"Ready" : audio_.error()) << L'\n';
+  report.close();
+  if (!report)
+    throw std::runtime_error("Could not write the debugging report. Check folder permissions.");
 }
 
 } // namespace cupid::desktop

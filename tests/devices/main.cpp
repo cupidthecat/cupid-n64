@@ -32,6 +32,7 @@ int main() {
   test::cic_tests();
   test::pif_tests();
   test::pif_boot_tests();
+  test::pif_verification_tests();
   test::si_boundary_tests();
   test::cartridge_status_tests();
   test::gamepad_tests();
