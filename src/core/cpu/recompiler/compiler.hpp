@@ -39,7 +39,7 @@ struct CpuCompiler::Impl {
     std::vector<std::uint32_t> words;
     std::vector<unsigned> entries;
     std::vector<InstructionView> views;
-    std::array<std::uint32_t, 2> floating_control{};
+    std::array<std::uint64_t, 2> floating_control{};
     void *code = nullptr;
     std::size_t bytes = 0;
     ~Block() {
@@ -159,10 +159,10 @@ struct CpuCompiler::Emitter {
   void floating_compare(SlowPath &path);
   void floating_input(SlowPath &path, sljit_s32 source, bool dual, bool subnormal = true);
   void floating_flags(SlowPath &path, bool dual, bool flush);
-  void floating_environment(unsigned rounding);
+  void floating_environment(unsigned rounding, bool flush = true);
   void floating_restore();
   void floating_sqrt(bool dual);
-  void floating_to_integer(bool dual, bool integer_dual);
+  void floating_to_integer(bool dual, bool integer_dual, unsigned rounding);
   static bool floating_host();
   static Operand fpr(unsigned index, bool word = false, bool high = false);
   bool special(std::uint32_t instruction);

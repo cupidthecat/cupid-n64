@@ -1,7 +1,10 @@
+#include "../../../fpu/host/environment.hpp"
 #include "../../fixture.hpp"
-#include "environment.hpp"
 #include "expected.hpp"
 #include "scenarios.hpp"
+#if defined(_M_ARM64) || defined(__aarch64__)
+#include "native/arm64.hpp"
+#endif
 
 namespace test {
 namespace {
@@ -12,11 +15,11 @@ struct NumericProbe : cpu_replay::Probe {
     cpu.state().fcr31 = value | 0x0003f000;
   }
   void execute(unsigned instruction) {
-    const cpu_replay::fpu::numeric::HostEnvironment environment(executions++);
+    const cpu_fpu::HostEnvironment environment(executions++);
     Probe::execute(instruction);
   }
   void run(bool native, std::uint64_t start, std::uint64_t end) {
-    const cpu_replay::fpu::numeric::HostEnvironment environment(executions++);
+    const cpu_fpu::HostEnvironment environment(executions++);
     Probe::run(native, start, end);
   }
 };
@@ -27,7 +30,10 @@ void cpu_replay_fpu_numeric_tests() {
   std::vector<std::uint64_t> expected(direct.begin(), direct.end());
   expected.insert(expected.end(), scalar.begin(), scalar.end());
   unsigned routes = 2;
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_ARM64) || defined(__aarch64__)
+  expected.insert(expected.end(), arm64_native.begin(), arm64_native.end());
+  routes = 3;
+#elif defined(_M_X64) || defined(__x86_64__)
   expected.insert(expected.end(), native.begin(), native.end());
   routes = 3;
 #endif

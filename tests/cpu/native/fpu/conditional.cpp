@@ -1,15 +1,13 @@
 #include "../../native_memory_fixture.hpp"
 #include "cases.hpp"
 
-#if defined(_M_X64) || defined(__x86_64__)
-#include <xmmintrin.h>
-#endif
+#include "../../fpu/host/environment.hpp"
 
 namespace test {
 using namespace cupid::n64;
 
 void native_fpu_conditional_tests() {
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
   for (const auto &row : native_fpu::cases)
     for (unsigned mode : {0x30000000u, 0x34000000u})
       for (unsigned position = 0; position < 3; ++position)
@@ -45,11 +43,10 @@ void native_fpu_conditional_tests() {
               f.cpu.state().fpr[mode & 0x04000000 ? 3 : 2] = row.a;
               f.cpu.state().fpr[5] = row.b;
               const auto start = f.cpu.state().clocks;
-              const auto host = _mm_getcsr();
-              _mm_setcsr(0x7fbf);
-              equal(f.cpu.run_block(expired ? start : start + 4096), true);
-              equal(_mm_getcsr(), 0x7fbf);
-              _mm_setcsr(host);
+              {
+                const cpu_fpu::HostEnvironment environment(15);
+                equal(f.cpu.run_block(expired ? start : start + 4096), true);
+              }
               const bool tail = !row.fault && !taken && !expired;
               const auto fetched = before + 2 + (tail ? 2 : 0);
               const auto clocks = before * 2 + row.clocks[position * 2 + 1] + (tail ? 4 : 0) +
