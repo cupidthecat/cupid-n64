@@ -1,5 +1,7 @@
 #include "core/rsp/vector/execute.hpp"
 #if defined(_M_X64) || defined(_M_IX86) || defined(__x86_64__) || defined(__i386__)
+#include "core/rsp/vector/divide/kernel.hpp"
+#include "core/rsp/vector/simd/quantize.hpp"
 #include <smmintrin.h>
 #include <utility>
 
@@ -123,51 +125,13 @@ __m128i add_signed(__m128i a, __m128i b, __m128i carry, bool subtract) {
 } // namespace
 
 constexpr bool supported(unsigned operation) {
-  switch (operation) {
-  case 0:
-  case 1:
-  case 4:
-  case 5:
-  case 6:
-  case 7:
-  case 8:
-  case 9:
-  case 12:
-  case 13:
-  case 14:
-  case 15:
-  case 16:
-  case 17:
-  case 19:
-  case 20:
-  case 21:
-  case 29:
-  case 32:
-  case 33:
-  case 34:
-  case 35:
-  case 36:
-  case 37:
-  case 38:
-  case 39:
-  case 40:
-  case 41:
-  case 42:
-  case 43:
-  case 44:
-  case 45:
-    return true;
-  case 55:
-  case 63:
-    return true;
-  default:
-    return false;
-  }
+  return operation < 64;
 }
 
 template <int Operation = -1, int Element = -1>
 void execute(RspState &state, RspVector &dest, const RspVector &source, const RspVector &target,
-             unsigned dynamic_operation = 0, unsigned dynamic_element = 0) {
+             unsigned source_register, unsigned dynamic_operation = 0,
+             unsigned dynamic_element = 0) {
   const auto operation = Operation < 0 ? dynamic_operation : unsigned(Operation);
   const auto element = Element < 0 ? dynamic_element : unsigned(Element);
   if (operation == 55 || operation == 63)
@@ -184,9 +148,46 @@ void execute(RspState &state, RspVector &dest, const RspVector &source, const Rs
   }();
   const auto zero = _mm_setzero_si128();
   const auto invert = _mm_set1_epi16(-1);
+  if (operation >= 48 && operation <= 54) {
+    const auto input = target.lanes[element & 7];
+    const auto lane = source_register & 7;
+    store(state.accumulator.low, b);
+    divide::execute_lane<Operation>(state, dest.lanes[lane], state.accumulator.low.lanes[lane],
+                                    input, operation);
+    return;
+  }
   __m128i result;
   bool write_low = false;
-  if (operation <= 15) {
+  if (operation == 2 || operation == 10) {
+    auto acc = Accumulator{load(state.accumulator.low), load(state.accumulator.middle),
+                           load(state.accumulator.high)};
+    const auto negative = _mm_srai_epi16(acc.high, 15);
+    const auto condition = operation == 2 ? _mm_xor_si128(negative, invert) : negative;
+    const auto sign = _mm_srai_epi16(b, 15);
+    const Accumulator product =
+        source_register & 1 ? Accumulator{zero, b, sign} : Accumulator{b, sign, sign};
+    acc.add({_mm_and_si128(product.low, condition), _mm_and_si128(product.middle, condition),
+             _mm_and_si128(product.high, condition)});
+    result = acc.signed_middle();
+    acc.save(state.accumulator);
+  } else if (operation == 3 || operation == 11) {
+    simd::Quantized value;
+    if (operation == 3) {
+      const auto low = _mm_mullo_epi16(a, b);
+      const auto high = _mm_mulhi_epi16(a, b);
+      value = simd::quantize(simd::round_product(_mm_unpacklo_epi16(low, high)),
+                             simd::round_product(_mm_unpackhi_epi16(low, high)));
+      store(state.accumulator.low, zero);
+    } else {
+      const auto middle = load(state.accumulator.middle);
+      const auto high = load(state.accumulator.high);
+      value = simd::quantize(simd::round_accumulator(_mm_unpacklo_epi16(middle, high)),
+                             simd::round_accumulator(_mm_unpackhi_epi16(middle, high)));
+    }
+    store(state.accumulator.middle, value.middle);
+    store(state.accumulator.high, value.high);
+    result = value.result;
+  } else if (operation <= 15) {
     auto acc = multiply(a, b, operation);
     if (operation == 0 || operation == 1)
       acc.add({_mm_set1_epi16(-32768), zero, zero});
@@ -331,13 +332,22 @@ void execute(RspState &state, RspVector &dest, const RspVector &source, const Rs
       state.carry_low = state.carry_high = 0;
       write_low = true;
       break;
-    default:
+    case 40:
+    case 41:
+    case 42:
+    case 43:
+    case 44:
+    case 45:
       result = operation <= 41   ? _mm_and_si128(a, b)
                : operation <= 43 ? _mm_or_si128(a, b)
                                  : _mm_xor_si128(a, b);
       if (operation & 1)
         result = _mm_xor_si128(result, invert);
       write_low = true;
+      break;
+    default:
+      store(state.accumulator.low, _mm_add_epi16(a, b));
+      result = zero;
       break;
     }
   }
@@ -348,7 +358,8 @@ void execute(RspState &state, RspVector &dest, const RspVector &source, const Rs
 
 template <unsigned Operation, unsigned Element>
 void handler(RspState *state, RspVector *dest, const RspVector *source, const RspVector *target) {
-  execute<Operation, Element>(*state, *dest, *source, *target);
+  execute<Operation, Element>(*state, *dest, *source, *target,
+                              static_cast<unsigned>(source - state->vectors.data()));
 }
 
 template <unsigned Operation, unsigned Element> constexpr VectorHandler select_handler() {
@@ -370,7 +381,8 @@ bool execute_vector_sse(RspState &state, std::uint32_t instruction) {
   if (!supported(instruction & 63))
     return false;
   execute(state, state.vectors[(instruction >> 6) & 31], state.vectors[(instruction >> 11) & 31],
-          state.vectors[(instruction >> 16) & 31], instruction & 63, (instruction >> 21) & 15);
+          state.vectors[(instruction >> 16) & 31], (instruction >> 11) & 31, instruction & 63,
+          (instruction >> 21) & 15);
   return true;
 }
 

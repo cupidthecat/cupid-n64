@@ -1,5 +1,6 @@
 #include "core/rsp/vector/execute.hpp"
 #include "fixture.hpp"
+#include "vector/quantize.hpp"
 
 namespace test {
 using namespace cupid::n64;
@@ -7,9 +8,6 @@ using namespace cupid::n64;
 void rsp_simd_tests() {
   if (!vector_simd_available())
     return;
-  constexpr std::array operations{0u,  1u,  4u,  5u,  6u,  7u,  8u,  9u,  12u, 13u, 14u, 15u,
-                                  16u, 17u, 19u, 20u, 21u, 29u, 32u, 33u, 34u, 35u, 36u, 37u,
-                                  38u, 39u, 40u, 41u, 42u, 43u, 44u, 45u, 55u, 63u};
   constexpr std::array<std::uint16_t, 8> values{0,      1,      0x7fff, 0x8000,
                                                 0xffff, 0x7ffe, 0x8001, 0xfffe};
   constexpr std::array<std::uint64_t, 12> accumulators{
@@ -22,7 +20,7 @@ void rsp_simd_tests() {
     random ^= random << 17;
     return random;
   };
-  for (auto operation : operations)
+  for (unsigned operation = 0; operation < 64; ++operation)
     for (unsigned element = 0; element < 16; ++element)
       for (unsigned trial = 0; trial < 64; ++trial) {
         RspState actual;
@@ -31,9 +29,15 @@ void rsp_simd_tests() {
             actual.vectors[reg].lanes[lane] = trial < 8
                                                   ? values[(reg + lane + trial) % values.size()]
                                                   : static_cast<std::uint16_t>(next());
-        for (unsigned lane = 0; lane < 8; ++lane)
-          actual.accumulator.set(
-              lane, trial < 12 ? accumulators[(lane + trial) % accumulators.size()] : next());
+        for (unsigned lane = 0; lane < 8; ++lane) {
+          const auto product = quantization_products[(lane + trial) % quantization_products.size()];
+          actual.accumulator.set(lane,
+                                 operation == 11 && trial < quantization_products.size()
+                                     ? (std::uint64_t(static_cast<std::uint32_t>(product)) << 16) |
+                                           (next() & 0xffff)
+                                 : trial < 12 ? accumulators[(lane + trial) % accumulators.size()]
+                                              : next());
+        }
         actual.carry_low = static_cast<std::uint8_t>(next());
         actual.carry_high = static_cast<std::uint8_t>(next());
         actual.compare_low = static_cast<std::uint8_t>(next());
@@ -51,7 +55,13 @@ void rsp_simd_tests() {
         for (unsigned stage = 0; stage < (clipping ? 3u : 1u); ++stage) {
           const auto current =
               stage == 0 ? instruction : (instruction & ~63u) | (stage == 1 ? 36u : 39u);
-          execute_vector_scalar(expected, current);
+          if ((current & 63) >= 48 && (current & 63) <= 54) {
+            const auto handler = vector_divide_handler(current & 63, element);
+            handler(&expected, &expected.vectors[(current >> 6) & 31],
+                    &expected.vectors[(current >> 11) & 31],
+                    &expected.vectors[(current >> 16) & 31]);
+          } else
+            execute_vector_scalar(expected, current);
           equal(execute_vector_simd(actual, current), true);
           for (unsigned reg = 0; reg < 32; ++reg)
             for (unsigned lane = 0; lane < 8; ++lane)

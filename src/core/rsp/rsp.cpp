@@ -12,6 +12,19 @@ Rsp::Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random)
 
 Rsp::~Rsp() = default;
 
+void Rsp::set_vector_execution(VectorExecution execution) {
+  if (vector_execution_ == execution)
+    return;
+  const auto previous = vector_execution_;
+  vector_execution_ = execution;
+  try {
+    compiler_->recompile();
+  } catch (...) {
+    vector_execution_ = previous;
+    throw;
+  }
+}
+
 void Rsp::power() {
   if (compiler_)
     compiler_->reset();

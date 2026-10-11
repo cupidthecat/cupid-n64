@@ -1,5 +1,6 @@
 #include "core/rsp/vector/execute.hpp"
 #include "fixture.hpp"
+#include "vector/quantize.hpp"
 #include <vector>
 
 namespace test {
@@ -29,6 +30,7 @@ void compare_vectors(const RspState &actual, const RspState &expected) {
 void rsp_native_vector_tests() {
   RspFixture actual;
   RspFixture expected;
+  expected.rsp.set_vector_execution(Rsp::VectorExecution::Scalar);
   constexpr std::array<std::uint16_t, 8> values{0,      1,      0x7fff, 0x8000,
                                                 0xffff, 0x7ffe, 0x8001, 0xfffe};
   constexpr std::array<std::uint64_t, 12> accumulators{
@@ -57,9 +59,16 @@ void rsp_native_vector_tests() {
                                                  ? values[(reg + lane + sample) % values.size()]
                                                  : static_cast<std::uint16_t>(next());
         }
-        for (unsigned lane = 0; lane < 8; ++lane)
-          state.accumulator.set(
-              lane, sample < 24 ? accumulators[(lane + sample) % accumulators.size()] : next());
+        for (unsigned lane = 0; lane < 8; ++lane) {
+          const auto product =
+              quantization_products[(lane + sample) % quantization_products.size()];
+          state.accumulator.set(lane,
+                                operation == 11 && sample < quantization_products.size()
+                                    ? (std::uint64_t(static_cast<std::uint32_t>(product)) << 16) |
+                                          (next() & 0xffff)
+                                : sample < 24 ? accumulators[(lane + sample) % accumulators.size()]
+                                              : next());
+        }
         state.carry_low = static_cast<std::uint8_t>(next());
         state.carry_high = static_cast<std::uint8_t>(next());
         state.compare_low = static_cast<std::uint8_t>(next());

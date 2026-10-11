@@ -13,6 +13,7 @@ public:
   ~RspCompiler();
   bool run();
   void reset();
+  void recompile();
   void invalidate(std::uint32_t address, unsigned bytes);
   void expose_memory();
 

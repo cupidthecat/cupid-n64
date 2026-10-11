@@ -1,4 +1,5 @@
 #include "core/rsp/rsp.hpp"
+#include "core/rsp/vector/divide/kernel.hpp"
 #include "core/rsp/vector/execute.hpp"
 #include <bit>
 #include <utility>
@@ -42,31 +43,7 @@ unsigned select_lane(unsigned element, unsigned lane) {
 
 } // namespace
 
-template <int Operation = -1, int Element = -1>
-void execute_divide(RspState &state, RspVector &dest, unsigned lane, const RspVector &source,
-                    unsigned dynamic_operation = 0, unsigned dynamic_element = 0) {
-  const auto operation = Operation < 0 ? dynamic_operation : unsigned(Operation);
-  const auto element = Element < 0 ? dynamic_element : unsigned(Element);
-  const auto vector = source;
-  for (unsigned n = 0; n < 8; ++n)
-    state.accumulator.low.lanes[n] = vector.lanes[select_lane(element, n)];
-  auto &result = dest.lanes[lane];
-  if (operation == 0x33) {
-    result = vector.lanes[select_lane(element, lane)];
-    return;
-  }
-  if (operation == 0x32 || operation == 0x36) {
-    state.divide_double = true;
-    state.divide_input = vector.lanes[element & 7];
-    result = state.divide_output;
-    return;
-  }
-  const bool low = operation == 0x31 || operation == 0x35;
-  const auto input =
-      low && state.divide_double
-          ? std::bit_cast<std::int32_t>((std::uint32_t(state.divide_input) << 16) |
-                                        vector.lanes[element & 7])
-          : static_cast<std::int32_t>(static_cast<std::int16_t>(vector.lanes[element & 7]));
+std::uint32_t divide::value(std::int32_t input, bool square_root) {
   const auto mask = static_cast<std::uint32_t>(input >> 31);
   auto data = static_cast<std::uint32_t>(input) ^ mask;
   if (input > -32768)
@@ -79,15 +56,23 @@ void execute_divide(RspState &state, RspVector &dest, unsigned lane, const RspVe
   else {
     const auto shift = std::countl_zero(data);
     const auto index = ((std::uint64_t(data) << shift) & 0x7fc00000) >> 22;
-    const bool square_root = operation == 0x34 || operation == 0x35;
     value =
         square_root ? tables.square_root[(index & 0x1fe) | (shift & 1)] : tables.reciprocal[index];
     value = ((0x10000 | value) << 14) >> (square_root ? ((31 - shift) >> 1) : (31 - shift));
     value ^= mask;
   }
-  state.divide_double = false;
-  state.divide_output = static_cast<std::uint16_t>(value >> 16);
-  result = static_cast<std::uint16_t>(value);
+  return value;
+}
+
+template <int Operation = -1, int Element = -1>
+void execute_divide(RspState &state, RspVector &dest, unsigned lane, const RspVector &source,
+                    unsigned dynamic_operation = 0, unsigned dynamic_element = 0) {
+  const auto element = Element < 0 ? dynamic_element : unsigned(Element);
+  const auto vector = source;
+  for (unsigned n = 0; n < 8; ++n)
+    state.accumulator.low.lanes[n] = vector.lanes[select_lane(element, n)];
+  divide::execute_lane<Operation>(state, dest.lanes[lane], vector.lanes[select_lane(element, lane)],
+                                  vector.lanes[element & 7], dynamic_operation);
 }
 
 template <unsigned Operation, unsigned Element>
