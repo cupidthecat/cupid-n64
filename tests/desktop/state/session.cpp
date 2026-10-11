@@ -82,6 +82,13 @@ void invalid_and_undo(const std::filesystem::path &directory, bool hardware) {
   auto states = slots(image, session);
   session_test::advance(session, 2);
   const auto initial = session.capture_state();
+  auto playback = audio.settings();
+  playback.levels = {25, -50};
+  audio.configure(playback);
+  test::equal(session.capture_state() == initial, true);
+  playback.levels = {100, 0};
+  audio.configure(playback);
+  test::equal(session.capture_state() == initial, true);
   states.save();
   session_test::advance(session, 3);
   const auto before = session.capture_state();

@@ -165,13 +165,16 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
+    src/desktop/windows/playback/settings.cpp
     src/desktop/windows/display.cpp
     src/desktop/windows/files.cpp
     src/desktop/windows/display/size_dialog.cpp
     src/desktop/windows/display/screenshot.cpp
     src/desktop/windows/audio.cpp
+    src/desktop/windows/audio/devices.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
+    src/desktop/audio/levels.cpp
     src/desktop/session.cpp
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
@@ -184,7 +187,7 @@ if(WIN32 AND CUPID_DESKTOP)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32)
+  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32 dwmapi)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
   endif()
@@ -219,6 +222,10 @@ if(BUILD_TESTING)
   target_include_directories(desktop_resampler_tests PRIVATE src)
   target_compile_features(desktop_resampler_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_audio_resampling COMMAND desktop_resampler_tests)
+  add_executable(desktop_audio_levels_tests tests/desktop/audio_levels.cpp src/desktop/audio/levels.cpp)
+  target_include_directories(desktop_audio_levels_tests PRIVATE src)
+  target_compile_features(desktop_audio_levels_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_audio_levels COMMAND desktop_audio_levels_tests)
   add_executable(desktop_storage_tests tests/desktop/storage.cpp src/desktop/storage/save.cpp)
   target_include_directories(desktop_storage_tests PRIVATE src)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
@@ -254,7 +261,8 @@ if(BUILD_TESTING)
     add_executable(session_video_tests tests/desktop/session_video.cpp
       src/desktop/session.cpp src/desktop/storage/save.cpp
       src/desktop/state/session_state.cpp
-      src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
+      src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
+      src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
     target_compile_definitions(session_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(session_video_tests PRIVATE cupid_video_output winmm)
     add_test(NAME desktop_software_video COMMAND session_video_tests)
@@ -264,7 +272,8 @@ if(BUILD_TESTING)
     add_executable(session_state_tests tests/desktop/state/session.cpp
       src/desktop/session.cpp src/desktop/storage/save.cpp src/desktop/state/session_state.cpp
       src/desktop/state/slots.cpp src/desktop/state/rewind.cpp
-      src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
+      src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
+      src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
     target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(session_state_tests PRIVATE cupid_video_output winmm)
     add_test(NAME desktop_session_state COMMAND session_state_tests)

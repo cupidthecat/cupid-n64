@@ -32,13 +32,23 @@ enum Command : unsigned {
   ViewportCustom,
   FullscreenMonitorCurrent,
   ClearRecentRoms,
+  SyncAudio,
+  SyncVideo,
+  FocusPause,
+  FocusBlockInput,
+  FocusAllowInput,
+  AudioDeviceDefault,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,
   RewindMemoryFirst = 220,
   ViewportPresetFirst = 300,
   FullscreenMonitorFirst = 400,
-  RecentRomFirst = 500
+  RecentRomFirst = 500,
+  AudioVolumeFirst = 600,
+  AudioBalanceFirst = 630,
+  AudioLatencyFirst = 650,
+  AudioDeviceFirst = 1000
 };
 
 } // namespace cupid::desktop

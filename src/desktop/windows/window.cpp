@@ -25,7 +25,7 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"View selects scaling, aspect, window size, and fullscreen monitor.\n"
                       L"Integer scaling uses whole output-height multiples, or best fit when "
                       L"the window is smaller than one frame.\n\n"
-                      L"The game pauses when this window loses focus.\n"
+                      L"Emulation selects audio, playback synchronization, and focus behavior.\n"
                       L"Cartridge saves use .eep, .sra, .fla or .rtc; Controller Paks use .pak.\n"
                       L"Disk saves use .disk and .rtc.\n"
                       L"Save states use the game's .states folder. Undo lasts until another game "
@@ -64,6 +64,7 @@ Window::Window(Options options) : options_(std::move(options)) {
   }
   load_display_settings();
   load_recent();
+  load_playback_settings();
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -112,6 +113,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(rewind_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(capacities), L"&History length");
   AppendMenuW(rewind_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(memory), L"Memory &limit");
   AppendMenuW(emulation, MF_POPUP, reinterpret_cast<UINT_PTR>(rewind_menu_), L"&Rewind");
+  create_playback_settings_menu(emulation);
   state_menu_ = CreatePopupMenu();
   AppendMenuW(state_menu_, MF_STRING, SaveState, L"&Save state\tF2");
   AppendMenuW(state_menu_, MF_STRING, LoadState, L"&Load state\tF3");
@@ -176,9 +178,15 @@ int Window::run(HINSTANCE instance, int show) {
         continue;
       }
       if (frame_ready_) {
+        if (std::chrono::steady_clock::now() >= next_audio_check_) {
+          refresh_audio_devices();
+          next_audio_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        }
         const auto delay =
             playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
         if (!fast_forward_ && delay.count()) {
+          if (wait_for_video())
+            continue;
           MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
                                     QS_ALLINPUT);
           continue;
@@ -247,22 +255,32 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
       refresh_monitors();
     if (reinterpret_cast<HMENU>(wparam) == recent_menu_)
       update_recent();
+    if (reinterpret_cast<HMENU>(wparam) == audio_device_menu_)
+      refresh_audio_devices();
     return 0;
-  case WM_ACTIVATE:
+  case WM_DEVICECHANGE:
+    refresh_audio_devices();
+    return 0;
+  case WM_ACTIVATE: {
+    const bool was_stopped = stopped();
     active_ = LOWORD(wparam) != WA_INACTIVE || options_.frames != 0;
     end_rewind();
     stop_fast_forward();
     keys_.fill(false);
-    audio_.clear();
-    rebase();
+    if (was_stopped != stopped()) {
+      audio_.clear();
+      rebase();
+    }
     return 0;
+  }
   case WM_ENTERMENULOOP:
   case WM_ENTERSIZEMOVE:
     modal_ = true;
     end_rewind();
     stop_fast_forward();
     keys_.fill(false);
-    audio_.clear();
+    if (event == WM_ENTERSIZEMOVE)
+      audio_.clear();
     return 0;
   case WM_EXITMENULOOP:
   case WM_EXITSIZEMOVE:
@@ -364,6 +382,7 @@ void Window::error(const std::exception &exception) {
 }
 
 void Window::rebase() {
+  video_sync_available_ = true;
   measured_time_ = std::chrono::steady_clock::now();
   playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
   measured_frames_ = session_ ? session_->frames : 0;
@@ -440,6 +459,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (playback_settings_command(id))
+    return;
   if (file_command(id))
     return;
   if (display_command(id))
@@ -573,6 +594,11 @@ void Window::paint() {
 }
 
 Window::Input Window::input() const {
+  if (!active_ && focus_behavior_ != FocusBehavior::AllowInput)
+    return {};
+  const auto pressed = [&](unsigned code) {
+    return active_ ? keys_[code] : (GetAsyncKeyState(static_cast<int>(code)) & 0x8000) != 0;
+  };
   std::uint16_t buttons = 0;
   constexpr std::array<unsigned, 14> codes{'J',   'K',     VK_SPACE, VK_RETURN, 'I',
                                            'O',   'U',     'P',      'Q',       'E',
@@ -580,11 +606,11 @@ Window::Input Window::input() const {
   constexpr std::array<std::uint16_t, 14> masks{0x8000, 0x4000, 0x2000, 0x1000, 0x800, 0x400, 0x200,
                                                 0x100,  0x20,   0x10,   8,      4,     2,     1};
   for (unsigned n = 0; n < codes.size(); ++n)
-    if (keys_[codes[n]])
+    if (pressed(codes[n]))
       buttons |= masks[n];
-  const int magnitude = keys_[VK_SHIFT] ? 35 : 80;
-  auto x = static_cast<std::int8_t>((int(keys_['D']) - int(keys_['A'])) * magnitude);
-  auto y = static_cast<std::int8_t>((int(keys_['W']) - int(keys_['S'])) * magnitude);
+  const int magnitude = pressed(VK_SHIFT) ? 35 : 80;
+  auto x = static_cast<std::int8_t>((int(pressed('D')) - int(pressed('A'))) * magnitude);
+  auto y = static_cast<std::int8_t>((int(pressed('W')) - int(pressed('S'))) * magnitude);
   if (options_.test_input) {
     const unsigned frame = session_->frames;
     const bool start = (frame >= 900 && frame < 960) || (frame >= 1200 && frame < 1260);
@@ -615,6 +641,8 @@ void Window::present() {
   last_frame_ = session_->frames;
   refresh_frame();
   record_history();
+  if (!fast_forward_ && playback_sync_ == PlaybackSync::Video)
+    UpdateWindow(window_);
   if (last_frame_ % 300 == 0)
     session_->save();
   if (options_.frames && last_frame_ >= options_.frames) {
