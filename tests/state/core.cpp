@@ -613,9 +613,54 @@ void conditional_checkpoint_tests() {
   }
 }
 
+void boot_identity_tests() {
+  std::array<std::uint8_t, 0x7c0> firmware{};
+  std::array<std::uint8_t, 4096> image{};
+  image[0] = 0x80;
+  image[1] = 0x37;
+  image[2] = 0x12;
+  image[3] = 0x40;
+  const auto configuration = [](unsigned mode) {
+    ConsoleConfig config;
+    config.random_seed = 0;
+    config.rtc_clock = [] { return std::int64_t(946684800); };
+    config.disk_clock = config.rtc_clock;
+    config.boot_verification = {bool(mode & 1), bool(mode & 2)};
+    return config;
+  };
+  std::array<std::vector<std::uint8_t>, 4> states;
+  for (unsigned mode = 0; mode < states.size(); ++mode) {
+    Console console(configuration(mode));
+    test::equal(console.load(image, firmware), true);
+    states[mode] = CoreState::capture(console);
+  }
+  for (unsigned mode = 0; mode < states.size(); ++mode) {
+    Console console(configuration(mode));
+    test::equal(console.load(image, firmware), true);
+    for (unsigned source = 0; source < states.size(); ++source) {
+      const auto before = CoreState::capture(console);
+      bool accepted = true;
+      try {
+        CoreState::restore(console, states[source]);
+      } catch (const state::InvalidState &) {
+        accepted = false;
+      }
+      test::equal(accepted, mode == source);
+      test::equal(CoreState::capture(console) == (accepted ? states[source] : before), true);
+    }
+    console.pif().tick();
+    console.pif().write_word(0x1fc007fc, 0x10);
+    console.pif().write_word(0x1fc007fc, 0x20);
+    console.pif().write_word(0x1fc007fc, 0x40);
+    test::equal(static_cast<unsigned>(console.pif().state()),
+                static_cast<unsigned>((mode & 1) ? Pif::State::Error : Pif::State::Terminate));
+  }
+}
+
 } // namespace
 
 void core_state_tests() {
+  boot_identity_tests();
   checkpoint_tests();
   arcade_checkpoint_tests();
   continuation_tests();

@@ -65,6 +65,10 @@ void Window::open_rom(const std::filesystem::path &path) {
   try {
     auto next = options_;
     next.rom = std::filesystem::absolute(path).lexically_normal();
+    next.ipl.clear();
+    next.disk.clear();
+    next.arcade_profile = n64::ArcadeProfile::Disabled;
+    next.firmware = firmware_files_.n64;
     if (next.firmware.empty()) {
       next.firmware = choose(true);
       if (next.firmware.empty()) {

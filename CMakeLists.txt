@@ -168,6 +168,11 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/playback/settings.cpp
     src/desktop/windows/display.cpp
     src/desktop/windows/files.cpp
+    src/desktop/windows/launch/settings.cpp
+    src/desktop/windows/launch/forms.cpp
+    src/desktop/windows/launch/commands.cpp
+    src/desktop/windows/dialogs/files.cpp
+    src/desktop/windows/dialogs/paths.cpp
     src/desktop/windows/display/size_dialog.cpp
     src/desktop/windows/display/screenshot.cpp
     src/desktop/windows/audio.cpp
@@ -176,18 +181,21 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/audio/resampler.cpp
     src/desktop/audio/levels.cpp
     src/desktop/session.cpp
+    src/desktop/session/disk.cpp
+    src/desktop/launch/files.cpp
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
     src/desktop/state/rewind.cpp
     src/desktop/storage/save.cpp
     src/desktop/storage/recent.cpp
+    src/desktop/storage/paths.cpp
     src/desktop/video/viewport.cpp
     src/desktop/video/bitmap.cpp
     src/desktop/timing/playback_clock.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32 dwmapi)
+  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
   endif()
@@ -231,6 +239,12 @@ if(BUILD_TESTING)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
   target_compile_definitions(desktop_storage_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   add_test(NAME desktop_save_storage COMMAND desktop_storage_tests)
+  add_executable(desktop_paths_tests tests/desktop/paths.cpp
+    src/desktop/storage/paths.cpp src/desktop/storage/save.cpp)
+  target_include_directories(desktop_paths_tests PRIVATE src)
+  target_compile_features(desktop_paths_tests PRIVATE cxx_std_20)
+  target_compile_definitions(desktop_paths_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_test(NAME desktop_storage_paths COMMAND desktop_paths_tests)
   add_executable(desktop_recent_tests tests/desktop/recent.cpp src/desktop/storage/recent.cpp)
   target_include_directories(desktop_recent_tests PRIVATE src)
   target_compile_features(desktop_recent_tests PRIVATE cxx_std_20)
@@ -259,7 +273,8 @@ if(BUILD_TESTING)
   add_test(NAME desktop_playback_clock COMMAND desktop_clock_tests)
   if(TARGET cupid_desktop)
     add_executable(session_video_tests tests/desktop/session_video.cpp
-      src/desktop/session.cpp src/desktop/storage/save.cpp
+      src/desktop/session.cpp src/desktop/session/disk.cpp
+      src/desktop/storage/save.cpp src/desktop/storage/paths.cpp
       src/desktop/state/session_state.cpp
       src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
       src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
@@ -270,13 +285,24 @@ if(BUILD_TESTING)
     set_tests_properties(desktop_software_video_unavailable PROPERTIES ENVIRONMENT
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
     add_executable(session_state_tests tests/desktop/state/session.cpp
-      src/desktop/session.cpp src/desktop/storage/save.cpp src/desktop/state/session_state.cpp
+      src/desktop/session.cpp src/desktop/session/disk.cpp
+      src/desktop/storage/save.cpp src/desktop/storage/paths.cpp src/desktop/state/session_state.cpp
       src/desktop/state/slots.cpp src/desktop/state/rewind.cpp
       src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
       src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
     target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(session_state_tests PRIVATE cupid_video_output winmm)
     add_test(NAME desktop_session_state COMMAND session_state_tests)
+    get_target_property(session_launch_sources session_state_tests SOURCES)
+    list(REMOVE_ITEM session_launch_sources tests/desktop/state/session.cpp)
+    add_executable(session_launch_tests tests/desktop/session_launch.cpp
+      src/desktop/launch/files.cpp ${session_launch_sources})
+    target_compile_definitions(session_launch_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(session_launch_tests PRIVATE cupid_video_output winmm)
+    if(MSVC)
+      target_compile_options(session_launch_tests PRIVATE /W4 /WX /permissive-)
+    endif()
+    add_test(NAME desktop_launch_settings COMMAND session_launch_tests)
     add_test(NAME desktop_state_file_write COMMAND session_state_tests --write-state
       "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
     add_test(NAME desktop_state_file_read COMMAND session_state_tests --read-state
@@ -412,6 +438,7 @@ if(BUILD_TESTING)
     tests/devices/cic.cpp
     tests/devices/pif.cpp
     tests/devices/pif/boot/replay.cpp
+    tests/devices/pif/boot/verification.cpp
     tests/devices/si/boundaries/replay.cpp
     tests/devices/pif/cartridge_status.cpp
     tests/devices/gamepad.cpp

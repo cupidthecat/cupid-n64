@@ -9,8 +9,15 @@ namespace cupid::desktop {
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
                  n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed,
-                 bool hardware_rendering)
-    : audio_(audio), hardware_rendering_(hardware_rendering) {
+                 bool hardware_rendering, SessionSettings settings)
+    : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
+      hardware_rendering_(hardware_rendering) {
+  for (const auto banks : settings_.memory.pak_banks)
+    if (std::find(MemorySettings::capacities.begin(), MemorySettings::capacities.end(), banks) ==
+        MemorySettings::capacities.end())
+      throw std::runtime_error("Select a supported Controller Pak capacity.");
+  if (!settings_.storage.saves.empty())
+    validate_directory(settings_.storage.saves, true);
   auto cartridge = rom.empty() ? std::vector<std::uint8_t>{} : read_file(rom, 0x0fc00000);
   auto pif = read_file(firmware, arcade == n64::ArcadeProfile::Disabled ? 0x7c0 : 0x800);
   const auto profile =
@@ -18,6 +25,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
   if (!profile)
     throw std::runtime_error("Select a valid Nintendo 64 cartridge image.");
   n64::ConsoleConfig config;
+  config.expansion = settings_.memory.expansion;
   config.random_seed = random_seed;
   config.arcade_profile = arcade;
   if (arcade != n64::ArcadeProfile::Disabled) {
@@ -33,35 +41,31 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     config.disk_drive = !ipl.empty();
   }
   console_ = std::make_unique<n64::Console>(config);
+  const auto cartridge_save =
+      settings_.storage.save_image(rom, n64::state::Archive::fingerprint(cartridge));
+  storage_image_ = cartridge_save;
   if (config.disk_drive) {
-    if (!console_->disk_drive().load_ipl(read_file(ipl, 0x400000)))
+    const auto ipl_data = read_file(ipl, 0x400000);
+    if (!console_->disk_drive().load_ipl(ipl_data))
       throw std::runtime_error("Select a valid 64DD IPL firmware file.");
-    clock_path_ = save_path(ipl, L".rtc");
+    ipl_identity_ = n64::state::Archive::fingerprint(ipl_data);
+    const auto ipl_save = settings_.storage.save_image(ipl, ipl_identity_);
+    if (rom.empty())
+      storage_image_ = ipl_save;
+    clock_path_ = save_path(ipl_save, L".rtc");
     if (std::filesystem::exists(clock_path_) &&
         !console_->disk_drive().clock().load(read_file(clock_path_, 16)))
       throw std::runtime_error("The disk clock save must contain 16 bytes.");
     const auto clock = console_->disk_drive().clock().save();
     saved_clock_.assign(clock.begin(), clock.end());
-    if (!disk.empty()) {
-      const auto disk_image = read_file(disk, 0x435b0c0);
-      disk_identity_ = n64::state::Archive::fingerprint(disk_image);
-      if (!console_->disk_drive().load_image(disk_image))
-        throw std::runtime_error("Select a valid 64DD disk image.");
-      disk_path_ = save_path(disk, L".disk");
-      if (std::filesystem::exists(disk_path_)) {
-        const auto errors = console_->disk_drive().disk_errors();
-        if (!console_->disk_drive().insert(read_file(disk_path_, 0x435b0c0), errors))
-          throw std::runtime_error("The disk save has an invalid size.");
-      }
-      const auto data = console_->disk_drive().disk_data();
-      saved_disk_.assign(data.begin(), data.end());
-    }
+    if (!disk.empty())
+      change_disk(disk);
   }
   for (unsigned port = 0; !console_->arcade() && port < profile->accessories.size(); ++port) {
     auto &pad = console_->controller(port);
     switch (profile->accessories[port]) {
     case n64::ControllerAccessory::Memory:
-      pad.memory_pak();
+      pad.memory_pak(settings_.memory.pak_banks[port]);
       break;
     case n64::ControllerAccessory::Rumble:
       pad.rumble_pak();
@@ -83,16 +87,21 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
   if (!rom.empty()) {
     const auto attach_save = [&](const wchar_t *extension, std::span<std::uint8_t> memory) {
       if (!memory.empty())
-        saves_.emplace_back(save_path(rom, extension), memory);
+        saves_.emplace_back(save_path(cartridge_save, extension), memory);
     };
     attach_save(L".eep", console_->eeprom().data());
     attach_save(L".sra", console_->sram().data());
     attach_save(L".fla", console_->flash().data());
     constexpr const wchar_t *pak_extensions[]{L".pak", L".p2.pak", L".p3.pak", L".p4.pak"};
-    for (unsigned port = 0; port < 4; ++port)
-      attach_save(pak_extensions[port], console_->controller(port).pak_data());
+    for (unsigned port = 0; port < 4; ++port) {
+      const auto banks = settings_.memory.pak_banks[port];
+      const auto extension = banks == 1 ? std::wstring(pak_extensions[port])
+                                        : (port ? L".p" + std::to_wstring(port + 1) : L"") + L"." +
+                                              std::to_wstring(banks * 32) + L"k.pak";
+      attach_save(extension.c_str(), console_->controller(port).pak_data());
+    }
     if (config.rtc_present) {
-      cartridge_clock_path_ = save_path(rom, L".rtc");
+      cartridge_clock_path_ = save_path(cartridge_save, L".rtc");
       if (std::filesystem::exists(cartridge_clock_path_) &&
           !console_->rtc().load(read_file(cartridge_clock_path_, 32)))
         throw std::runtime_error("The cartridge clock save must contain 32 bytes.");

@@ -77,6 +77,7 @@ void entropy_tests();
 void cic_tests();
 void pif_tests();
 void pif_boot_tests();
+void pif_verification_tests();
 void si_boundary_tests();
 void cartridge_status_tests();
 void gamepad_tests();

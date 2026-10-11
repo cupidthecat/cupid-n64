@@ -4,7 +4,8 @@
 
 namespace cupid::n64 {
 
-Pif::Pif(Cic &cic, Rdram &ram) : cic_(cic), dram_(ram) {
+Pif::Pif(Cic &cic, Rdram &ram, BootVerification verification, VideoRegion region)
+    : cic_(cic), dram_(ram), verification_(verification), region_(region) {
   power();
 }
 
@@ -109,7 +110,8 @@ void Pif::tick() {
     return;
   if (state_ == State::Init) {
     const auto hello = cic_.read_nibble();
-    if ((hello & 3) != 1) {
+    if ((hello & 3) != 1 ||
+        (verification_.region && bool(hello & 4) != (region_ == VideoRegion::Pal))) {
       state_ = State::Error;
       return;
     }
@@ -147,7 +149,7 @@ void Pif::tick() {
     for (unsigned n = 0; n < 6; ++n)
       cic_checksum_[n] = (data[n * 2 + 4] << 4) | data[n * 2 + 5];
     os_info_[0] |= 2;
-    if (cpu_checksum_ != cic_checksum_) {
+    if (verification_.checksum && cpu_checksum_ != cic_checksum_) {
       state_ = State::Error;
       return;
     }

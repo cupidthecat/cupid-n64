@@ -38,6 +38,12 @@ enum Command : unsigned {
   FocusBlockInput,
   FocusAllowInput,
   AudioDeviceDefault,
+  Launch,
+  Folders,
+  DiskChange,
+  DiskEject,
+  ExpansionPak,
+  Reload,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,
@@ -48,6 +54,7 @@ enum Command : unsigned {
   AudioVolumeFirst = 600,
   AudioBalanceFirst = 630,
   AudioLatencyFirst = 650,
+  PakCapacityFirst = 700,
   AudioDeviceFirst = 1000
 };
 

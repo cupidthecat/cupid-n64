@@ -2,7 +2,9 @@
 
 #include "core/devices/cic/cic.hpp"
 #include "core/devices/joybus/device.hpp"
+#include "core/devices/pif/verification.hpp"
 #include "core/devices/rdram/rdram.hpp"
+#include "core/timing/frequencies.hpp"
 #include <functional>
 
 namespace cupid::n64 {
@@ -10,7 +12,8 @@ namespace cupid::n64 {
 class Pif {
 public:
   enum class State { Init, Lockout, GetChecksum, CheckChecksum, Terminate, Run, Error };
-  Pif(Cic &cic, Rdram &ram);
+  Pif(Cic &cic, Rdram &ram, BootVerification verification = {},
+      VideoRegion region = VideoRegion::Ntsc);
   bool load_rom(std::span<const std::uint8_t> data);
   void power();
   void connect_reset(std::function<void()> callback);
@@ -49,6 +52,8 @@ private:
   static void descramble(std::span<std::uint8_t> data);
   Cic &cic_;
   Rdram &dram_;
+  BootVerification verification_;
+  VideoRegion region_;
   std::function<void()> reset_;
   std::array<std::uint8_t, 0x7c0> rom_{};
   std::array<std::uint8_t, 64> ram_{};
