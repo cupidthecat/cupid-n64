@@ -7,24 +7,15 @@
 
 namespace test::machine_replay {
 
-inline bool check_contracts(const Input &input, std::span<const Difference> contracts,
-                            const Observer &observe = {}) {
-  const auto difference = compare(input, observe, contracts);
-  equal(difference.has_value(), false);
-  if (difference)
-    print(*difference);
-  return !difference;
-}
-
-inline bool check(const Input &input, std::string_view name) {
-  const auto difference = compare(input);
+inline bool check(const Input &input, std::string_view name, const Observer &observe = {}) {
+  const auto difference = compare(input, observe);
   equal(difference.has_value(), false);
   if (!difference)
     return true;
   std::cerr << "Fixture " << name << '\n';
   print(*difference);
   const auto reduced = reduce(input, [&](const Input &candidate) {
-    const auto current = compare(candidate);
+    const auto current = compare(candidate, observe);
     return current && current->state.field == difference->state.field &&
            current->state.index == difference->state.index;
   });

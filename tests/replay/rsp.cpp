@@ -81,15 +81,14 @@ void rsp_tests() {
       equal(difference->state.expected, 1);
       equal(difference->state.actual, 0);
     }
-    const Difference contracts[] = {{1, {"rsp.pipeline.single_issue", 0, 1, 0, 1}}};
-    check_contracts(input, contracts);
-    const auto wrong_register = compare(
-        input,
-        [](cupid::n64::Console &console, Mode mode, std::size_t) {
+    input.contracts = {{1, {"rsp.pipeline.single_issue", 0, 1, 0, 1}}};
+    check(input, "RSP halt pipeline contract");
+    equal(compare(decode(encode(input))).has_value(), false);
+    const auto wrong_register =
+        compare(input, [](cupid::n64::Console &console, Mode mode, std::size_t) {
           if (mode == Mode::Native)
             console.cpu().state().gpr[7] = 1;
-        },
-        contracts);
+        });
     equal(wrong_register.has_value(), true);
     if (wrong_register) {
       equal(wrong_register->boundary, 1);
@@ -119,15 +118,14 @@ void rsp_tests() {
       equal(difference->state.expected, 14);
       equal(difference->state.actual, 11);
     }
-    const Difference contracts[] = {{2, {"rsp.clock", 0, 14, 11, 8}}};
-    check_contracts(input, contracts);
-    const auto wrong_register = compare(
-        input,
-        [](cupid::n64::Console &console, Mode mode, std::size_t n) {
+    input.contracts = {{2, {"rsp.clock", 0, 14, 11, 8}}};
+    check(input, "RSP cached load-use clock contract");
+    equal(compare(decode(encode(input))).has_value(), false);
+    const auto wrong_register =
+        compare(input, [](cupid::n64::Console &console, Mode mode, std::size_t n) {
           if (mode == Mode::Native && n == 2)
             console.cpu().state().gpr[7] = 1;
-        },
-        contracts);
+        });
     equal(wrong_register.has_value(), true);
     if (wrong_register) {
       equal(wrong_register->boundary, 2);

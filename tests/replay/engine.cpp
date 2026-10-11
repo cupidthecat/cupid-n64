@@ -230,8 +230,8 @@ StateCheckpoint output_checkpoint(const Machine &machine) {
 
 } // namespace
 
-std::optional<Difference> compare(const Input &input, const Observer &observe,
-                                  std::span<const Difference> contracts) {
+std::optional<Difference> compare(const Input &input, const Observer &observe) {
+  const auto &contracts = input.contracts;
   for (const auto &contract : contracts)
     state::Archive::require(contract.boundary <= input.actions.size() && contract.state.bytes);
   Machine expected(input), actual(input);
@@ -309,15 +309,32 @@ std::optional<Difference> compare(const Input &input, const Observer &observe,
 }
 
 Input reduce(Input input, const std::function<bool(const Input &)> &fails, unsigned attempts) {
+  enum class Part { Actions, Initial, Contracts };
   bool changed;
   do {
     changed = false;
-    for (bool initial : {false, true}) {
+    for (const auto group : {Part::Actions, Part::Initial, Part::Contracts}) {
       std::size_t n = 0;
-      while (attempts && n < (initial ? input.initial : input.actions).size()) {
+      const auto size = [&] {
+        return group == Part::Actions   ? input.actions.size()
+               : group == Part::Initial ? input.initial.size()
+                                        : input.contracts.size();
+      };
+      while (attempts && n < size()) {
         auto candidate = input;
-        auto &actions = initial ? candidate.initial : candidate.actions;
-        actions.erase(actions.begin() + n);
+        if (group == Part::Contracts)
+          candidate.contracts.erase(candidate.contracts.begin() + n);
+        else {
+          auto &actions = group == Part::Initial ? candidate.initial : candidate.actions;
+          actions.erase(actions.begin() + n);
+          if (group == Part::Actions) {
+            std::erase_if(candidate.contracts,
+                          [&](const auto &entry) { return entry.boundary == n + 1; });
+            for (auto &contract : candidate.contracts)
+              if (contract.boundary > n + 1)
+                --contract.boundary;
+          }
+        }
         --attempts;
         if (fails(candidate)) {
           input = std::move(candidate);

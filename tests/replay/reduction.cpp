@@ -61,8 +61,9 @@ void input_tests() {
   equal(small.size() < 128, true);
   equal(fails(decode(small)), true);
   equal(compare(reduced).has_value(), false);
-  const Difference absent_contract[] = {{0, {"cpu.gpr", 4, 0, 1, 8}}};
-  const auto absent = compare(reduced, {}, absent_contract);
+  auto absent_input = reduced;
+  absent_input.contracts = {{0, {"cpu.gpr", 4, 0, 1, 8}}};
+  const auto absent = compare(absent_input);
   equal(absent.has_value(), true);
   if (absent) {
     equal(absent->boundary, 0);
@@ -88,6 +89,68 @@ void input_tests() {
     equal(bad_clock->state.field == "cpu.clocks", true);
     equal(bad_clock->state.expected, 0);
     equal(bad_clock->state.actual, 1);
+  }
+  {
+    Input contracted;
+    contracted.expansion = false;
+    contracted.initial = {{ActionKind::CpuRegister, 17, 5},
+                          {ActionKind::WriteMemory, 0x2800, 0xabcdef01}};
+    contracted.actions = {{ActionKind::Controller, 0, 0x12348000},
+                          {ActionKind::CpuRegister, 9, 23},
+                          {ActionKind::CpuRegister, 11, 19}};
+    for (unsigned boundary = 1; boundary <= 3; ++boundary)
+      contracted.contracts.push_back({boundary, {"cpu.gpr", 5, 0, 1, 8}});
+    const Observer fault = [](cupid::n64::Console &console, Mode mode, std::size_t) {
+      if (mode == Mode::Native) {
+        console.cpu().state().gpr[5] = 1;
+        if (console.cpu().state().gpr[9] == 23)
+          console.cpu().state().gpr[7] = 1;
+      }
+    };
+    const auto fails_contract = [&](const Input &candidate) {
+      const auto difference = compare(candidate, fault);
+      return difference && difference->state.field == "cpu.gpr" && difference->state.index == 7;
+    };
+    equal(fails_contract(contracted), true);
+    const auto reduced_contract = reduce(contracted, fails_contract);
+    equal(reduced_contract.initial.size(), 0);
+    equal(reduced_contract.actions.size(), 1);
+    equal(reduced_contract.contracts.size(), 1);
+    if (!reduced_contract.contracts.empty())
+      equal(reduced_contract.contracts.front().boundary, 1);
+    const auto encoded = encode(reduced_contract);
+    equal(encoded.size() < 128, true);
+    equal(encode(decode(encoded)) == encoded, true);
+    equal(fails_contract(decode(encoded)), true);
+    equal(compare(decode(encoded),
+                  [](cupid::n64::Console &console, Mode mode, std::size_t) {
+                    if (mode == Mode::Native)
+                      console.cpu().state().gpr[5] = 1;
+                  })
+              .has_value(),
+          false);
+    for (unsigned group : {0u, 1u}) {
+      auto candidate = reduced_contract;
+      if (group == 0) {
+        candidate.actions.clear();
+        candidate.contracts.clear();
+      } else
+        candidate.contracts.clear();
+      equal(fails_contract(candidate), false);
+    }
+    for (const auto contract :
+         {Difference{2, {"cpu.gpr", 5, 0, 1, 8}}, Difference{1, {"", 5, 0, 1, 8}},
+          Difference{1, {"cpu.gpr", 5, 0, 1, 9}}, Difference{1, {"cpu.gpr", 5, 0, 0, 8}}}) {
+      auto invalid = reduced_contract;
+      invalid.contracts = {contract};
+      bool rejected = false;
+      try {
+        encode(invalid);
+      } catch (const cupid::n64::state::InvalidState &) {
+        rejected = true;
+      }
+      equal(rejected, true);
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/timing/frequencies.hpp"
+#include "core/state/core_state.hpp"
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -34,11 +34,17 @@ struct Action {
   unsigned bytes = 4;
 };
 
+struct Difference {
+  std::size_t boundary;
+  cupid::n64::StateDifference state;
+};
+
 struct Input {
   std::uint64_t seed = 0;
   cupid::n64::VideoRegion region = cupid::n64::VideoRegion::Ntsc;
   bool expansion = true;
   std::vector<Action> initial, actions;
+  std::vector<Difference> contracts;
 };
 
 bool valid(const Action &action, bool initial);

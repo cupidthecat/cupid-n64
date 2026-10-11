@@ -41,7 +41,8 @@ namespace {
 void visit(cupid::n64::state::Archive &archive, Input &input) {
   using cupid::n64::state::Archive;
   archive.identity<std::uint64_t>(0x59414c5045525043ull);
-  archive.identity<std::uint32_t>(1);
+  const auto version = archive.literal<std::uint32_t>(2);
+  Archive::require(version == 1 || version == 2);
   input.seed = archive.literal(input.seed);
   input.region = archive.literal(input.region);
   Archive::require(input.region == cupid::n64::VideoRegion::Ntsc ||
@@ -60,6 +61,35 @@ void visit(cupid::n64::state::Archive &archive, Input &input) {
       action.bytes = archive.literal(action.bytes);
       Archive::require(valid(action, initial));
     }
+  }
+  if (version == 1)
+    return;
+  const auto count = archive.literal(static_cast<std::uint32_t>(input.contracts.size()));
+  Archive::require(count <= 1024);
+  if (archive.loading())
+    input.contracts.resize(count);
+  for (auto &contract : input.contracts) {
+    if (!archive.loading())
+      Archive::require(contract.boundary <= input.actions.size() &&
+                       contract.state.index <= std::numeric_limits<std::uint32_t>::max());
+    contract.boundary = archive.literal(static_cast<std::uint32_t>(contract.boundary));
+    auto &field = contract.state.field;
+    const auto length = archive.literal(static_cast<std::uint32_t>(field.size()));
+    Archive::require(length && length <= 256);
+    if (archive.loading())
+      field.resize(length);
+    for (auto &letter : field) {
+      letter = archive.literal(letter);
+      Archive::require((letter >= 'a' && letter <= 'z') || (letter >= 'A' && letter <= 'Z') ||
+                       (letter >= '0' && letter <= '9') || letter == '.' || letter == '_' ||
+                       letter == '[' || letter == ']');
+    }
+    contract.state.index = archive.literal(static_cast<std::uint32_t>(contract.state.index));
+    contract.state.expected = archive.literal(contract.state.expected);
+    contract.state.actual = archive.literal(contract.state.actual);
+    contract.state.bytes = archive.literal(contract.state.bytes);
+    Archive::require(contract.boundary <= input.actions.size() && contract.state.bytes &&
+                     contract.state.bytes <= 8 && contract.state.expected != contract.state.actual);
   }
 }
 } // namespace
