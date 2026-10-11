@@ -12,6 +12,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
                  bool hardware_rendering, SessionSettings settings)
     : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
       hardware_rendering_(hardware_rendering) {
+  validate_ports(settings_.ports);
   for (const auto banks : settings_.memory.pak_banks)
     if (std::find(MemorySettings::capacities.begin(), MemorySettings::capacities.end(), banks) ==
         MemorySettings::capacities.end())
@@ -61,24 +62,9 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     if (!disk.empty())
       change_disk(disk);
   }
-  for (unsigned port = 0; !console_->arcade() && port < profile->accessories.size(); ++port) {
-    auto &pad = console_->controller(port);
-    switch (profile->accessories[port]) {
-    case n64::ControllerAccessory::Memory:
-      pad.memory_pak(settings_.memory.pak_banks[port]);
-      break;
-    case n64::ControllerAccessory::Rumble:
-      pad.rumble_pak();
-      break;
-    case n64::ControllerAccessory::Transfer:
-      pad.transfer_pak();
-      break;
-    case n64::ControllerAccessory::None:
-      break;
-    }
-    console_->connect_controller(port, port == 0 || profile->accessories[port] !=
-                                                        n64::ControllerAccessory::None);
-  }
+  const auto controller_save =
+      rom.empty() ? settings_.storage.save_image(ipl, ipl_identity_) : cartridge_save;
+  configure_ports(profile->accessories, controller_save);
   if (!console_->load(cartridge, pif))
     throw std::runtime_error(
         arcade == n64::ArcadeProfile::Disabled
@@ -92,14 +78,6 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     attach_save(L".eep", console_->eeprom().data());
     attach_save(L".sra", console_->sram().data());
     attach_save(L".fla", console_->flash().data());
-    constexpr const wchar_t *pak_extensions[]{L".pak", L".p2.pak", L".p3.pak", L".p4.pak"};
-    for (unsigned port = 0; port < 4; ++port) {
-      const auto banks = settings_.memory.pak_banks[port];
-      const auto extension = banks == 1 ? std::wstring(pak_extensions[port])
-                                        : (port ? L".p" + std::to_wstring(port + 1) : L"") + L"." +
-                                              std::to_wstring(banks * 32) + L"k.pak";
-      attach_save(extension.c_str(), console_->controller(port).pak_data());
-    }
     if (config.rtc_present) {
       cartridge_clock_path_ = save_path(cartridge_save, L".rtc");
       if (std::filesystem::exists(cartridge_clock_path_) &&
@@ -139,6 +117,16 @@ void Session::finish_frame() {
 }
 
 void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
+  legacy_input(buttons, x, y);
+  advance_to_frame();
+}
+
+void Session::advance_frame(const PlayerInputs &inputs) {
+  input(inputs);
+  advance_to_frame();
+}
+
+void Session::advance_to_frame() {
   struct QuietAudio {
     Audio &audio;
     bool muted;
@@ -152,7 +140,7 @@ void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y)
   const auto before = frames;
   const auto started = clocks();
   while (frames == before) {
-    run_interval(buttons, x, y, true);
+    run_interval(true);
     if (clocks() - started > 10 * n64::clock_frequency)
       throw std::runtime_error("Frame advance stopped because no video frame was produced.");
   }
@@ -160,11 +148,20 @@ void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y)
 }
 
 void Session::run(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
-  run_interval(buttons, x, y, false);
+  legacy_input(buttons, x, y);
+  run_interval(false);
 }
 
-void Session::run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y,
-                           bool frame_boundary) {
+void Session::run(const PlayerInputs &inputs) {
+  input(inputs);
+  run_interval(false);
+}
+
+void Session::run() {
+  run_interval(false);
+}
+
+void Session::legacy_input(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
   if (auto *arcade = console_->arcade()) {
     auto &player = arcade->input().players[0];
     player.up = buttons & 0x0800;
@@ -182,6 +179,9 @@ void Session::run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y,
   } else {
     console_->controller(0).input(buttons, x, y);
   }
+}
+
+void Session::run_interval(bool frame_boundary) {
   if (frame_boundary)
     console_->run_frame_interval();
   else
@@ -197,6 +197,7 @@ void Session::run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y,
 void Session::save() {
   for (auto &memory : saves_)
     memory.save();
+  save_transfers();
   if (!cartridge_clock_path_.empty()) {
     const auto clock = console_->rtc().save();
     if (!std::equal(clock.begin(), clock.end(), saved_cartridge_clock_.begin())) {

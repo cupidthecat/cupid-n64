@@ -55,6 +55,7 @@ JoybusStatus GameCubePad::communicate(std::span<const std::uint8_t> input,
   } else if (input[0] == 0x40 && input.size() >= 3) {
     sample();
     rumbling_ = input[2] & 1;
+    ++rumble_commands_;
     const auto value = report(input[1]);
     std::copy(value.begin(), value.end(), response.begin());
     length = 8;

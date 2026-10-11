@@ -44,6 +44,9 @@ public:
   void write(std::uint16_t address, std::uint8_t value) override;
   void motion(std::int16_t x, std::int16_t y);
   bool rumbling() const;
+  std::uint64_t rumble_commands() const {
+    return rumble_commands_;
+  }
   std::span<std::uint8_t> save_ram();
   std::span<std::uint8_t> flash();
   std::span<std::uint8_t> eeprom();
@@ -54,6 +57,7 @@ private:
   friend class CoreState;
   struct Implementation;
   std::unique_ptr<Implementation> implementation_;
+  std::uint64_t rumble_commands_ = 0;
 };
 
 } // namespace cupid::n64

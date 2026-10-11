@@ -32,6 +32,9 @@ public:
   bool rumbling() const {
     return rumbling_;
   }
+  std::uint64_t rumble_commands() const {
+    return rumble_commands_;
+  }
   JoybusStatus communicate(std::span<const std::uint8_t> input,
                            std::span<std::uint8_t> output) override;
 
@@ -44,6 +47,7 @@ private:
   std::uint16_t buttons_ = 0;
   bool origin_pending_ = true;
   bool rumbling_ = false;
+  std::uint64_t rumble_commands_ = 0;
 };
 
 } // namespace cupid::n64

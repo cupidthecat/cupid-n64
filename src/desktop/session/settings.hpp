@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/controls/ports.hpp"
 #include "desktop/storage/paths.hpp"
 #include <array>
 
@@ -14,6 +15,7 @@ struct MemorySettings {
 struct SessionSettings {
   MemorySettings memory;
   StoragePaths storage;
+  ControllerPorts ports;
 };
 
 } // namespace cupid::desktop

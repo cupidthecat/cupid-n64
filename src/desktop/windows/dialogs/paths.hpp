@@ -9,7 +9,7 @@
 
 namespace cupid::desktop {
 
-enum class FileSelection { Cartridge, Pif, Ipl, Disk, Folder, Screenshot };
+enum class FileSelection { Cartridge, Pif, Ipl, Disk, Folder, Screenshot, Handheld };
 
 std::optional<std::filesystem::path> select_file(HWND owner, const wchar_t *title,
                                                  FileSelection kind,

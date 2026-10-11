@@ -50,7 +50,8 @@ std::optional<std::filesystem::path> select_file(HWND owner, const wchar_t *titl
                                    {L"64DD IPL firmware", L"*.z64;*.n64;*.v64;*.bin;*.rom"},
                                    {L"64DD disk images", L"*.ndd;*.d64"},
                                    {L"Folders", L"*.*"},
-                                   {L"Bitmap image", L"*.bmp"}};
+                                   {L"Bitmap image", L"*.bmp"},
+                                   {L"Game Boy and Game Boy Color cartridges", L"*.gb;*.gbc"}};
   const COMDLG_FILTERSPEC filters[]{filter[static_cast<unsigned>(kind)], {L"All files", L"*.*"}};
   if (kind != FileSelection::Folder) {
     require(dialog.value->SetFileTypes(save ? 1 : 2, filters));

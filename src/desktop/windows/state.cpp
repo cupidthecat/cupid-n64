@@ -98,6 +98,8 @@ bool Window::state_command(unsigned id) {
 }
 
 void Window::state_loaded() {
+  gamepads_.stop();
+  feedback_.clear();
   if (rewinding_)
     audio_.muted = rewind_was_muted_;
   rewinding_ = false;

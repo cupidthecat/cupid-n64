@@ -1,4 +1,5 @@
 #include "desktop/windows/window.hpp"
+#include "core/controller/stick/response.hpp"
 #include "desktop/windows/commands.hpp"
 #include <algorithm>
 #include <commdlg.h>
@@ -8,7 +9,28 @@
 
 namespace cupid::desktop {
 namespace {
-constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
+void record_key(std::array<bool, 256> &keys, WPARAM key, LPARAM message, bool pressed) {
+  if (key >= keys.size())
+    return;
+  keys[key] = pressed;
+  unsigned specific = 0, left = 0, right = 0;
+  if (key == VK_SHIFT) {
+    specific = MapVirtualKeyW(static_cast<UINT>((message >> 16) & 255), MAPVK_VSC_TO_VK_EX);
+    left = VK_LSHIFT;
+    right = VK_RSHIFT;
+  } else if (key == VK_CONTROL || key == VK_MENU) {
+    left = key == VK_CONTROL ? VK_LCONTROL : VK_LMENU;
+    right = key == VK_CONTROL ? VK_RCONTROL : VK_RMENU;
+    specific = message & (1L << 24) ? right : left;
+  }
+  if (specific && specific < keys.size()) {
+    keys[specific] = pressed;
+    keys[key] = keys[left] || keys[right];
+  }
+}
+
+constexpr auto help = L"Default keyboard layout:\n"
+                      L"Move: W A S D (hold Shift to walk)\n"
                       L"A / jump: J     B / punch: K     Z / crouch: Space\n"
                       L"Start: Enter     L / R: Q / E\n"
                       L"C buttons / camera: Arrow keys\n"
@@ -56,6 +78,7 @@ Window::Window(Options options) : options_(std::move(options)) {
   load_recent();
   load_playback_settings();
   load_launch_settings();
+  player_mappings_ = read_mappings(settings_);
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -115,7 +138,8 @@ int Window::run(HINSTANCE instance, int show) {
     AppendMenuW(state_menu_, MF_STRING, StateSlotFirst + slot - 1, L"Slot");
   AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen\tF11");
   create_display_menu(view);
-  AppendMenuW(view, MF_STRING, Controls, L"&Keyboard controls\tF1");
+  create_controller_menus(emulation, view);
+  AppendMenuW(view, MF_STRING, Controls, L"&Controls / help\tF1");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
@@ -228,6 +252,7 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   switch (event) {
   case WM_CLOSE:
+    gamepads_.stop();
     end_rewind();
     stop_fast_forward();
     if (session_)
@@ -251,11 +276,14 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
       refresh_audio_devices();
     return 0;
   case WM_DEVICECHANGE:
+    gamepads_.stop();
     refresh_audio_devices();
     return 0;
   case WM_ACTIVATE: {
     const bool was_stopped = stopped();
     active_ = LOWORD(wparam) != WA_INACTIVE || options_.frames != 0;
+    if (stopped())
+      gamepads_.stop();
     end_rewind();
     stop_fast_forward();
     keys_.fill(false);
@@ -268,6 +296,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_ENTERMENULOOP:
   case WM_ENTERSIZEMOVE:
     modal_ = true;
+    gamepads_.stop();
     end_rewind();
     stop_fast_forward();
     keys_.fill(false);
@@ -282,9 +311,9 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
       remember_window_size();
     rebase();
     return 0;
+  case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
-    if (wparam < keys_.size())
-      keys_[wparam] = true;
+    record_key(keys_, wparam, lparam, true);
     if (!(lparam & (1L << 30))) {
       const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
       if (wparam == VK_F2)
@@ -316,15 +345,15 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
       if (wparam == VK_F1)
         command(Controls);
     }
-    return 0;
+    return event == WM_SYSKEYDOWN ? DefWindowProcW(window_, event, wparam, lparam) : 0;
+  case WM_SYSKEYUP:
   case WM_KEYUP:
-    if (wparam < keys_.size())
-      keys_[wparam] = false;
+    record_key(keys_, wparam, lparam, false);
     if (wparam == VK_F7)
       command(EndRewind);
     if (wparam == VK_TAB)
       command(ReleaseFastForward);
-    return 0;
+    return event == WM_SYSKEYUP ? DefWindowProcW(window_, event, wparam, lparam) : 0;
   case WM_ERASEBKGND:
     return 1;
   case WM_PAINT:
@@ -356,6 +385,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
+  gamepads_.stop();
   end_rewind();
   stop_fast_forward();
   paused_ = true;
@@ -396,9 +426,15 @@ void Window::load() {
   if (session_)
     session_->save();
   audio_.clear();
+  gamepads_.stop();
+  const auto controller_key =
+      controller_settings_key(options_.rom.empty() ? options_.ipl : options_.rom);
+  auto selected_settings = session_settings_;
+  selected_settings.ports =
+      options_.frames ? ControllerPorts{} : read_ports(settings_, controller_key);
   auto next = std::make_unique<Session>(
       options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
-      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, session_settings_);
+      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, selected_settings);
   auto states = std::make_unique<StateSlots>(
       next->storage_image(), [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
@@ -410,6 +446,9 @@ void Window::load() {
   rewind_ = std::move(rewind);
   states_ = std::move(states);
   session_ = std::move(next);
+  session_settings_ = std::move(selected_settings);
+  controller_key_ = controller_key;
+  feedback_.clear();
   reload_pending_ = false;
   state_message_.clear();
   game_image_ =
@@ -425,6 +464,7 @@ void Window::load() {
   update_playback();
   update_display();
   update_launch();
+  update_controllers();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
@@ -478,6 +518,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (controller_command(id))
+    return;
   if (launch_command(id))
     return;
   if (playback_settings_command(id))
@@ -491,6 +533,7 @@ void Window::command(unsigned id) {
   if (state_command(id))
     return;
   if (id == Screenshot) {
+    gamepads_.stop();
     screenshot();
   } else if (id == Exit) {
     SendMessageW(window_, WM_CLOSE, 0, 0);
@@ -498,6 +541,8 @@ void Window::command(unsigned id) {
     end_rewind();
     stop_fast_forward();
     paused_ = !paused_;
+    if (paused_)
+      gamepads_.stop();
     audio_.clear();
     if (paused_ && session_) {
       session_->save();
@@ -508,6 +553,8 @@ void Window::command(unsigned id) {
     }
     rebase();
   } else if (id == Reset) {
+    gamepads_.stop();
+    feedback_.reset(feedback_state());
     end_rewind();
     stop_fast_forward();
     if (rewind_)
@@ -525,8 +572,7 @@ void Window::command(unsigned id) {
       rebase();
     }
   } else if (id == FrameAdvance && session_ && paused_) {
-    const auto control = input();
-    session_->advance_frame(control.buttons, control.x, control.y);
+    session_->advance_frame(inputs());
     frame_ready_ = false;
     last_frame_ = session_->frames;
     refresh_frame();
@@ -538,7 +584,10 @@ void Window::command(unsigned id) {
   } else if (id == Fullscreen) {
     fullscreen();
   } else if (id == Controls) {
+    gamepads_.stop();
     std::wstring text = help;
+    text += L"\n\nView > Input mappings shows each player's device, buttons and axes.\n"
+            L"Emulation > Controller ports selects the devices and accessories for this game.";
     if (!audio_.available())
       text += L"\n\nAudio: " + audio_.error();
     MessageBoxW(window_, text.c_str(), L"Cupid-N64 controls", MB_OK);
@@ -619,21 +668,11 @@ void Window::paint() {
 Window::Input Window::input() const {
   if (!active_ && focus_behavior_ != FocusBehavior::AllowInput)
     return {};
-  const auto pressed = [&](unsigned code) {
-    return active_ ? keys_[code] : (GetAsyncKeyState(static_cast<int>(code)) & 0x8000) != 0;
-  };
-  std::uint16_t buttons = 0;
-  constexpr std::array<unsigned, 14> codes{'J',   'K',     VK_SPACE, VK_RETURN, 'I',
-                                           'O',   'U',     'P',      'Q',       'E',
-                                           VK_UP, VK_DOWN, VK_LEFT,  VK_RIGHT};
-  constexpr std::array<std::uint16_t, 14> masks{0x8000, 0x4000, 0x2000, 0x1000, 0x800, 0x400, 0x200,
-                                                0x100,  0x20,   0x10,   8,      4,     2,     1};
-  for (unsigned n = 0; n < codes.size(); ++n)
-    if (pressed(codes[n]))
-      buttons |= masks[n];
-  const int magnitude = pressed(VK_SHIFT) ? 35 : 80;
-  auto x = static_cast<std::int8_t>((int(pressed('D')) - int(pressed('A'))) * magnitude);
-  auto y = static_cast<std::int8_t>((int(pressed('W')) - int(pressed('S'))) * magnitude);
+  const auto mapped = map_input(player_mappings_[0], host_inputs());
+  const auto stick = n64::stick_response(mapped.x, mapped.y);
+  auto buttons = mapped.buttons;
+  auto x = stick.x;
+  auto y = static_cast<std::int8_t>(-stick.y);
   if (options_.test_input) {
     const unsigned frame = session_->frames;
     const bool start = (frame >= 900 && frame < 960) || (frame >= 1200 && frame < 1260);
@@ -648,11 +687,12 @@ Window::Input Window::input() const {
 }
 
 void Window::advance() {
-  const auto control = input();
+  session_->input(inputs());
   const auto interval_start = session_->clocks();
   do {
-    session_->run(control.buttons, control.x, control.y);
+    session_->run();
   } while (session_->frames == last_frame_ && session_->clocks() - interval_start < 1875000);
+  update_feedback();
   if (session_->frames == last_frame_)
     return;
   frame_ready_ = true;

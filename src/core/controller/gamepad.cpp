@@ -135,8 +135,10 @@ JoybusStatus Gamepad::communicate(std::span<const std::uint8_t> input,
           }
         }
       }
-      if (pak_ == Pak::Rumble && address >= 0xc000)
+      if (pak_ == Pak::Rumble && address >= 0xc000) {
         motor_ = input[3] & 1;
+        ++rumble_commands_;
+      }
       if (pak_ == Pak::Transfer)
         for (unsigned n = 0; n < length; ++n)
           transfer_.write(static_cast<std::uint16_t>(address + n), input[n + 3]);

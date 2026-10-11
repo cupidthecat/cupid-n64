@@ -141,6 +141,7 @@ void Window::begin_rewind() {
     return;
   }
   stop_fast_forward();
+  gamepads_.stop();
   rewind_was_muted_ = audio_.muted;
   audio_.clear();
   audio_.muted = rewind_mute_ || rewind_was_muted_;
