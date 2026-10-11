@@ -98,6 +98,8 @@ bool Window::state_command(unsigned id) {
 }
 
 void Window::state_loaded() {
+  if (paused_)
+    session_->finish_frame();
   frame_ready_ = false;
   last_frame_ = session_->frames;
   keys_.fill(false);
