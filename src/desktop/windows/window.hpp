@@ -1,6 +1,7 @@
 #pragma once
 
 #include "desktop/session.hpp"
+#include "desktop/state/slots.hpp"
 #include "desktop/timing/playback_clock.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
@@ -25,9 +26,18 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool state_command(unsigned id);
+  void update_states();
+  void state_loaded();
+  void refresh_frame();
   void load();
   void paint();
   void advance();
+  struct Input {
+    std::uint16_t buttons;
+    std::int8_t x, y;
+  };
+  Input input() const;
   void present();
   void rebase();
   void fullscreen();
@@ -39,13 +49,18 @@ private:
   }
   HWND window_ = nullptr;
   HMENU menu_ = nullptr;
+  HMENU state_menu_ = nullptr;
   WINDOWPLACEMENT placement_{sizeof(WINDOWPLACEMENT)};
   Options options_;
   std::filesystem::path settings_;
+  std::filesystem::path game_image_;
   TimerResolution timer_resolution_;
   PaintBuffer paint_buffer_;
   Audio audio_;
   std::unique_ptr<Session> session_;
+  std::unique_ptr<StateSlots> states_;
+  unsigned state_slot_ = 1;
+  std::wstring state_message_;
   std::array<bool, 256> keys_{};
   std::vector<std::uint8_t> pixels_;
   bool paused_ = false, active_ = true, modal_ = false, fullscreen_ = false, quit_ = false;

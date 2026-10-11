@@ -16,6 +16,8 @@ public:
   bool requires_hardware() const;
   bool crashed() const;
   bool hardware_rendering() const;
+  std::vector<std::uint8_t> capture_state();
+  void restore_state(std::span<const std::uint8_t> bytes);
 
 private:
   struct Implementation;

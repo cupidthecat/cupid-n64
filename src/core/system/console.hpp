@@ -50,6 +50,7 @@ public:
   void power(bool reset = false);
   void step();
   std::uint32_t run_interval(std::uint32_t limit = 4096);
+  std::uint32_t run_frame_interval(std::uint32_t limit = 4096);
   void run_clocks(std::uint64_t clocks);
   void synchronize(Rsp::Execution signal = Rsp::Execution::Native,
                    std::int64_t signal_clock_target = 0);
@@ -159,6 +160,7 @@ private:
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;
+  std::optional<std::uint64_t> frame_limit_;
   bool frozen_ = false;
   std::unique_ptr<Aleck64> arcade_;
 };

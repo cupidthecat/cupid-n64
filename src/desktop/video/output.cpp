@@ -1,5 +1,7 @@
 #include "desktop/video/output.hpp"
+#include "core/state/core_state.hpp"
 #if defined(CUPID_HARDWARE_RENDERER)
+#include "renderer/state/machine_state.hpp"
 #include "renderer/vulkan/renderer.hpp"
 #endif
 #include <stdexcept>
@@ -89,6 +91,52 @@ bool VideoOutput::crashed() const {
 
 bool VideoOutput::hardware_rendering() const {
   return bool(implementation_->begin);
+}
+
+std::vector<std::uint8_t> VideoOutput::capture_state() {
+  auto &state = *implementation_;
+  n64::state::Archive archive;
+  archive.identity<std::uint64_t>(0x45544154534f5043ull);
+  archive.identity<std::uint32_t>(1);
+  archive.identity(hardware_rendering());
+  archive.literal(state.requires_hardware);
+  archive.literal(state.software_frame.width);
+  archive.literal(state.software_frame.height);
+  archive.owned_vector(state.software_frame.rgba, 640 * 576 * 4);
+  std::vector<std::uint8_t> machine;
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (state.hardware)
+    machine = n64::MachineState::capture(state.console, *state.hardware);
+  else
+#endif
+    machine = n64::CoreState::capture(state.console);
+  archive.owned_vector(machine, 384 * 1024 * 1024);
+  return archive.finish();
+}
+
+void VideoOutput::restore_state(std::span<const std::uint8_t> bytes) {
+  auto &state = *implementation_;
+  n64::state::Archive archive(bytes);
+  archive.identity<std::uint64_t>(0x45544154534f5043ull);
+  archive.identity<std::uint32_t>(1);
+  archive.identity(hardware_rendering());
+  const auto requires_hardware = archive.literal(false);
+  n64::VideoFrame frame;
+  frame.width = archive.literal(0u);
+  frame.height = archive.literal(0u);
+  n64::state::Archive::require(frame.width <= 640 && frame.height <= 576);
+  frame.rgba = archive.owned_vector<std::uint8_t>({}, 640 * 576 * 4);
+  n64::state::Archive::require(frame.rgba.size() == std::uint64_t(frame.width) * frame.height * 4);
+  const auto machine = archive.owned_vector<std::uint8_t>({}, 384 * 1024 * 1024);
+  archive.validate();
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (state.hardware)
+    n64::MachineState::restore(state.console, *state.hardware, machine);
+  else
+#endif
+    n64::CoreState::restore(state.console, machine);
+  state.requires_hardware = requires_hardware;
+  state.software_frame = std::move(frame);
 }
 
 } // namespace cupid::desktop

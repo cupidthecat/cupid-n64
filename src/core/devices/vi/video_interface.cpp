@@ -46,6 +46,11 @@ void VideoInterface::run() {
     line();
 }
 
+void VideoInterface::run_until_frame(std::uint64_t target) {
+  while (clock_ < 0 && frames_ < target)
+    line();
+}
+
 void VideoInterface::line() {
   if (!active()) {
     counter_ = 0;

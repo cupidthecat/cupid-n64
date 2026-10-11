@@ -1,4 +1,5 @@
 #include "desktop/windows/window.hpp"
+#include "desktop/windows/commands.hpp"
 #include <algorithm>
 #include <commdlg.h>
 #include <fstream>
@@ -6,17 +7,22 @@
 
 namespace cupid::desktop {
 namespace {
-enum Command : unsigned { Open = 1, Firmware, Exit, Pause, Reset, Fullscreen, Mute, Controls };
 constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"A / jump: J     B / punch: K     Z / crouch: Space\n"
                       L"Start: Enter     L / R: Q / E\n"
                       L"C buttons / camera: Arrow keys\n"
                       L"D-pad: I / U / O / P (up / left / down / right)\n\n"
-                      L"Pause: F5 or Escape     Reset: F6\n"
+                      L"Pause: F5 or Escape     Frame advance while paused: F4\n"
+                      L"Reset: F6\n"
+                      L"Save state: F2     Load state: F3\n"
+                      L"Undo save: Ctrl+F2     Undo load: Ctrl+F3\n"
+                      L"State slots: Ctrl+1 through Ctrl+9; Ctrl+0 selects slot 10.\n"
                       L"Mute: F8     Fullscreen: F11\n\n"
                       L"The game pauses when this window loses focus.\n"
                       L"Cartridge saves use .eep, .sra, .fla or .rtc; Controller Paks use .pak.\n"
-                      L"Disk saves use .disk and .rtc.";
+                      L"Disk saves use .disk and .rtc.\n"
+                      L"Save states use the game's .states folder. Undo lasts until another game "
+                      L"is opened or the app closes.";
 std::filesystem::path setting(const std::filesystem::path &file, const wchar_t *name) {
   std::array<wchar_t, 32768> buffer{};
   GetPrivateProfileStringW(L"Files", name, L"", buffer.data(), static_cast<DWORD>(buffer.size()),
@@ -37,6 +43,8 @@ Window::Window(Options options) : options_(std::move(options)) {
       options_.rom = setting(settings_, L"ROM");
     if (options_.firmware.empty())
       options_.firmware = setting(settings_, L"Firmware");
+    state_slot_ = std::clamp(GetPrivateProfileIntW(L"States", L"Slot", 1, settings_.c_str()), 1u,
+                             StateSlots::count);
   }
 }
 
@@ -56,12 +64,22 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
   AppendMenuW(emulation, MF_STRING, Pause, L"&Pause\tF5");
+  AppendMenuW(emulation, MF_STRING | MF_GRAYED, FrameAdvance, L"Frame &advance\tF4");
   AppendMenuW(emulation, MF_STRING, Reset, L"&Reset\tF6");
   AppendMenuW(emulation, MF_STRING, Mute, L"&Mute\tF8");
+  state_menu_ = CreatePopupMenu();
+  AppendMenuW(state_menu_, MF_STRING, SaveState, L"&Save state\tF2");
+  AppendMenuW(state_menu_, MF_STRING, LoadState, L"&Load state\tF3");
+  AppendMenuW(state_menu_, MF_STRING, UndoStateSave, L"Undo s&ave\tCtrl+F2");
+  AppendMenuW(state_menu_, MF_STRING, UndoStateLoad, L"Undo l&oad\tCtrl+F3");
+  AppendMenuW(state_menu_, MF_SEPARATOR, 0, nullptr);
+  for (unsigned slot = 1; slot <= StateSlots::count; ++slot)
+    AppendMenuW(state_menu_, MF_STRING, StateSlotFirst + slot - 1, L"Slot");
   AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen\tF11");
   AppendMenuW(view, MF_STRING, Controls, L"&Keyboard controls\tF1");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
+  AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(view), L"&View");
   RECT bounds{0, 0, 960, 744};
   AdjustWindowRect(&bounds, WS_OVERLAPPEDWINDOW, TRUE);
@@ -70,6 +88,7 @@ int Window::run(HINSTANCE instance, int show) {
                           nullptr, menu_, instance, this);
   if (!window_)
     throw std::runtime_error("Could not create the desktop window.");
+  update_states();
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
@@ -121,6 +140,7 @@ int Window::run(HINSTANCE instance, int show) {
       error(exception);
     }
   }
+  states_.reset();
   session_.reset();
   if (IsWindow(window_))
     DestroyWindow(window_);
@@ -154,6 +174,10 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_COMMAND:
     command(LOWORD(wparam));
     return 0;
+  case WM_INITMENUPOPUP:
+    if (reinterpret_cast<HMENU>(wparam) == state_menu_)
+      update_states();
+    return 0;
   case WM_ACTIVATE:
     active_ = LOWORD(wparam) != WA_INACTIVE || options_.frames != 0;
     keys_.fill(false);
@@ -175,6 +199,17 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
     if (wparam < keys_.size())
       keys_[wparam] = true;
     if (!(lparam & (1L << 30))) {
+      const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+      if (wparam == VK_F2)
+        command(control ? UndoStateSave : SaveState);
+      if (wparam == VK_F3)
+        command(control ? UndoStateLoad : LoadState);
+      if (wparam == VK_F4)
+        command(FrameAdvance);
+      if (control && wparam >= '0' && wparam <= '9') {
+        const auto slot = wparam == '0' ? StateSlots::count : static_cast<unsigned>(wparam - '0');
+        command(StateSlotFirst + slot - 1);
+      }
       if (wparam == VK_F5 || wparam == VK_ESCAPE)
         command(Pause);
       if (wparam == VK_F6)
@@ -236,7 +271,16 @@ void Window::load() {
   auto next = std::make_unique<Session>(
       options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
       options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt);
+  auto states = std::make_unique<StateSlots>(
+      options_.rom.empty() ? (options_.disk.empty() ? options_.ipl : options_.disk) : options_.rom,
+      [this] { return session_->capture_state(); },
+      [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
+  states->select(state_slot_);
+  states_ = std::move(states);
   session_ = std::move(next);
+  state_message_.clear();
+  game_image_ =
+      options_.rom.empty() ? (options_.disk.empty() ? options_.ipl : options_.disk) : options_.rom;
   pixels_.clear();
   pixel_width_ = pixel_height_ = 0;
   frame_ready_ = false;
@@ -244,6 +288,7 @@ void Window::load() {
   paused_ = false;
   keys_.fill(false);
   rebase();
+  update_states();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
@@ -269,6 +314,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (state_command(id))
+    return;
   if (id == Open || id == Firmware) {
     auto path = choose(id == Firmware);
     if (path.empty())
@@ -285,8 +332,13 @@ void Window::command(unsigned id) {
   } else if (id == Pause) {
     paused_ = !paused_;
     audio_.clear();
-    if (paused_ && session_)
+    if (paused_ && session_) {
       session_->save();
+      session_->finish_frame();
+      frame_ready_ = false;
+      last_frame_ = session_->frames;
+      refresh_frame();
+    }
     rebase();
   } else if (id == Reset) {
     if (session_) {
@@ -300,6 +352,13 @@ void Window::command(unsigned id) {
       keys_.fill(false);
       rebase();
     }
+  } else if (id == FrameAdvance && session_ && paused_) {
+    const auto control = input();
+    session_->advance_frame(control.buttons, control.x, control.y);
+    frame_ready_ = false;
+    last_frame_ = session_->frames;
+    refresh_frame();
+    rebase();
   } else if (id == Mute) {
     audio_.muted = !audio_.muted;
     audio_.clear();
@@ -314,6 +373,8 @@ void Window::command(unsigned id) {
   }
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   CheckMenuItem(menu_, Mute, MF_BYCOMMAND | (audio_.muted ? MF_CHECKED : MF_UNCHECKED));
+  EnableMenuItem(menu_, FrameAdvance,
+                 MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
 }
 
 void Window::fullscreen() {
@@ -379,11 +440,15 @@ void Window::paint() {
     SetTextColor(dc, RGB(255, 255, 255));
     SetBkMode(dc, TRANSPARENT);
     bar.left = 8;
-    const auto status =
+    std::wstring status =
         stopped()
             ? L"Paused  |  F5 Resume  |  F1 Controls  |  F11 Fullscreen"
             : L"WASD Move  |  J Jump  |  K Punch  |  Enter Start  |  F1 Controls  |  F5 Pause";
-    DrawTextW(dc, status, -1, &bar, DT_SINGLELINE | DT_VCENTER);
+    if (states_)
+      status = L"Slot " + std::to_wstring(state_slot_) + L"  |  F2 Save  |  F3 Load  |  " + status;
+    if (!state_message_.empty())
+      status = state_message_ + L"  |  " + status;
+    DrawTextW(dc, status.c_str(), -1, &bar, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     paint_buffer_.present(target);
   } catch (...) {
     EndPaint(window_, &painting);
@@ -392,7 +457,7 @@ void Window::paint() {
   EndPaint(window_, &painting);
 }
 
-void Window::advance() {
+Window::Input Window::input() const {
   std::uint16_t buttons = 0;
   constexpr std::array<unsigned, 14> codes{'J',   'K',     VK_SPACE, VK_RETURN, 'I',
                                            'O',   'U',     'P',      'Q',       'E',
@@ -415,9 +480,14 @@ void Window::advance() {
     x = 0;
     y = frame >= 4800 ? -58 : 0;
   }
+  return {buttons, x, y};
+}
+
+void Window::advance() {
+  const auto control = input();
   const auto interval_start = session_->clocks();
   do {
-    session_->run(buttons, x, y);
+    session_->run(control.buttons, control.x, control.y);
   } while (session_->frames == last_frame_ && session_->clocks() - interval_start < 1875000);
   if (session_->frames == last_frame_)
     return;
@@ -428,12 +498,7 @@ void Window::present() {
   // The VI callback takes the prior readback; let the new one overlap emulation.
   frame_ready_ = false;
   last_frame_ = session_->frames;
-  pixels_ = session_->frame.rgba;
-  pixel_width_ = session_->frame.width;
-  pixel_height_ = session_->frame.height;
-  for (std::size_t n = 0; n < pixels_.size(); n += 4)
-    std::swap(pixels_[n], pixels_[n + 2]);
-  InvalidateRect(window_, nullptr, FALSE);
+  refresh_frame();
   if (last_frame_ % 300 == 0)
     session_->save();
   if (options_.frames && last_frame_ >= options_.frames) {
@@ -445,9 +510,9 @@ void Window::present() {
   const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
   if (elapsed >= 1.0) {
     const auto fps = (last_frame_ - measured_frames_) / elapsed;
-    const auto title = L"Cupid-N64 | " +
-                       (options_.rom.empty() ? options_.ipl : options_.rom).filename().wstring() +
-                       L" | " + std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s" +
+    const auto title = L"Cupid-N64 | " + game_image_.filename().wstring() + L" | " +
+                       std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s" + L" | Slot " +
+                       std::to_wstring(state_slot_) +
                        (audio_.available() ? L"" : L" | Audio unavailable");
     SetWindowTextW(window_, title.c_str());
     measured_time_ = now;

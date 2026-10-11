@@ -172,6 +172,21 @@ std::uint32_t Console::run_interval(std::uint32_t limit) {
   return static_cast<std::uint32_t>(cpu_.state().clocks - start);
 }
 
+std::uint32_t Console::run_frame_interval(std::uint32_t limit) {
+  struct FrameLimit {
+    std::optional<std::uint64_t> &value;
+    ~FrameLimit() {
+      value.reset();
+    }
+  } guard{frame_limit_};
+  frame_limit_ = vi_.frames() + 1;
+  vi_.run_until_frame(*frame_limit_);
+  if (vi_.frames() == *frame_limit_)
+    return 0;
+  const auto line_limit = static_cast<std::uint64_t>(std::max<std::int64_t>(1, vi_.clocks() + 1));
+  return run_interval(static_cast<std::uint32_t>(std::min(std::uint64_t(limit), line_limit)));
+}
+
 void Console::run_clocks(std::uint64_t clocks) {
   const auto start = cpu_.state().clocks;
   while (cpu_.state().clocks - start < clocks)
@@ -187,7 +202,13 @@ void Console::synchronize(Rsp::Execution signal, std::int64_t signal_clock_targe
     rsp_.elapse(clocks);
     rdp_.elapse(clocks);
     pif_.elapse(clocks);
-    vi_.run();
+    if (frame_limit_) {
+      vi_.run_until_frame(*frame_limit_);
+      if (vi_.frames() == *frame_limit_)
+        clock_target_ = cpu_.state().clocks;
+    } else {
+      vi_.run();
+    }
     audio_.run();
     if (signal == Rsp::Execution::Native)
       rsp_.run();

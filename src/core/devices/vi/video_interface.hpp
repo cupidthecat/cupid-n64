@@ -16,6 +16,7 @@ public:
     clock_ -= clocks;
   }
   void run();
+  void run_until_frame(std::uint64_t target);
   std::uint32_t read_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
   void connect_frame(std::function<void(bool)> callback);

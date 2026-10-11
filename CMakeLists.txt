@@ -163,10 +163,13 @@ if(WIN32 AND CUPID_DESKTOP)
   add_executable(cupid_desktop WIN32
     src/desktop/windows/main.cpp
     src/desktop/windows/window.cpp
+    src/desktop/windows/state.cpp
     src/desktop/windows/audio.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/audio/resampler.cpp
     src/desktop/session.cpp
+    src/desktop/state/session_state.cpp
+    src/desktop/state/slots.cpp
     src/desktop/storage/save.cpp
     src/desktop/timing/playback_clock.cpp
   )
@@ -212,6 +215,12 @@ if(BUILD_TESTING)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
   target_compile_definitions(desktop_storage_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
   add_test(NAME desktop_save_storage COMMAND desktop_storage_tests)
+  add_executable(desktop_state_slots_tests tests/desktop/state/slots.cpp
+    src/desktop/state/slots.cpp src/desktop/storage/save.cpp)
+  target_include_directories(desktop_state_slots_tests PRIVATE src)
+  target_compile_features(desktop_state_slots_tests PRIVATE cxx_std_20)
+  target_compile_definitions(desktop_state_slots_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_test(NAME desktop_state_slots COMMAND desktop_state_slots_tests)
   add_executable(desktop_clock_tests
     tests/desktop/playback_clock.cpp
     src/desktop/timing/playback_clock.cpp
@@ -222,6 +231,7 @@ if(BUILD_TESTING)
   if(TARGET cupid_desktop)
     add_executable(session_video_tests tests/desktop/session_video.cpp
       src/desktop/session.cpp src/desktop/storage/save.cpp
+      src/desktop/state/session_state.cpp
       src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
     target_compile_definitions(session_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(session_video_tests PRIVATE cupid_video_output winmm)
@@ -229,6 +239,37 @@ if(BUILD_TESTING)
     add_test(NAME desktop_software_video_unavailable COMMAND session_video_tests --unavailable)
     set_tests_properties(desktop_software_video_unavailable PROPERTIES ENVIRONMENT
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
+    add_executable(session_state_tests tests/desktop/state/session.cpp
+      src/desktop/session.cpp src/desktop/storage/save.cpp src/desktop/state/session_state.cpp
+      src/desktop/state/slots.cpp src/desktop/windows/audio.cpp src/desktop/audio/resampler.cpp)
+    target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(session_state_tests PRIVATE cupid_video_output winmm)
+    add_test(NAME desktop_session_state COMMAND session_state_tests)
+    add_test(NAME desktop_state_file_write COMMAND session_state_tests --write-state
+      "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
+    add_test(NAME desktop_state_file_read COMMAND session_state_tests --read-state
+      "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
+    set_tests_properties(desktop_state_file_write PROPERTIES FIXTURES_SETUP desktop_state_file)
+    set_tests_properties(desktop_state_file_read PROPERTIES FIXTURES_REQUIRED desktop_state_file)
+    if(CUPID_HARDWARE_RENDERER)
+      target_compile_definitions(session_state_tests PRIVATE CUPID_SESSION_HARDWARE_TESTS)
+      target_link_libraries(session_state_tests PRIVATE cupid_renderer)
+      add_test(NAME desktop_hardware_state COMMAND session_state_tests --hardware)
+      add_test(NAME desktop_hardware_state_file_write COMMAND session_state_tests --write-state
+        "${CMAKE_CURRENT_BINARY_DIR}/desktop-hardware-state-fixtures" --hardware)
+      add_test(NAME desktop_hardware_state_file_read COMMAND session_state_tests --read-state
+        "${CMAKE_CURRENT_BINARY_DIR}/desktop-hardware-state-fixtures" --hardware)
+      set_tests_properties(desktop_hardware_state_file_write PROPERTIES
+        FIXTURES_SETUP desktop_hardware_state_file)
+      set_tests_properties(desktop_hardware_state_file_read PROPERTIES
+        FIXTURES_REQUIRED desktop_hardware_state_file)
+      set_tests_properties(desktop_hardware_state desktop_hardware_state_file_write
+        desktop_hardware_state_file_read PROPERTIES RESOURCE_LOCK vulkan)
+      if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
+        set_tests_properties(desktop_hardware_state desktop_hardware_state_file_write
+          desktop_hardware_state_file_read PROPERTIES SKIP_RETURN_CODE 77)
+      endif()
+    endif()
     add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
     target_include_directories(desktop_audio_tests PRIVATE src)
     target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)

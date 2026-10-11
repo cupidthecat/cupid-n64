@@ -16,9 +16,12 @@ public:
           n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled,
           std::optional<std::uint64_t> random_seed = {}, bool hardware_rendering = true);
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
+  void advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void finish_frame();
   void reset();
   void save();
+  std::vector<std::uint8_t> capture_state();
+  void restore_state(std::span<const std::uint8_t> bytes);
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
   }
@@ -26,6 +29,8 @@ public:
   n64::VideoFrame frame;
 
 private:
+  friend class SessionState;
+  void run_interval(std::uint16_t buttons, std::int8_t x, std::int8_t y, bool frame_boundary);
   Audio &audio_;
   std::vector<MemorySave> saves_;
   std::filesystem::path cartridge_clock_path_;
@@ -36,6 +41,7 @@ private:
   std::unique_ptr<VideoOutput> output_;
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
+  std::uint64_t disk_identity_ = 0;
 };
 
 } // namespace cupid::desktop
