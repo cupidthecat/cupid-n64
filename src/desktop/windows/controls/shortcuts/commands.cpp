@@ -135,8 +135,9 @@ void Window::update_shortcuts() {
   label(MouseCapture, pointer);
   EnableMenuItem(menu_, MouseCapture,
                  MF_BYCOMMAND |
-                     (mouse_.captured() || (has_mouse() && !stopped() && !rewinding_) ? MF_ENABLED
-                                                                                      : MF_GRAYED));
+                     (mouse_.captured() || (has_mouse() && !paused_ && active_ && !rewinding_)
+                          ? MF_ENABLED
+                          : MF_GRAYED));
   DrawMenuBar(window_);
 }
 

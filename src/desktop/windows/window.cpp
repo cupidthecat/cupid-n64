@@ -302,6 +302,10 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_EXITMENULOOP:
   case WM_EXITSIZEMOVE:
     modal_ = false;
+    if (mouse_capture_pending_) {
+      mouse_capture_pending_ = false;
+      mouse_capture();
+    }
     update_fast_forward();
     if (event == WM_EXITSIZEMOVE)
       remember_window_size();

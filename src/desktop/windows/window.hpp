@@ -139,6 +139,7 @@ private:
   ShortcutRouter shortcuts_;
   bool shortcut_alt_ = false;
   HostMouse mouse_;
+  bool mouse_capture_pending_ = false;
   Gamepads gamepads_;
   HostInputs last_host_inputs_;
   FeedbackLatch feedback_;
