@@ -8,4 +8,5 @@
 *.sra
 *.fla
 *.pak
+*.states/
 __pycache__/

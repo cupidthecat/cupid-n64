@@ -25,6 +25,7 @@ public:
   bool muted = false;
 
 private:
+  friend class SessionState;
   struct Buffer {
     WAVEHDR header{};
     std::array<short, 960> samples{};

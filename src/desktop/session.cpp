@@ -1,5 +1,6 @@
 #include "desktop/session.hpp"
 #include "core/cartridge/profile/profile.hpp"
+#include "desktop/state/session_state.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -42,7 +43,9 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     const auto clock = console_->disk_drive().clock().save();
     saved_clock_.assign(clock.begin(), clock.end());
     if (!disk.empty()) {
-      if (!console_->disk_drive().load_image(read_file(disk, 0x435b0c0)))
+      const auto disk_image = read_file(disk, 0x435b0c0);
+      disk_identity_ = n64::state::Archive::fingerprint(disk_image);
+      if (!console_->disk_drive().load_image(disk_image))
         throw std::runtime_error("Select a valid 64DD disk image.");
       disk_path_ = save_path(disk, L".disk");
       if (std::filesystem::exists(disk_path_)) {
@@ -177,6 +180,14 @@ void Session::save() {
       saved_disk_.assign(disk.begin(), disk.end());
     }
   }
+}
+
+std::vector<std::uint8_t> Session::capture_state() {
+  return SessionState::capture(*this);
+}
+
+void Session::restore_state(std::span<const std::uint8_t> bytes) {
+  SessionState::restore(*this, bytes);
 }
 
 } // namespace cupid::desktop

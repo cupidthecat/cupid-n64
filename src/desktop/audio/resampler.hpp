@@ -25,6 +25,7 @@ public:
   }
 
 private:
+  friend class SessionState;
   struct LowPass {
     double direct = 0, middle = 0, feedback1 = 0, feedback2 = 0;
     n64::StereoSample delay1, delay2;

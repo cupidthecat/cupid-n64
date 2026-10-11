@@ -19,6 +19,8 @@ public:
   void finish_frame();
   void reset();
   void save();
+  std::vector<std::uint8_t> capture_state();
+  void restore_state(std::span<const std::uint8_t> bytes);
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
   }
@@ -26,6 +28,7 @@ public:
   n64::VideoFrame frame;
 
 private:
+  friend class SessionState;
   Audio &audio_;
   std::vector<MemorySave> saves_;
   std::filesystem::path cartridge_clock_path_;
@@ -36,6 +39,7 @@ private:
   std::unique_ptr<VideoOutput> output_;
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
+  std::uint64_t disk_identity_ = 0;
 };
 
 } // namespace cupid::desktop
