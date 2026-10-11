@@ -108,11 +108,11 @@ void Rsp::advance(std::uint32_t clocks) {
   run();
 }
 
-std::uint32_t Rsp::idle_clocks() const {
+std::uint32_t Rsp::idle_clocks(std::int64_t clock_target) const {
   if (dma_busy())
     return 128;
   // Preserve the halted clock phase; pending DMA still advances one quantum at a time.
-  const auto quanta = std::uint64_t(-(clock_ + 1)) / 128 + 1;
+  const auto quanta = std::uint64_t(clock_target - clock_ - 1) / 128 + 1;
   return static_cast<std::uint32_t>(std::min(quanta, std::uint64_t(0xffffffffu / 128)) * 128);
 }
 
@@ -126,9 +126,9 @@ void Rsp::run() {
   }
 }
 
-void Rsp::run_interpreted() {
-  while (clock_ < 0) {
-    const auto elapsed = status_.halted ? idle_clocks() : step();
+void Rsp::run_interpreted(std::int64_t clock_target) {
+  while (clock_ < clock_target) {
+    const auto elapsed = status_.halted ? idle_clocks(clock_target) : step();
     clock_ += elapsed;
     advance_dma(elapsed);
   }

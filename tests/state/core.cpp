@@ -1,4 +1,5 @@
 #include "../support/test.hpp"
+#include "checkpoint.hpp"
 #include "core/controller/accessories/cartridge/handheld.hpp"
 #include "core/state/archive.hpp"
 #include "core/state/core_state.hpp"
@@ -24,6 +25,7 @@ struct Machine {
     config.flash_model = FlashModel::Mx29l1101A;
     config.rtc_present = true;
     config.rtc_clock = [] { return std::int64_t(946684800); };
+    config.disk_clock = config.rtc_clock;
     config.random_seed = 0;
     return config;
   }
@@ -101,6 +103,137 @@ void rewrite_checksum(std::vector<std::uint8_t> &bytes) {
     bytes[bytes.size() - 8 + n] = static_cast<std::uint8_t>(value >> (n * 8));
 }
 
+void checkpoint_tests() {
+  Machine machine;
+  auto &console = machine.console;
+  machine.run(2, 3);
+  const auto before = CoreState::capture(console);
+  const auto checkpoint = CoreState::checkpoint(console);
+  test::equal(checkpoint.bytes == before, true);
+  test::equal(CoreState::capture(console) == before, true);
+  test::equal(checkpoint.difference(CoreState::checkpoint(console)).has_value(), false);
+  test::checkpoint_layout(checkpoint);
+  test::checkpoint_faults(checkpoint, [](std::string_view) { return true; });
+  for (const auto field :
+       {"pif.devices", "disk.bus_view", "cpu.tlb_lookup[0].entry", "rsp.dma.pending.local_address",
+        "pi.bus_address", "ram.words", "events.heap[511].valid", "cpu.execution_history"}) {
+    const auto found = std::find_if(checkpoint.ranges.begin(), checkpoint.ranges.end(),
+                                    [&](const auto &range) { return range.name == field; });
+    test::equal(found != checkpoint.ranges.end(), true);
+    if (found != checkpoint.ranges.end())
+      test::equal(found->bytes > 0, true);
+  }
+  for (unsigned fault = 0; fault < 5; ++fault) {
+    auto invalid = checkpoint;
+    if (fault == 0)
+      invalid.ranges.front().offset = 1;
+    if (fault == 1)
+      invalid.ranges.front().element_bytes = 0;
+    if (fault == 2)
+      invalid.bytes.pop_back();
+    if (fault == 3)
+      invalid.ranges.pop_back();
+    if (fault == 4)
+      invalid.ranges.front().element_bytes = 8;
+    const auto difference = checkpoint.difference(invalid);
+    test::equal(difference.has_value(), true);
+    if (difference)
+      test::equal(difference->field == "layout.invalid", true);
+  }
+  console.cpu().state().gpr[17] ^= 0xa5f0;
+  const auto gpr = checkpoint.difference(CoreState::checkpoint(console));
+  test::equal(gpr.has_value(), true);
+  if (gpr) {
+    test::equal(gpr->field == "cpu.gpr", true);
+    test::equal(gpr->index, 17);
+    test::equal(gpr->expected ^ gpr->actual, 0xa5f0);
+  }
+  CoreState::restore(console, before);
+  console.cpu().write_control(Compare, 0x12345678);
+  const auto cp0 = checkpoint.difference(CoreState::checkpoint(console));
+  test::equal(cp0.has_value(), true);
+  if (cp0) {
+    test::equal(cp0->field == "cpu.cp0", true);
+    test::equal(cp0->index, Compare);
+    test::equal(cp0->actual, 0x12345678);
+  }
+  CoreState::restore(console, before);
+  console.write(0x2800, 4, 0x12345678);
+  const auto ram = checkpoint.difference(CoreState::checkpoint(console));
+  test::equal(ram.has_value(), true);
+  if (ram) {
+    test::equal(ram->field == "ram.words", true);
+    test::equal(ram->index, 0x2800 / 4);
+    test::equal(ram->actual, 0x12345678);
+  }
+  CoreState::restore(console, before);
+  console.signal().state().vectors[9].lanes[6] = 0x9abc;
+  const auto vector = checkpoint.difference(CoreState::checkpoint(console));
+  test::equal(vector.has_value(), true);
+  if (vector) {
+    test::equal(vector->field == "rsp.vector", true);
+    test::equal(vector->index, 9 * 8 + 6);
+    test::equal(vector->actual, 0x9abc);
+  }
+  const auto perturb = [&](std::string_view field, std::size_t index, auto change) {
+    CoreState::restore(console, before);
+    change();
+    const auto difference = checkpoint.difference(CoreState::checkpoint(console));
+    if (difference && difference->field != field)
+      std::cerr << "Checkpoint perturbation " << field << " first changed " << difference->field
+                << '[' << difference->index << "]\n";
+    test::equal(difference.has_value(), true);
+    if (difference) {
+      test::equal(difference->field == field, true);
+      test::equal(difference->index, index);
+    }
+  };
+  perturb("ri.registers", 0, [&] { console.write(0x04700000, 4, 3); });
+  perturb("pif.ram", 13, [&] { console.pif().ram()[13] ^= 0x40; });
+  perturb("pi.dram_address", 0, [&] { console.write(0x04600000, 4, 0x1230); });
+  perturb("si.dram_address", 0, [&] { console.write(0x04800000, 4, 0x1430); });
+  perturb("vi.registers", 2, [&] { console.video().write_word(8, 320); });
+  perturb("audio.state.dac_rate", 0, [&] { console.audio().write_word(16, 0x1111); });
+  perturb("controller[0].buttons", 0, [&] { console.controller(0).input(0x8031, 17, -29); });
+  perturb("controller[0].ram.data", 0x9000,
+          [&] { console.controller(0).pak_data()[0x9000] ^= 0x20; });
+  perturb("mouse[1].x", 0, [&] { console.mouse(1).input(true, false, 19, -11); });
+  perturb("eeprom.data", 31, [&] { console.eeprom().data()[31] ^= 0x80; });
+  perturb("flash.data", 0x8000, [&] { console.flash().data()[0x8000] ^= 0x10; });
+  perturb("ram.hidden.data", 19, [&] { console.ram().hidden()[19] ^= 1; });
+}
+
+void arcade_checkpoint_tests() {
+  auto config = Machine::config(false, VideoRegion::Ntsc);
+  config.arcade_profile = ArcadeProfile::Standard;
+  Console console(config);
+  auto *arcade = console.arcade();
+  test::equal(arcade != nullptr, true);
+  if (!arcade)
+    return;
+  const auto checkpoint = CoreState::checkpoint(console);
+  test::checkpoint_layout(checkpoint);
+  test::equal(checkpoint.bytes == CoreState::capture(console), true);
+  arcade->input().players[1].buttons[8] = true;
+  const auto difference = checkpoint.difference(CoreState::checkpoint(console));
+  test::equal(difference.has_value(), true);
+  if (difference) {
+    test::equal(difference->field == "arcade.players[1].buttons", true);
+    test::equal(difference->index, 8);
+    test::equal(difference->actual, 1);
+  }
+}
+
+void compare_checkpoint(const StateCheckpoint &expected, Console &console, unsigned mode,
+                        unsigned boundary) {
+  const auto difference = expected.difference(CoreState::checkpoint(console));
+  if (difference)
+    std::cerr << "Replay mode " << mode << " boundary " << boundary << ' ' << difference->field
+              << '[' << difference->index << "] expected 0x" << std::hex << difference->expected
+              << ", got 0x" << difference->actual << std::dec << '\n';
+  test::equal(difference.has_value(), false);
+}
+
 void continuation_tests() {
   for (const auto region : {VideoRegion::Ntsc, VideoRegion::Pal})
     for (bool expansion : {false, true})
@@ -137,7 +270,7 @@ void continuation_tests() {
         machine.run(mode, 80);
         c.cpu().execute(test::i(0x38, 2, 4, 4));
         c.cpu().execute(test::i(0x2f, 2, 0x15, 0));
-        const auto expected = CoreState::capture(c);
+        const auto expected = CoreState::checkpoint(c);
         const auto expected_audio = machine.audio;
         c.write(0x1000, 4, test::i(9, 1, 1, 0x77));
         c.cpu().state().gpr[5] = 0xffffffff80001000ull;
@@ -156,7 +289,7 @@ void continuation_tests() {
         machine.run(mode, 80);
         c.cpu().execute(test::i(0x38, 2, 4, 4));
         c.cpu().execute(test::i(0x2f, 2, 0x15, 0));
-        test::equal(CoreState::capture(c) == expected, true);
+        compare_checkpoint(expected, c, mode, 80);
         test::equal(machine.audio == expected_audio, true);
         test::equal(!machine.audio.empty(), true);
         Machine fresh(expansion, region);
@@ -167,7 +300,7 @@ void continuation_tests() {
         fresh.run(mode, 80);
         fresh.console.cpu().execute(test::i(0x38, 2, 4, 4));
         fresh.console.cpu().execute(test::i(0x2f, 2, 0x15, 0));
-        test::equal(CoreState::capture(fresh.console) == expected, true);
+        compare_checkpoint(expected, fresh.console, mode, 80);
         test::equal(fresh.audio == expected_audio, true);
       }
 }
@@ -212,7 +345,7 @@ void invalid_tests() {
 }
 
 void dispatch_history_tests() {
-  for (unsigned length : {4u, 8u, 16u, 31u})
+  for (unsigned length : {0u, 4u, 8u, 16u, 31u})
     for (unsigned budget : {1u, 3u, 9u, 33u}) {
       Machine machine;
       auto &c = machine.console;
@@ -424,6 +557,9 @@ void accessory_tests() {
   cartridge->write(0xa080, 0xc2);
   machine.console.controller(2).sensor().update();
   const auto initial = CoreState::capture(machine.console);
+  const auto checkpoint = CoreState::checkpoint(machine.console);
+  test::checkpoint_layout(checkpoint);
+  test::equal(checkpoint.bytes == initial, true);
   cartridge->motion(100, -900);
   cartridge->write(0xa080, 0x80);
   cartridge->write(0xa080, 0xc0);
@@ -431,15 +567,41 @@ void accessory_tests() {
   machine.console.controller(2).sensor().beats_per_minute(130);
   CoreState::restore(machine.console, initial);
   test::equal(CoreState::capture(machine.console) == initial, true);
+  test::equal(checkpoint.difference(CoreState::checkpoint(machine.console)).has_value(), false);
   machine.console.controller(1).disconnect_pak();
   const auto disconnected = CoreState::capture(machine.console);
   test::equal(rejects(machine.console, initial), true);
   test::equal(CoreState::capture(machine.console) == disconnected, true);
 }
 
+void conditional_checkpoint_tests() {
+  Machine machine;
+  auto &pad = machine.console.controller(0);
+  pad.transfer_pak();
+  const auto empty = CoreState::checkpoint(machine.console);
+  auto cartridge = std::make_shared<HandheldCartridge>();
+  std::vector<std::uint8_t> rom(0x8000);
+  test::equal(cartridge->load(rom, {}), true);
+  pad.transfer_pak(cartridge);
+  const auto attached = CoreState::checkpoint(machine.console);
+  test::equal(empty.ranges.size() < attached.ranges.size(), true);
+  for (bool reverse : {false, true}) {
+    const auto difference = reverse ? attached.difference(empty) : empty.difference(attached);
+    test::equal(difference.has_value(), true);
+    if (difference) {
+      test::equal(difference->field == "controller[0].transfer.identity", true);
+      test::equal(difference->expected, reverse ? 1 : 0);
+      test::equal(difference->actual, reverse ? 0 : 1);
+      test::equal(difference->bytes, 1);
+    }
+  }
+}
+
 } // namespace
 
 void core_state_tests() {
+  checkpoint_tests();
+  arcade_checkpoint_tests();
   continuation_tests();
   dispatch_history_tests();
   cache_page_tests();
@@ -447,6 +609,7 @@ void core_state_tests() {
   memory_binding_tests();
   invalid_tests();
   accessory_tests();
+  conditional_checkpoint_tests();
 }
 
 int core_state_file_test(int argc, char **argv) {

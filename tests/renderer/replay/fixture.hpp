@@ -18,8 +18,10 @@ inline std::uint64_t fingerprint(std::span<const std::uint8_t> bytes) {
 }
 
 struct GpuFixture {
+  enum class CrashDelivery { Asynchronous, BeforePoll, Deferred };
   Console console{ConsoleConfig{.random_seed = 0}};
   std::unique_ptr<HardwareRenderer> renderer;
+  CrashDelivery crash_delivery = CrashDelivery::Asynchronous;
 
   GpuFixture() {
     map_memory();
@@ -44,10 +46,14 @@ struct GpuFixture {
     console.video().connect_registers(
         [this](unsigned index, std::uint32_t value) { renderer->write_video(index, value); });
     console.display().connect(
-        [this](std::span<const std::uint32_t> words) { renderer->submit(words); },
+        [this](std::span<const std::uint32_t> words) {
+          renderer->submit(words);
+          if (crash_delivery == CrashDelivery::BeforePoll)
+            renderer->synchronize();
+        },
         [this] { renderer->synchronize(); },
         [this] {
-          if (renderer->crashed())
+          if (crash_delivery != CrashDelivery::Deferred && renderer->crashed())
             console.display().crash();
         });
   }

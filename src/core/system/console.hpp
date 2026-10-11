@@ -51,7 +51,8 @@ public:
   void step();
   std::uint32_t run_interval(std::uint32_t limit = 4096);
   void run_clocks(std::uint64_t clocks);
-  void synchronize();
+  void synchronize(Rsp::Execution signal = Rsp::Execution::Native,
+                   std::int64_t signal_clock_target = 0);
   void connect_controller(unsigned port, bool connected);
   void connect_mouse(unsigned port, bool connected = true);
   void connect_gamecube_controller(unsigned port, bool connected = true);

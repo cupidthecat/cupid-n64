@@ -22,6 +22,7 @@ FetchContent_Declare(renderer_loader
 )
 FetchContent_MakeAvailable(renderer_rdp renderer_backend renderer_headers renderer_loader)
 include(cmake/RendererState.cmake)
+include(cmake/RendererFixes.cmake)
 
 set(renderer_sources)
 foreach(source command_ring rdp_device rdp_dump_write rdp_renderer video_interface)
@@ -30,10 +31,11 @@ endforeach()
 foreach(source
   buffer buffer_pool command_buffer command_pool context cookie descriptor_set device
   event_manager fence fence_manager image indirect_layout memory_allocator pipeline_event
-  query_pool render_pass sampler semaphore semaphore_manager shader texture/texture_format
+  query_pool sampler semaphore semaphore_manager shader texture/texture_format
 )
   list(APPEND renderer_sources "${renderer_backend_SOURCE_DIR}/vulkan/${source}.cpp")
 endforeach()
+list(APPEND renderer_sources "${renderer_fixed_backend}/render_pass.cpp")
 foreach(source
   arena_allocator logging thread_id aligned_alloc timer timeline_trace_file thread_name environment
 )

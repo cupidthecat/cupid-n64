@@ -3,20 +3,34 @@
 
 namespace test {
 
-void gpu_crash_reset_tests() {
+void gpu_crash_reset_tests(bool before_poll) {
   using namespace renderer_replay;
   GpuFixture fixture;
-  unsigned id = 0, snapshot = 0;
+  unsigned scenes = 0, captures = 0;
   for (unsigned kind = 0; kind < 7; ++kind)
     for (unsigned route : {0u, 1u, 2u})
       for (bool sync : {false, true})
         for (bool warm : {false, true}) {
+          if (before_poll && (kind != 4 || sync))
+            continue;
+          const unsigned id = kind * 12 + route * 4 + unsigned(sync) * 2 + unsigned(warm);
+          unsigned snapshot = id * 5;
           fixture.power(false);
+          fixture.crash_delivery = before_poll ? GpuFixture::CrashDelivery::BeforePoll
+                                   : sync      ? GpuFixture::CrashDelivery::Asynchronous
+                                               : GpuFixture::CrashDelivery::Deferred;
           RenderCase input{"crash-reset", kind == 5 ? 3u : 2u};
           input.opcode = kind;
           input.load = warm;
           auto check = [&](unsigned stage) {
-            const auto &result = expected::reset[snapshot++];
+            auto result = expected::reset[snapshot++];
+            ++captures;
+            if (before_poll && stage == 1)
+              result.dpc[3] |= 2;
+            if (before_poll && stage == 2) {
+              result.dpc[2] = result.dpc[0];
+              result.dpc[3] |= 8;
+            }
             return capture(fixture, {input, id, stage, route, sync}, result.memory, result.pixels,
                            result.dpc, result.irq, result.crashed);
           };
@@ -66,6 +80,7 @@ void gpu_crash_reset_tests() {
           fixture.console.display().advance(17);
           if (!check(1))
             return;
+          fixture.crash_delivery = GpuFixture::CrashDelivery::Asynchronous;
           fixture.display_write(3, 4 | 64 | 128 | 256);
           fixture.command_word(base, 0x29000000, route == 1);
           fixture.command_word(base + 4, 0, route == 1);
@@ -95,10 +110,11 @@ void gpu_crash_reset_tests() {
           fixture.console.display().advance(31);
           if (!check(4))
             return;
-          ++id;
+          ++scenes;
         }
-  equal(snapshot, std::size(expected::reset));
-  std::cout << "RDP crash/reset replay: " << id << " scenes, " << snapshot << " captures\n";
+  equal(captures, before_poll ? 30 : std::size(expected::reset));
+  std::cout << "RDP crash/reset replay: " << scenes << " scenes, " << captures
+            << " captures, before poll " << before_poll << '\n';
 }
 
 } // namespace test

@@ -10,7 +10,6 @@ void gpu_cache_visibility_tests(Console &console, HardwareRenderer &renderer);
 void gpu_depth_cache_tests(Console &console, HardwareRenderer &renderer);
 void gpu_cache_overlap_tests(Console &console, HardwareRenderer &renderer);
 void gpu_command_replay_tests();
-void gpu_crash_reset_tests();
 void gpu_video_replay_tests();
 } // namespace test
 
@@ -181,8 +180,6 @@ int main() {
   }
   if (!test::failures)
     test::gpu_command_replay_tests();
-  if (!test::failures)
-    test::gpu_crash_reset_tests();
   if (!test::failures)
     test::gpu_video_replay_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";

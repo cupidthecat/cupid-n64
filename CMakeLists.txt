@@ -109,6 +109,7 @@ add_library(cupid_core
   src/core/cartridge/profile/boot.cpp
   src/core/cartridge/profile/profile.cpp
   src/core/system/console.cpp
+  src/core/state/checkpoint.cpp
   src/core/state/archive.cpp
   src/core/state/core_state.cpp
   src/core/state/rsp_cache.cpp
@@ -185,6 +186,10 @@ if(BUILD_TESTING)
   )
   target_link_libraries(core_state_tests PRIVATE cupid_core)
   add_test(NAME core_state COMMAND core_state_tests)
+  add_executable(machine_replay_tests tests/replay/main.cpp tests/replay/input.cpp
+    tests/replay/engine.cpp tests/replay/cpu.cpp tests/replay/rsp.cpp tests/replay/reduction.cpp)
+  target_link_libraries(machine_replay_tests PRIVATE cupid_core)
+  add_test(NAME machine_replay COMMAND machine_replay_tests)
   add_test(NAME core_state_file_write COMMAND core_state_tests --write-state
     "${CMAKE_CURRENT_BINARY_DIR}/state-fixtures")
   add_test(NAME core_state_file_read COMMAND core_state_tests --read-state
@@ -391,6 +396,11 @@ if(BUILD_TESTING)
   target_link_libraries(rsp_tests PRIVATE cupid_core)
   add_test(NAME signal_processor COMMAND rsp_tests)
   if(CUPID_HARDWARE_RENDERER)
+    add_executable(renderer_undefined_tests tests/renderer/undefined/main.cpp
+      tests/renderer/undefined/subpasses.cpp tests/renderer/undefined/primitive_lod.cpp)
+    target_link_libraries(renderer_undefined_tests PRIVATE cupid_renderer cupid_renderer_dependency)
+    add_test(NAME renderer_subpass_attachments COMMAND renderer_undefined_tests --subpasses)
+    add_test(NAME renderer_primitive_lod COMMAND renderer_undefined_tests --lod)
     add_executable(renderer_state_tests tests/state/renderer.cpp)
     target_link_libraries(renderer_state_tests PRIVATE cupid_renderer)
     add_test(NAME renderer_state COMMAND renderer_state_tests)
@@ -403,12 +413,19 @@ if(BUILD_TESTING)
     set_tests_properties(frame_readback PROPERTIES TIMEOUT 15)
     add_executable(renderer_tests tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
       tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp
-      tests/renderer/replay/render.cpp tests/renderer/replay/reset.cpp
+      tests/renderer/replay/render.cpp
       tests/renderer/replay/scanout.cpp)
     target_link_libraries(renderer_tests PRIVATE cupid_renderer)
     add_test(NAME hardware_renderer COMMAND renderer_tests)
+    add_executable(renderer_reset_tests tests/renderer/reset/main.cpp
+      tests/renderer/replay/reset.cpp)
+    target_link_libraries(renderer_reset_tests PRIVATE cupid_renderer)
+    add_test(NAME hardware_renderer_reset COMMAND renderer_reset_tests)
+    set_tests_properties(hardware_renderer hardware_renderer_reset renderer_state renderer_state_fallback
+      renderer_subpass_attachments renderer_primitive_lod PROPERTIES RESOURCE_LOCK vulkan)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
-      set_tests_properties(hardware_renderer renderer_state renderer_state_fallback
+      set_tests_properties(hardware_renderer hardware_renderer_reset renderer_state renderer_state_fallback
+        renderer_subpass_attachments renderer_primitive_lod
         PROPERTIES SKIP_RETURN_CODE 77)
     endif()
   endif()

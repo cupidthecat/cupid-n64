@@ -1,5 +1,6 @@
 #include "../renderer/replay/commands.hpp"
 #include "../renderer/replay/fixture.hpp"
+#include "checkpoint.hpp"
 #include "core/state/archive.hpp"
 #include "core/state/core_state.hpp"
 #include "renderer/state/machine_state.hpp"
@@ -13,6 +14,15 @@ using namespace cupid::n64;
 using namespace test::renderer_replay;
 
 namespace {
+
+void same_checkpoint(const StateCheckpoint &expected, GpuFixture &fixture) {
+  const auto difference =
+      expected.difference(MachineState::checkpoint(fixture.console, *fixture.renderer));
+  if (difference)
+    std::cerr << "GPU continuation " << difference->field << '[' << difference->index
+              << "] expected " << difference->expected << ", got " << difference->actual << '\n';
+  test::equal(difference.has_value(), false);
+}
 
 void same_frame(const VideoFrame &actual, const VideoFrame &expected) {
   test::equal(actual.width, expected.width);
@@ -51,7 +61,8 @@ void perturb(GpuFixture &fixture) {
   fixture.hidden(color_address / 2, 0);
 }
 
-void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool ready) {
+void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool ready,
+                  bool diagnostics) {
   fixture.reset_commands();
   initialize_render(fixture, input);
   unsigned draw = 0;
@@ -68,6 +79,14 @@ void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool 
   else
     fixture.renderer->frame(false);
   const auto snapshot = MachineState::capture(fixture.console, *fixture.renderer);
+  const auto checkpoint = MachineState::checkpoint(fixture.console, *fixture.renderer);
+  test::checkpoint_layout(checkpoint);
+  test::equal(checkpoint.bytes == snapshot, true);
+  if (diagnostics) {
+    const auto tested = test::checkpoint_faults(
+        checkpoint, [](std::string_view name) { return name.starts_with("gpu."); });
+    test::equal(tested > 200, true);
+  }
   const auto initial_frame = fixture.renderer->read_frame();
   test::equal(initial_frame.rgba.empty(), !ready);
   fixture.display_write(1, end);
@@ -76,15 +95,19 @@ void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool 
   test::equal(future_frame.rgba.empty(), false);
   test::equal(fixture.crashed(), false);
   const auto future = MachineState::capture(fixture.console, *fixture.renderer);
+  const auto future_checkpoint = MachineState::checkpoint(fixture.console, *fixture.renderer);
+  test::equal(future_checkpoint.bytes == future, true);
 
   perturb(fixture);
   MachineState::restore(fixture.console, *fixture.renderer, snapshot);
   test::equal(MachineState::capture(fixture.console, *fixture.renderer) == snapshot, true);
+  same_checkpoint(checkpoint, fixture);
   same_frame(fixture.renderer->read_frame(), initial_frame);
   fixture.display_write(1, end);
   fixture.console.display().advance(31);
   same_frame(fixture.renderer->frame(true), future_frame);
   test::equal(MachineState::capture(fixture.console, *fixture.renderer) == future, true);
+  same_checkpoint(future_checkpoint, fixture);
 }
 
 void continuation_tests() {
@@ -99,7 +122,7 @@ void continuation_tests() {
     for (bool xbus : {false, true})
       for (bool ready : {false, true}) {
         const auto before = test::failures;
-        continuation(fixture, scene, xbus, ready);
+        continuation(fixture, scene, xbus, ready, &scene == scenes && !xbus);
         if (test::failures != before)
           std::cerr << "Snapshot continuation: " << scene.name << " xbus " << xbus << " ready "
                     << ready << '\n';
