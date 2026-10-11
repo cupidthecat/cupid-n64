@@ -13,6 +13,8 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
       hardware_rendering_(hardware_rendering) {
   validate_ports(settings_.ports);
+  if (!settings_.graphics.valid())
+    throw std::runtime_error("Select a supported rendering configuration.");
   for (const auto banks : settings_.memory.pak_banks)
     if (std::find(MemorySettings::capacities.begin(), MemorySettings::capacities.end(), banks) ==
         MemorySettings::capacities.end())
@@ -86,7 +88,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       saved_cartridge_clock_.assign(clock.begin(), clock.end());
     }
   }
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
   console_->video().connect_frame([this](bool field) {
@@ -104,7 +106,7 @@ void Session::reset() {
   console_->power(true);
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
   frame = {};
   frames = 0;
 }
@@ -159,6 +161,11 @@ void Session::run(const PlayerInputs &inputs) {
 
 void Session::run() {
   run_interval(false);
+}
+
+void Session::graphics_settings(n64::RenderSettings settings) {
+  output_->scanout_settings(settings);
+  settings_.graphics = settings;
 }
 
 void Session::run_interval(bool frame_boundary) {

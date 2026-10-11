@@ -20,11 +20,14 @@ struct VideoOutput::Implementation {
   std::unique_ptr<n64::HardwareRenderer> hardware;
 #endif
 
-  Implementation(n64::Console &console, bool hardware_rendering) : console(console) {
+  Implementation(n64::Console &console, bool hardware_rendering, n64::RenderSettings settings)
+      : console(console) {
+    if (!settings.valid())
+      throw std::runtime_error("Select a supported rendering configuration.");
 #if defined(CUPID_HARDWARE_RENDERER)
     if (hardware_rendering) {
       try {
-        hardware = std::make_unique<n64::HardwareRenderer>(console.ram());
+        hardware = std::make_unique<n64::HardwareRenderer>(console.ram(), settings);
       } catch (const std::runtime_error &) {
       }
     }
@@ -46,6 +49,8 @@ struct VideoOutput::Implementation {
 #else
     (void)hardware_rendering;
 #endif
+    if (settings != n64::RenderSettings{})
+      throw std::runtime_error("These graphics settings require an available hardware renderer.");
     console.display().connect(
         [this](std::span<const std::uint32_t> words) {
           const auto code = (words.front() >> 24) & 63;
@@ -62,8 +67,9 @@ struct VideoOutput::Implementation {
   }
 };
 
-VideoOutput::VideoOutput(n64::Console &console, bool hardware_rendering)
-    : implementation_(std::make_unique<Implementation>(console, hardware_rendering)) {}
+VideoOutput::VideoOutput(n64::Console &console, bool hardware_rendering,
+                         n64::RenderSettings settings)
+    : implementation_(std::make_unique<Implementation>(console, hardware_rendering, settings)) {}
 
 VideoOutput::~VideoOutput() = default;
 
@@ -93,6 +99,25 @@ bool VideoOutput::hardware_rendering() const {
   return bool(implementation_->begin);
 }
 
+bool VideoOutput::supports_hardware() {
+#if defined(CUPID_HARDWARE_RENDERER)
+  return true;
+#else
+  return false;
+#endif
+}
+
+void VideoOutput::scanout_settings(n64::RenderSettings settings) {
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (implementation_->hardware) {
+    implementation_->hardware->scanout_settings(settings);
+    return;
+  }
+#endif
+  if (settings != n64::RenderSettings{})
+    throw std::runtime_error("These graphics settings require an available hardware renderer.");
+}
+
 std::vector<std::uint8_t> VideoOutput::capture_state() {
   auto &state = *implementation_;
   n64::state::Archive archive;
@@ -110,7 +135,7 @@ std::vector<std::uint8_t> VideoOutput::capture_state() {
   else
 #endif
     machine = n64::CoreState::capture(state.console);
-  archive.owned_vector(machine, 384 * 1024 * 1024);
+  archive.owned_vector(machine, 1856u * 1024 * 1024);
   return archive.finish();
 }
 
@@ -127,7 +152,7 @@ void VideoOutput::restore_state(std::span<const std::uint8_t> bytes) {
   n64::state::Archive::require(frame.width <= 640 && frame.height <= 576);
   frame.rgba = archive.owned_vector<std::uint8_t>({}, 640 * 576 * 4);
   n64::state::Archive::require(frame.rgba.size() == std::uint64_t(frame.width) * frame.height * 4);
-  const auto machine = archive.owned_vector<std::uint8_t>({}, 384 * 1024 * 1024);
+  const auto machine = archive.owned_vector<std::uint8_t>({}, 1856u * 1024 * 1024);
   archive.validate();
 #if defined(CUPID_HARDWARE_RENDERER)
   if (state.hardware)

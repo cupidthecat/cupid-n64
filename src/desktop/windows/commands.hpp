@@ -49,6 +49,9 @@ enum Command : unsigned {
   Shortcuts,
   MouseCapture,
   RewindHint,
+  RenderSupersampling,
+  RenderWeave,
+  RenderBypassVI,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,
@@ -60,6 +63,7 @@ enum Command : unsigned {
   AudioBalanceFirst = 630,
   AudioLatencyFirst = 650,
   PakCapacityFirst = 700,
+  RenderScaleFirst = 900,
   AudioDeviceFirst = 1000
 };
 

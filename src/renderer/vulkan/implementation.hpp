@@ -9,6 +9,7 @@ namespace cupid::n64 {
 
 struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   Rdram &ram;
+  RenderSettings settings;
   Vulkan::Context context;
   Vulkan::Device device;
   std::unique_ptr<RDP::CommandProcessor> processor;
@@ -16,7 +17,7 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   std::atomic<bool> crashed = false;
   std::unique_ptr<FrameReadback> readback;
 
-  explicit Implementation(Rdram &memory);
+  Implementation(Rdram &memory, RenderSettings settings);
   ~Implementation();
   VideoFrame read_pixels();
   void report_rdp_crash(RDP::ValidationError, const char *) override;

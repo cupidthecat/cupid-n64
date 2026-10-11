@@ -2,13 +2,14 @@
 
 #include "core/devices/rdram/rdram.hpp"
 #include "renderer/video/frame.hpp"
+#include "renderer/video/settings.hpp"
 #include <memory>
 
 namespace cupid::n64 {
 
 class HardwareRenderer {
 public:
-  explicit HardwareRenderer(Rdram &ram);
+  explicit HardwareRenderer(Rdram &ram, RenderSettings settings = {});
   ~HardwareRenderer();
   HardwareRenderer(const HardwareRenderer &) = delete;
   HardwareRenderer &operator=(const HardwareRenderer &) = delete;
@@ -19,6 +20,8 @@ public:
   VideoFrame read_frame();
   VideoFrame frame(bool field);
   bool crashed() const;
+  RenderSettings settings() const;
+  void scanout_settings(RenderSettings settings);
 
 private:
   friend class RendererState;

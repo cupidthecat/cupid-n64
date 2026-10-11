@@ -167,6 +167,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/playback.cpp
     src/desktop/windows/playback/settings.cpp
     src/desktop/windows/display.cpp
+    src/desktop/windows/graphics/settings.cpp
     src/desktop/windows/files.cpp
     src/desktop/windows/launch/settings.cpp
     src/desktop/windows/launch/forms.cpp
@@ -213,6 +214,7 @@ if(WIN32 AND CUPID_DESKTOP)
   target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
+    target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
   endif()
 endif()
 
@@ -546,6 +548,13 @@ if(BUILD_TESTING)
   cupid_add_core_test(rsp_vector_execution_tests rsp_vector_test_entry tests/rsp/vector/execution.cpp)
   add_test(NAME signal_processor_vector_execution COMMAND ${rsp_vector_execution_tests_command})
   if(CUPID_HARDWARE_RENDERER)
+    add_executable(renderer_settings_tests tests/renderer/settings.cpp)
+    target_link_libraries(renderer_settings_tests PRIVATE cupid_renderer)
+    add_test(NAME hardware_renderer_settings COMMAND renderer_settings_tests)
+    set_tests_properties(hardware_renderer_settings PROPERTIES RESOURCE_LOCK vulkan)
+    if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
+      set_tests_properties(hardware_renderer_settings PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     add_executable(renderer_undefined_tests tests/renderer/undefined/main.cpp
       tests/renderer/undefined/subpasses.cpp tests/renderer/undefined/primitive_lod.cpp)
     target_link_libraries(renderer_undefined_tests PRIVATE cupid_renderer cupid_renderer_dependency)

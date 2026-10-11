@@ -105,7 +105,7 @@ void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
   auto &p = *s.processor;
   a.label("gpu.identity");
   a.identity<std::uint64_t>(0x4554415453445052ull);
-  a.identity<std::uint32_t>(1);
+  a.identity<std::uint32_t>(s.settings.scale == 1 ? 1 : 2);
   a.identity<std::uint64_t>(0x1cecd042b2619bc5ull);
   a.identity(static_cast<std::uint32_t>(p.rdram_size));
   registers(a, p);
@@ -117,6 +117,39 @@ void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
     *tmem = read_buffer(s.device, *p.tmem);
   *tmem = a.owned_vector(*tmem, 4096, "gpu.tmem");
   state::Archive::require(tmem->size() == 4096);
+
+  if (s.settings.scale > 1) {
+    const auto buffer_state = [&](Vulkan::BufferHandle buffer, std::string_view name) {
+      state::Archive::require(bool(buffer));
+      const auto size = static_cast<std::uint32_t>(buffer->get_create_info().size);
+      auto bytes = std::make_shared<std::vector<std::uint8_t>>();
+      if (!a.loading())
+        *bytes = read_buffer(s.device, *buffer);
+      *bytes = a.owned_vector(*bytes, size, name);
+      state::Archive::require(bytes->size() == size);
+      if (a.loading()) {
+        auto upload = staging(s.device, size);
+        auto *mapped = s.device.map_host_buffer(*upload, Vulkan::MEMORY_ACCESS_WRITE_BIT);
+        std::memcpy(mapped, bytes->data(), size);
+        s.device.unmap_host_buffer(*upload, Vulkan::MEMORY_ACCESS_WRITE_BIT);
+        auto command = s.device.request_command_buffer(Vulkan::CommandBuffer::Type::AsyncCompute);
+        command->barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_WRITE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
+        command->copy_buffer(*buffer, *upload);
+        command->barrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+                         VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
+        a.defer([&s, command, upload]() mutable {
+          Vulkan::Fence fence;
+          s.device.submit(command, &fence);
+          fence->wait();
+        });
+      }
+    };
+    buffer_state(p.renderer.upscaling_reference_rdram, "gpu.upscaling.reference");
+    buffer_state(p.renderer.upscaling_multisampled_rdram, "gpu.upscaling.rdram");
+    buffer_state(p.renderer.upscaling_multisampled_hidden_rdram, "gpu.upscaling.hidden");
+  }
 
   auto &v = p.vi;
   a.label("gpu.previous_image.present");
@@ -137,9 +170,10 @@ void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
   height = a.literal(height);
   a.label("gpu.previous_image.format", 4);
   format = a.literal(format);
-  state::Archive::require(width <= 4096 && height <= 4096);
+  state::Archive::require(width <= maximum_frame_width && height <= maximum_frame_height);
   state::Archive::require(format == VK_FORMAT_R8G8B8A8_UNORM);
-  *pixels = a.owned_vector(*pixels, 4096 * 4096 * 4, "gpu.previous_image.rgba");
+  *pixels = a.owned_vector(*pixels, static_cast<std::uint32_t>(maximum_frame_bytes),
+                           "gpu.previous_image.rgba");
   state::Archive::require(pixels->size() == std::uint64_t(width) * height * 4);
   state::Archive::require(has_image ? width && height : !width && !height);
   auto restored_readback = std::make_shared<VideoFrame>();
@@ -149,10 +183,12 @@ void RendererState::visit(state::Archive &a, HardwareRenderer &renderer) {
   restored_readback->width = a.literal(restored_readback->width);
   a.label("gpu.readback.height", 4);
   restored_readback->height = a.literal(restored_readback->height);
-  state::Archive::require(restored_readback->width <= 4096 && restored_readback->height <= 4096);
+  state::Archive::require(restored_readback->width <= maximum_frame_width &&
+                          restored_readback->height <= maximum_frame_height);
   state::Archive::require(bool(restored_readback->width) == bool(restored_readback->height));
   restored_readback->rgba =
-      a.owned_vector(restored_readback->rgba, 4096 * 4096 * 4, "gpu.readback.rgba");
+      a.owned_vector(restored_readback->rgba, static_cast<std::uint32_t>(maximum_frame_bytes),
+                     "gpu.readback.rgba");
   state::Archive::require(restored_readback->rgba.size() ==
                           std::uint64_t(restored_readback->width) * restored_readback->height * 4);
   if (a.loading()) {

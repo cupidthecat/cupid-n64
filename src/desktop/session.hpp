@@ -29,6 +29,13 @@ public:
   void advance_frame(const PlayerInputs &input);
   void input(const PlayerInputs &input);
   void clear_mouse_input();
+  void graphics_settings(n64::RenderSettings settings);
+  n64::RenderSettings graphics_settings() const {
+    return settings_.graphics;
+  }
+  bool hardware_rendering() const {
+    return output_->hardware_rendering();
+  }
   const PortStatus &port_status(unsigned port) const {
     return ports_.at(port);
   }

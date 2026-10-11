@@ -4,15 +4,26 @@
 
 namespace cupid::n64 {
 
-HardwareRenderer::Implementation::Implementation(Rdram &memory) : ram(memory) {
+HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings selected)
+    : ram(memory), settings(selected) {
+  if (!settings.valid())
+    throw std::runtime_error("Select a supported rendering configuration.");
   if (!Vulkan::Context::init_loader(nullptr) ||
       !context.init_instance_and_device(nullptr, 0, nullptr, 0, 0))
     throw std::runtime_error("Vulkan device initialization failed");
   device.set_context(context);
   device.init_frame_contexts(3);
-  processor = std::make_unique<RDP::CommandProcessor>(
-      device, ram.data_.data(), 0, ram.size(), ram.size() / 2,
-      RDP::COMMAND_PROCESSOR_FLAG_HOST_VISIBLE_HIDDEN_RDRAM_BIT);
+  RDP::CommandProcessorFlags flags = RDP::COMMAND_PROCESSOR_FLAG_HOST_VISIBLE_HIDDEN_RDRAM_BIT;
+  if (settings.scale == 2)
+    flags |= RDP::COMMAND_PROCESSOR_FLAG_UPSCALING_2X_BIT;
+  if (settings.scale == 4)
+    flags |= RDP::COMMAND_PROCESSOR_FLAG_UPSCALING_4X_BIT;
+  if (settings.scale == 8)
+    flags |= RDP::COMMAND_PROCESSOR_FLAG_UPSCALING_8X_BIT;
+  if (settings.scale > 1)
+    flags |= RDP::COMMAND_PROCESSOR_FLAG_SUPER_SAMPLED_DITHER_BIT;
+  processor = std::make_unique<RDP::CommandProcessor>(device, ram.data_.data(), 0, ram.size(),
+                                                      ram.size() / 2, flags);
   if (!processor->device_is_supported())
     throw std::runtime_error("Vulkan device does not support display rendering");
   processor->set_validation_interface(this);
@@ -48,8 +59,8 @@ void HardwareRenderer::Implementation::report_rdp_crash(RDP::ValidationError, co
   crashed.store(true, std::memory_order_relaxed);
 }
 
-HardwareRenderer::HardwareRenderer(Rdram &ram)
-    : implementation_(std::make_unique<Implementation>(ram)) {}
+HardwareRenderer::HardwareRenderer(Rdram &ram, RenderSettings settings)
+    : implementation_(std::make_unique<Implementation>(ram, settings)) {}
 
 HardwareRenderer::~HardwareRenderer() = default;
 
@@ -70,13 +81,30 @@ bool HardwareRenderer::crashed() const {
   return implementation_->crashed.load(std::memory_order_relaxed);
 }
 
+RenderSettings HardwareRenderer::settings() const {
+  return implementation_->settings;
+}
+
+void HardwareRenderer::scanout_settings(RenderSettings settings) {
+  if (!settings.valid())
+    throw std::runtime_error("Select a supported rendering configuration.");
+  if (settings.scale != implementation_->settings.scale)
+    throw std::runtime_error("Reload the game to change internal rendering resolution.");
+  implementation_->readback->wait();
+  implementation_->settings = settings;
+}
+
 void HardwareRenderer::begin_frame(bool field) {
   auto &state = *implementation_;
   state.readback->wait();
   state.processor->set_vi_register(RDP::VIRegister::VCurrentLine, unsigned(field));
   RDP::ScanoutOptions options;
   options.persist_frame_on_invalid_input = true;
-  options.upscale_deinterlacing = true;
+  options.downscale_steps = state.settings.supersampling ? 16 : 0;
+  options.blend_previous_frame = state.settings.weave;
+  options.upscale_deinterlacing = !state.settings.weave;
+  if (state.settings.bypass_vi)
+    options.vi = {false, false, true, false, false, false};
   if (state.scanout.fence)
     state.scanout.fence->wait();
   state.processor->scanout_async_buffer(state.scanout, options);

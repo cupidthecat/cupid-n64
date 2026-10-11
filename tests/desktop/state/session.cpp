@@ -216,7 +216,7 @@ void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
                   cupid::n64::ArcadeProfile::Disabled, 0, hardware);
   RewindHistory history([&] { return session.capture_state(); },
                         [&](std::span<const std::uint8_t> bytes) { session.restore_state(bytes); },
-                        {1, 3, StateSlots::maximum_bytes});
+                        {1, 3, std::size_t(1024) * 1024 * 1024});
   session_test::advance(session, 2);
   history.record(session.frames);
   const auto state2 = session.capture_state();
@@ -234,7 +234,7 @@ void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
   test::equal(session.capture_state() == state3, true);
   test::equal(history.record(session.frames), true);
   test::equal(history.size(), 2);
-  test::equal(history.memory() <= StateSlots::maximum_bytes, true);
+  test::equal(history.memory() <= std::size_t(1024) * 1024 * 1024, true);
 }
 
 } // namespace

@@ -37,6 +37,11 @@ private:
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
   bool input_tools_command(unsigned id);
+  bool graphics_command(unsigned id);
+  void load_graphics_settings();
+  void save_graphics_settings(n64::RenderSettings settings);
+  void create_graphics_menu(HMENU view);
+  void update_graphics();
   void shortcuts_dialog();
   void shortcut(ShortcutEvent event);
   bool shortcut_key(unsigned key, bool pressed, bool repeat);
@@ -131,6 +136,7 @@ private:
   HMENU recent_menu_ = nullptr;
   HMENU audio_menu_ = nullptr, audio_device_menu_ = nullptr;
   HMENU memory_menu_ = nullptr;
+  HMENU graphics_menu_ = nullptr;
   FirmwareFiles firmware_files_;
   SessionSettings session_settings_;
   std::wstring controller_key_;
