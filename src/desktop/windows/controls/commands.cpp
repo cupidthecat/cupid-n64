@@ -27,6 +27,8 @@ void Window::create_controller_menus(HMENU emulation, HMENU view) {
   AppendMenuW(emulation, MF_STRING | MF_GRAYED, ControllerSetup,
               L"Controller &ports for this game...");
   AppendMenuW(view, MF_STRING, InputMappings, L"&Input mappings for four players...");
+  AppendMenuW(view, MF_STRING, Shortcuts, L"&Shortcuts...");
+  AppendMenuW(view, MF_STRING | MF_GRAYED, MouseCapture, L"&Capture mouse pointer");
 }
 
 void Window::update_controllers() {
@@ -67,7 +69,7 @@ bool Window::controller_command(unsigned id) {
   end_rewind();
   stop_fast_forward();
   gamepads_.stop();
-  keys_.fill(false);
+  clear_host_input();
   try {
     if (id == InputMappings)
       mapping_dialog();
@@ -119,9 +121,16 @@ PlayerInputs Window::inputs() {
   last_host_inputs_.gamepads = gamepads_.poll(wanted);
   last_host_inputs_ = host_inputs();
   PlayerInputs players;
+  const auto mouse = mouse_.input();
   if (active_ || focus_behavior_ == FocusBehavior::AllowInput)
-    for (unsigned port = 0; port < players.size(); ++port)
-      players[port] = map_input(player_mappings_[port], last_host_inputs_);
+    for (unsigned port = 0; port < players.size(); ++port) {
+      if (session_ && session_->port_status(port).controller == ControllerType::Mouse) {
+        if (active_ && mouse_.captured() && !stopped() && !rewinding_)
+          players[port] = mouse;
+      } else {
+        players[port] = map_input(player_mappings_[port], last_host_inputs_);
+      }
+    }
   if (options_.test_input && session_) {
     const auto scripted = input();
     players[0].buttons = scripted.buttons;

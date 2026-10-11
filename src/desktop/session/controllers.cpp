@@ -77,9 +77,13 @@ void Session::configure_ports(const std::array<n64::ControllerAccessory, 4> &def
     case AccessoryType::None:
       break;
     }
-    if (status.controller == ControllerType::Mouse)
+    if (status.controller == ControllerType::Mouse) {
+      console_->mouse(port).input_reader([this, port] {
+        const auto input = mouse_motion_[port].read();
+        return n64::Mouse::Input{input.mouse_left, input.mouse_right, input.mouse_x, input.mouse_y};
+      });
       console_->connect_mouse(port);
-    else if (status.controller == ControllerType::GameCube)
+    } else if (status.controller == ControllerType::GameCube)
       console_->connect_gamecube_controller(port);
     else
       console_->connect_controller(port, status.controller == ControllerType::Nintendo64);
@@ -146,8 +150,7 @@ void Session::input(const PlayerInputs &inputs) {
         console_->controller(port).input_host(value.buttons, value.x, value.y);
       break;
     case ControllerType::Mouse:
-      console_->mouse(port).input(value.mouse_left, value.mouse_right, value.mouse_x,
-                                  value.mouse_y);
+      mouse_motion_[port].input(value.mouse_left, value.mouse_right, value.mouse_x, value.mouse_y);
       break;
     case ControllerType::GameCube:
       console_->gamecube_controller(port).input_host(
@@ -158,6 +161,11 @@ void Session::input(const PlayerInputs &inputs) {
       break;
     }
   }
+}
+
+void Session::clear_mouse_input() {
+  for (auto &motion : mouse_motion_)
+    motion.clear();
 }
 
 void Session::legacy_input(std::uint16_t buttons, std::int8_t x, std::int8_t y) {

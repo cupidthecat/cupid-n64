@@ -81,7 +81,7 @@ bool Window::launch_command(unsigned id) {
     return false;
   end_rewind();
   stop_fast_forward();
-  keys_.fill(false);
+  clear_host_input();
   try {
     if (id == Launch) {
       launch_dialog();

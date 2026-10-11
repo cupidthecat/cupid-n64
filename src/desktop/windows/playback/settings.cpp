@@ -156,7 +156,7 @@ bool Window::playback_settings_command(unsigned id) {
     const bool was_stopped = stopped();
     end_rewind();
     stop_fast_forward();
-    keys_.fill(false);
+    clear_host_input();
     focus_behavior_ = static_cast<FocusBehavior>(id - FocusPause);
     if (was_stopped != stopped()) {
       audio_.clear();

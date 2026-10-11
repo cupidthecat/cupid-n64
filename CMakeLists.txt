@@ -179,6 +179,11 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/audio.cpp
     src/desktop/windows/audio/devices.cpp
     src/desktop/windows/controls/gamepads.cpp
+    src/desktop/windows/controls/keys.cpp
+    src/desktop/windows/controls/mouse/host.cpp
+    src/desktop/windows/controls/mouse/commands.cpp
+    src/desktop/windows/controls/shortcuts/dialog.cpp
+    src/desktop/windows/controls/shortcuts/commands.cpp
     src/desktop/windows/controls/preferences.cpp
     src/desktop/windows/controls/ports_dialog.cpp
     src/desktop/windows/controls/mapping_dialog.cpp
@@ -191,6 +196,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/session/controllers.cpp
     src/desktop/controls/ports.cpp
     src/desktop/controls/mapping.cpp
+    src/desktop/controls/shortcuts/bindings.cpp
     src/desktop/launch/files.cpp
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
@@ -252,6 +258,16 @@ if(BUILD_TESTING)
     target_compile_options(desktop_controls_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
   add_test(NAME desktop_controls COMMAND desktop_controls_tests)
+  add_executable(desktop_input_tools_tests tests/desktop/controls/input_tools.cpp
+    src/desktop/controls/shortcuts/bindings.cpp src/core/controller/mouse/mouse.cpp)
+  target_include_directories(desktop_input_tools_tests PRIVATE src)
+  target_compile_features(desktop_input_tools_tests PRIVATE cxx_std_20)
+  if(MSVC)
+    target_compile_options(desktop_input_tools_tests PRIVATE /W4 /WX /permissive-)
+  else()
+    target_compile_options(desktop_input_tools_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+  add_test(NAME desktop_input_tools COMMAND desktop_input_tools_tests)
   add_executable(desktop_storage_tests tests/desktop/storage.cpp src/desktop/storage/save.cpp)
   target_include_directories(desktop_storage_tests PRIVATE src)
   target_compile_features(desktop_storage_tests PRIVATE cxx_std_20)
@@ -292,7 +308,8 @@ if(BUILD_TESTING)
   if(TARGET cupid_desktop)
     add_executable(desktop_control_preferences_tests tests/desktop/controls/preferences.cpp
       src/desktop/windows/controls/preferences.cpp src/desktop/controls/ports.cpp
-      src/desktop/controls/mapping.cpp src/desktop/storage/save.cpp)
+      src/desktop/controls/mapping.cpp src/desktop/controls/shortcuts/bindings.cpp
+      src/desktop/storage/save.cpp)
     target_compile_definitions(desktop_control_preferences_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     target_link_libraries(desktop_control_preferences_tests PRIVATE cupid_core)
     if(MSVC)

@@ -10,6 +10,7 @@
 #include "desktop/video/viewport.hpp"
 #include "desktop/windows/audio/devices.hpp"
 #include "desktop/windows/controls/gamepads.hpp"
+#include "desktop/windows/controls/mouse/host.hpp"
 #include "desktop/windows/controls/preferences.hpp"
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
@@ -35,6 +36,17 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool input_tools_command(unsigned id);
+  void shortcuts_dialog();
+  void shortcut(ShortcutEvent event);
+  bool shortcut_key(unsigned key, bool pressed, bool repeat);
+  bool guest_key(unsigned key) const;
+  std::wstring shortcut_label(ShortcutAction action, std::wstring label) const;
+  void update_shortcuts();
+  bool has_mouse() const;
+  void mouse_capture();
+  void release_mouse();
+  void clear_host_input();
   bool controller_command(unsigned id);
   void create_controller_menus(HMENU emulation, HMENU view);
   void update_controllers();
@@ -123,6 +135,10 @@ private:
   SessionSettings session_settings_;
   std::wstring controller_key_;
   PlayerMappings player_mappings_;
+  ShortcutBindings shortcut_bindings_;
+  ShortcutRouter shortcuts_;
+  bool shortcut_alt_ = false;
+  HostMouse mouse_;
   Gamepads gamepads_;
   HostInputs last_host_inputs_;
   FeedbackLatch feedback_;

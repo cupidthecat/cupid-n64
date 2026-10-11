@@ -98,6 +98,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
 }
 
 void Session::reset() {
+  clear_mouse_input();
   output_.reset();
   frame_pending_ = false;
   console_->power(true);
@@ -206,6 +207,7 @@ std::vector<std::uint8_t> Session::capture_state() {
 
 void Session::restore_state(std::span<const std::uint8_t> bytes) {
   SessionState::restore(*this, bytes);
+  clear_mouse_input();
 }
 
 } // namespace cupid::desktop
