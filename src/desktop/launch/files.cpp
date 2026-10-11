@@ -1,4 +1,5 @@
 #include "desktop/launch/files.hpp"
+#include "core/cartridge/profile/boot.hpp"
 #include "core/cartridge/profile/profile.hpp"
 #include "core/disk/drive.hpp"
 #include "core/disk/image/image.hpp"
@@ -11,10 +12,16 @@ void validate_firmware(const std::filesystem::path &path, FirmwareType type) {
   if (path.empty())
     throw std::runtime_error("Select the firmware file required by this launch mode.");
   if (type == FirmwareType::DiskIpl) {
+    const auto bytes = read_file(path, 0x400000);
     n64::EventQueue events;
     n64::DiskDrive drive(events);
-    if (!drive.load_ipl(read_file(path, 0x400000)))
+    if (!drive.load_ipl(bytes))
       throw std::runtime_error("Select a valid 64DD IPL image, from 4096 bytes through 4 MiB.");
+    if (const auto boot = n64::cartridge::identify_boot(
+            std::span<const std::uint8_t>(bytes).subspan(0x40, 0xfc0));
+        boot && boot->model != n64::CicModel::N8303 && boot->model != n64::CicModel::N8401 &&
+        boot->model != n64::CicModel::Ddus)
+      throw std::runtime_error("Select 64DD IPL firmware; this file contains cartridge boot code.");
     return;
   }
   const auto bytes = read_file(path, type == FirmwareType::Nintendo64 ? 0x7c0 : 0x800);

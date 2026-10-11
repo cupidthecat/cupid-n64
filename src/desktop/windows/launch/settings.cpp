@@ -6,10 +6,10 @@ namespace cupid::desktop {
 namespace {
 
 std::filesystem::path path_setting(const std::filesystem::path &file, const wchar_t *section,
-                                   const wchar_t *name) {
+                                   const wchar_t *name, const wchar_t *fallback = L"") {
   std::array<wchar_t, 32768> buffer{};
-  GetPrivateProfileStringW(section, name, L"", buffer.data(), static_cast<DWORD>(buffer.size()),
-                           file.c_str());
+  GetPrivateProfileStringW(section, name, fallback, buffer.data(),
+                           static_cast<DWORD>(buffer.size()), file.c_str());
   return buffer.data();
 }
 
@@ -26,11 +26,11 @@ std::filesystem::path Window::application_directory() const {
 void Window::load_launch_settings() {
   if (settings_.empty())
     return;
-  firmware_files_.n64 = path_setting(settings_, L"Firmware", L"Nintendo64");
+  const auto legacy_firmware = path_setting(settings_, L"Files", L"Firmware");
+  firmware_files_.n64 =
+      path_setting(settings_, L"Firmware", L"Nintendo64", legacy_firmware.c_str());
   firmware_files_.arcade = path_setting(settings_, L"Firmware", L"Aleck64");
   firmware_files_.ipl = path_setting(settings_, L"Firmware", L"64DD IPL");
-  if (firmware_files_.n64.empty())
-    firmware_files_.n64 = path_setting(settings_, L"Files", L"Firmware");
   session_settings_.memory.expansion =
       GetPrivateProfileIntW(L"Memory", L"Expansion Pak", 1, settings_.c_str()) != 0;
   for (unsigned port = 0; port < 4; ++port) {

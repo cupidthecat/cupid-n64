@@ -1,5 +1,5 @@
 #include "desktop/windows/dialogs/paths.hpp"
-#include <algorithm>
+#include "desktop/windows/dialogs/form.hpp"
 #include <array>
 #include <stdexcept>
 
@@ -34,39 +34,32 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
   if (event == WM_INITDIALOG) {
     form = reinterpret_cast<PathForm *>(lparam);
     SetWindowLongPtrW(dialog, DWLP_USER, lparam);
-    const auto control = [&](const wchar_t *type, const wchar_t *text, DWORD style, unsigned id,
-                             int x, int y, int width, int height) {
-      RECT bounds{x, y, x + width, y + height};
-      MapDialogRect(dialog, &bounds);
-      const auto child = CreateWindowExW(
-          type == std::wstring_view(L"EDIT") ? WS_EX_CLIENTEDGE : 0, type, text,
-          WS_CHILD | WS_VISIBLE | style, bounds.left, bounds.top, bounds.right - bounds.left,
-          bounds.bottom - bounds.top, dialog, reinterpret_cast<HMENU>(UINT_PTR(id)),
-          GetModuleHandleW(nullptr), nullptr);
-      SendMessageW(child, WM_SETFONT, SendMessageW(dialog, WM_GETFONT, 0, 0), TRUE);
-    };
     int y = 10;
     if (!form->choices.empty()) {
-      control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, choice_id, 10, y, 360,
-              180);
+      dialog_control(dialog, L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL,
+                     choice_id, 10, y, 360, 180);
       const auto choices = GetDlgItem(dialog, choice_id);
       for (const auto &label : form->choices)
         SendMessageW(choices, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
       SendMessageW(choices, CB_SETCURSEL, form->selected, 0);
       y += 25;
     }
-    control(L"STATIC", L"", 0, 80, 10, y, 430, 45);
+    dialog_control(dialog, L"STATIC", L"", 0, 80, 10, y, 430, 45);
     y += 50;
     for (unsigned n = 0; n < form->fields.size(); ++n) {
-      control(L"STATIC", L"", 0, 300 + n, 10, y, 430, 12);
-      control(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, edit_first + n, 10, y + 14, 370, 16);
-      control(L"BUTTON", L"Browse...", BS_PUSHBUTTON | WS_TABSTOP, browse_first + n, 386, y + 14,
-              54, 16);
+      dialog_control(dialog, L"STATIC", L"", 0, 300 + n, 10, y, 430, 12);
+      dialog_control(dialog, L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, edit_first + n, 10, y + 14,
+                     370, 16);
+      dialog_control(dialog, L"BUTTON", L"Browse...", BS_PUSHBUTTON | WS_TABSTOP, browse_first + n,
+                     386, y + 14, 54, 16);
       y += 38;
     }
-    control(L"BUTTON", L"OK", BS_DEFPUSHBUTTON | WS_TABSTOP, IDOK, 330, y + 4, 50, 16);
-    control(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, IDCANCEL, 390, y + 4, 50, 16);
+    dialog_control(dialog, L"BUTTON", L"OK", BS_DEFPUSHBUTTON | WS_TABSTOP, IDOK, 330, y + 4, 50,
+                   16);
+    dialog_control(dialog, L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, IDCANCEL, 390, y + 4,
+                   50, 16);
     refresh(dialog, *form);
+    center_dialog(dialog);
     return TRUE;
   }
   if (event != WM_COMMAND || !form)
@@ -117,26 +110,9 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
 } // namespace
 
 std::optional<PathForm> choose_paths(HWND owner, PathForm form) {
-  std::vector<WORD> data;
-  const auto word = [&](WORD value) { data.push_back(value); };
-  const auto dword = [&](DWORD value) {
-    word(static_cast<WORD>(value));
-    word(static_cast<WORD>(value >> 16));
-  };
-  const auto text = [&](const wchar_t *value) {
-    do {
-      word(static_cast<WORD>(*value));
-    } while (*value++);
-  };
-  dword(WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_SETFONT);
-  dword(0);
   const auto height =
       static_cast<WORD>(95 + form.fields.size() * 38 + (form.choices.empty() ? 0 : 25));
-  for (WORD value : std::array<WORD, 7>{0, 0, 0, 450, height, 0, 0})
-    word(value);
-  text(form.title.c_str());
-  word(9);
-  text(L"Segoe UI");
+  const auto data = dialog_template(form.title.c_str(), 450, height);
   const auto result = DialogBoxIndirectParamW(GetModuleHandleW(nullptr),
                                               reinterpret_cast<const DLGTEMPLATE *>(data.data()),
                                               owner, procedure, reinterpret_cast<LPARAM>(&form));
