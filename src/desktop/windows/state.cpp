@@ -34,16 +34,16 @@ void Window::update_states() {
   available(LoadState, occupied(state_slot_));
   const auto previous_slot = states_ ? states_->undo_save_slot() : std::nullopt;
   available(UndoStateLoad, states_ && states_->can_undo_load());
-  const auto undo_label =
-      previous_slot ? L"Undo save to slot " + std::to_wstring(*previous_slot) + L"\tCtrl+F2"
-                    : L"Undo save\tCtrl+F2";
+  const auto undo_label = shortcut_label(
+      ShortcutAction::UndoSave,
+      previous_slot ? L"Undo save to slot " + std::to_wstring(*previous_slot) : L"Undo save");
   ModifyMenuW(state_menu_, UndoStateSave, MF_BYCOMMAND | MF_STRING, UndoStateSave,
               undo_label.c_str());
   available(UndoStateSave, previous_slot.has_value());
   for (unsigned slot = 1; slot <= StateSlots::count; ++slot) {
-    const auto label = L"Slot " + std::to_wstring(slot) +
-                       (occupied(slot) ? L" (saved)" : L" (empty)") + L"\tCtrl+" +
-                       std::to_wstring(slot % 10);
+    const auto label = shortcut_label(
+        static_cast<ShortcutAction>(static_cast<unsigned>(ShortcutAction::Slot1) + slot - 1),
+        L"Slot " + std::to_wstring(slot) + (occupied(slot) ? L" (saved)" : L" (empty)"));
     ModifyMenuW(state_menu_, StateSlotFirst + slot - 1,
                 MF_BYCOMMAND | MF_STRING | (slot == state_slot_ ? MF_CHECKED : MF_UNCHECKED),
                 StateSlotFirst + slot - 1, label.c_str());
@@ -111,7 +111,7 @@ void Window::state_loaded() {
     session_->finish_frame();
   frame_ready_ = false;
   last_frame_ = session_->frames;
-  keys_.fill(false);
+  clear_host_input();
   refresh_frame();
   update_playback();
 }

@@ -114,6 +114,39 @@ void preferences(const std::filesystem::path &directory) {
               true);
 }
 
+void shortcuts(const std::filesystem::path &directory) {
+  const auto settings = directory / "shortcuts.ini";
+  test::equal(read_shortcuts(settings) == default_shortcuts(), true);
+  auto mappings = read_mappings(settings);
+  mappings[0].buttons[0] = {BindingKind::Key, 'B'};
+  save_mappings(settings, mappings);
+  auto bindings = default_shortcuts();
+  bindings[static_cast<unsigned>(ShortcutAction::Pause)] = std::array{
+      ShortcutBinding{'P', ShortcutCtrl | ShortcutShift}, ShortcutBinding{'P', ShortcutAlt}};
+  bindings[static_cast<unsigned>(ShortcutAction::Reset)] = {};
+  save_shortcuts(settings, bindings);
+  test::equal(read_shortcuts(settings) == bindings, true);
+  test::equal(read_mappings(settings) == mappings, true);
+  const auto saved = read_file(settings, 128 * 1024);
+  auto conflict = bindings;
+  conflict[static_cast<unsigned>(ShortcutAction::Mute)][0] = bindings[0][0];
+  test::equal(rejects([&] { save_shortcuts(settings, conflict); }), true);
+  test::equal(read_file(settings, 128 * 1024) == saved, true);
+  WritePrivateProfileStringW(L"Shortcuts", L"Action 0 Binding 0 Key", L"256", settings.c_str());
+  test::equal(read_shortcuts(settings)[0][0] == default_shortcuts()[0][0], true);
+  save_shortcuts(settings, bindings);
+  WritePrivateProfileStringW(L"Shortcuts", L"Action 2 Binding 0 Key", L"80", settings.c_str());
+  WritePrivateProfileStringW(L"Shortcuts", L"Action 2 Binding 0 Modifiers", L"3", settings.c_str());
+  test::equal(read_shortcuts(settings) == default_shortcuts(), true);
+  save_shortcuts(settings, {});
+  test::equal(read_shortcuts(settings) == ShortcutBindings{}, true);
+  save_shortcuts(settings, default_shortcuts());
+  test::equal(read_shortcuts(settings) == default_shortcuts(), true);
+  test::equal(read_mappings(settings) == mappings, true);
+  test::equal(rejects([&] { save_shortcuts(directory / "missing" / "shortcuts.ini", bindings); }),
+              true);
+}
+
 void defaults() {
   const auto automatic = default_ports({});
   test::equal(static_cast<unsigned>(automatic[0].controller),
@@ -154,6 +187,7 @@ void defaults() {
 int main() {
   Directory directory;
   preferences(directory.path);
+  shortcuts(directory.path);
   defaults();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures != 0;

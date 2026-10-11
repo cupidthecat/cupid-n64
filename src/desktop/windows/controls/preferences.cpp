@@ -190,4 +190,38 @@ void save_mappings(const std::filesystem::path &settings, const PlayerMappings &
   }
 }
 
+ShortcutBindings read_shortcuts(const std::filesystem::path &settings) {
+  const auto defaults = default_shortcuts();
+  auto bindings = defaults;
+  Preferences preferences(settings, L"Shortcuts");
+  for (unsigned action = 0; action < bindings.size(); ++action)
+    for (unsigned slot = 0; slot < bindings[action].size(); ++slot) {
+      const auto key = L"Action " + std::to_wstring(action) + L" Binding " + std::to_wstring(slot);
+      const auto fallback = defaults[action][slot];
+      const ShortcutBinding value{preferences.number(key + L" Key", fallback.key),
+                                  preferences.number(key + L" Modifiers", fallback.modifiers)};
+      bindings[action][slot] = valid_shortcut(value) ? value : fallback;
+    }
+  return shortcut_conflict(bindings) ? defaults : bindings;
+}
+
+void save_shortcuts(const std::filesystem::path &settings, const ShortcutBindings &bindings) {
+  validate_shortcuts(bindings);
+  unicode_settings(settings);
+  std::wstring section;
+  for (unsigned action = 0; action < bindings.size(); ++action)
+    for (unsigned slot = 0; slot < bindings[action].size(); ++slot) {
+      const auto key = L"Action " + std::to_wstring(action) + L" Binding " + std::to_wstring(slot);
+      const auto value = bindings[action][slot];
+      section += key + L" Key=" + std::to_wstring(value.key);
+      section.push_back(L'\0');
+      section += key + L" Modifiers=" + std::to_wstring(value.modifiers);
+      section.push_back(L'\0');
+    }
+  section.push_back(L'\0');
+  if (!settings.empty() &&
+      !WritePrivateProfileSectionW(L"Shortcuts", section.c_str(), settings.c_str()))
+    throw std::runtime_error("Could not save shortcuts. Check folder permissions.");
+}
+
 } // namespace cupid::desktop

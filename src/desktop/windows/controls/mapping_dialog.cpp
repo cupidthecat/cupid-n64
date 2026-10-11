@@ -1,9 +1,8 @@
 #include "desktop/windows/controls/mapping_dialog.hpp"
+#include "desktop/windows/controls/keys.hpp"
 #include "desktop/windows/dialogs/form.hpp"
 #include "desktop/windows/dialogs/scroll.hpp"
 #include <algorithm>
-#include <iomanip>
-#include <sstream>
 #include <stdexcept>
 
 namespace cupid::desktop {
@@ -25,37 +24,6 @@ struct DialogState {
   std::vector<Choice> choices;
   ScrollForm layout;
 };
-
-std::wstring key_name(unsigned code) {
-  switch (code) {
-  case VK_SHIFT:
-    return L"Shift (either)";
-  case VK_CONTROL:
-    return L"Ctrl (either)";
-  case VK_MENU:
-    return L"Alt (either)";
-  case VK_LSHIFT:
-    return L"Left Shift";
-  case VK_RSHIFT:
-    return L"Right Shift";
-  case VK_LCONTROL:
-    return L"Left Ctrl";
-  case VK_RCONTROL:
-    return L"Right Ctrl";
-  case VK_LMENU:
-    return L"Left Alt";
-  case VK_RMENU:
-    return L"Right Alt";
-  }
-  const auto scan = MapVirtualKeyW(code, MAPVK_VK_TO_VSC_EX);
-  const auto parameter = static_cast<LONG>((scan & 255) << 16) | (scan & 0xff00 ? 1L << 24 : 0);
-  std::array<wchar_t, 128> name{};
-  if (GetKeyNameTextW(parameter, name.data(), static_cast<int>(name.size())))
-    return name.data();
-  std::wostringstream text;
-  text << L"Key " << std::hex << std::setw(2) << std::setfill(L'0') << code;
-  return text.str();
-}
 
 std::vector<Choice> bindings(HostSource source) {
   std::vector<Choice> choices{{L"None", {}}};
@@ -111,7 +79,10 @@ void fill(HWND dialog, unsigned id, InputBinding selected, const std::vector<Cho
 void status(HWND dialog, const DialogState &state) {
   const auto &mapping = state.form.mappings[state.player];
   std::wstring text;
-  if (mapping.source == HostSource::None)
+  if (state.form.controllers[state.player].controller == ControllerType::Mouse)
+    text = L"Mouse: capture the pointer in the game image or in View. Escape releases it.\n"
+           L"These keyboard/gamepad bindings apply to other controller types.";
+  else if (mapping.source == HostSource::None)
     text = L"This player's host input is disabled.";
   else if (mapping.source == HostSource::Keyboard)
     text = L"Keyboard buttons and directions. Walk scales the main stick.";

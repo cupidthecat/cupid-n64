@@ -4,6 +4,7 @@
 namespace cupid::desktop {
 
 void Window::update_playback() {
+  update_shortcuts();
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FrameAdvance,
                  MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
@@ -142,6 +143,7 @@ void Window::begin_rewind() {
   }
   stop_fast_forward();
   gamepads_.stop();
+  release_mouse();
   rewind_was_muted_ = audio_.muted;
   audio_.clear();
   audio_.muted = rewind_mute_ || rewind_was_muted_;
@@ -163,7 +165,7 @@ void Window::rewind_step() {
       state_message_ = L"Rewinding | " + std::to_wstring(rewind_->size()) + L" snapshots retained";
       rebase();
     } else {
-      state_message_ = L"Rewind history exhausted. Release F7 to resume.";
+      state_message_ = L"Rewind history exhausted. Release the rewind shortcut to resume.";
       InvalidateRect(window_, nullptr, FALSE);
     }
   } catch (const std::exception &error) {
@@ -182,7 +184,7 @@ void Window::end_rewind() {
   rewinding_ = false;
   audio_.muted = rewind_was_muted_;
   audio_.clear();
-  keys_.fill(false);
+  clear_host_input();
   state_message_ = L"Resumed from rewind point";
   rebase();
   update_playback();

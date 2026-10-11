@@ -2,6 +2,7 @@
 
 #include "desktop/controls/mapping.hpp"
 #include "desktop/controls/ports.hpp"
+#include "desktop/controls/shortcuts/bindings.hpp"
 #include <filesystem>
 #include <string>
 
@@ -15,5 +16,7 @@ void save_ports(const std::filesystem::path &settings, const std::wstring &key,
                 const ControllerPorts &ports);
 PlayerMappings read_mappings(const std::filesystem::path &settings);
 void save_mappings(const std::filesystem::path &settings, const PlayerMappings &mappings);
+ShortcutBindings read_shortcuts(const std::filesystem::path &settings);
+void save_shortcuts(const std::filesystem::path &settings, const ShortcutBindings &bindings);
 
 } // namespace cupid::desktop

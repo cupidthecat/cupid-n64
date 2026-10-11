@@ -5,6 +5,7 @@
 #include "core/system/console.hpp"
 #include "desktop/controls/feedback.hpp"
 #include "desktop/controls/input.hpp"
+#include "desktop/controls/mouse/motion.hpp"
 #include "desktop/session/settings.hpp"
 #include "desktop/storage/save.hpp"
 #include "desktop/video/output.hpp"
@@ -27,6 +28,7 @@ public:
   void run();
   void advance_frame(const PlayerInputs &input);
   void input(const PlayerInputs &input);
+  void clear_mouse_input();
   const PortStatus &port_status(unsigned port) const {
     return ports_.at(port);
   }
@@ -68,6 +70,7 @@ private:
   SessionSettings settings_;
   std::array<PortStatus, 4> ports_;
   std::array<PortStatus, 4> automatic_ports_;
+  std::array<MouseMotion, 4> mouse_motion_;
   struct TransferMedia {
     std::shared_ptr<n64::HandheldCartridge> cartridge;
     std::filesystem::path clock_path;

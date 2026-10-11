@@ -120,7 +120,7 @@ void Window::drop_rom(WPARAM data) {
   } files{reinterpret_cast<HDROP>(data)};
   end_rewind();
   stop_fast_forward();
-  keys_.fill(false);
+  clear_host_input();
   try {
     if (DragQueryFileW(files.drop, 0xffffffff, nullptr, 0) != 1)
       throw std::runtime_error("Drop one Nintendo 64 ROM file at a time.");

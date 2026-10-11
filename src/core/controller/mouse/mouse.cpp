@@ -27,6 +27,10 @@ JoybusStatus Mouse::communicate(std::span<const std::uint8_t> input,
     return {true, false};
   }
   if (input[0] == 1) {
+    if (input_reader_) {
+      const auto value = input_reader_();
+      this->input(value.left, value.right, value.x, value.y);
+    }
     const auto value = state();
     for (unsigned byte = 0; byte < std::min(output.size(), std::size_t(4)); ++byte)
       output[byte] = static_cast<std::uint8_t>(value >> ((3 - byte) * 8));

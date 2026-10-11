@@ -1,6 +1,7 @@
 #include "desktop/windows/window.hpp"
 #include "core/controller/stick/response.hpp"
 #include "desktop/windows/commands.hpp"
+#include "desktop/windows/controls/keys.hpp"
 #include <algorithm>
 #include <commdlg.h>
 #include <fstream>
@@ -35,15 +36,6 @@ constexpr auto help = L"Default keyboard layout:\n"
                       L"Start: Enter     L / R: Q / E\n"
                       L"C buttons / camera: Arrow keys\n"
                       L"D-pad: I / U / O / P (up / left / down / right)\n\n"
-                      L"Pause: F5 or Escape     Frame advance while paused: F4\n"
-                      L"Reset: F6\n"
-                      L"Fast-forward: hold Tab or toggle F9\n"
-                      L"Rewind: hold F7; enable and configure it in Emulation > Rewind.\n"
-                      L"Save state: F2     Load state: F3\n"
-                      L"Undo save: Ctrl+F2     Undo load: Ctrl+F3\n"
-                      L"State slots: Ctrl+1 through Ctrl+9; Ctrl+0 selects slot 10.\n"
-                      L"Mute: F8     Fullscreen: F11\n\n"
-                      L"Screenshot of the displayed game image: F12\n"
                       L"View selects scaling, aspect, window size, and fullscreen monitor.\n"
                       L"Integer scaling uses whole output-height multiples, or best fit when "
                       L"the window is smaller than one frame.\n\n"
@@ -79,6 +71,8 @@ Window::Window(Options options) : options_(std::move(options)) {
   load_playback_settings();
   load_launch_settings();
   player_mappings_ = read_mappings(settings_);
+  shortcut_bindings_ = read_shortcuts(settings_);
+  shortcuts_.bindings(shortcut_bindings_);
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -96,18 +90,18 @@ int Window::run(HINSTANCE instance, int show) {
   recent_menu_ = CreatePopupMenu();
   AppendMenuW(file, MF_POPUP, reinterpret_cast<UINT_PTR>(recent_menu_), L"&Recent ROMs");
   create_launch_menus(file, emulation);
-  AppendMenuW(file, MF_STRING | MF_GRAYED, Screenshot, L"&Screenshot...\tF12");
+  AppendMenuW(file, MF_STRING | MF_GRAYED, Screenshot, L"&Screenshot...");
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
-  AppendMenuW(emulation, MF_STRING, Pause, L"&Pause\tF5");
-  AppendMenuW(emulation, MF_STRING | MF_GRAYED, FrameAdvance, L"Frame &advance\tF4");
-  AppendMenuW(emulation, MF_STRING, Reset, L"&Reset\tF6");
-  AppendMenuW(emulation, MF_STRING, Mute, L"&Mute\tF8");
-  AppendMenuW(emulation, MF_STRING, FastForward, L"&Fast-forward\tF9 / hold Tab");
+  AppendMenuW(emulation, MF_STRING, Pause, L"&Pause");
+  AppendMenuW(emulation, MF_STRING | MF_GRAYED, FrameAdvance, L"Frame &advance");
+  AppendMenuW(emulation, MF_STRING, Reset, L"&Reset");
+  AppendMenuW(emulation, MF_STRING, Mute, L"&Mute");
+  AppendMenuW(emulation, MF_STRING, FastForward, L"&Fast-forward");
   rewind_menu_ = CreatePopupMenu();
   AppendMenuW(rewind_menu_, MF_STRING, RewindEnabled, L"&Enable rewind");
   AppendMenuW(rewind_menu_, MF_STRING, RewindMute, L"&Mute while rewinding");
-  AppendMenuW(rewind_menu_, MF_STRING | MF_GRAYED, 0, L"Hold F7 to rewind");
+  AppendMenuW(rewind_menu_, MF_STRING | MF_GRAYED, RewindHint, L"Rewind shortcut");
   const auto intervals = CreatePopupMenu(), capacities = CreatePopupMenu(),
              memory = CreatePopupMenu();
   for (unsigned n = 0; n < rewind_intervals.size(); ++n) {
@@ -129,17 +123,17 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(emulation, MF_POPUP, reinterpret_cast<UINT_PTR>(rewind_menu_), L"&Rewind");
   create_playback_settings_menu(emulation);
   state_menu_ = CreatePopupMenu();
-  AppendMenuW(state_menu_, MF_STRING, SaveState, L"&Save state\tF2");
-  AppendMenuW(state_menu_, MF_STRING, LoadState, L"&Load state\tF3");
-  AppendMenuW(state_menu_, MF_STRING, UndoStateSave, L"Undo s&ave\tCtrl+F2");
-  AppendMenuW(state_menu_, MF_STRING, UndoStateLoad, L"Undo l&oad\tCtrl+F3");
+  AppendMenuW(state_menu_, MF_STRING, SaveState, L"&Save state");
+  AppendMenuW(state_menu_, MF_STRING, LoadState, L"&Load state");
+  AppendMenuW(state_menu_, MF_STRING, UndoStateSave, L"Undo s&ave");
+  AppendMenuW(state_menu_, MF_STRING, UndoStateLoad, L"Undo l&oad");
   AppendMenuW(state_menu_, MF_SEPARATOR, 0, nullptr);
   for (unsigned slot = 1; slot <= StateSlots::count; ++slot)
     AppendMenuW(state_menu_, MF_STRING, StateSlotFirst + slot - 1, L"Slot");
-  AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen\tF11");
+  AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen");
   create_display_menu(view);
   create_controller_menus(emulation, view);
-  AppendMenuW(view, MF_STRING, Controls, L"&Controls / help\tF1");
+  AppendMenuW(view, MF_STRING, Controls, L"&Controls / help");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
@@ -159,6 +153,7 @@ int Window::run(HINSTANCE instance, int show) {
   update_playback();
   update_display();
   update_launch();
+  update_shortcuts();
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
@@ -252,6 +247,7 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   switch (event) {
   case WM_CLOSE:
+    clear_host_input();
     gamepads_.stop();
     end_rewind();
     stop_fast_forward();
@@ -286,7 +282,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
       gamepads_.stop();
     end_rewind();
     stop_fast_forward();
-    keys_.fill(false);
+    clear_host_input();
     if (was_stopped != stopped()) {
       audio_.clear();
       rebase();
@@ -299,67 +295,64 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
     gamepads_.stop();
     end_rewind();
     stop_fast_forward();
-    keys_.fill(false);
+    clear_host_input();
     if (event == WM_ENTERSIZEMOVE)
       audio_.clear();
     return 0;
   case WM_EXITMENULOOP:
   case WM_EXITSIZEMOVE:
     modal_ = false;
+    if (mouse_capture_pending_) {
+      mouse_capture_pending_ = false;
+      mouse_capture();
+    }
     update_fast_forward();
     if (event == WM_EXITSIZEMOVE)
       remember_window_size();
     rebase();
     return 0;
   case WM_SYSKEYDOWN:
-  case WM_KEYDOWN:
+  case WM_KEYDOWN: {
     record_key(keys_, wparam, lparam, true);
-    if (!(lparam & (1L << 30))) {
-      const bool control = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-      if (wparam == VK_F2)
-        command(control ? UndoStateSave : SaveState);
-      if (wparam == VK_F3)
-        command(control ? UndoStateLoad : LoadState);
-      if (wparam == VK_F4)
-        command(FrameAdvance);
-      if (control && wparam >= '0' && wparam <= '9') {
-        const auto slot = wparam == '0' ? StateSlots::count : static_cast<unsigned>(wparam - '0');
-        command(StateSlotFirst + slot - 1);
-      }
-      if (wparam == VK_F5 || wparam == VK_ESCAPE)
-        command(Pause);
-      if (wparam == VK_F6)
-        command(Reset);
-      if (wparam == VK_F7)
-        command(BeginRewind);
-      if (wparam == VK_F8)
-        command(Mute);
-      if (wparam == VK_F9)
-        command(FastForward);
-      if (wparam == VK_TAB)
-        command(HoldFastForward);
-      if (wparam == VK_F11)
-        command(Fullscreen);
-      if (wparam == VK_F12)
-        command(Screenshot);
-      if (wparam == VK_F1)
-        command(Controls);
-    }
-    return event == WM_SYSKEYDOWN ? DefWindowProcW(window_, event, wparam, lparam) : 0;
+    const bool handled =
+        shortcut_key(static_cast<unsigned>(wparam), true, (lparam & (1L << 30)) != 0);
+    return event == WM_SYSKEYDOWN && !handled ? DefWindowProcW(window_, event, wparam, lparam) : 0;
+  }
   case WM_SYSKEYUP:
-  case WM_KEYUP:
+  case WM_KEYUP: {
     record_key(keys_, wparam, lparam, false);
-    if (wparam == VK_F7)
-      command(EndRewind);
-    if (wparam == VK_TAB)
-      command(ReleaseFastForward);
-    return event == WM_SYSKEYUP ? DefWindowProcW(window_, event, wparam, lparam) : 0;
+    const bool handled = shortcut_key(static_cast<unsigned>(wparam), false, false);
+    return event == WM_SYSKEYUP && !handled ? DefWindowProcW(window_, event, wparam, lparam) : 0;
+  }
+  case WM_INPUT:
+    if (active_ && !stopped() && !rewinding_)
+      mouse_.raw_input(reinterpret_cast<HRAWINPUT>(lparam));
+    return DefWindowProcW(window_, event, wparam, lparam);
+  case WM_LBUTTONDOWN: {
+    RECT client{};
+    GetClientRect(window_, &client);
+    client.bottom -= status_height();
+    POINT point{static_cast<short>(LOWORD(lparam)), static_cast<short>(HIWORD(lparam))};
+    if (has_mouse() && PtInRect(&client, point))
+      mouse_capture();
+    return 0;
+  }
+  case WM_CAPTURECHANGED:
+    if (mouse_.captured() && reinterpret_cast<HWND>(lparam) != window_)
+      release_mouse();
+    return 0;
+  case WM_CANCELMODE:
+    release_mouse();
+    return DefWindowProcW(window_, event, wparam, lparam);
   case WM_ERASEBKGND:
     return 1;
   case WM_PAINT:
     paint();
     return 0;
   case WM_SIZE:
+  case WM_MOVE:
+    if (mouse_.captured())
+      release_mouse();
     InvalidateRect(window_, nullptr, FALSE);
     return 0;
   case WM_DPICHANGED:
@@ -373,6 +366,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
     }
     return 0;
   case WM_DISPLAYCHANGE:
+    release_mouse();
     refresh_monitors();
     if (fullscreen_)
       position_fullscreen();
@@ -385,6 +379,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
+  clear_host_input();
   gamepads_.stop();
   end_rewind();
   stop_fast_forward();
@@ -421,6 +416,7 @@ void Window::rebase() {
 void Window::load() {
   if ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty())
     return;
+  clear_host_input();
   end_rewind();
   stop_fast_forward();
   if (session_)
@@ -457,13 +453,14 @@ void Window::load() {
   frame_ready_ = false;
   last_frame_ = 0;
   paused_ = false;
-  keys_.fill(false);
+  clear_host_input();
   rebase();
   update_states();
   update_playback();
   update_display();
   update_launch();
   update_controllers();
+  update_shortcuts();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
@@ -517,6 +514,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (input_tools_command(id))
+    return;
   if (controller_command(id))
     return;
   if (launch_command(id))
@@ -540,8 +539,10 @@ void Window::command(unsigned id) {
     end_rewind();
     stop_fast_forward();
     paused_ = !paused_;
-    if (paused_)
+    if (paused_) {
       gamepads_.stop();
+      clear_host_input();
+    }
     audio_.clear();
     if (paused_ && session_) {
       session_->save();
@@ -567,7 +568,7 @@ void Window::command(unsigned id) {
       frame_ready_ = false;
       last_frame_ = 0;
       paused_ = false;
-      keys_.fill(false);
+      clear_host_input();
       rebase();
     }
   } else if (id == FrameAdvance && session_ && paused_) {
@@ -584,7 +585,19 @@ void Window::command(unsigned id) {
     fullscreen();
   } else if (id == Controls) {
     gamepads_.stop();
+    release_mouse();
     std::wstring text = help;
+    text += L"\n\nCurrent shortcuts:\n";
+    for (const auto action :
+         {ShortcutAction::Pause, ShortcutAction::Reset, ShortcutAction::Mute,
+          ShortcutAction::Fullscreen, ShortcutAction::Help, ShortcutAction::MouseCapture}) {
+      const auto bindings = shortcut_text(shortcut_bindings_[static_cast<unsigned>(action)]);
+      text += std::wstring(shortcut_name(action)) + L": " +
+              (bindings.empty() ? L"Unassigned" : bindings) + L"\n";
+    }
+    text += L"\nView > Shortcuts edits these assignments.\n"
+            L"Click the game image or use Capture mouse pointer when a mouse port is selected.\n"
+            L"Escape releases a captured pointer.\n";
     text += L"\n\nView > Input mappings shows each player's device, buttons and axes.\n"
             L"Emulation > Controller ports selects the devices and accessories for this game.";
     if (!audio_.available())
