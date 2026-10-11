@@ -182,6 +182,30 @@ void textured_readback() {
   std::cout << "Textured upscaling keeps native framebuffer/coverage and restores subpixels\n";
 }
 
+void interlaced_supersampling() {
+  for (const auto pal : {false, true}) {
+    const unsigned height = pal ? 288 : 240;
+    auto registers = base_video(2);
+    registers[0] |= 0x40;
+    registers[6] = pal ? 624 : 524;
+    registers[10] = pal ? (44u << 16) | 620 : (34u << 16) | 514;
+    for (const auto scale : RenderSettings::scales) {
+      GpuFixture fixture;
+      recreate(fixture, {.scale = scale, .supersampling = scale > 1});
+      fixture.program(registers);
+      fill(fixture, 0xf801f801);
+      const auto guest = CoreState::capture(fixture.console);
+      for (const auto field : {false, true}) {
+        const auto frame = fixture.renderer->frame(field);
+        std::cout << (pal ? "PAL" : "NTSC") << ' ' << scale << "x field " << field << ": "
+                  << frame.width << 'x' << frame.height << '\n';
+        dimensions(frame, 1, height);
+        test::equal(CoreState::capture(fixture.console) == guest, true);
+      }
+    }
+  }
+}
+
 void invalid_settings() {
   GpuFixture fixture;
   const auto before = CoreState::capture(fixture.console);
@@ -210,6 +234,7 @@ int main() {
   modes();
   processing();
   textured_readback();
+  interlaced_supersampling();
   invalid_settings();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
