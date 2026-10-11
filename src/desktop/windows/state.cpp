@@ -89,7 +89,7 @@ bool Window::state_command(unsigned id) {
       state_message_ = L"Undid state load";
     }
   } catch (const std::exception &error) {
-    state_message_ = L"State action failed: " + error_text(error);
+    status_error(L"State action failed", error);
   }
   // Snapshot transfers and disk writes can outlast the normal frame deadline.
   rebase();
@@ -98,12 +98,25 @@ bool Window::state_command(unsigned id) {
 }
 
 void Window::state_loaded() {
+  if (rewinding_)
+    audio_.muted = rewind_was_muted_;
+  rewinding_ = false;
+  fast_forward_ = fast_forward_hold_ = fast_forward_toggle_ = false;
+  audio_.suspended = false;
+  if (rewind_)
+    rewind_->clear();
   if (paused_)
     session_->finish_frame();
   frame_ready_ = false;
   last_frame_ = session_->frames;
   keys_.fill(false);
   refresh_frame();
+  update_playback();
+}
+
+void Window::status_error(std::wstring_view action, const std::exception &error) {
+  state_message_ = std::wstring(action) + L": " + error_text(error);
+  InvalidateRect(window_, nullptr, FALSE);
 }
 
 void Window::refresh_frame() {

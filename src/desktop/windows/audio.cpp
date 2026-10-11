@@ -69,7 +69,7 @@ void Audio::clear() {
 }
 
 void Audio::sample(n64::StereoSample value) {
-  if (!available())
+  if (!available() || suspended)
     return;
   resampler_.write(value, [this](n64::StereoSample sample) {
     if (!available())
@@ -88,11 +88,22 @@ void Audio::sample(n64::StereoSample value) {
     buffer.samples[offset_++] = convert(sample.left);
     buffer.samples[offset_++] = convert(sample.right);
     if (offset_ == buffer.samples.size()) {
+      buffer.header.dwBufferLength = static_cast<DWORD>(sizeof(buffer.samples));
       error_ = waveOutWrite(device_, &buffer.header, sizeof(WAVEHDR));
       offset_ = 0;
       buffer_ = (buffer_ + 1) % static_cast<unsigned>(buffers_.size());
     }
   });
+}
+
+void Audio::play_saved_output() {
+  if (!available() || muted || suspended || !offset_)
+    return;
+  auto &buffer = buffers_[buffer_];
+  buffer.header.dwBufferLength = static_cast<DWORD>(offset_ * sizeof(short));
+  error_ = waveOutWrite(device_, &buffer.header, sizeof(WAVEHDR));
+  offset_ = 0;
+  buffer_ = (buffer_ + 1) % static_cast<unsigned>(buffers_.size());
 }
 
 } // namespace cupid::desktop

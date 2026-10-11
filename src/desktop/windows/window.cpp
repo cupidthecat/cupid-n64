@@ -14,6 +14,8 @@ constexpr auto help = L"Move: W A S D (hold Shift to walk)\n"
                       L"D-pad: I / U / O / P (up / left / down / right)\n\n"
                       L"Pause: F5 or Escape     Frame advance while paused: F4\n"
                       L"Reset: F6\n"
+                      L"Fast-forward: hold Tab or toggle F9\n"
+                      L"Rewind: hold F7; enable and configure it in Emulation > Rewind.\n"
                       L"Save state: F2     Load state: F3\n"
                       L"Undo save: Ctrl+F2     Undo load: Ctrl+F3\n"
                       L"State slots: Ctrl+1 through Ctrl+9; Ctrl+0 selects slot 10.\n"
@@ -45,6 +47,15 @@ Window::Window(Options options) : options_(std::move(options)) {
       options_.firmware = setting(settings_, L"Firmware");
     state_slot_ = std::clamp(GetPrivateProfileIntW(L"States", L"Slot", 1, settings_.c_str()), 1u,
                              StateSlots::count);
+    rewind_enabled_ = GetPrivateProfileIntW(L"Rewind", L"Enabled", 0, settings_.c_str()) != 0;
+    rewind_mute_ = GetPrivateProfileIntW(L"Rewind", L"Mute", 1, settings_.c_str()) != 0;
+    const auto choice = [&](const wchar_t *key, const auto &values, unsigned fallback) {
+      const auto value = GetPrivateProfileIntW(L"Rewind", key, fallback, settings_.c_str());
+      return std::find(values.begin(), values.end(), value) != values.end() ? value : fallback;
+    };
+    rewind_settings_.interval = choice(L"Interval", rewind_intervals, 60);
+    rewind_settings_.capacity = choice(L"Capacity", rewind_capacities, 10);
+    rewind_settings_.memory = std::size_t(choice(L"MemoryMB", rewind_memory, 256)) * 1024 * 1024;
   }
 }
 
@@ -67,6 +78,30 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(emulation, MF_STRING | MF_GRAYED, FrameAdvance, L"Frame &advance\tF4");
   AppendMenuW(emulation, MF_STRING, Reset, L"&Reset\tF6");
   AppendMenuW(emulation, MF_STRING, Mute, L"&Mute\tF8");
+  AppendMenuW(emulation, MF_STRING, FastForward, L"&Fast-forward\tF9 / hold Tab");
+  rewind_menu_ = CreatePopupMenu();
+  AppendMenuW(rewind_menu_, MF_STRING, RewindEnabled, L"&Enable rewind");
+  AppendMenuW(rewind_menu_, MF_STRING, RewindMute, L"&Mute while rewinding");
+  AppendMenuW(rewind_menu_, MF_STRING | MF_GRAYED, 0, L"Hold F7 to rewind");
+  const auto intervals = CreatePopupMenu(), capacities = CreatePopupMenu(),
+             memory = CreatePopupMenu();
+  for (unsigned n = 0; n < rewind_intervals.size(); ++n) {
+    const auto label = L"Every " + std::to_wstring(rewind_intervals[n]) + L" video frames";
+    AppendMenuW(intervals, MF_STRING, RewindIntervalFirst + n, label.c_str());
+  }
+  for (unsigned n = 0; n < rewind_capacities.size(); ++n) {
+    const auto label = L"Up to " + std::to_wstring(rewind_capacities[n]) + L" snapshots";
+    AppendMenuW(capacities, MF_STRING, RewindCapacityFirst + n, label.c_str());
+  }
+  for (unsigned n = 0; n < rewind_memory.size(); ++n) {
+    const auto label = std::to_wstring(rewind_memory[n]) + L" MB";
+    AppendMenuW(memory, MF_STRING, RewindMemoryFirst + n, label.c_str());
+  }
+  AppendMenuW(rewind_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(intervals),
+              L"Snapshot &frequency");
+  AppendMenuW(rewind_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(capacities), L"&History length");
+  AppendMenuW(rewind_menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(memory), L"Memory &limit");
+  AppendMenuW(emulation, MF_POPUP, reinterpret_cast<UINT_PTR>(rewind_menu_), L"&Rewind");
   state_menu_ = CreatePopupMenu();
   AppendMenuW(state_menu_, MF_STRING, SaveState, L"&Save state\tF2");
   AppendMenuW(state_menu_, MF_STRING, LoadState, L"&Load state\tF3");
@@ -89,6 +124,7 @@ int Window::run(HINSTANCE instance, int show) {
   if (!window_)
     throw std::runtime_error("Could not create the desktop window.");
   update_states();
+  update_playback();
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
@@ -117,10 +153,16 @@ int Window::run(HINSTANCE instance, int show) {
       continue;
     }
     try {
+      if (rewinding_) {
+        if (std::chrono::steady_clock::now() >= next_rewind_)
+          rewind_step();
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 25, QS_ALLINPUT);
+        continue;
+      }
       if (frame_ready_) {
         const auto delay =
             playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
-        if (delay.count()) {
+        if (!fast_forward_ && delay.count()) {
           MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
                                     QS_ALLINPUT);
           continue;
@@ -133,6 +175,8 @@ int Window::run(HINSTANCE instance, int show) {
       error(exception);
     }
   }
+  end_rewind();
+  stop_fast_forward();
   if (session_) {
     try {
       session_->save();
@@ -140,6 +184,7 @@ int Window::run(HINSTANCE instance, int show) {
       error(exception);
     }
   }
+  rewind_.reset();
   states_.reset();
   session_.reset();
   if (IsWindow(window_))
@@ -167,6 +212,8 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   switch (event) {
   case WM_CLOSE:
+    end_rewind();
+    stop_fast_forward();
     if (session_)
       session_->save();
     quit_ = true;
@@ -180,6 +227,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
     return 0;
   case WM_ACTIVATE:
     active_ = LOWORD(wparam) != WA_INACTIVE || options_.frames != 0;
+    end_rewind();
+    stop_fast_forward();
     keys_.fill(false);
     audio_.clear();
     rebase();
@@ -187,12 +236,15 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_ENTERMENULOOP:
   case WM_ENTERSIZEMOVE:
     modal_ = true;
+    end_rewind();
+    stop_fast_forward();
     keys_.fill(false);
     audio_.clear();
     return 0;
   case WM_EXITMENULOOP:
   case WM_EXITSIZEMOVE:
     modal_ = false;
+    update_fast_forward();
     rebase();
     return 0;
   case WM_KEYDOWN:
@@ -214,8 +266,14 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
         command(Pause);
       if (wparam == VK_F6)
         command(Reset);
+      if (wparam == VK_F7)
+        command(BeginRewind);
       if (wparam == VK_F8)
         command(Mute);
+      if (wparam == VK_F9)
+        command(FastForward);
+      if (wparam == VK_TAB)
+        command(HoldFastForward);
       if (wparam == VK_F11)
         command(Fullscreen);
       if (wparam == VK_F1)
@@ -225,6 +283,10 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_KEYUP:
     if (wparam < keys_.size())
       keys_[wparam] = false;
+    if (wparam == VK_F7)
+      command(EndRewind);
+    if (wparam == VK_TAB)
+      command(ReleaseFastForward);
     return 0;
   case WM_ERASEBKGND:
     return 1;
@@ -240,6 +302,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
+  end_rewind();
+  stop_fast_forward();
   paused_ = true;
   audio_.clear();
   if (options_.frames) {
@@ -265,6 +329,8 @@ void Window::rebase() {
 void Window::load() {
   if ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty())
     return;
+  end_rewind();
+  stop_fast_forward();
   if (session_)
     session_->save();
   audio_.clear();
@@ -276,6 +342,11 @@ void Window::load() {
       [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
   states->select(state_slot_);
+  auto rewind = std::make_unique<RewindHistory>(
+      [this] { return session_->capture_state(); },
+      [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); },
+      rewind_settings_);
+  rewind_ = std::move(rewind);
   states_ = std::move(states);
   session_ = std::move(next);
   state_message_.clear();
@@ -289,6 +360,7 @@ void Window::load() {
   keys_.fill(false);
   rebase();
   update_states();
+  update_playback();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
       WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
@@ -314,6 +386,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (playback_command(id))
+    return;
   if (state_command(id))
     return;
   if (id == Open || id == Firmware) {
@@ -330,6 +404,8 @@ void Window::command(unsigned id) {
   } else if (id == Exit) {
     SendMessageW(window_, WM_CLOSE, 0, 0);
   } else if (id == Pause) {
+    end_rewind();
+    stop_fast_forward();
     paused_ = !paused_;
     audio_.clear();
     if (paused_ && session_) {
@@ -341,6 +417,10 @@ void Window::command(unsigned id) {
     }
     rebase();
   } else if (id == Reset) {
+    end_rewind();
+    stop_fast_forward();
+    if (rewind_)
+      rewind_->clear();
     if (session_) {
       session_->save();
       session_->reset();
@@ -358,6 +438,7 @@ void Window::command(unsigned id) {
     frame_ready_ = false;
     last_frame_ = session_->frames;
     refresh_frame();
+    record_history();
     rebase();
   } else if (id == Mute) {
     audio_.muted = !audio_.muted;
@@ -372,7 +453,7 @@ void Window::command(unsigned id) {
     rebase();
   }
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
-  CheckMenuItem(menu_, Mute, MF_BYCOMMAND | (audio_.muted ? MF_CHECKED : MF_UNCHECKED));
+  update_playback();
   EnableMenuItem(menu_, FrameAdvance,
                  MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
 }
@@ -499,6 +580,7 @@ void Window::present() {
   frame_ready_ = false;
   last_frame_ = session_->frames;
   refresh_frame();
+  record_history();
   if (last_frame_ % 300 == 0)
     session_->save();
   if (options_.frames && last_frame_ >= options_.frames) {

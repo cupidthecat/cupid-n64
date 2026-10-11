@@ -18,11 +18,13 @@ public:
   void sample(n64::StereoSample value);
   void frequency(unsigned value);
   void clear();
+  void play_saved_output();
   bool available() const {
     return device_ != nullptr && error_ == MMSYSERR_NOERROR;
   }
   std::wstring error() const;
   bool muted = false;
+  bool suspended = false;
 
 private:
   friend class SessionState;
