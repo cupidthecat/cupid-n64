@@ -15,6 +15,7 @@
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
+#include "desktop/windows/video/shaders/processor.hpp"
 #include <array>
 #include <chrono>
 #include <string_view>
@@ -42,6 +43,10 @@ private:
   void save_graphics_settings(n64::RenderSettings settings);
   void create_graphics_menu(HMENU view);
   void update_graphics();
+  bool shader_command(unsigned id);
+  void select_shader(ShaderSelection selection);
+  void create_shader_menu(HMENU view);
+  void update_shader();
   void shortcuts_dialog();
   void shortcut(ShortcutEvent event);
   bool shortcut_key(unsigned key, bool pressed, bool repeat);
@@ -137,6 +142,9 @@ private:
   HMENU audio_menu_ = nullptr, audio_device_menu_ = nullptr;
   HMENU memory_menu_ = nullptr;
   HMENU graphics_menu_ = nullptr;
+  HMENU shader_menu_ = nullptr;
+  ShaderProcessor shader_;
+  std::wstring shader_message_;
   FirmwareFiles firmware_files_;
   SessionSettings session_settings_;
   std::wstring controller_key_;

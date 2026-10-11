@@ -68,6 +68,7 @@ Window::Window(Options options) : options_(std::move(options)) {
   }
   load_display_settings();
   load_graphics_settings();
+  shader_.select(read_shader_selection(settings_));
   load_recent();
   load_playback_settings();
   load_launch_settings();
@@ -134,6 +135,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen");
   create_display_menu(view);
   create_graphics_menu(view);
+  create_shader_menu(view);
   create_controller_menus(emulation, view);
   AppendMenuW(view, MF_STRING, Controls, L"&Controls / help");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
@@ -517,6 +519,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (shader_command(id))
+    return;
   if (graphics_command(id))
     return;
   if (input_tools_command(id))
@@ -673,6 +677,8 @@ void Window::paint() {
       status = L"Settings pending: Emulation > Reload game  |  " + status;
     if (!state_message_.empty())
       status = state_message_ + L"  |  " + status;
+    if (!shader_message_.empty())
+      status = shader_message_ + L"  |  " + status;
     DrawTextW(dc, status.c_str(), -1, &bar, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
     paint_buffer_.present(target);
   } catch (...) {
