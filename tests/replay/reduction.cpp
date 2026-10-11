@@ -61,6 +61,14 @@ void input_tests() {
   equal(small.size() < 128, true);
   equal(fails(decode(small)), true);
   equal(compare(reduced).has_value(), false);
+  const Difference absent_contract[] = {{0, {"cpu.gpr", 4, 0, 1, 8}}};
+  const auto absent = compare(reduced, {}, absent_contract);
+  equal(absent.has_value(), true);
+  if (absent) {
+    equal(absent->boundary, 0);
+    equal(absent->state.field == "cpu.gpr.contract", true);
+    equal(absent->state.index, 4);
+  }
   for (bool initial : {false, true}) {
     const auto count = initial ? reduced.initial.size() : reduced.actions.size();
     for (std::size_t n = 0; n < count; ++n) {

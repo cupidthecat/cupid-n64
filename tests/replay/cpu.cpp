@@ -56,6 +56,39 @@ void cpu_tests() {
         equal(difference->state.expected, 102);
         equal(difference->state.actual, 100);
       }
+      // Device phases follow the omitted charge; halted RSP scheduling crosses an idle quantum.
+      const Difference contracts[] = {{1, {"events.clock", 0, 102, 100, 4}},
+                                      {1, {"pif.clock", 0, 0x13f9a, 0x13f9c, 8}},
+                                      {1, {"rsp.clock", 0, 154, 28, 8}},
+                                      {1, {"rdp.clock", 0, 0xb2d057a, 0xb2d057c, 8}},
+                                      {1, {"vi.clock", 0, 0x1e69, 0x1e6b, 8}},
+                                      {1, {"audio.clock", 0, 0x1035, 0x1037, 8}},
+                                      {1, {"cpu.clocks", 0, 102, 100, 8}},
+                                      {1, {"cpu.count_ticks", 0, 51, 50, 8}},
+                                      {1, {"cpu.count_clock", 0, 102, 100, 8}},
+                                      {1, {"machine.synchronized_clock", 0, 102, 100, 8}},
+                                      {1, {"output.audio.sample[0].clocks", 0, 102, 100, 8}}};
+      check_contracts(input, contracts, [](Console &console, Mode, std::size_t) {
+        equal(console.cpu().read_control(Cause), 0x80000010);
+        equal(console.cpu().read_control(Epc), 0xffffffff80001000);
+        equal(console.cpu().read_control(BadVAddr), 0xffffffff80002001);
+        equal(console.cpu().read_control(Status) & 2, 2);
+      });
+      const auto wrong_exception = compare(
+          input,
+          [](Console &console, Mode mode, std::size_t) {
+            if (mode == Mode::Native)
+              console.cpu().write_control(Epc, 0xffffffff80001004);
+          },
+          contracts);
+      equal(wrong_exception.has_value(), true);
+      if (wrong_exception) {
+        equal(wrong_exception->boundary, 1);
+        equal(wrong_exception->state.field == "cpu.cp0", true);
+        equal(wrong_exception->state.index, Epc);
+        equal(wrong_exception->state.expected, 0xffffffff80001000);
+        equal(wrong_exception->state.actual, 0xffffffff80001004);
+      }
     } else if (!check(input, "native address fallback"))
       return;
   }

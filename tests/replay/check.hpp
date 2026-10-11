@@ -7,6 +7,15 @@
 
 namespace test::machine_replay {
 
+inline bool check_contracts(const Input &input, std::span<const Difference> contracts,
+                            const Observer &observe = {}) {
+  const auto difference = compare(input, observe, contracts);
+  equal(difference.has_value(), false);
+  if (difference)
+    print(*difference);
+  return !difference;
+}
+
 inline bool check(const Input &input, std::string_view name) {
   const auto difference = compare(input);
   equal(difference.has_value(), false);

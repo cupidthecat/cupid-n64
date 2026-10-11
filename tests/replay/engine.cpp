@@ -8,6 +8,30 @@ namespace test::machine_replay {
 using namespace cupid::n64;
 namespace {
 
+enum class OutputKind : unsigned { AudioSample, AudioRate, VideoFrame, RdpCommands, RdpSync };
+
+struct OutputEvent {
+  OutputKind kind;
+  std::uint64_t clocks;
+  std::vector<std::uint64_t> payload;
+};
+
+std::string_view output_name(OutputKind kind) {
+  switch (kind) {
+  case OutputKind::AudioSample:
+    return "audio.sample";
+  case OutputKind::AudioRate:
+    return "audio.rate";
+  case OutputKind::VideoFrame:
+    return "video.frame";
+  case OutputKind::RdpCommands:
+    return "rdp.commands";
+  case OutputKind::RdpSync:
+    return "rdp.sync";
+  }
+  throw state::InvalidState("Unknown output event");
+}
+
 ConsoleConfig config(const Input &input) {
   ConsoleConfig value;
   value.region = input.region;
@@ -22,7 +46,7 @@ ConsoleConfig config(const Input &input) {
 
 struct Machine {
   Console console;
-  std::vector<std::uint64_t> output;
+  std::vector<OutputEvent> output;
 
   explicit Machine(const Input &input) : console(config(input)) {
     std::array<std::uint8_t, 0x7c0> firmware{};
@@ -53,20 +77,24 @@ struct Machine {
     console.connect_gamecube_controller(2);
     console.audio().connect(
         [this](StereoSample sample) {
-          output.insert(output.end(),
-                        {0, console.cpu().state().clocks, std::bit_cast<std::uint64_t>(sample.left),
-                         std::bit_cast<std::uint64_t>(sample.right)});
+          output.push_back({OutputKind::AudioSample,
+                            console.cpu().state().clocks,
+                            {std::bit_cast<std::uint64_t>(sample.left),
+                             std::bit_cast<std::uint64_t>(sample.right)}});
         },
-        [this](unsigned rate) { output.insert(output.end(), {1, rate}); });
+        [this](unsigned rate) {
+          output.push_back({OutputKind::AudioRate, console.cpu().state().clocks, {rate}});
+        });
     console.video().connect_frame([this](bool field) {
-      output.insert(output.end(), {2, console.cpu().state().clocks, unsigned(field)});
+      output.push_back({OutputKind::VideoFrame, console.cpu().state().clocks, {unsigned(field)}});
     });
     console.display().connect(
         [this](std::span<const std::uint32_t> words) {
-          output.insert(output.end(), {3, console.cpu().state().clocks, words.size()});
-          output.insert(output.end(), words.begin(), words.end());
+          output.push_back({OutputKind::RdpCommands,
+                            console.cpu().state().clocks,
+                            {words.begin(), words.end()}});
         },
-        [this] { output.push_back(4); });
+        [this] { output.push_back({OutputKind::RdpSync, console.cpu().state().clocks, {}}); });
   }
 
   void apply(const Action &action, Mode mode, std::int64_t signal_clock_target = 0) {
@@ -170,20 +198,42 @@ StateCheckpoint guest_checkpoint(Console &console) {
   return checkpoint;
 }
 
-std::optional<StateDifference> outputs(const Machine &expected, const Machine &actual) {
-  const auto common = std::min(expected.output.size(), actual.output.size());
-  for (std::size_t n = 0; n < common; ++n)
-    if (expected.output[n] != actual.output[n])
-      return StateDifference{"output.device", n, expected.output[n], actual.output[n], 8};
-  if (expected.output.size() != actual.output.size())
-    return StateDifference{"output.device.size", common, expected.output.size(),
-                           actual.output.size(), 0};
-  return {};
+StateCheckpoint output_checkpoint(const Machine &machine) {
+  state::Archive archive(true);
+  archive.label("output.events.size", 4);
+  archive.literal(static_cast<std::uint32_t>(machine.output.size()));
+  for (std::size_t n = 0; n < machine.output.size(); ++n) {
+    const auto &event = machine.output[n];
+    archive.indexed_label("output", n, "kind", 4);
+    archive.literal(event.kind);
+    const auto name = std::string("output.") + std::string(output_name(event.kind)) + "[" +
+                      std::to_string(n) + "].";
+    archive.label(name + "clocks", 8);
+    archive.literal(event.clocks);
+    archive.label(name + "size", 4);
+    archive.literal(static_cast<std::uint32_t>(event.payload.size()));
+    for (std::size_t element = 0; element < event.payload.size(); ++element) {
+      const auto field = event.kind == OutputKind::AudioSample  ? (element == 0 ? "left" : "right")
+                         : event.kind == OutputKind::AudioRate  ? "rate"
+                         : event.kind == OutputKind::VideoFrame ? "field"
+                                                                : "word";
+      archive.label(
+          name + field +
+              (event.kind == OutputKind::RdpCommands ? "[" + std::to_string(element) + "]" : ""),
+          8);
+      archive.literal(event.payload[element]);
+    }
+  }
+  auto ranges = archive.ranges();
+  return {archive.finish(), std::move(ranges)};
 }
 
 } // namespace
 
-std::optional<Difference> compare(const Input &input, const Observer &observe) {
+std::optional<Difference> compare(const Input &input, const Observer &observe,
+                                  std::span<const Difference> contracts) {
+  for (const auto &contract : contracts)
+    state::Archive::require(contract.boundary <= input.actions.size() && contract.state.bytes);
   Machine expected(input), actual(input);
   for (const auto &action : input.initial) {
     state::Archive::require(valid(action, true));
@@ -193,13 +243,44 @@ std::optional<Difference> compare(const Input &input, const Observer &observe) {
   CoreState::restore(actual.console, start);
   expected.output.clear();
   actual.output.clear();
-  const auto checkpoint = [&]() -> std::optional<StateDifference> {
+  const auto checkpoint = [&](std::size_t boundary) -> std::optional<StateDifference> {
+    std::vector<bool> observed(contracts.size());
+    const auto compare_state = [&](StateCheckpoint left,
+                                   const StateCheckpoint &right) -> std::optional<StateDifference> {
+      while (const auto state = left.difference(right)) {
+        const auto contract =
+            std::find_if(contracts.begin(), contracts.end(), [&](const auto &entry) {
+              return entry.boundary == boundary && entry.state.field == state->field &&
+                     entry.state.index == state->index && entry.state.expected == state->expected &&
+                     entry.state.actual == state->actual && entry.state.bytes == state->bytes &&
+                     state->bytes != 0;
+            });
+        if (contract == contracts.end())
+          return state;
+        observed[contract - contracts.begin()] = true;
+        const auto range =
+            std::find_if(left.ranges.begin(), left.ranges.end(),
+                         [&](const auto &entry) { return entry.name == state->field; });
+        const auto offset = range->offset + state->index * range->element_bytes;
+        // Consume only this exact contract, then compare every remaining field and element.
+        for (unsigned byte = 0; byte < state->bytes; ++byte)
+          left.bytes[offset + byte] = static_cast<std::uint8_t>(state->actual >> (byte * 8));
+      }
+      return {};
+    };
     if (auto state =
-            guest_checkpoint(expected.console).difference(guest_checkpoint(actual.console)))
+            compare_state(guest_checkpoint(expected.console), guest_checkpoint(actual.console)))
       return state;
-    return outputs(expected, actual);
+    if (auto state = compare_state(output_checkpoint(expected), output_checkpoint(actual)))
+      return state;
+    for (std::size_t n = 0; n < contracts.size(); ++n)
+      if (contracts[n].boundary == boundary && !observed[n])
+        return StateDifference{contracts[n].state.field + ".contract", contracts[n].state.index,
+                               contracts[n].state.actual, contracts[n].state.expected,
+                               contracts[n].state.bytes};
+    return {};
   };
-  if (auto difference = checkpoint())
+  if (auto difference = checkpoint(0))
     return Difference{0, *difference};
   for (std::size_t n = 0; n < input.actions.size(); ++n) {
     const auto &action = input.actions[n];
@@ -221,7 +302,7 @@ std::optional<Difference> compare(const Input &input, const Observer &observe) {
       observe(expected.console, Mode::Interpreted, n + 1);
       observe(actual.console, Mode::Native, n + 1);
     }
-    if (auto difference = checkpoint())
+    if (auto difference = checkpoint(n + 1))
       return Difference{n + 1, *difference};
   }
   return {};

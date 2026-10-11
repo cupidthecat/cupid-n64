@@ -15,7 +15,9 @@ struct Difference {
 using Observer = std::function<void(cupid::n64::Console &, Mode, std::size_t)>;
 
 // Both modes restore the same owned starting snapshot. Each action ends at a checkpoint.
-std::optional<Difference> compare(const Input &input, const Observer &observe = {});
+// Contracts require exact named differences; all remaining state and device outputs still compare.
+std::optional<Difference> compare(const Input &input, const Observer &observe = {},
+                                  std::span<const Difference> contracts = {});
 Input reduce(Input input, const std::function<bool(const Input &)> &fails, unsigned attempts = 128);
 void print(const Difference &difference);
 
