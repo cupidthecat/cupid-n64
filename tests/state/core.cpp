@@ -305,6 +305,36 @@ void continuation_tests() {
       }
 }
 
+void relocation_tests() {
+  Machine layout(false);
+  const auto cpu_offset = reinterpret_cast<std::uintptr_t>(&layout.console.cpu()) -
+                          reinterpret_cast<std::uintptr_t>(&layout);
+  std::vector<std::uint8_t> first_storage(sizeof(Machine) + 131072);
+  std::vector<std::uint8_t> second_storage(first_storage.size());
+  const auto place = [&](auto &storage, unsigned low) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(storage.data());
+    auto address = ((begin + cpu_offset + 65535) & ~std::uintptr_t(65535)) + low - cpu_offset;
+    test::equal(address % alignof(Machine), 0);
+    test::equal(address >= begin && address + sizeof(Machine) <= begin + storage.size(), true);
+    return std::construct_at(reinterpret_cast<Machine *>(address), false);
+  };
+  const auto release = [](Machine *machine) { std::destroy_at(machine); };
+  std::unique_ptr<Machine, decltype(release)> first(place(first_storage, 0), release);
+  std::unique_ptr<Machine, decltype(release)> second(place(second_storage, alignof(Machine)),
+                                                     release);
+  test::equal(reinterpret_cast<std::uintptr_t>(&first->console.cpu()) & 65535, 0);
+  test::equal(reinterpret_cast<std::uintptr_t>(&second->console.cpu()) & 65535, alignof(Machine));
+  first->run(2, 9);
+  second->run(2, 9);
+  compare_checkpoint(CoreState::checkpoint(first->console), second->console, 2, 9);
+  const auto saved = CoreState::capture(first->console);
+  first->run(2, 80);
+  const auto expected = CoreState::checkpoint(first->console);
+  CoreState::restore(second->console, saved);
+  second->run(2, 80);
+  compare_checkpoint(expected, second->console, 2, 80);
+}
+
 void invalid_tests() {
   Machine machine;
   machine.run(2, 7);
@@ -664,6 +694,7 @@ void core_state_tests() {
   checkpoint_tests();
   arcade_checkpoint_tests();
   continuation_tests();
+  relocation_tests();
   dispatch_history_tests();
   cache_page_tests();
   rsp_cache_history_tests();

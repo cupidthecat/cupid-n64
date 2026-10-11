@@ -16,6 +16,15 @@ void CpuCompiler::Emitter::op1(sljit_s32 op, Operand dest, Operand source) {
   sljit_emit_op1(compiler, op, dest.type, dest.value, source.type, source.value);
 }
 
+void CpuCompiler::Emitter::host_address(sljit_s32 dest, const void *source) {
+#if SLJIT_CONFIG_ARM_64
+  // Keep saved cache costs independent of host pointer values.
+  sljit_emit_const(compiler, SLJIT_MOV, dest, 0, reinterpret_cast<sljit_sw>(source));
+#else
+  op1(SLJIT_MOV, reg(dest), imm(reinterpret_cast<std::uintptr_t>(source)));
+#endif
+}
+
 void CpuCompiler::Emitter::op2(sljit_s32 op, Operand dest, Operand left, Operand right) {
   sljit_emit_op2(compiler, op, dest.type, dest.value, left.type, left.value, right.type,
                  right.value);
@@ -110,7 +119,7 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   std::copy_n(block.words.begin() + index, view.count, view.words.begin());
   op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
   op1(SLJIT_MOV32, reg(SLJIT_R1), imm(address));
-  op1(SLJIT_MOV, reg(SLJIT_R2), imm(reinterpret_cast<std::uintptr_t>(&view)));
+  host_address(SLJIT_R2, &view);
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, P), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 2);
@@ -140,8 +149,8 @@ bool CpuCompiler::Emitter::compile() {
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
   sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
-  op1(SLJIT_MOV, reg(SLJIT_S1), imm(reinterpret_cast<std::uintptr_t>(&cpu.state_)));
-  op1(SLJIT_MOV, reg(SLJIT_S2), imm(reinterpret_cast<std::uintptr_t>(&cpu)));
+  host_address(SLJIT_S1, &cpu.state_);
+  host_address(SLJIT_S2, &cpu);
   plan_entries();
   for (auto index : block.entries)
     internal_jumps.emplace_back(sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_MEM1(SLJIT_S1),
