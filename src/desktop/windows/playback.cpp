@@ -4,6 +4,9 @@
 namespace cupid::desktop {
 
 void Window::update_playback() {
+  CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
+  EnableMenuItem(menu_, FrameAdvance,
+                 MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
   CheckMenuItem(menu_, FastForward,
                 MF_BYCOMMAND | (fast_forward_toggle_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FastForward,

@@ -23,10 +23,22 @@ enum Command : unsigned {
   EndRewind,
   RewindEnabled,
   RewindMute,
+  Screenshot,
+  DisplayFit,
+  DisplayInteger,
+  DisplayStretch,
+  AspectStandard,
+  AspectPixels,
+  ViewportCustom,
+  FullscreenMonitorCurrent,
+  ClearRecentRoms,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,
-  RewindMemoryFirst = 220
+  RewindMemoryFirst = 220,
+  ViewportPresetFirst = 300,
+  FullscreenMonitorFirst = 400,
+  RecentRomFirst = 500
 };
 
 } // namespace cupid::desktop
