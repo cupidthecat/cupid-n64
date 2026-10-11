@@ -5,7 +5,9 @@
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
 #include "desktop/timing/playback_clock.hpp"
+#include "desktop/timing/playback_settings.hpp"
 #include "desktop/video/viewport.hpp"
+#include "desktop/windows/audio/devices.hpp"
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
@@ -33,6 +35,13 @@ private:
   void command(unsigned id);
   bool state_command(unsigned id);
   bool playback_command(unsigned id);
+  bool playback_settings_command(unsigned id);
+  void load_playback_settings();
+  void save_playback_settings();
+  void create_playback_settings_menu(HMENU emulation);
+  void update_playback_settings();
+  void refresh_audio_devices();
+  bool wait_for_video();
   bool display_command(unsigned id);
   bool file_command(unsigned id);
   void load_recent();
@@ -76,7 +85,7 @@ private:
   void error(const std::exception &exception);
   std::filesystem::path choose(bool firmware);
   bool stopped() const {
-    return paused_ || !active_ || modal_;
+    return paused_ || modal_ || (!active_ && focus_behavior_ == FocusBehavior::Pause);
   }
   HWND window_ = nullptr;
   HMENU menu_ = nullptr;
@@ -84,6 +93,13 @@ private:
   HMENU rewind_menu_ = nullptr;
   HMENU monitor_menu_ = nullptr;
   HMENU recent_menu_ = nullptr;
+  HMENU audio_menu_ = nullptr, audio_device_menu_ = nullptr;
+  std::vector<AudioDevice> audio_devices_;
+  static constexpr std::array<unsigned, 8> audio_latencies{20, 40, 60, 80, 120, 160, 240, 320};
+  PlaybackSync playback_sync_ = PlaybackSync::Audio;
+  FocusBehavior focus_behavior_ = FocusBehavior::Pause;
+  bool video_sync_available_ = true;
+  std::chrono::steady_clock::time_point next_audio_check_{};
   RecentRoms recent_;
   struct Monitor {
     std::wstring device;
