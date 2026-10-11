@@ -2,6 +2,7 @@
 
 #include "desktop/controls/ports.hpp"
 #include "desktop/storage/paths.hpp"
+#include "renderer/video/settings.hpp"
 #include <array>
 
 namespace cupid::desktop {
@@ -16,6 +17,7 @@ struct SessionSettings {
   MemorySettings memory;
   StoragePaths storage;
   ControllerPorts ports;
+  n64::RenderSettings graphics;
 };
 
 } // namespace cupid::desktop

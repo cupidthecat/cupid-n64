@@ -14,7 +14,7 @@ public:
   using Capture = std::function<std::vector<std::uint8_t>()>;
   using Restore = std::function<void(std::span<const std::uint8_t>)>;
   static constexpr unsigned count = 10;
-  static constexpr std::size_t maximum_bytes = 512 * 1024 * 1024;
+  static constexpr std::size_t maximum_bytes = std::size_t(3072) * 1024 * 1024;
   StateSlots(const std::filesystem::path &image, Capture capture, Restore restore);
   void select(unsigned slot);
   unsigned selected() const;

@@ -6,7 +6,7 @@ namespace cupid::n64 {
 namespace {
 
 constexpr std::uint32_t core_limit = 256 * 1024 * 1024;
-constexpr std::uint32_t video_limit = 128 * 1024 * 1024;
+constexpr std::uint32_t video_limit = 1536u * 1024 * 1024;
 
 void envelope_identity(state::Archive &archive) {
   archive.label("machine.snapshot_identity");

@@ -12,10 +12,11 @@ void identity(n64::state::Archive &archive) {
 }
 
 void frame_state(n64::state::Archive &archive, n64::VideoFrame &frame) {
-  const auto width = archive.bounded(frame.width, 0u, 4096u);
-  const auto height = archive.bounded(frame.height, 0u, 4096u);
+  const auto width = archive.bounded(frame.width, 0u, n64::maximum_frame_width);
+  const auto height = archive.bounded(frame.height, 0u, n64::maximum_frame_height);
   n64::state::Archive::require(bool(width) == bool(height));
-  const auto size = archive.vector(frame.rgba, 4096 * 4096 * 4);
+  const auto size =
+      archive.vector(frame.rgba, static_cast<std::uint32_t>(n64::maximum_frame_bytes));
   n64::state::Archive::require(size == std::uint64_t(width) * height * 4);
 }
 
@@ -62,7 +63,7 @@ std::vector<std::uint8_t> SessionState::capture(Session &session) {
   archive.bounded(session.audio_.offset_, 0u, 958u);
   archive.span(std::span(session.audio_.buffers_[session.audio_.buffer_].samples)
                    .first(session.audio_.offset_));
-  archive.owned_vector(machine, 448 * 1024 * 1024);
+  archive.owned_vector(machine, 2080u * 1024 * 1024);
   return archive.finish();
 }
 
@@ -79,7 +80,7 @@ void SessionState::restore(Session &session, std::span<const std::uint8_t> bytes
   n64::state::Archive::require((offset & 1) == 0);
   auto samples = std::make_unique<std::array<short, 960>>();
   archive.span(std::span(*samples).first(offset));
-  const auto machine = archive.owned_vector<std::uint8_t>({}, 448 * 1024 * 1024);
+  const auto machine = archive.owned_vector<std::uint8_t>({}, 2080u * 1024 * 1024);
   archive.validate();
   session.output_->restore_state(machine);
   session.audio_.clear();

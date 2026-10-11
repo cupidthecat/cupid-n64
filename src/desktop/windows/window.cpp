@@ -67,6 +67,7 @@ Window::Window(Options options) : options_(std::move(options)) {
     rewind_settings_.memory = std::size_t(choice(L"MemoryMB", rewind_memory, 256)) * 1024 * 1024;
   }
   load_display_settings();
+  load_graphics_settings();
   load_recent();
   load_playback_settings();
   load_launch_settings();
@@ -132,6 +133,7 @@ int Window::run(HINSTANCE instance, int show) {
     AppendMenuW(state_menu_, MF_STRING, StateSlotFirst + slot - 1, L"Slot");
   AppendMenuW(view, MF_STRING, Fullscreen, L"&Fullscreen");
   create_display_menu(view);
+  create_graphics_menu(view);
   create_controller_menus(emulation, view);
   AppendMenuW(view, MF_STRING, Controls, L"&Controls / help");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
@@ -460,6 +462,7 @@ void Window::load() {
   update_display();
   update_launch();
   update_controllers();
+  update_graphics();
   update_shortcuts();
   if (!settings_.empty() && !options_.frames) {
     if (!options_.rom.empty())
@@ -514,6 +517,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (graphics_command(id))
+    return;
   if (input_tools_command(id))
     return;
   if (controller_command(id))
