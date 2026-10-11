@@ -23,6 +23,7 @@ void Audio::open() {
   const auto preferred = std::find_if(devices.begin(), devices.end(), [&](const auto &device) {
     return device.identity == settings_.device;
   });
+  preferred_present_ = preferred != devices.end();
   WAVEFORMATEX format{};
   format.wFormatTag = WAVE_FORMAT_PCM;
   format.nChannels = 2;
@@ -108,7 +109,9 @@ bool Audio::recover() {
   const bool preferred = std::any_of(devices.begin(), devices.end(), [&](const auto &device) {
     return device.identity == settings_.device;
   });
-  if (available() && present && !(using_fallback() && preferred))
+  const bool returned = preferred && !preferred_present_;
+  preferred_present_ = preferred;
+  if (available() && present && !(using_fallback() && returned))
     return false;
   clear();
   close();

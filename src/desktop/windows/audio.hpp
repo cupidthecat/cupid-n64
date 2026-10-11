@@ -62,6 +62,7 @@ private:
   AudioResampler resampler_;
   Settings settings_;
   std::wstring device_name_, device_identity_;
+  bool preferred_present_ = false;
 };
 
 } // namespace cupid::desktop
