@@ -143,8 +143,8 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
       block.views.clear();
       return cpu.run_interpreted_block(clock_target);
     }
-    impl_->bytes = impl_->bytes - old_bytes + block.bytes;
-    section.bytes = section.bytes - old_bytes + block.bytes;
+    // Host addresses can change regenerated code size; retain the saved cache cost.
+    block.bytes = old_bytes;
   }
   if (tracker && !found->tracked)
     tracker->watch(physical,

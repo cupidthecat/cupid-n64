@@ -391,6 +391,22 @@ void dispatch_history_tests() {
             test::equal(rejects(c, broken), true);
             test::equal(CoreState::capture(c) == initial, true);
           }
+          auto relocated = initial;
+          constexpr std::uint64_t saved_cost = 4 * 1024 * 1024;
+          for (unsigned byte = 0; byte < 8; ++byte)
+            relocated[offset + 16 + byte] = static_cast<std::uint8_t>(saved_cost >> (byte * 8));
+          rewrite_checksum(relocated);
+          Machine restored;
+          CoreState::restore(restored.console, relocated);
+          test::equal(CoreState::capture(restored.console) == relocated, true);
+          restored.console.run_interval(budget);
+          const auto regenerated = CoreState::capture(restored.console);
+          const auto block =
+              std::search(regenerated.begin(), regenerated.end(), recipe.begin(), recipe.end());
+          test::equal(block != regenerated.end(), true);
+          if (block != regenerated.end())
+            for (unsigned byte = 0; byte < 8; ++byte)
+              test::equal(block[16 + byte], static_cast<std::uint8_t>(saved_cost >> (byte * 8)));
         }
       }
       c.run_interval(budget);

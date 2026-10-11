@@ -34,7 +34,7 @@ void CpuCompiler::Emitter::floating_convert(SlowPath &path) {
       operation >= 8 && operation <= 15 ? operation & 3 : cpu.state_.fcr31 & 3;
   floating_environment(rounding);
   if (dest_integer) {
-    floating_to_integer(source_dual, dest_dual);
+    floating_to_integer(source_dual, dest_dual, rounding);
   } else {
     const auto convert =
         source_integer

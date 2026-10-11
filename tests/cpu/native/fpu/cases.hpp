@@ -13,7 +13,7 @@ struct Case {
   std::array<unsigned, 6> clocks;
 };
 
-inline constexpr std::array<Case, 36> cases{
+inline constexpr std::array<Case, 36> x86_cases{
     {{16,
       0x0,
       0x0,
@@ -306,5 +306,21 @@ inline constexpr std::array<Case, 36> cases{
       0x820024,
       true,
       {116, 2, 116, 2, 116, 2}}}};
+
+inline constexpr auto cases = [] {
+  auto rows = x86_cases;
+#if defined(_M_ARM64) || defined(__aarch64__)
+  // ARM64 native division faults on subnormal inputs before committing a result.
+  for (unsigned index : std::array{14u, 15u, 32u, 33u}) {
+    auto &row = rows[index];
+    row.result = 0x0123456789abcde8ull;
+    row.fcr31 = 0x00820024;
+    row.fault = true;
+    const unsigned clocks = row.format == 16 ? 58 : 116;
+    row.clocks = {clocks, 2, clocks, 2, clocks, 2};
+  }
+#endif
+  return rows;
+}();
 
 } // namespace test::native_fpu

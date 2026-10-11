@@ -6,6 +6,9 @@
 #if defined(_M_X64) || defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
+#if defined(_M_ARM64) || defined(__aarch64__)
+#include "core/cpu/fpu/host/arm64.hpp"
+#endif
 
 namespace cupid::n64::floating {
 
@@ -22,6 +25,9 @@ public:
     saved_ = _mm_getcsr();
     constexpr unsigned modes[] = {0, 0x6000, 0x4000, 0x2000};
     _mm_setcsr(0x1f80 | modes[rounding & 3]);
+#elif defined(_M_ARM64) || defined(__aarch64__)
+    saved_ = arm64::read();
+    arm64::write({arm64::rounding_modes[rounding & 3], 0});
 #else
     std::feholdexcept(&saved_);
     constexpr int modes[] = {FE_TONEAREST, FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD};
@@ -32,6 +38,8 @@ public:
   ~Environment() {
 #if defined(_M_X64) || defined(__x86_64__)
     _mm_setcsr(saved_);
+#elif defined(_M_ARM64) || defined(__aarch64__)
+    arm64::write(saved_);
 #else
     std::fesetenv(&saved_);
 #endif
@@ -46,6 +54,11 @@ public:
     return ((status & 0x20) ? Inexact : 0) | ((status & 0x10) ? Underflow : 0) |
            ((status & 0x08) ? Overflow : 0) | ((status & 0x04) ? DivisionByZero : 0) |
            ((status & 0x01) ? Invalid : 0);
+#elif defined(_M_ARM64) || defined(__aarch64__)
+    const auto status = arm64::read().status;
+    return ((status & 0x10) ? Inexact : 0) | ((status & 0x08) ? Underflow : 0) |
+           ((status & 0x04) ? Overflow : 0) | ((status & 0x02) ? DivisionByZero : 0) |
+           ((status & 0x01) ? Invalid : 0);
 #else
     const auto status = std::fetestexcept(FE_ALL_EXCEPT);
     return ((status & FE_INEXACT) ? Inexact : 0) | ((status & FE_UNDERFLOW) ? Underflow : 0) |
@@ -57,6 +70,8 @@ public:
 private:
 #if defined(_M_X64) || defined(__x86_64__)
   std::uint32_t saved_;
+#elif defined(_M_ARM64) || defined(__aarch64__)
+  arm64::State saved_;
 #else
   std::fenv_t saved_;
 #endif

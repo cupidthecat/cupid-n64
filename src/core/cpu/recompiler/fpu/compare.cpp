@@ -24,7 +24,7 @@ void CpuCompiler::Emitter::floating_compare(SlowPath &path) {
   input(SLJIT_R1);
   sljit_emit_fcopy(compiler, SLJIT_COPY_TO_F64 | narrow, SLJIT_FR0, SLJIT_R0);
   sljit_emit_fcopy(compiler, SLJIT_COPY_TO_F64 | narrow, SLJIT_FR1, SLJIT_R1);
-  floating_environment(cpu.state_.fcr31 & 3);
+  floating_environment(cpu.state_.fcr31 & 3, false);
   const auto condition = instruction & 6;
   op1(SLJIT_MOV, reg(SLJIT_R1), imm(0));
   if (condition) {
