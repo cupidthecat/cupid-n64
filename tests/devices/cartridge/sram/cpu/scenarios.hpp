@@ -18,13 +18,7 @@ template <class P> void dma(P &p, bool write, unsigned ram, unsigned bus, unsign
 }
 template <class P> void observe(P &p, unsigned phase, unsigned size) {
   p.word(phase);
-  p.word(p.clock());
-  p.word(p.pc());
-  for (unsigned n = 0; n < 32; ++n)
-    p.word(p.gpr(n));
-  for (unsigned n : {9u, 11u, 12u, 13u, 16u, 30u})
-    p.word(p.control(n));
-  p.word(p.frozen());
+  cpu_bus::observe_cpu(p);
   for (unsigned n = 0; n < 13; ++n)
     p.word(p.register_word(0x04600000 + n * 4));
   p.word(p.register_word(0x04300008));

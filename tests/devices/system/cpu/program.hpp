@@ -11,6 +11,15 @@ constexpr std::array<std::uint32_t, 3> ReadWords{0x8c220000, 0x03e00008, 0};
 constexpr std::uint8_t pattern(unsigned address, unsigned seed) {
   return static_cast<std::uint8_t>(address * 47 + (address >> 7) * 13 + seed);
 }
+template <class P> void observe_cpu(P &p) {
+  p.word(p.clock());
+  p.word(p.pc());
+  for (unsigned n = 0; n < 32; ++n)
+    p.word(p.gpr(n));
+  for (unsigned n : {9u, 11u, 12u, 13u, 16u, 30u})
+    p.word(p.control(n));
+  p.word(p.frozen());
+}
 template <class P> void initialize_memory(P &p) {
   p.initial_write(0x04700008, 0);
   p.initial_write(0x0470000c, 0x14);
