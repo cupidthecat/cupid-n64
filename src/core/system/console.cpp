@@ -178,7 +178,7 @@ void Console::run_clocks(std::uint64_t clocks) {
     step();
 }
 
-void Console::synchronize() {
+void Console::synchronize(Rsp::Execution signal, std::int64_t signal_clock_target) {
   const auto clocks = static_cast<std::uint32_t>(pending_clocks());
   synchronized_clock_ = cpu_.state().clocks;
   cpu_.synchronize_timer([&] {
@@ -189,7 +189,10 @@ void Console::synchronize() {
     pif_.elapse(clocks);
     vi_.run();
     audio_.run();
-    rsp_.run();
+    if (signal == Rsp::Execution::Native)
+      rsp_.run();
+    else
+      rsp_.run_interpreted(signal_clock_target);
     rdp_.run();
     pif_.run();
     events_.advance(clocks, [this](Event pending) { event(pending); });

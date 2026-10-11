@@ -17,9 +17,8 @@ std::optional<StateDifference> StateCheckpoint::difference(const StateCheckpoint
   };
   if (!valid(*this) || !valid(actual))
     return StateDifference{"layout.invalid", 0, valid(*this), valid(actual), 0};
-  if (ranges.size() != actual.ranges.size())
-    return StateDifference{"layout.ranges", 0, ranges.size(), actual.ranges.size(), 0};
-  for (std::size_t n = 0; n < ranges.size(); ++n) {
+  const auto common = std::min(ranges.size(), actual.ranges.size());
+  for (std::size_t n = 0; n < common; ++n) {
     const auto &left = ranges[n], &right = actual.ranges[n];
     if (left.name != right.name || left.element_bytes != right.element_bytes)
       return StateDifference{"layout.field", n, 0, 0, 0};
@@ -40,6 +39,8 @@ std::optional<StateDifference> StateCheckpoint::difference(const StateCheckpoint
                                static_cast<unsigned>(width)};
     }
   }
+  if (ranges.size() != actual.ranges.size())
+    return StateDifference{"layout.ranges", common, ranges.size(), actual.ranges.size(), 0};
   return {};
 }
 

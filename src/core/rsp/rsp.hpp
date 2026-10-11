@@ -20,6 +20,7 @@ struct RspStatus {
 
 class Rsp {
 public:
+  enum class Execution { Interpreted, Native };
   Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random);
   ~Rsp();
   void power();
@@ -44,7 +45,8 @@ public:
     clock_ -= clocks;
   }
   void run();
-  void run_interpreted();
+  // Scalar replay may continue to the completed clock boundary of a native batch.
+  void run_interpreted(std::int64_t clock_target = 0);
   void connect_display(std::function<std::uint32_t(unsigned)> read,
                        std::function<void(unsigned, std::uint32_t)> write);
   RspState &state() {
@@ -110,7 +112,7 @@ private:
   static bool dual_issue(const OpInfo &first, const OpInfo &second);
   void begin_instruction();
   void end_instruction();
-  std::uint32_t idle_clocks() const;
+  std::uint32_t idle_clocks(std::int64_t clock_target = 0) const;
   void decode(std::uint32_t instruction);
   void scalar_special(std::uint32_t instruction);
   void vector_transfer(std::uint32_t instruction);
