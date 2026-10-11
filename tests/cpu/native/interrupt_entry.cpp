@@ -89,7 +89,7 @@ void prepare(native_memory::CachedFixture &f, const Case &row, bool warm) {
 } // namespace
 
 void native_interrupt_entry_tests() {
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
   for (const auto &row : cases)
     for (bool warm : {false, true})
       for (bool expired : {false, true}) {

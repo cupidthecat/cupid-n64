@@ -19,7 +19,7 @@ void cpu_replay_translation_tests() {
   std::vector<std::uint64_t> values(route0.begin(), route0.end());
   values.insert(values.end(), route1.begin(), route1.end());
   unsigned routes = 2;
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
   values.insert(values.end(), route2.begin(), route2.end());
   routes = 3;
 #endif
@@ -29,7 +29,7 @@ void cpu_replay_translation_tests() {
 
   values.assign(fetch::route0.begin(), fetch::route0.end());
   routes = 1;
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
   values.insert(values.end(), fetch::route1.begin(), fetch::route1.end());
   routes = 2;
 #endif
