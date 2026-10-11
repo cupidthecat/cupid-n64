@@ -74,8 +74,14 @@ inline bool capture(GpuFixture &fixture, const CaptureContext &context, unsigned
   equal(frame.rgba.size(), 614400);
   equal(fingerprint(frame.rgba), pixels);
   const auto registers = fixture.display_registers();
-  for (unsigned n = 0; n < registers.size(); ++n)
+  for (unsigned n = 0; n < registers.size(); ++n) {
     equal(registers[n], dpc[n]);
+    if (registers[n] != dpc[n]) {
+      constexpr const char *names[] = {"start", "end",         "current",   "status",
+                                       "clock", "buffer_busy", "pipe_busy", "tmem_busy"};
+      std::cerr << "DPC " << names[n] << " difference at register " << n << '\n';
+    }
+  }
   equal(fixture.irq(), irq);
   equal(fixture.crashed(), crashed);
   if (failures != before) {

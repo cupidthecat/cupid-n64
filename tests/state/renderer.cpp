@@ -8,11 +8,61 @@
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <unordered_set>
 
 using namespace cupid::n64;
 using namespace test::renderer_replay;
 
 namespace {
+
+void checkpoint_layout(const StateCheckpoint &checkpoint) {
+  std::unordered_set<std::string> names;
+  std::size_t end = 0;
+  for (const auto &range : checkpoint.ranges) {
+    test::equal(range.offset, end);
+    const auto unique = names.insert(range.name).second;
+    if (!unique)
+      std::cerr << "Repeated machine checkpoint field " << range.name << '\n';
+    test::equal(unique, true);
+    test::equal(range.element_bytes > 0 && range.element_bytes <= 8, true);
+    if (range.element_bytes)
+      test::equal(range.bytes % range.element_bytes, 0);
+    end += range.bytes;
+  }
+  test::equal(end + 8, checkpoint.bytes.size());
+}
+
+void same_checkpoint(const StateCheckpoint &expected, GpuFixture &fixture) {
+  const auto difference =
+      expected.difference(MachineState::checkpoint(fixture.console, *fixture.renderer));
+  if (difference)
+    std::cerr << "GPU continuation " << difference->field << '[' << difference->index
+              << "] expected " << difference->expected << ", got " << difference->actual << '\n';
+  test::equal(difference.has_value(), false);
+}
+
+void gpu_checkpoint_faults(const StateCheckpoint &checkpoint) {
+  auto actual = checkpoint;
+  unsigned tested = 0;
+  for (const auto &range : checkpoint.ranges) {
+    if (!range.name.starts_with("gpu.") || !range.bytes)
+      continue;
+    ++tested;
+    for (const auto byte : {std::size_t(0), range.bytes - 1}) {
+      actual.bytes[range.offset + byte] ^= 1;
+      const auto difference = checkpoint.difference(actual);
+      test::equal(difference.has_value(), true);
+      if (difference) {
+        test::equal(difference->field == range.name, true);
+        test::equal(difference->index, byte / range.element_bytes);
+        test::equal(difference->expected ^ difference->actual,
+                    std::uint64_t(1) << ((byte % range.element_bytes) * 8));
+      }
+      actual.bytes[range.offset + byte] ^= 1;
+    }
+  }
+  test::equal(tested > 200, true);
+}
 
 void same_frame(const VideoFrame &actual, const VideoFrame &expected) {
   test::equal(actual.width, expected.width);
@@ -68,6 +118,10 @@ void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool 
   else
     fixture.renderer->frame(false);
   const auto snapshot = MachineState::capture(fixture.console, *fixture.renderer);
+  const auto checkpoint = MachineState::checkpoint(fixture.console, *fixture.renderer);
+  checkpoint_layout(checkpoint);
+  test::equal(checkpoint.bytes == snapshot, true);
+  gpu_checkpoint_faults(checkpoint);
   const auto initial_frame = fixture.renderer->read_frame();
   test::equal(initial_frame.rgba.empty(), !ready);
   fixture.display_write(1, end);
@@ -76,15 +130,19 @@ void continuation(GpuFixture &fixture, const RenderCase &input, bool xbus, bool 
   test::equal(future_frame.rgba.empty(), false);
   test::equal(fixture.crashed(), false);
   const auto future = MachineState::capture(fixture.console, *fixture.renderer);
+  const auto future_checkpoint = MachineState::checkpoint(fixture.console, *fixture.renderer);
+  test::equal(future_checkpoint.bytes == future, true);
 
   perturb(fixture);
   MachineState::restore(fixture.console, *fixture.renderer, snapshot);
   test::equal(MachineState::capture(fixture.console, *fixture.renderer) == snapshot, true);
+  same_checkpoint(checkpoint, fixture);
   same_frame(fixture.renderer->read_frame(), initial_frame);
   fixture.display_write(1, end);
   fixture.console.display().advance(31);
   same_frame(fixture.renderer->frame(true), future_frame);
   test::equal(MachineState::capture(fixture.console, *fixture.renderer) == future, true);
+  same_checkpoint(future_checkpoint, fixture);
 }
 
 void continuation_tests() {

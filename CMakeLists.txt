@@ -109,6 +109,7 @@ add_library(cupid_core
   src/core/cartridge/profile/boot.cpp
   src/core/cartridge/profile/profile.cpp
   src/core/system/console.cpp
+  src/core/state/checkpoint.cpp
   src/core/state/archive.cpp
   src/core/state/core_state.cpp
   src/core/state/rsp_cache.cpp
