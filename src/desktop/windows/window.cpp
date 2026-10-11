@@ -244,6 +244,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   case WM_EXITMENULOOP:
   case WM_EXITSIZEMOVE:
     modal_ = false;
+    update_fast_forward();
     rebase();
     return 0;
   case WM_KEYDOWN:

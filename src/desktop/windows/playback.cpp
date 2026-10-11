@@ -7,7 +7,8 @@ void Window::update_playback() {
   CheckMenuItem(menu_, FastForward,
                 MF_BYCOMMAND | (fast_forward_toggle_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FastForward,
-                 MF_BYCOMMAND | (session_ && !stopped() && !rewinding_ ? MF_ENABLED : MF_GRAYED));
+                 MF_BYCOMMAND |
+                     (session_ && !paused_ && active_ && !rewinding_ ? MF_ENABLED : MF_GRAYED));
   const bool muted = rewinding_ ? rewind_was_muted_ : audio_.muted;
   CheckMenuItem(menu_, Mute, MF_BYCOMMAND | (muted ? MF_CHECKED : MF_UNCHECKED));
   if (rewind_menu_) {
@@ -53,7 +54,7 @@ void Window::stop_fast_forward() {
 
 bool Window::playback_command(unsigned id) {
   if (id == FastForward) {
-    if (session_ && !stopped() && !rewinding_)
+    if (session_ && !paused_ && active_ && !rewinding_)
       fast_forward_toggle_ = !fast_forward_toggle_;
     update_fast_forward();
     return true;
