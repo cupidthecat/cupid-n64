@@ -59,6 +59,8 @@ enum Command : unsigned {
   ShaderReload,
   ShaderDetails,
   ShaderFormat,
+  ImportSettings,
+  ExportSettings,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,

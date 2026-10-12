@@ -102,7 +102,7 @@ bool Window::launch_command(unsigned id) {
       save_launch_settings();
     } else if (id == Reload && session_) {
       validate_launch(options_);
-      load();
+      load(LaunchPreference::Preserve);
     } else if (id == DiskChange && session_ && session_->has_disk_drive()) {
       const auto current = session_->disk_image();
       const auto directory = current.empty() ? options_.ipl.parent_path() : current.parent_path();

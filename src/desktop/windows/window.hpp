@@ -18,6 +18,7 @@
 #include "desktop/windows/video/shaders/processor.hpp"
 #include <array>
 #include <chrono>
+#include <optional>
 #include <string_view>
 
 namespace cupid::desktop {
@@ -37,6 +38,9 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool settings_command(unsigned id);
+  void apply_imported_settings();
+  void load_history_settings();
   bool input_tools_command(unsigned id);
   bool graphics_command(unsigned id);
   void load_graphics_settings();
@@ -116,7 +120,8 @@ private:
   void update_states();
   void state_loaded();
   void refresh_frame();
-  void load();
+  enum class LaunchPreference { Remember, Preserve };
+  void load(LaunchPreference preference = LaunchPreference::Remember);
   void paint();
   void advance();
   struct Input {
@@ -146,6 +151,7 @@ private:
   ShaderProcessor shader_;
   std::wstring shader_message_;
   FirmwareFiles firmware_files_;
+  std::optional<LaunchFiles> launch_on_restart_;
   SessionSettings session_settings_;
   std::wstring controller_key_;
   PlayerMappings player_mappings_;

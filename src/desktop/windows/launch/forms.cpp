@@ -111,6 +111,8 @@ void Window::firmware_dialog() {
                             : firmware_files_.arcade;
     if (!options_.ipl.empty())
       options_.ipl = firmware_files_.ipl;
+    if (launch_on_restart_ && !launch_on_restart_->ipl.empty())
+      launch_on_restart_->ipl = firmware_files_.ipl;
     reload_pending_ |= session_ != nullptr;
     save_launch_settings();
   }
