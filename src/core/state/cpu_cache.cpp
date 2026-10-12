@@ -183,7 +183,7 @@ void CoreState::visit(state::Archive &a, CpuCompiler &compiler, InstructionTrack
       cache.sections.swap(restored->sections);
       cache.other_sections.swap(restored->other_sections);
       cache.bytes = restored->bytes;
-      cache.trace_bytes = 0;
+      cache.instrumented_bytes = 0;
       cache.active = {};
     });
 }

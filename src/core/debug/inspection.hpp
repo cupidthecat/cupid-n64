@@ -77,6 +77,12 @@ public:
   static std::vector<DeviceProperty> properties(const Console &console, DeviceId device);
   static std::optional<std::uint32_t> instruction(const Console &console, DebugProcessor processor,
                                                   std::uint64_t address);
+  static std::optional<std::uint8_t> data_byte(const Console &console, DebugProcessor processor,
+                                               std::uint64_t address);
+
+private:
+  static std::optional<std::uint32_t> physical_word(const Console &console, std::uint32_t physical,
+                                                    bool cached);
 };
 
 } // namespace cupid::n64

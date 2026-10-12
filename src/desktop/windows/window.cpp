@@ -153,6 +153,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(developer, MF_STRING, DeviceProperties, L"Device &properties...");
   AppendMenuW(developer, MF_STRING, Disassembly, L"&Disassembly...");
   AppendMenuW(developer, MF_STRING, InstructionTrace, L"Instruction &trace...");
+  AppendMenuW(developer, MF_STRING, CoreDiagnostics, L"Core dia&gnostics...");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
@@ -599,6 +600,8 @@ void Window::command(unsigned id) {
     }
   } else if (id == FrameAdvance && session_ && paused_) {
     session_->advance_frame(inputs());
+    if (apply_homebrew_control() && quit_)
+      return;
     frame_ready_ = false;
     last_frame_ = session_->frames;
     refresh_frame();
@@ -731,6 +734,11 @@ void Window::advance() {
   const auto interval_start = session_->clocks();
   do {
     session_->run();
+    if (apply_homebrew_control()) {
+      if (quit_)
+        return;
+      break;
+    }
   } while (session_->frames == last_frame_ && session_->clocks() - interval_start < 1875000);
   update_feedback();
   if (session_->frames == last_frame_)

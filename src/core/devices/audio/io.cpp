@@ -25,6 +25,8 @@ void AudioInterface::write_word(std::uint32_t address, std::uint32_t value) {
     break;
   case 1:
     if (state_.count < 2) {
+      if (auto *diagnostics = ram_.diagnostics())
+        diagnostic_origins_[state_.count] = diagnostics->origin();
       if (state_.count == 0)
         interrupts_.raise(Interrupt::Audio);
       state_.lengths[state_.count++] = value & 0x0003fff8;

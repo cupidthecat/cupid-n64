@@ -12,7 +12,8 @@ void PeripheralInterface::dma_read() {
     const auto address = bus_address_ + offset;
     if (offset && !(address & page_mask))
       select(address);
-    write_half(static_cast<std::uint16_t>(ram_.read(dram_address_ + offset, 2)));
+    write_half(static_cast<std::uint16_t>(
+        ram_.read(dram_address_ + offset, 2, MemoryRequestor::PeripheralDma)));
   }
 }
 
@@ -41,11 +42,11 @@ void PeripheralInterface::dma_write() {
     }
     if (first && length < 127 - misalignment) {
       for (int n = 0; n < length - misalignment; ++n)
-        ram_.write(dram_address_++, 1, buffer[n]);
+        ram_.write(dram_address_++, 1, buffer[n], MemoryRequestor::PeripheralDma);
     } else {
       for (int n = 0; n < length - misalignment; n += 2) {
-        ram_.write(dram_address_++, 1, buffer[n]);
-        ram_.write(dram_address_++, 1, buffer[n + 1]);
+        ram_.write(dram_address_++, 1, buffer[n], MemoryRequestor::PeripheralDma);
+        ram_.write(dram_address_++, 1, buffer[n + 1], MemoryRequestor::PeripheralDma);
       }
     }
     dram_address_ = (dram_address_ + 7) & ~7u;

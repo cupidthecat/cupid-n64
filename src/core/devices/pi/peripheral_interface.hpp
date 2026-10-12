@@ -45,6 +45,7 @@ private:
   std::vector<Device> devices_;
   int selected_ = -1;
   PeripheralTiming timing_;
+  std::uint32_t diagnostic_address_ = 0;
   Domain domain1_, domain2_;
   std::uint32_t dram_address_ = 0;
   std::uint32_t bus_address_ = 0;

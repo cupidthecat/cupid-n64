@@ -46,17 +46,26 @@ void Pif::run() {
 }
 
 std::uint32_t Pif::read_internal(std::uint32_t address) const {
+  const auto physical = 0x1fc00000 | (address & 0x7fc);
   address &= 0x7fc;
   const auto data =
       address < 0x7c0 ? std::span<const std::uint8_t>(rom_) : std::span<const std::uint8_t>(ram_);
-  if (address < 0x7c0 && locked_)
+  if (address < 0x7c0 && locked_) {
+    if (auto *log = diagnostics())
+      log->register_access(DiagnosticDevice::Pif, physical, 0, false);
     return 0;
+  }
   const auto offset = address < 0x7c0 ? address : address & 63;
-  return (std::uint32_t(data[offset]) << 24) | (std::uint32_t(data[offset + 1]) << 16) |
-         (std::uint32_t(data[offset + 2]) << 8) | data[offset + 3];
+  const auto value = (std::uint32_t(data[offset]) << 24) | (std::uint32_t(data[offset + 1]) << 16) |
+                     (std::uint32_t(data[offset + 2]) << 8) | data[offset + 3];
+  if (auto *log = diagnostics())
+    log->register_access(DiagnosticDevice::Pif, physical, value, false);
+  return value;
 }
 
 void Pif::write_internal(std::uint32_t address, std::uint32_t value) {
+  if (auto *log = diagnostics())
+    log->register_access(DiagnosticDevice::Pif, 0x1fc00000 | (address & 0x7fc), value, true);
   address &= 0x7fc;
   if (address < 0x7c0)
     return;
@@ -78,13 +87,14 @@ void Pif::write_word(std::uint32_t address, std::uint32_t value) {
 void Pif::dma_read(std::uint32_t address, std::uint32_t dram_address) {
   access(true, true);
   for (unsigned offset = 0; offset < 64; offset += 4)
-    dram_.write(dram_address + offset, 4, read_internal(address + offset));
+    dram_.write(dram_address + offset, 4, read_internal(address + offset),
+                MemoryRequestor::SerialDma);
 }
 
 void Pif::dma_write(std::uint32_t address, std::uint32_t dram_address) {
   for (unsigned offset = 0; offset < 64; offset += 4)
-    write_internal(address + offset,
-                   static_cast<std::uint32_t>(dram_.read(dram_address + offset, 4)));
+    write_internal(address + offset, static_cast<std::uint32_t>(dram_.read(
+                                         dram_address + offset, 4, MemoryRequestor::SerialDma)));
   access(false, true);
   tick();
 }

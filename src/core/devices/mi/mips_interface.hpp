@@ -19,8 +19,10 @@ public:
   void write_word(std::uint32_t address, std::uint32_t value);
   BusRead read_rdram(std::uint32_t address, unsigned bytes);
   BusWrite write_rdram(std::uint32_t address, unsigned bytes, std::uint64_t value);
-  BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words);
-  BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words);
+  BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                      MemoryRequestor requestor = MemoryRequestor::Host);
+  BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                       MemoryRequestor requestor = MemoryRequestor::Host);
   bool frozen() const {
     return frozen_;
   }

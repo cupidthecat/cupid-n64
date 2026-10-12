@@ -31,6 +31,10 @@ std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
   visit(*archive, console);
   archive->validate();
   archive->defer([&console, frequency] {
+    console.diagnostics_.reset_context();
+    console.rsp_.pending_origin_ = console.rsp_.current_origin_ = {};
+    console.audio_.diagnostic_origins_ = {};
+    console.si_.read_origin_ = console.si_.write_origin_ = {};
     if (console.audio_.frequency_ != frequency && console.audio_.rate_)
       console.audio_.rate_(console.audio_.frequency_);
   });

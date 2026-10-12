@@ -3,6 +3,8 @@
 namespace cupid::n64 {
 
 bool RspCompiler::Emitter::memory(std::uint32_t instruction, std::uint32_t pc) {
+  if (diagnostics)
+    return false;
   const auto opcode = instruction >> 26;
   unsigned bytes;
   switch (opcode) {

@@ -33,6 +33,7 @@ void Rsp::power() {
   state_ = {};
   pipeline_ = {};
   pending_ = current_ = {};
+  pending_origin_ = current_origin_ = {};
   pc_ = 0;
   pipeline_pc_ = next_pc_ = 4;
   clock_ = 0;
@@ -60,9 +61,12 @@ std::span<std::uint8_t, 4096> Rsp::imem() {
   return std::span(memory_).last<4096>();
 }
 
-std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes) const {
+std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes,
+                              MemoryRequestor requestor) const {
   const auto region = address & 0x1000;
   address = (address & 0xfff) & ~(bytes - 1u);
+  if (diagnostics_ && requestor != MemoryRequestor::Host)
+    diagnostics_->local_access(region | address, bytes, false, requestor);
   std::uint64_t value = 0;
   for (unsigned n = 0; n < bytes; ++n)
     value = (value << 8) | memory_[region | (address + n)];
@@ -72,6 +76,8 @@ std::uint64_t Rsp::read_local(std::uint32_t address, unsigned bytes) const {
 void Rsp::write_local(std::uint32_t address, unsigned bytes, std::uint64_t value) {
   const auto region = address & 0x1000;
   address = (address & 0xfff) & ~(bytes - 1u);
+  if (diagnostics_)
+    diagnostics_->local_access(region | address, bytes, true);
   if (region) {
     compiler_->invalidate(address, bytes);
     if (invalidate_)

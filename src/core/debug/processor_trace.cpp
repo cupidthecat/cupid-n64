@@ -32,6 +32,8 @@ void Rsp::trace_instruction(std::uint32_t pc, std::uint32_t instruction,
                     .pc = pc,
                     .instruction = instruction,
                     .delay_slot = delay_slot_});
+  if (diagnostics_)
+    diagnostics_->rsp_instruction();
 }
 
 } // namespace cupid::n64

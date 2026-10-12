@@ -4,7 +4,7 @@ namespace cupid::n64 {
 
 std::uint32_t Rsp::read_word(std::uint32_t address) {
   if (address <= 0x0403ffff)
-    return static_cast<std::uint32_t>(read_local(address, 4));
+    return static_cast<std::uint32_t>(read_local(address, 4, MemoryRequestor::CpuUncached));
   if (address <= 0x0407ffff)
     return read_io(address);
   return read_status(address);
@@ -19,6 +19,28 @@ void Rsp::write_word(std::uint32_t address, std::uint32_t value, std::int64_t cl
 }
 
 std::uint32_t Rsp::read_io(std::uint32_t address) {
+  const auto value = read_io_impl(address);
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rsp, 0x04040000 | (address & 31), value, false);
+  return value;
+}
+
+std::uint32_t Rsp::read_io_impl(std::uint32_t address) {
+  const auto index = (address & 31) >> 2;
+  if (index == 4) {
+    if (sync_)
+      sync_();
+  } else if (index == 7) {
+    const auto value = peek_io(address);
+    status_.semaphore = true;
+    if (sync_)
+      sync_();
+    return value;
+  }
+  return peek_io(address);
+}
+
+std::uint32_t Rsp::peek_io(std::uint32_t address) const {
   switch ((address & 31) >> 2) {
   case 0:
     return current_.local_address;
@@ -28,8 +50,6 @@ std::uint32_t Rsp::read_io(std::uint32_t address) {
   case 3:
     return current_.length | (current_.count << 12) | (current_.skip << 20);
   case 4:
-    if (sync_)
-      sync_();
     return unsigned(status_.halted) | (unsigned(status_.broken) << 1) |
            (unsigned(dma_busy()) << 2) | (unsigned(dma_full()) << 3) |
            (unsigned(status_.io_full) << 4) | (unsigned(status_.single_step) << 5) |
@@ -38,19 +58,16 @@ std::uint32_t Rsp::read_io(std::uint32_t address) {
     return dma_full();
   case 6:
     return dma_busy();
-  case 7: {
-    const auto value = status_.semaphore;
-    status_.semaphore = true;
-    if (sync_)
-      sync_();
-    return value;
-  }
+  case 7:
+    return status_.semaphore;
   default:
     return 0;
   }
 }
 
 void Rsp::write_io(std::uint32_t address, std::uint32_t value, std::int64_t clock_difference) {
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rsp, 0x04040000 | (address & 31), value, true);
   switch ((address & 31) >> 2) {
   case 0:
     pending_.local_address = value & 0x1ff8;
@@ -63,6 +80,7 @@ void Rsp::write_io(std::uint32_t address, std::uint32_t value, std::int64_t cloc
     pending_.length = value & 0xff8;
     pending_.count = (value >> 12) & 255;
     pending_.skip = (value >> 20) & 0xff8;
+    pending_origin_ = diagnostics_ ? diagnostics_->origin() : DiagnosticOrigin{};
     full_read_ = (address & 4) == 0;
     full_write_ = !full_read_;
     start_dma(clock_difference);
@@ -105,12 +123,17 @@ void Rsp::write_io(std::uint32_t address, std::uint32_t value, std::int64_t cloc
 }
 
 std::uint32_t Rsp::read_status(std::uint32_t address) {
-  if (((address & 31) >> 2) == 0)
-    return status_.halted ? pc_ : static_cast<std::uint32_t>(random_() & 0xfff);
-  return 0;
+  const auto value = ((address & 31) >> 2) == 0
+                         ? status_.halted ? pc_ : static_cast<std::uint32_t>(random_() & 0xfff)
+                         : 0;
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rsp, 0x04080000 | (address & 31), value, false);
+  return value;
 }
 
 void Rsp::write_status(std::uint32_t address, std::uint32_t value) {
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rsp, 0x04080000 | (address & 31), value, true);
   if (((address & 31) >> 2) == 0) {
     pc_ = value & 0xffc;
     pipeline_pc_ = pc_;

@@ -2,9 +2,10 @@
 
 namespace cupid::n64 {
 
-RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block, bool tracing)
+RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block, bool tracing, bool diagnostics)
     : rsp(rsp), block(block), compiler(sljit_create_compiler(nullptr)), start(block.key.pc),
-      tracing(tracing) {
+      tracing(tracing), diagnostics(diagnostics) {
+  block.homebrew = diagnostics && rsp.diagnostics_ && rsp.diagnostics_->homebrew();
   pipeline.single_issue = block.key.flags & 8;
   for (unsigned n = 0; n < pipeline.previous.size(); ++n) {
     pipeline.previous[n].gpr = static_cast<std::uint32_t>(block.key.registers[n]);
@@ -102,13 +103,13 @@ bool RspCompiler::Emitter::compile() {
   bool delay = false;
   for (unsigned n = 0; n < 1024;) {
     const auto first_opcode = word(n);
-    const auto first = Rsp::decode_info(first_opcode);
+    const auto first = Rsp::decode_info(first_opcode, block.homebrew);
     auto second_opcode = 0u;
     Rsp::OpInfo second;
     bool dual = false;
-    if (!pipeline.single_issue && !(first.flags & Rsp::Branch) && n + 1 < 1024) {
+    if (!pipeline.single_issue && !(first.flags & (Rsp::Branch | Rsp::EndBlock)) && n + 1 < 1024) {
       second_opcode = word(n + 1);
-      second = Rsp::decode_info(second_opcode);
+      second = Rsp::decode_info(second_opcode, block.homebrew);
       dual = Rsp::dual_issue(first, second);
     }
     pipeline.clocks = 0;
@@ -135,7 +136,8 @@ bool RspCompiler::Emitter::compile() {
     }
     const bool branched = first_branch || second_branch;
     const auto next = (start + n * 4) & 0xfff;
-    if (branched || n == 1024)
+    const bool terminal = (first.flags | (dual ? second.flags : 0)) & Rsp::EndBlock;
+    if (branched || terminal || n == 1024)
       commit(next, branched);
     const auto may_halt = [](std::uint32_t opcode) {
       return ((opcode >> 26) == 0 && (opcode & 63) == 13) ||
@@ -143,7 +145,7 @@ bool RspCompiler::Emitter::compile() {
     };
     if (may_halt(first_opcode) || (dual && may_halt(second_opcode)))
       halt_exit(next, branched);
-    if (n == 1024) {
+    if (terminal || n == 1024) {
       flush_clocks();
       sljit_emit_return_void(compiler);
       break;

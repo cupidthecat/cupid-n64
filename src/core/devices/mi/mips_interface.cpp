@@ -88,7 +88,7 @@ void MipsInterface::freeze() {
 
 BusRead MipsInterface::read_rdram(std::uint32_t address, unsigned bytes) {
   if (address <= 0x03efffff)
-    return {ram_.read(address, bytes, ebus_)};
+    return {ram_.read(address, bytes, ebus_, MemoryRequestor::CpuUncached)};
   const auto value = ram_.read_word(address);
   const auto second = bytes == 8 ? ram_.read_word(address + 4) : 0;
   std::uint64_t result = value;
@@ -117,7 +117,7 @@ void MipsInterface::repeat_write(std::uint32_t address, unsigned bytes, std::uin
     return;
   length = end - address;
   const auto transfer = [&](unsigned count) {
-    ram_.write(address, count, value >> ((8 - count) * 8));
+    ram_.write(address, count, value >> ((8 - count) * 8), MemoryRequestor::CpuUncached);
     value = count == 8 ? value : std::rotl(value, static_cast<int>(count * 8));
     address = (address & ~0x7ffu) | ((address + count) & 0x7ff);
     length -= count;
@@ -144,7 +144,7 @@ BusWrite MipsInterface::write_rdram(std::uint32_t address, unsigned bytes, std::
     if (repeat)
       repeat_write(address, bytes, value);
     else
-      ram_.write(address, bytes, value, ebus_);
+      ram_.write(address, bytes, value, ebus_, MemoryRequestor::CpuUncached);
     return {};
   }
   auto word = static_cast<std::uint32_t>(bytes == 8 ? value >> 32 : value);
@@ -154,11 +154,12 @@ BusWrite MipsInterface::write_rdram(std::uint32_t address, unsigned bytes, std::
   return {};
 }
 
-BusWrite MipsInterface::read_burst(std::uint32_t address, std::span<std::uint32_t> words) {
+BusWrite MipsInterface::read_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                                   MemoryRequestor requestor) {
   if (ebus_)
     freeze();
   else if (address <= 0x03efffff)
-    ram_.read_burst(address, words);
+    ram_.read_burst(address, words, requestor);
   else {
     std::fill(words.begin(), words.end(), 0);
     words.front() = ram_.read_word(address);
@@ -166,11 +167,12 @@ BusWrite MipsInterface::read_burst(std::uint32_t address, std::span<std::uint32_
   return {};
 }
 
-BusWrite MipsInterface::write_burst(std::uint32_t address, std::span<const std::uint32_t> words) {
+BusWrite MipsInterface::write_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                                    MemoryRequestor requestor) {
   if (ebus_)
     freeze();
   else if (address <= 0x03efffff)
-    ram_.write_burst(address, words);
+    ram_.write_burst(address, words, requestor);
   else
     ram_.write_word(address, words.front());
   return {};

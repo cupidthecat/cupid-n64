@@ -65,6 +65,15 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   op2(SLJIT_AND, reg(SLJIT_R3), reg(SLJIT_R1), imm(~0xfffull));
   path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R3, 0,
                                       SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, tag)));
+  if (diagnostics && !partial) {
+    op1(SLJIT_MOV, reg(SLJIT_R2), reg(SLJIT_R1));
+    op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
+    op1(SLJIT_MOV32, reg(SLJIT_R1), imm(instruction));
+    sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3V(P, 32, W), SLJIT_IMM,
+                     SLJIT_FUNC_ADDR(profile_memory));
+    address();
+    line();
+  }
   if (full)
     begin(false);
   // Cache hits keep the native instruction batch pending through the memory operation.
@@ -160,8 +169,14 @@ void CpuCompiler::Emitter::emit_slow_paths() {
     op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
     op1(SLJIT_MOV32, reg(SLJIT_R1), imm(path.instruction));
     op1(SLJIT_MOV, reg(SLJIT_R2), imm(path.clocks));
-    sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
-                     SLJIT_FUNC_ADDR(helper));
+    if (diagnostics) {
+      op1(SLJIT_MOV, reg(SLJIT_R3), imm(path.completion_clocks));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4(W, P, 32, W, W), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(profiled_helper));
+    } else {
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, W), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(helper));
+    }
     op1(SLJIT_MOV, reg(SLJIT_S3), reg(SLJIT_R0));
     advance(path.completion_clocks);
     return_if(SLJIT_NOT_EQUAL, reg(SLJIT_S3), imm(0), 0);

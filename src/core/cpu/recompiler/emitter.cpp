@@ -4,9 +4,9 @@
 namespace cupid::n64 {
 
 CpuCompiler::Emitter::Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc,
-                              std::uint32_t physical, bool wide, bool tracing)
+                              std::uint32_t physical, bool wide, bool tracing, bool diagnostics)
     : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), start_pc(pc), pc(pc),
-      physical(physical), wide(wide), tracing(tracing) {}
+      physical(physical), wide(wide), tracing(tracing), diagnostics(diagnostics) {}
 
 CpuCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);
@@ -49,12 +49,20 @@ void CpuCompiler::Emitter::store(unsigned dest, Operand source, bool word) {
 
 sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
                                      const Impl::Block::InstructionView *view) {
+  Cpu::ProfileClockScope profile_clock(*cpu, 0);
   auto &line = cpu->icache_[(cpu->state_.pc >> 5) & 511];
   if (line.hit(physical))
     return 1;
+  cpu->native_fetch_miss_ = true;
   const auto index = static_cast<std::uint32_t>(cpu->state_.pc) & 0xfe0;
   const auto data = cpu->bus_.cache_fill_data((physical & ~0xfffu) | index);
   if (data.size() >= line.words.size()) {
+    if (cpu->diagnostics_) {
+      const auto address = (physical & ~0xfffu) | index;
+      cpu->diagnostics_->cache_access(true, false);
+      cpu->diagnostics_->traffic(MemoryRequestor::InstructionCache, 32, false);
+      cpu->diagnostics_->memory_access(MemoryRequestor::InstructionCache, address, 32, false);
+    }
     ++cpu->instruction_cache_generation_;
     cpu->advance_clocks(96);
     line.tag = physical & ~0xfffu;
@@ -71,6 +79,7 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {
       const auto instruction = line.words[((physical >> 2) ^ reverse) & 7];
       cpu->trace_instruction(cpu->state_.pc, instruction, 2);
+      Cpu::ProfileClockScope instruction_clock(*cpu, 2);
       helper(cpu, instruction, 0);
       return 0;
     }
@@ -97,6 +106,12 @@ sljit_sw CpuCompiler::Emitter::helper_impl(Cpu *cpu, std::uint32_t instruction, 
 
 sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
   return helper_impl<false>(cpu, instruction, clocks);
+}
+
+sljit_sw CpuCompiler::Emitter::profiled_helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks,
+                                               sljit_uw completion_clocks) {
+  Cpu::ProfileClockScope profile_clock(*cpu, static_cast<unsigned>(completion_clocks));
+  return helper(cpu, instruction, clocks);
 }
 
 sljit_sw CpuCompiler::Emitter::cop2_memory_helper(Cpu *cpu, std::uint32_t instruction,
@@ -182,6 +197,11 @@ bool CpuCompiler::Emitter::compile() {
       op1(SLJIT_MOV32, reg(SLJIT_R3), imm(cycles + 2));
       sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4V(P, W, 32, 32), SLJIT_IMM,
                        SLJIT_FUNC_ADDR(trace));
+    }
+    if (diagnostics) {
+      op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS1V(P), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(profile_fetch));
     }
     const auto opcode = instruction >> 26;
     const auto function = instruction & 63;

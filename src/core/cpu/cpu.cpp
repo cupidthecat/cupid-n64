@@ -21,6 +21,7 @@ void Cpu::power() {
   dcache_ = {};
   control_latch_ = cop2_latch_ = count_ticks_ = 0;
   count_clock_ = 0;
+  profile_deferred_clocks_ = 0;
   llbit_ = nmi_pending_ = false;
   native_memory_order_ = false;
   control_[Status] = 0x3450ff04;
@@ -28,6 +29,8 @@ void Cpu::power() {
   control_[PrId] = 0x0b22;
   state_.gpr[29] = 0xffffffffa4001ff0;
   set_pc(0xffffffffbfc00000);
+  if (diagnostics_)
+    diagnostics_->reset_context();
 }
 
 void Cpu::set_pc(std::uint64_t address) {
@@ -152,6 +155,10 @@ void Cpu::execute(std::uint32_t instruction) {
 }
 
 void Cpu::raise(Exception code, unsigned coprocessor, bool tlb_miss) {
+  if (diagnostics_) {
+    diagnostics_->synchronize_cpu();
+    diagnostics_->exception(static_cast<unsigned>(code), delay_slot_);
+  }
   if (code != Exception::Interrupt && trace_ && trace_->enabled(TraceKind::Exception))
     trace_->record({.kind = TraceKind::Exception,
                     .clock = state_.clocks,

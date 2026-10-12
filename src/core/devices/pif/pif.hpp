@@ -29,6 +29,9 @@ public:
   void dma_read(std::uint32_t address, std::uint32_t dram_address);
   void dma_write(std::uint32_t address, std::uint32_t dram_address);
   std::uint32_t estimate_timing() const;
+  Diagnostics *diagnostics() const {
+    return dram_.diagnostics();
+  }
   State state() const {
     return state_;
   }

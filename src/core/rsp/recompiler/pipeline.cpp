@@ -3,9 +3,20 @@
 namespace cupid::n64 {
 
 void RspCompiler::Emitter::flush_clocks() {
-  if (cycles)
+  if (cycles) {
     op2(SLJIT_ADD, field(&rsp.clock_), field(&rsp.clock_), imm(cycles));
+    if (diagnostics) {
+      op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S1));
+      op1(SLJIT_MOV32, reg(SLJIT_R1), imm(cycles));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS2V(P, 32), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(profile_clocks));
+    }
+  }
   cycles = 0;
+}
+
+void RspCompiler::Emitter::profile_clocks(Rsp *rsp, std::uint32_t clocks) {
+  rsp->diagnostics_->rsp_cycles(clocks, false);
 }
 
 void RspCompiler::Emitter::commit(std::uint32_t pc, bool branch) {
@@ -30,7 +41,10 @@ void RspCompiler::Emitter::begin_delay() {
 }
 
 void RspCompiler::Emitter::end_delay(Rsp *rsp) {
+  const auto before = rsp->pipeline_.clocks;
   rsp->end_instruction();
+  if (rsp->diagnostics_)
+    rsp->diagnostics_->rsp_cycles(rsp->pipeline_.clocks - before, false);
 }
 
 void RspCompiler::Emitter::halt_exit(std::uint32_t pc, bool branch) {

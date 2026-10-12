@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/debug/diagnostics.hpp"
 #include "core/devices/ri/ram_interface.hpp"
 #include "core/memory/instruction_tracker.hpp"
 #include "core/timing/random.hpp"
@@ -15,11 +16,28 @@ namespace cupid::n64 {
 class Rdram {
 public:
   Rdram(RamInterface &interface, RandomGenerator &random, bool expansion = true);
+  void connect_diagnostics(Diagnostics *diagnostics) {
+    diagnostics_ = diagnostics;
+  }
+  Diagnostics *diagnostics() const {
+    return diagnostics_;
+  }
   void power(bool reset = false);
-  std::uint64_t read(std::uint32_t address, unsigned bytes, bool ebus = false);
-  void write(std::uint32_t address, unsigned bytes, std::uint64_t value, bool ebus = false);
-  void read_burst(std::uint32_t address, std::span<std::uint32_t> words);
-  void write_burst(std::uint32_t address, std::span<const std::uint32_t> words);
+  std::uint64_t read(std::uint32_t address, unsigned bytes, bool ebus = false,
+                     MemoryRequestor requestor = MemoryRequestor::Host);
+  std::uint64_t read(std::uint32_t address, unsigned bytes, MemoryRequestor requestor) {
+    return read(address, bytes, false, requestor);
+  }
+  void write(std::uint32_t address, unsigned bytes, std::uint64_t value, bool ebus = false,
+             MemoryRequestor requestor = MemoryRequestor::Host);
+  void write(std::uint32_t address, unsigned bytes, std::uint64_t value,
+             MemoryRequestor requestor) {
+    write(address, bytes, value, false, requestor);
+  }
+  void read_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                  MemoryRequestor requestor = MemoryRequestor::Host);
+  void write_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                   MemoryRequestor requestor = MemoryRequestor::Host);
   std::uint32_t read_word(std::uint32_t address);
   void write_word(std::uint32_t address, std::uint32_t value, unsigned repeat_length = 0);
   std::span<std::uint32_t> words() {
@@ -45,6 +63,7 @@ public:
   }
 
 private:
+  std::uint32_t read_word_impl(std::uint32_t address);
   friend class Inspection;
   friend class CoreState;
   friend class HardwareRenderer;
@@ -93,6 +112,7 @@ private:
   std::span<std::uint8_t> hidden_view_;
   std::array<Chip, 4> chips_{};
   bool identity_ = false;
+  Diagnostics *diagnostics_ = nullptr;
 };
 
 } // namespace cupid::n64

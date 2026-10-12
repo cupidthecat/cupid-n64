@@ -65,6 +65,13 @@ public:
     }
     return result;
   }
+  virtual BusWrite read_cache_burst(std::uint32_t address, std::span<std::uint32_t> words, bool) {
+    return read_burst(address, words);
+  }
+  virtual BusWrite write_cache_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                                     bool) {
+    return write_burst(address, words);
+  }
 };
 
 } // namespace cupid::n64

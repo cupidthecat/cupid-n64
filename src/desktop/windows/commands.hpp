@@ -65,6 +65,7 @@ enum Command : unsigned {
   DeviceProperties,
   Disassembly,
   InstructionTrace,
+  CoreDiagnostics,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,

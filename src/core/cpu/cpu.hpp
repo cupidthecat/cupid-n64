@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/cpu/state.hpp"
-#include "core/debug/trace.hpp"
+#include "core/debug/diagnostics.hpp"
 #include "core/memory/bus.hpp"
 #include "core/timing/random.hpp"
 #include <functional>
@@ -30,6 +30,8 @@ public:
              !std::is_same_v<std::remove_cvref_t<Devices>, std::function<void()>>)
   void synchronize_timer(Devices &&devices) {
     const auto ticks = (state_.clocks - count_clock_) >> 1;
+    if (diagnostics_)
+      diagnostics_->synchronize_cpu(true);
     // A synchronization boundary discards an incomplete timer tick.
     count_clock_ = state_.clocks;
     devices();
@@ -39,6 +41,12 @@ public:
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
   std::uint32_t timer_count() const;
+  void connect_diagnostics(Diagnostics *diagnostics) {
+    diagnostics_ = diagnostics;
+  }
+  bool diagnostic_execution() const {
+    return diagnostics_ && diagnostics_->instrumented();
+  }
   void connect_trace(TraceLog *trace) {
     trace_ = trace;
   }
@@ -62,6 +70,7 @@ public:
   }
 
 private:
+  friend class Diagnostics;
   friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
@@ -154,6 +163,22 @@ private:
   void commit_count(std::uint64_t ticks);
   void flush_count();
 
+  struct ProfileClockScope {
+    Cpu *cpu = nullptr;
+    unsigned previous = 0;
+    ProfileClockScope(Cpu &processor, unsigned clocks) {
+      if (processor.diagnostics_ && processor.diagnostics_->profiling()) {
+        cpu = &processor;
+        previous = cpu->profile_deferred_clocks_;
+        cpu->profile_deferred_clocks_ = clocks;
+      }
+    }
+    ~ProfileClockScope() {
+      if (cpu)
+        cpu->profile_deferred_clocks_ = previous;
+    }
+  };
+
   Bus &bus_;
   CpuState state_{};
   std::array<std::uint64_t, 32> control_{};
@@ -168,6 +193,9 @@ private:
   std::uint64_t count_ticks_ = 0;
   std::uint64_t count_clock_ = 0;
   TraceLog *trace_ = nullptr;
+  Diagnostics *diagnostics_ = nullptr;
+  unsigned profile_deferred_clocks_ = 0;
+  bool native_fetch_miss_ = false;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

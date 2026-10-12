@@ -23,13 +23,18 @@ Inspection::instruction(const Console &console, DebugProcessor processor, std::u
     if (line.hit(physical))
       return line.words[(physical >> 2) & 7];
   }
+  return physical_word(console, physical, access->cached);
+}
+
+std::optional<std::uint32_t> Inspection::physical_word(const Console &console,
+                                                       std::uint32_t physical, bool cached) {
   if (physical <= 0x03efffff) {
     const bool ebus = console.mi_.read_word(0) & 0x100;
-    if (access->cached && ebus)
+    if (cached && ebus)
       return {};
     return console.ram_.inspect_word(physical, ebus);
   }
-  if (access->cached)
+  if (cached)
     return {};
   if (physical >= 0x04000000 && physical < 0x04002000)
     return static_cast<std::uint32_t>(console.rsp_.read_local(physical & 0x1fff, 4));
@@ -48,6 +53,30 @@ Inspection::instruction(const Console &console, DebugProcessor processor, std::u
   if (const auto value = backing(0x1fc00000, console.pif_.rom_))
     return value;
   return backing(0x1fc007c0, console.pif_.ram_);
+}
+
+std::optional<std::uint8_t> Inspection::data_byte(const Console &console, DebugProcessor processor,
+                                                  std::uint64_t address) {
+  if (processor == DebugProcessor::Rsp)
+    return static_cast<std::uint8_t>(
+        console.rsp_.read_local(static_cast<std::uint32_t>(address) & 0x1fff, 1));
+  if (processor != DebugProcessor::Cpu)
+    return {};
+  const auto &cpu = console.cpu_;
+  const auto access = cpu.inspect_address(address & ~3ull);
+  if (!access)
+    return {};
+  const auto physical =
+      (access->physical | static_cast<std::uint32_t>(address & 3)) ^ (cpu.little_endian() ? 7 : 0);
+  if (access->cached) {
+    const auto &line = cpu.dcache_[(address >> 4) & 511];
+    if (line.hit(physical))
+      return static_cast<std::uint8_t>(line.words[(physical >> 2) & 3] >>
+                                       ((3 - (physical & 3)) * 8));
+  }
+  const auto word = physical_word(console, physical & ~3u, access->cached);
+  return word ? std::optional(static_cast<std::uint8_t>(*word >> ((3 - (physical & 3)) * 8)))
+              : std::nullopt;
 }
 
 } // namespace cupid::n64

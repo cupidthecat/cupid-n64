@@ -6,6 +6,7 @@ namespace cupid::desktop {
 void Window::update_playback() {
   EnableMenuItem(menu_, MemoryInspection, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
   EnableMenuItem(menu_, DeviceProperties, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
+  EnableMenuItem(menu_, CoreDiagnostics, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
   update_shortcuts();
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FrameAdvance,
@@ -56,6 +57,20 @@ void Window::update_fast_forward() {
 void Window::stop_fast_forward() {
   fast_forward_hold_ = fast_forward_toggle_ = false;
   update_fast_forward();
+}
+
+bool Window::apply_homebrew_control() {
+  const auto control = session_->diagnostics().take_control();
+  if (control == n64::HostControl::None)
+    return false;
+  if (control == n64::HostControl::Exit)
+    quit_ = true;
+  else {
+    fast_forward_hold_ = false;
+    fast_forward_toggle_ = control == n64::HostControl::FastForward;
+    update_fast_forward();
+  }
+  return true;
 }
 
 bool Window::playback_command(unsigned id) {

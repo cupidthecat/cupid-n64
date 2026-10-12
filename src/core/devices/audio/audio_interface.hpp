@@ -62,6 +62,7 @@ private:
   MipsInterface &interrupts_;
   VideoRegion region_;
   AudioState state_{};
+  std::array<DiagnosticOrigin, 2> diagnostic_origins_{};
   StereoSample output_{};
   std::int64_t clock_ = 0;
   unsigned frequency_ = 44100;

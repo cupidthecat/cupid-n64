@@ -20,6 +20,8 @@ void Cpu::commit_count(std::uint64_t ticks) {
 }
 
 void Cpu::flush_count() {
+  if (diagnostics_)
+    diagnostics_->synchronize_cpu();
   const auto ticks = (state_.clocks - count_clock_) >> 1;
   count_clock_ += ticks << 1;
   commit_count(ticks);

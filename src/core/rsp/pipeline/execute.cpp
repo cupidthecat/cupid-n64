@@ -75,10 +75,12 @@ std::uint32_t Rsp::execute(std::uint32_t instruction) {
   pipeline_.clocks = 0;
   trace_instruction(pc_, instruction);
   begin_instruction();
-  pipeline_.issue(decode_info(instruction));
+  pipeline_.issue(decode_info(instruction, diagnostics_ && diagnostics_->homebrew()));
   decode(instruction);
   pipeline_.end();
   end_instruction();
+  if (diagnostics_)
+    diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;
 }
 
@@ -87,12 +89,13 @@ std::uint32_t Rsp::step() {
   auto instruction = static_cast<std::uint32_t>(read_local(0x1000 | pc_, 4));
   trace_instruction(pc_, instruction);
   begin_instruction();
-  const auto first = decode_info(instruction);
+  const bool homebrew = diagnostics_ && diagnostics_->homebrew();
+  const auto first = decode_info(instruction, homebrew);
   pipeline_.issue(first);
   decode(instruction);
-  if (!pipeline_.single_issue && !(first.flags & Branch)) {
+  if (!pipeline_.single_issue && !(first.flags & (Branch | EndBlock))) {
     instruction = static_cast<std::uint32_t>(read_local(0x1000 | ((pc_ + 4) & 0xfff), 4));
-    const auto second = decode_info(instruction);
+    const auto second = decode_info(instruction, homebrew);
     if (dual_issue(first, second)) {
       end_instruction();
       trace_instruction(pc_, instruction);
@@ -103,6 +106,8 @@ std::uint32_t Rsp::step() {
   }
   pipeline_.end();
   end_instruction();
+  if (diagnostics_)
+    diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;
 }
 
@@ -120,18 +125,24 @@ std::uint32_t Rsp::idle_clocks(std::int64_t clock_target) const {
 }
 
 void Rsp::run() {
-  while (clock_ < 0) {
+  while (clock_ < 0 && (!diagnostics_ || diagnostics_->control() == HostControl::None)) {
     if (!status_.halted && compiler_->run())
       continue;
-    const auto elapsed = status_.halted ? idle_clocks() : step();
+    const bool halted = status_.halted;
+    const auto elapsed = halted ? idle_clocks() : step();
+    if (halted && diagnostics_)
+      diagnostics_->rsp_cycles(elapsed, true);
     clock_ += elapsed;
     advance_dma(elapsed);
   }
 }
 
 void Rsp::run_interpreted(std::int64_t clock_target) {
-  while (clock_ < clock_target) {
-    const auto elapsed = status_.halted ? idle_clocks(clock_target) : step();
+  while (clock_ < clock_target && (!diagnostics_ || diagnostics_->control() == HostControl::None)) {
+    const bool halted = status_.halted;
+    const auto elapsed = halted ? idle_clocks(clock_target) : step();
+    if (halted && diagnostics_)
+      diagnostics_->rsp_cycles(elapsed, true);
     clock_ += elapsed;
     advance_dma(elapsed);
   }

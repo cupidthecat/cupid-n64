@@ -73,6 +73,12 @@ public:
   const n64::TraceLog &tracing() const {
     return console_->tracing();
   }
+  n64::Diagnostics &diagnostics() {
+    return console_->diagnostics();
+  }
+  const n64::Diagnostics &diagnostics() const {
+    return console_->diagnostics();
+  }
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
   }

@@ -174,6 +174,13 @@ void Rdram::write_register(Chip &chip, unsigned index, std::uint32_t value,
 }
 
 std::uint32_t Rdram::read_word(std::uint32_t address) {
+  const auto value = read_word_impl(address);
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rdram, address, value, false);
+  return value;
+}
+
+std::uint32_t Rdram::read_word_impl(std::uint32_t address) {
   if ((address & 0x80000) || !interface_.active())
     return 0;
   auto *chip = select_chip((address >> 10) & 0x1ff);
@@ -185,6 +192,8 @@ std::uint32_t Rdram::read_word(std::uint32_t address) {
 }
 
 void Rdram::write_word(std::uint32_t address, std::uint32_t value, unsigned repeat_length) {
+  if (diagnostics_)
+    diagnostics_->register_access(DiagnosticDevice::Rdram, address, value, true);
   if (!interface_.active())
     return;
   const auto apply = [&](Chip &chip) {
@@ -279,10 +288,15 @@ void Rdram::update_hidden(std::uint32_t address, unsigned bytes, std::uint64_t v
   }
 }
 
-std::uint64_t Rdram::read(std::uint32_t address, unsigned bytes, bool ebus) {
+std::uint64_t Rdram::read(std::uint32_t address, unsigned bytes, bool ebus,
+                          MemoryRequestor requestor) {
   const auto mapped = translate(address);
   if (!mapped)
     return 0;
+  if (diagnostics_) {
+    diagnostics_->traffic(requestor, bytes, false);
+    diagnostics_->memory_access(requestor, address, bytes, false);
+  }
   if (ebus) {
     if (bytes == 8)
       return (std::uint64_t(hidden_nibble(*mapped)) << 32) | hidden_nibble(*mapped + 4);
@@ -295,18 +309,29 @@ std::uint64_t Rdram::read(std::uint32_t address, unsigned bytes, bool ebus) {
   return identity_ ? value : degrade(value, chips_[*mapped / 0x200000]);
 }
 
-void Rdram::write(std::uint32_t address, unsigned bytes, std::uint64_t value, bool ebus) {
+void Rdram::write(std::uint32_t address, unsigned bytes, std::uint64_t value, bool ebus,
+                  MemoryRequestor requestor) {
   if (const auto mapped = translate(address)) {
+    if (diagnostics_) {
+      diagnostics_->traffic(requestor, bytes, true);
+      diagnostics_->memory_access(requestor, address, bytes, true);
+    }
     write_raw(*mapped, bytes, value);
     update_hidden(*mapped, bytes, value, ebus);
   }
 }
 
-void Rdram::read_burst(std::uint32_t address, std::span<std::uint32_t> words) {
+void Rdram::read_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                       MemoryRequestor requestor) {
   const auto mapped = translate(address);
   if (!mapped) {
     std::fill(words.begin(), words.end(), 0);
     return;
+  }
+  if (diagnostics_) {
+    const auto bytes = static_cast<unsigned>(words.size_bytes());
+    diagnostics_->traffic(requestor, bytes, false);
+    diagnostics_->memory_access(requestor, address, bytes, false);
   }
   for (unsigned n = 0; n < words.size(); ++n) {
     const auto value = read_raw(*mapped + n * 4, 4);
@@ -315,8 +340,14 @@ void Rdram::read_burst(std::uint32_t address, std::span<std::uint32_t> words) {
   }
 }
 
-void Rdram::write_burst(std::uint32_t address, std::span<const std::uint32_t> words) {
+void Rdram::write_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                        MemoryRequestor requestor) {
   if (const auto mapped = translate(address)) {
+    if (diagnostics_) {
+      const auto bytes = static_cast<unsigned>(words.size_bytes());
+      diagnostics_->traffic(requestor, bytes, true);
+      diagnostics_->memory_access(requestor, address, bytes, true);
+    }
     for (unsigned n = 0; n < words.size(); ++n) {
       write_raw(*mapped + n * 4, 4, words[n]);
       update_hidden(*mapped + n * 4, 4, words[n], false);

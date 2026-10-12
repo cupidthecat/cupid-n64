@@ -23,6 +23,7 @@
 namespace cupid::n64 {
 
 struct ConsoleConfig {
+  bool homebrew = false;
   VideoRegion region = VideoRegion::Ntsc;
   bool expansion = true;
   CicModel cic = CicModel::N6102;
@@ -42,6 +43,12 @@ struct ConsoleConfig {
 
 class Console : public Bus {
 public:
+  Diagnostics &diagnostics() {
+    return diagnostics_;
+  }
+  const Diagnostics &diagnostics() const {
+    return diagnostics_;
+  }
   TraceLog &tracing() {
     return trace_;
   }
@@ -75,6 +82,10 @@ public:
   BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) override;
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> words) override;
   BusWrite write_burst(std::uint32_t address, std::span<const std::uint32_t> words) override;
+  BusWrite read_cache_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                            bool instruction) override;
+  BusWrite write_cache_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                             bool instruction) override;
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override;
   std::span<const std::uint32_t> cache_fill_data(std::uint32_t address) const override;
   bool instruction_coherent(std::uint32_t address, std::span<const std::uint32_t> words) override;
@@ -135,9 +146,11 @@ public:
 
 private:
   friend class Inspection;
+  friend class Diagnostics;
   CicModel boot_cic() const;
   friend class CoreState;
   std::uint32_t read_register(std::uint32_t address);
+  std::uint32_t read_register_impl(std::uint32_t address);
   void write_register(std::uint32_t address, std::uint32_t value);
   std::int64_t pending_clocks() const;
   void event(Event event);
@@ -170,6 +183,7 @@ private:
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;
   TraceLog trace_;
+  Diagnostics diagnostics_;
   std::optional<std::uint64_t> frame_limit_;
   bool frozen_ = false;
   std::unique_ptr<Aleck64> arcade_;
