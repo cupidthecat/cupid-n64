@@ -5,11 +5,14 @@
 namespace cupid::desktop {
 
 bool Window::inspection_command(unsigned id) {
+  if (gdb_command(id))
+    return true;
   if (id != MemoryInspection && id != DeviceProperties && id != Disassembly &&
       id != InstructionTrace && id != CoreDiagnostics)
     return false;
   if (!session_)
     return true;
+  session_->debugger().interrupt();
   end_rewind();
   stop_fast_forward();
   gamepads_.stop();

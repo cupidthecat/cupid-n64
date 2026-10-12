@@ -62,6 +62,7 @@ Window::Window(Options options) : options_(std::move(options)) {
   load_recent();
   load_playback_settings();
   load_launch_settings();
+  load_gdb_settings();
   player_mappings_ = read_mappings(settings_);
   shortcut_bindings_ = read_shortcuts(settings_);
   shortcuts_.bindings(shortcut_bindings_);
@@ -154,6 +155,7 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(developer, MF_STRING, Disassembly, L"&Disassembly...");
   AppendMenuW(developer, MF_STRING, InstructionTrace, L"Instruction &trace...");
   AppendMenuW(developer, MF_STRING, CoreDiagnostics, L"Core dia&gnostics...");
+  AppendMenuW(developer, MF_STRING, GdbSettings, L"&GDB connection...");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
@@ -178,6 +180,13 @@ int Window::run(HINSTANCE instance, int show) {
   ShowWindow(window_, show);
   UpdateWindow(window_);
   try {
+    if (gdb_enabled_)
+      gdb_.listen(gdb_port_);
+  } catch (const std::exception &exception) {
+    gdb_enabled_ = false;
+    status_error(L"GDB connection", exception);
+  }
+  try {
     if (options_.frames &&
         ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty()))
       throw std::runtime_error("A frame test requires --rom or --ipl, plus --pif.");
@@ -198,6 +207,8 @@ int Window::run(HINSTANCE instance, int show) {
     }
     if (quit_)
       break;
+    if (gdb_.port() || gdb_connected_)
+      poll_gdb();
     if (!session_ || stopped()) {
       MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
       continue;
@@ -242,6 +253,7 @@ int Window::run(HINSTANCE instance, int show) {
   }
   rewind_.reset();
   states_.reset();
+  gdb_.target(nullptr);
   session_.reset();
   if (IsWindow(window_))
     DestroyWindow(window_);
@@ -400,6 +412,10 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
+  if (session_ && session_->debugger().attached()) {
+    session_->debugger().interrupt();
+    gdb_was_paused_ = true;
+  }
   clear_host_input();
   gamepads_.stop();
   end_rewind();
@@ -461,7 +477,10 @@ void Window::load(LaunchPreference preference) {
       rewind_settings_);
   rewind_ = std::move(rewind);
   states_ = std::move(states);
+  gdb_.target(nullptr);
+  gdb_connected_ = false;
   session_ = std::move(next);
+  gdb_.target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
   if (preference == LaunchPreference::Remember)
     launch_on_restart_.reset();
   session_settings_ = std::move(selected_settings);
@@ -565,7 +584,11 @@ void Window::command(unsigned id) {
   } else if (id == Pause) {
     end_rewind();
     stop_fast_forward();
-    paused_ = !paused_;
+    if (session_ && session_->debugger().attached()) {
+      session_->debugger().interrupt();
+      paused_ = true;
+    } else
+      paused_ = !paused_;
     if (paused_) {
       gamepads_.stop();
       clear_host_input();
@@ -598,7 +621,7 @@ void Window::command(unsigned id) {
       clear_host_input();
       rebase();
     }
-  } else if (id == FrameAdvance && session_ && paused_) {
+  } else if (id == FrameAdvance && session_ && paused_ && !session_->debugger().attached()) {
     session_->advance_frame(inputs());
     if (apply_homebrew_control() && quit_)
       return;
@@ -734,6 +757,11 @@ void Window::advance() {
   const auto interval_start = session_->clocks();
   do {
     session_->run();
+    if (gdb_connected_) {
+      poll_gdb();
+      if (stopped())
+        break;
+    }
     if (apply_homebrew_control()) {
       if (quit_)
         return;

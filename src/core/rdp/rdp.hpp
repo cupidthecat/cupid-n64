@@ -26,6 +26,7 @@ public:
   void connect_sync(std::function<void()> callback);
   std::uint32_t status() const;
   std::uint32_t clock_counter(std::int64_t caller_clock = 0) const;
+  std::uint32_t peek_word(std::uint32_t address, std::int64_t caller_clock = 0) const;
   std::uint32_t read_word(std::uint32_t address, std::int64_t caller_clock = 0,
                           bool cpu = true) const;
   void write_word(std::uint32_t address, std::uint32_t value, std::int64_t caller_clock = 0,
@@ -50,6 +51,7 @@ public:
 
 private:
   friend class CoreState;
+  std::uint32_t register_word(std::uint32_t address, std::int64_t caller_clock) const;
   void render();
   Rdram &ram_;
   Rsp &rsp_;

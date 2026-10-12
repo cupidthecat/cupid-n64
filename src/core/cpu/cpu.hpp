@@ -12,6 +12,7 @@
 namespace cupid::n64 {
 
 class CpuCompiler;
+class Debugger;
 
 class Cpu {
 public:
@@ -71,6 +72,7 @@ public:
 
 private:
   friend class Diagnostics;
+  friend class Debugger;
   friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
@@ -78,7 +80,7 @@ private:
                          unsigned fetch_clocks = 0) const;
   void trace_tlb(TlbEvent event, std::uint64_t address, std::uint64_t physical = 0) const;
   bool tlb_matches(const TlbEntry &entry, std::uint64_t address) const;
-  std::optional<Address> inspect_address(std::uint64_t address) const;
+  std::optional<Address> inspect_address(std::uint64_t address, bool write = false) const;
   enum class Mode { Kernel, Supervisor, User };
   enum class Segment { Invalid, Mapped, Cached, Direct, Cached32, Direct32 };
 
@@ -195,6 +197,7 @@ private:
   TraceLog *trace_ = nullptr;
   Diagnostics *diagnostics_ = nullptr;
   unsigned profile_deferred_clocks_ = 0;
+  Debugger *debugger_ = nullptr;
   bool native_fetch_miss_ = false;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;

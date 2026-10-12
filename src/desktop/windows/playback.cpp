@@ -9,8 +9,10 @@ void Window::update_playback() {
   EnableMenuItem(menu_, CoreDiagnostics, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
   update_shortcuts();
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
-  EnableMenuItem(menu_, FrameAdvance,
-                 MF_BYCOMMAND | (session_ && paused_ ? MF_ENABLED : MF_GRAYED));
+  EnableMenuItem(
+      menu_, FrameAdvance,
+      MF_BYCOMMAND |
+          (session_ && paused_ && !session_->debugger().attached() ? MF_ENABLED : MF_GRAYED));
   CheckMenuItem(menu_, FastForward,
                 MF_BYCOMMAND | (fast_forward_toggle_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FastForward,
@@ -43,8 +45,8 @@ void Window::update_playback() {
 }
 
 void Window::update_fast_forward() {
-  const bool enabled =
-      session_ && !stopped() && !rewinding_ && (fast_forward_hold_ || fast_forward_toggle_);
+  const bool enabled = session_ && !session_->debugger().attached() && !stopped() && !rewinding_ &&
+                       (fast_forward_hold_ || fast_forward_toggle_);
   if (enabled != fast_forward_) {
     fast_forward_ = enabled;
     audio_.suspended = enabled;
@@ -151,7 +153,8 @@ void Window::record_history() {
 }
 
 void Window::begin_rewind() {
-  if (!rewind_enabled_ || !session_ || !rewind_ || stopped() || rewinding_)
+  if (!rewind_enabled_ || !session_ || session_->debugger().attached() || !rewind_ || stopped() ||
+      rewinding_)
     return;
   if (!rewind_->can_rewind(session_->frames)) {
     state_message_ = L"No earlier rewind snapshot is available.";

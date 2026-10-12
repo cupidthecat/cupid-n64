@@ -1,4 +1,5 @@
 #include "core/cpu/cpu.hpp"
+#include "core/debug/debugger.hpp"
 
 namespace cupid::n64 {
 
@@ -94,8 +95,12 @@ std::optional<std::uint64_t> Cpu::read(std::uint64_t address, unsigned bytes, bo
   if (instruction)
     advance_clocks(2);
   const auto physical = access->physical ^ (little_endian() ? 8 - bytes : 0);
-  if (access->cached)
-    return cache_read(address, physical, bytes, instruction);
+  if (access->cached) {
+    const auto value = cache_read(address, physical, bytes, instruction);
+    if (value && !instruction && debugger_)
+      debugger_->memory_access(address, bytes, false);
+    return value;
+  }
   const auto transfer = bus_.read(physical, bytes);
   advance_clocks(transfer.clocks);
   if (!transfer.success) {
@@ -103,6 +108,8 @@ std::optional<std::uint64_t> Cpu::read(std::uint64_t address, unsigned bytes, bo
       raise(instruction ? Exception::BusInstruction : Exception::BusData);
     return {};
   }
+  if (!instruction && debugger_)
+    debugger_->memory_access(address, bytes, false);
   return transfer.value;
 }
 
@@ -111,12 +118,18 @@ bool Cpu::write(std::uint64_t address, unsigned bytes, std::uint64_t value, bool
   if (!access)
     return false;
   const auto physical = access->physical ^ (little_endian() ? 8 - bytes : 0);
-  if (access->cached)
-    return cache_write(address, physical, bytes, value);
+  if (access->cached) {
+    const bool success = cache_write(address, physical, bytes, value);
+    if (success && debugger_)
+      debugger_->memory_access(address, bytes, true);
+    return success;
+  }
   const auto transfer = bus_.write(physical, bytes, value);
   advance_clocks(transfer.clocks);
   if (!transfer.success && !bus_.frozen())
     raise(Exception::BusData);
+  if (transfer.success && debugger_)
+    debugger_->memory_access(address, bytes, true);
   return transfer.success;
 }
 

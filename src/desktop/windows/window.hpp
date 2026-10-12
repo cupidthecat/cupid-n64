@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/debug/gdb/server.hpp"
 #include "desktop/launch/files.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
@@ -42,6 +43,9 @@ private:
   void apply_imported_settings();
   void load_history_settings();
   bool inspection_command(unsigned id);
+  bool gdb_command(unsigned id);
+  void load_gdb_settings();
+  void poll_gdb();
   bool input_tools_command(unsigned id);
   bool graphics_command(unsigned id);
   void load_graphics_settings();
@@ -138,6 +142,8 @@ private:
   void error(const std::exception &exception);
   std::filesystem::path choose(bool firmware);
   bool stopped() const {
+    if (session_ && session_->debugger().attached())
+      return modal_ || session_->debugger().halted();
     return paused_ || modal_ || (!active_ && focus_behavior_ == FocusBehavior::Pause);
   }
   HWND window_ = nullptr;
@@ -194,6 +200,9 @@ private:
   PaintBuffer paint_buffer_;
   Audio audio_;
   std::unique_ptr<Session> session_;
+  GdbServer gdb_;
+  unsigned gdb_port_ = 2345;
+  bool gdb_enabled_ = false, gdb_connected_ = false, gdb_was_paused_ = false;
   std::unique_ptr<StateSlots> states_;
   std::unique_ptr<RewindHistory> rewind_;
   static constexpr std::array<unsigned, 6> rewind_intervals{20, 40, 60, 80, 100, 120};

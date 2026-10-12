@@ -145,6 +145,7 @@ public:
   }
 
 private:
+  friend class Debugger;
   friend class Inspection;
   friend class Diagnostics;
   CicModel boot_cic() const;

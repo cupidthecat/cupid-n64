@@ -3,6 +3,9 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
 
 add_library(cupid_core
+  src/core/debug/debugger/execution.cpp
+  src/core/debug/debugger/memory.cpp
+  src/core/debug/debugger/registers.cpp
   src/core/debug/diagnostics/log.cpp
   src/core/debug/diagnostics/profile.cpp
   src/core/debug/diagnostics/coherence.cpp
@@ -147,7 +150,9 @@ target_compile_features(cupid_core PUBLIC cxx_std_20)
 include(cmake/Compiler.cmake)
 if(MSVC)
   target_compile_options(cupid_core PRIVATE /W4 /WX /permissive-)
-  set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES COMPILE_OPTIONS /fp:strict)
+  target_precompile_headers(cupid_core PRIVATE "<core/cpu/cpu.hpp>")
+  set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
+    COMPILE_OPTIONS /fp:strict SKIP_PRECOMPILE_HEADERS TRUE)
 else()
   target_compile_options(cupid_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
@@ -205,6 +210,18 @@ if(MSVC)
 else()
   target_compile_options(cupid_debug_format PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+add_library(cupid_gdb src/desktop/debug/gdb/codec.cpp
+  src/desktop/debug/gdb/protocol.cpp src/desktop/debug/gdb/commands.cpp
+  src/desktop/debug/gdb/queries.cpp src/desktop/debug/gdb/transport/server.cpp)
+target_link_libraries(cupid_gdb PUBLIC cupid_core)
+if(WIN32)
+  target_link_libraries(cupid_gdb PRIVATE ws2_32)
+endif()
+if(MSVC)
+  target_compile_options(cupid_gdb PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(cupid_gdb PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_library(cupid_video_output src/desktop/video/output.cpp)
 target_link_libraries(cupid_video_output PUBLIC cupid_core)
 if(CUPID_HARDWARE_RENDERER)
@@ -225,6 +242,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/debug/disassembly.cpp
     src/desktop/windows/debug/trace.cpp
     src/desktop/windows/debug/diagnostics.cpp
+    src/desktop/windows/debug/gdb.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
@@ -277,7 +295,7 @@ if(WIN32 AND CUPID_DESKTOP)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_debug_format cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE cupid_debug_format cupid_gdb cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -287,6 +305,21 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  cupid_add_core_test(gdb_tests gdb_test_entry tests/debug/gdb/main.cpp)
+  add_test(NAME gdb_debugging COMMAND ${gdb_tests_command})
+  cupid_add_core_test(gdb_protocol_tests gdb_protocol_test_entry tests/debug/gdb/protocol.cpp)
+  if(cupid_group_core_tests)
+    target_link_libraries(core_checkpoint_tests PRIVATE cupid_gdb)
+    target_compile_options(gdb_protocol_tests_objects PRIVATE /W4 /WX /permissive-)
+  else()
+    target_link_libraries(gdb_protocol_tests PRIVATE cupid_gdb)
+    if(MSVC)
+      target_compile_options(gdb_protocol_tests PRIVATE /W4 /WX /permissive-)
+    else()
+      target_compile_options(gdb_protocol_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+  endif()
+  add_test(NAME gdb_remote_protocol COMMAND ${gdb_protocol_tests_command})
   cupid_add_core_test(diagnostics_tests diagnostics_test_entry tests/debug/diagnostics/main.cpp)
   add_test(NAME core_diagnostics COMMAND ${diagnostics_tests_command})
   cupid_add_core_test(tracing_tests tracing_test_entry tests/debug/tracing/main.cpp

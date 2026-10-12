@@ -2,7 +2,7 @@
 
 namespace cupid::n64 {
 
-std::optional<Address> Cpu::inspect_address(std::uint64_t address) const {
+std::optional<Address> Cpu::inspect_address(std::uint64_t address, bool write) const {
   if ((address & 3) ||
       (!extended_addressing() && sign_word(static_cast<std::uint32_t>(address)) != address))
     return {};
@@ -29,7 +29,8 @@ std::optional<Address> Cpu::inspect_address(std::uint64_t address) const {
     return {};
   const auto offset_mask = (std::uint64_t(entry->mask) | 0x1fff) >> 1;
   const auto lo = entry->lo[(address & (offset_mask + 1)) != 0];
-  if (!(lo & 2))
+  const auto required = write ? 6u : 2u;
+  if ((lo & required) != required)
     return {};
   return tlb_address(*entry, address);
 }
