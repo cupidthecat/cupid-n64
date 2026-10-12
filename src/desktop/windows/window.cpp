@@ -427,7 +427,7 @@ void Window::rebase() {
   InvalidateRect(window_, nullptr, FALSE);
 }
 
-void Window::load() {
+void Window::load(LaunchPreference preference) {
   if ((options_.rom.empty() && options_.ipl.empty()) || options_.firmware.empty())
     return;
   clear_host_input();
@@ -455,6 +455,8 @@ void Window::load() {
   rewind_ = std::move(rewind);
   states_ = std::move(states);
   session_ = std::move(next);
+  if (preference == LaunchPreference::Remember)
+    launch_on_restart_.reset();
   session_settings_ = std::move(selected_settings);
   controller_key_ = controller_key;
   feedback_.clear();
@@ -476,11 +478,6 @@ void Window::load() {
   update_controllers();
   update_graphics();
   update_shortcuts();
-  if (!settings_.empty() && !options_.frames) {
-    if (!options_.rom.empty())
-      WritePrivateProfileStringW(L"Files", L"ROM", options_.rom.c_str(), settings_.c_str());
-    WritePrivateProfileStringW(L"Files", L"Firmware", options_.firmware.c_str(), settings_.c_str());
-  }
   if (!options_.frames) {
     if (options_.arcade_profile == n64::ArcadeProfile::Disabled)
       firmware_files_.n64 = options_.firmware;

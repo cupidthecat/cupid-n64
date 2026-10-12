@@ -20,6 +20,8 @@ void Window::apply_imported_settings() {
   const auto active = static_cast<LaunchFiles &>(options_);
   static_cast<LaunchFiles &>(options_) = {};
   load_launch_settings();
+  launch_on_restart_ =
+      running ? std::optional(static_cast<const LaunchFiles &>(options_)) : std::nullopt;
   if (running) {
     options_.rom = active.rom;
     options_.disk = active.disk;
@@ -42,7 +44,8 @@ void Window::apply_imported_settings() {
   apply_window_size();
   if (fullscreen_)
     position_fullscreen();
-  refresh_frame();
+  if (running)
+    refresh_frame();
   update_recent();
   refresh_audio_devices();
   refresh_monitors();
