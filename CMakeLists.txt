@@ -156,6 +156,13 @@ if(WIN32)
   target_include_directories(cupid_settings PUBLIC src)
   target_compile_features(cupid_settings PUBLIC cxx_std_20)
   target_compile_definitions(cupid_settings PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_library(cupid_settings_transfer
+    src/desktop/windows/settings/transfer.cpp
+    src/desktop/windows/settings/transfer/document.cpp
+    src/desktop/windows/settings/transfer/schema.cpp
+  )
+  target_link_libraries(cupid_settings_transfer PUBLIC cupid_settings)
+  target_compile_definitions(cupid_settings_transfer PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
   add_library(cupid_display_shaders
     src/desktop/windows/video/shaders/processor.cpp
     src/desktop/windows/video/shaders/selection.cpp
@@ -167,9 +174,11 @@ if(WIN32)
   if(MSVC)
     target_compile_options(cupid_display_shaders PRIVATE /W4 /WX /permissive-)
     target_compile_options(cupid_settings PRIVATE /W4 /WX /permissive-)
+    target_compile_options(cupid_settings_transfer PRIVATE /W4 /WX /permissive-)
   else()
     target_compile_options(cupid_display_shaders PRIVATE -Wall -Wextra -Wpedantic -Werror)
     target_compile_options(cupid_settings PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(cupid_settings_transfer PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
 endif()
 add_library(cupid_video_output src/desktop/video/output.cpp)
@@ -196,6 +205,8 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/launch/settings.cpp
     src/desktop/windows/launch/forms.cpp
     src/desktop/windows/launch/commands.cpp
+    src/desktop/windows/settings/commands.cpp
+    src/desktop/windows/settings/transfer/review.cpp
     src/desktop/windows/dialogs/files.cpp
     src/desktop/windows/dialogs/scroll.cpp
     src/desktop/windows/dialogs/paths.cpp
@@ -235,7 +246,7 @@ if(WIN32 AND CUPID_DESKTOP)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_video_output cupid_display_shaders comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -415,6 +426,17 @@ if(BUILD_TESTING)
       target_compile_options(desktop_shader_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()
     add_test(NAME desktop_display_shaders COMMAND desktop_shader_tests)
+    add_executable(desktop_settings_transfer_tests tests/desktop/settings_transfer.cpp
+      src/desktop/controls/mapping.cpp src/desktop/controls/shortcuts/bindings.cpp)
+    target_link_libraries(desktop_settings_transfer_tests PRIVATE cupid_settings_transfer)
+    target_include_directories(desktop_settings_transfer_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(desktop_settings_transfer_tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+      target_compile_options(desktop_settings_transfer_tests PRIVATE /W4 /WX /permissive-)
+    else()
+      target_compile_options(desktop_settings_transfer_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    add_test(NAME desktop_settings_transfer COMMAND desktop_settings_transfer_tests)
     add_executable(desktop_video_tests
       tests/desktop/paint_buffer.cpp
       src/desktop/windows/video/paint_buffer.cpp

@@ -54,6 +54,21 @@ Window::Window(Options options) : options_(std::move(options)) {
     settings_ = std::filesystem::path(directory.data()) / L"Cupid-N64";
     std::filesystem::create_directories(settings_);
     settings_ /= L"settings.ini";
+  }
+  load_history_settings();
+  load_display_settings();
+  load_graphics_settings();
+  shader_.select(read_shader_selection(settings_));
+  load_recent();
+  load_playback_settings();
+  load_launch_settings();
+  player_mappings_ = read_mappings(settings_);
+  shortcut_bindings_ = read_shortcuts(settings_);
+  shortcuts_.bindings(shortcut_bindings_);
+}
+
+void Window::load_history_settings() {
+  if (!settings_.empty()) {
     state_slot_ = std::clamp(GetPrivateProfileIntW(L"States", L"Slot", 1, settings_.c_str()), 1u,
                              StateSlots::count);
     rewind_enabled_ = GetPrivateProfileIntW(L"Rewind", L"Enabled", 0, settings_.c_str()) != 0;
@@ -66,15 +81,6 @@ Window::Window(Options options) : options_(std::move(options)) {
     rewind_settings_.capacity = choice(L"Capacity", rewind_capacities, 10);
     rewind_settings_.memory = std::size_t(choice(L"MemoryMB", rewind_memory, 256)) * 1024 * 1024;
   }
-  load_display_settings();
-  load_graphics_settings();
-  shader_.select(read_shader_selection(settings_));
-  load_recent();
-  load_playback_settings();
-  load_launch_settings();
-  player_mappings_ = read_mappings(settings_);
-  shortcut_bindings_ = read_shortcuts(settings_);
-  shortcuts_.bindings(shortcut_bindings_);
 }
 
 int Window::run(HINSTANCE instance, int show) {
@@ -93,6 +99,10 @@ int Window::run(HINSTANCE instance, int show) {
   AppendMenuW(file, MF_POPUP, reinterpret_cast<UINT_PTR>(recent_menu_), L"&Recent ROMs");
   create_launch_menus(file, emulation);
   AppendMenuW(file, MF_STRING | MF_GRAYED, Screenshot, L"&Screenshot...");
+  const auto settings_menu = CreatePopupMenu();
+  AppendMenuW(settings_menu, MF_STRING, ImportSettings, L"&Import settings...");
+  AppendMenuW(settings_menu, MF_STRING, ExportSettings, L"&Export settings...");
+  AppendMenuW(file, MF_POPUP, reinterpret_cast<UINT_PTR>(settings_menu), L"&Desktop settings");
   AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
   AppendMenuW(file, MF_STRING, Exit, L"E&xit");
   AppendMenuW(emulation, MF_STRING, Pause, L"&Pause");
@@ -519,6 +529,8 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  if (settings_command(id))
+    return;
   if (shader_command(id))
     return;
   if (graphics_command(id))

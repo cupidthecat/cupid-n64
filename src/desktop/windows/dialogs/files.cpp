@@ -35,7 +35,7 @@ std::optional<std::filesystem::path> select_file(HWND owner, const wchar_t *titl
     }
   } apartment{SUCCEEDED(initialized)};
   ComPointer<IFileDialog> dialog;
-  const bool save = kind == FileSelection::Screenshot;
+  const bool save = kind == FileSelection::Screenshot || kind == FileSelection::ExportSettings;
   require(CoCreateInstance(save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog, nullptr,
                            CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog.value)));
   DWORD options = 0;
@@ -52,12 +52,15 @@ std::optional<std::filesystem::path> select_file(HWND owner, const wchar_t *titl
                                    {L"Folders", L"*.*"},
                                    {L"Bitmap image", L"*.bmp"},
                                    {L"Game Boy and Game Boy Color cartridges", L"*.gb;*.gbc"},
-                                   {L"HLSL display pixel shaders", L"*.hlsl"}};
+                                   {L"HLSL display pixel shaders", L"*.hlsl"},
+                                   {L"Cupid-N64 settings", L"*.ini"},
+                                   {L"Cupid-N64 settings", L"*.ini"}};
   const COMDLG_FILTERSPEC filters[]{filter[static_cast<unsigned>(kind)], {L"All files", L"*.*"}};
   if (kind != FileSelection::Folder) {
     require(dialog.value->SetFileTypes(save ? 1 : 2, filters));
     if (save)
-      require(dialog.value->SetDefaultExtension(L"bmp"));
+      require(
+          dialog.value->SetDefaultExtension(kind == FileSelection::Screenshot ? L"bmp" : L"ini"));
   }
   if (!directory.empty()) {
     ComPointer<IShellItem> folder;

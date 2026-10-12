@@ -37,6 +37,9 @@ private:
   static LRESULT CALLBACK procedure(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
   LRESULT message(UINT message, WPARAM wparam, LPARAM lparam);
   void command(unsigned id);
+  bool settings_command(unsigned id);
+  void apply_imported_settings();
+  void load_history_settings();
   bool input_tools_command(unsigned id);
   bool graphics_command(unsigned id);
   void load_graphics_settings();
