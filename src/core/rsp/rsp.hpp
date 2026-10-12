@@ -82,6 +82,7 @@ public:
   }
 
 private:
+  friend class Inspection;
   friend class CoreState;
   friend class RspCompiler;
   enum OpFlag : unsigned {

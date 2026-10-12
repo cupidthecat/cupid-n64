@@ -3,6 +3,8 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
 
 add_library(cupid_core
+  src/core/debug/memory.cpp
+  src/core/debug/properties.cpp
   src/core/arcade/aleck64.cpp
   src/core/arcade/memory.cpp
   src/core/arcade/controls.cpp
@@ -186,6 +188,10 @@ endif()
 if(WIN32 AND CUPID_DESKTOP)
   add_executable(cupid_desktop WIN32
     src/desktop/windows/main.cpp
+    src/desktop/windows/debug/commands.cpp
+    src/desktop/windows/debug/memory.cpp
+    src/desktop/windows/debug/properties.cpp
+    src/desktop/debug/format.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
@@ -220,6 +226,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/session.cpp
     src/desktop/session/disk.cpp
     src/desktop/session/controllers.cpp
+    src/desktop/session/inspection.cpp
     src/desktop/controls/ports.cpp
     src/desktop/controls/mapping.cpp
     src/desktop/controls/shortcuts/bindings.cpp
@@ -245,6 +252,9 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  cupid_add_core_test(inspection_tests inspection_test_entry tests/debug/inspection.cpp
+    src/desktop/debug/format.cpp)
+  add_test(NAME debugger_inspection COMMAND ${inspection_tests_command})
   cupid_add_core_test(core_state_tests core_state_test_entry
     tests/state/archive.cpp
     tests/state/core.cpp

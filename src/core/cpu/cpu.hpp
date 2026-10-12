@@ -54,6 +54,7 @@ public:
   }
 
 private:
+  friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
   enum class Mode { Kernel, Supervisor, User };

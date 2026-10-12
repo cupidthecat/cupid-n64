@@ -118,6 +118,13 @@ void VideoOutput::scanout_settings(n64::RenderSettings settings) {
     throw std::runtime_error("These graphics settings require an available hardware renderer.");
 }
 
+void VideoOutput::synchronize() {
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (implementation_->hardware)
+    implementation_->hardware->synchronize();
+#endif
+}
+
 std::vector<std::uint8_t> VideoOutput::capture_state() {
   auto &state = *implementation_;
   n64::state::Archive archive;

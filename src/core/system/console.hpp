@@ -128,6 +128,7 @@ public:
   }
 
 private:
+  friend class Inspection;
   friend class CoreState;
   std::uint32_t read_register(std::uint32_t address);
   void write_register(std::uint32_t address, std::uint32_t value);
