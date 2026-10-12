@@ -59,6 +59,8 @@ enum Command : unsigned {
   ShaderReload,
   ShaderDetails,
   ShaderFormat,
+  ImportSettings,
+  ExportSettings,
   MemoryInspection,
   DeviceProperties,
   StateSlotFirst = 100,

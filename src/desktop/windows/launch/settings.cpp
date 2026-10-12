@@ -79,11 +79,15 @@ void Window::save_launch_settings() {
   write(L"Firmware", L"Nintendo64", firmware_files_.n64.c_str());
   write(L"Firmware", L"Aleck64", firmware_files_.arcade.c_str());
   write(L"Firmware", L"64DD IPL", firmware_files_.ipl.c_str());
-  write(L"Launch", L"ROM", options_.rom.c_str());
-  write(L"Launch", L"IPL", options_.ipl.c_str());
-  write(L"Launch", L"Disk", options_.disk.c_str());
+  const auto &launch =
+      launch_on_restart_ ? *launch_on_restart_ : static_cast<const LaunchFiles &>(options_);
+  write(L"Launch", L"ROM", launch.rom.c_str());
+  write(L"Launch", L"IPL", launch.ipl.c_str());
+  write(L"Launch", L"Disk", launch.disk.c_str());
   write(L"Launch", L"Arcade",
-        std::to_wstring(static_cast<unsigned>(options_.arcade_profile)).c_str());
+        std::to_wstring(static_cast<unsigned>(launch.arcade_profile)).c_str());
+  write(L"Files", L"ROM", launch.rom.c_str());
+  write(L"Files", L"Firmware", options_.firmware.c_str());
   write(L"Memory", L"Expansion Pak", session_settings_.memory.expansion ? L"1" : L"0");
   for (unsigned port = 0; port < 4; ++port)
     write(L"Memory", (L"Port " + std::to_wstring(port + 1)).c_str(),
