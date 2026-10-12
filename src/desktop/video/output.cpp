@@ -10,6 +10,20 @@
 namespace cupid::desktop {
 
 struct VideoOutput::Implementation {
+  bool measuring = false;
+  std::chrono::nanoseconds host_time{};
+  struct Timer {
+    Implementation &output;
+    std::chrono::steady_clock::time_point started{};
+    explicit Timer(Implementation &output) : output(output) {
+      if (output.measuring)
+        started = std::chrono::steady_clock::now();
+    }
+    ~Timer() {
+      if (output.measuring)
+        output.host_time += std::chrono::steady_clock::now() - started;
+    }
+  };
   n64::Console &console;
   n64::VideoFrame software_frame;
   bool requires_hardware = false;
@@ -33,14 +47,22 @@ struct VideoOutput::Implementation {
     }
     if (hardware) {
       console.display().connect(
-          [this](std::span<const std::uint32_t> words) { hardware->submit(words); },
-          [this] { hardware->synchronize(); },
+          [this](std::span<const std::uint32_t> words) {
+            const Timer timer(*this);
+            hardware->submit(words);
+          },
+          [this] {
+            const Timer timer(*this);
+            hardware->synchronize();
+          },
           [this] {
             if (hardware->crashed())
               this->console.display().crash();
           });
-      console.video().connect_registers(
-          [this](unsigned index, std::uint32_t value) { hardware->write_video(index, value); });
+      console.video().connect_registers([this](unsigned index, std::uint32_t value) {
+        const Timer timer(*this);
+        hardware->write_video(index, value);
+      });
       begin = [this](bool field) { hardware->begin_frame(field); };
       read = [this] { return hardware->read_frame(); };
       crashed = [this] { return hardware->crashed(); };
@@ -75,6 +97,7 @@ VideoOutput::~VideoOutput() = default;
 
 void VideoOutput::begin_frame(bool field) {
   auto &state = *implementation_;
+  const Implementation::Timer timer(state);
   if (state.begin)
     state.begin(field);
   else
@@ -83,6 +106,7 @@ void VideoOutput::begin_frame(bool field) {
 
 n64::VideoFrame VideoOutput::read_frame() {
   auto &state = *implementation_;
+  const Implementation::Timer timer(state);
   return state.read ? state.read() : std::exchange(state.software_frame, {});
 }
 
@@ -119,10 +143,20 @@ void VideoOutput::scanout_settings(n64::RenderSettings settings) {
 }
 
 void VideoOutput::synchronize() {
+  const Implementation::Timer timer(*implementation_);
 #if defined(CUPID_HARDWARE_RENDERER)
   if (implementation_->hardware)
     implementation_->hardware->synchronize();
 #endif
+}
+
+void VideoOutput::measure(bool enabled) {
+  implementation_->measuring = enabled;
+  implementation_->host_time = {};
+}
+
+std::chrono::nanoseconds VideoOutput::host_time() const {
+  return implementation_->host_time;
 }
 
 std::vector<std::uint8_t> VideoOutput::capture_state() {

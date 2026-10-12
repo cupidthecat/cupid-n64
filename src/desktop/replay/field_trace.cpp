@@ -35,9 +35,15 @@ void FieldTrace::begin() {
   images_.clear();
   advance_ = paint_ = {};
   previous_audio_wait_ = 0;
+  previous_renderer_ = 0;
+  cpu_ = {};
+  processor_ = ~0u;
 }
-void FieldTrace::advance(std::chrono::nanoseconds duration) {
+void FieldTrace::advance(std::chrono::nanoseconds duration, std::chrono::nanoseconds cpu,
+                         unsigned processor) {
   advance_ += duration;
+  cpu_ += cpu;
+  processor_ = processor;
 }
 void FieldTrace::paint(std::chrono::nanoseconds duration) {
   paint_ += duration;
@@ -52,11 +58,15 @@ void FieldTrace::presented(Observation observation) {
   };
   records_.push_back({observation, seconds(now - origin_), seconds(now - previous_) * 1e6,
                       seconds(advance_) * 1e6, seconds(paint_) * 1e6,
-                      ready_ == Clock::time_point{} ? 0 : seconds(now - ready_) * 1e6});
+                      ready_ == Clock::time_point{} ? 0 : seconds(now - ready_) * 1e6,
+                      seconds(cpu_) * 1e6, processor_});
   records_.back().observation.audio_wait_ns -= previous_audio_wait_;
   previous_audio_wait_ = observation.audio_wait_ns;
+  records_.back().observation.renderer_ns -= previous_renderer_;
+  previous_renderer_ = observation.renderer_ns;
   previous_ = now;
   advance_ = paint_ = {};
+  cpu_ = {};
   ready_ = {};
 }
 bool FieldTrace::captures(unsigned field) const {
@@ -69,13 +79,14 @@ void FieldTrace::finish(bool complete) {
   if (!trace_.empty()) {
     std::ofstream stream(trace_);
     stream << "field,clocks,pc,audio,elapsed_s,total_us,advance_us,paint_us,wait_us,audio_ready,"
-              "gpu_ready,audio_wait_us\n"
+              "gpu_ready,audio_wait_us,worker_cpu_us,worker_processor,renderer_us\n"
            << std::setprecision(12);
     for (const auto &r : records_) {
       const auto &f = r.observation;
       stream << f.field << ',' << f.clocks << ',' << f.pc << ',' << f.audio << ',' << r.elapsed
              << ',' << r.total << ',' << r.advance << ',' << r.paint << ',' << r.wait << ','
-             << f.audio_ready << ',' << f.gpu_ready << ',' << f.audio_wait_ns / 1000.0 << '\n';
+             << f.audio_ready << ',' << f.gpu_ready << ',' << f.audio_wait_ns / 1000.0 << ','
+             << r.cpu << ',' << r.processor << ',' << f.renderer_ns / 1000.0 << '\n';
     }
     stream.close();
     if (!stream)

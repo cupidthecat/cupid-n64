@@ -731,6 +731,7 @@ if(BUILD_TESTING)
       tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp
       tests/renderer/replay/render.cpp
       tests/renderer/replay/scanout.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    target_link_libraries(${renderer_tests_compile_target} PRIVATE cupid_renderer_dependency)
     add_test(NAME hardware_renderer COMMAND ${renderer_tests_command})
     cupid_add_fixture_test(renderer_reset_tests renderer_reset_test_entry tests/renderer/reset/main.cpp
       tests/renderer/replay/reset.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)

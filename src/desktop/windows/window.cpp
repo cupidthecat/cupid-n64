@@ -10,6 +10,16 @@
 
 namespace cupid::desktop {
 namespace {
+std::chrono::nanoseconds thread_cpu_time() {
+  FILETIME creation{}, exit{}, kernel{}, user{};
+  if (!GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user))
+    return {};
+  const auto ticks = [](FILETIME value) {
+    return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
+  };
+  return std::chrono::nanoseconds((ticks(kernel) + ticks(user)) * 100);
+}
+
 void record_key(std::array<bool, 256> &keys, WPARAM key, LPARAM message, bool pressed) {
   if (key >= keys.size())
     return;
@@ -253,7 +263,12 @@ int Window::run(HINSTANCE instance, int show) {
       error(exception);
     }
   }
-  finish_advance();
+  try {
+    execution_.interrupt();
+    finish_advance();
+  } catch (const std::exception &exception) {
+    error(exception);
+  }
   end_rewind();
   stop_fast_forward();
   if (options_.frames && last_frame_ < options_.frames && exit_code_ == 0)
@@ -300,8 +315,10 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   // Paint consumes the owned image. Session commands wait at an execution boundary.
-  if (event != WM_PAINT && event != WM_ERASEBKGND && event != WM_APP + 1)
+  if (event != WM_PAINT && event != WM_ERASEBKGND && event != WM_APP + 1) {
+    execution_.interrupt();
     finish_advance();
+  }
   switch (event) {
   case WM_APP + 1:
     return 0;
@@ -440,6 +457,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 void Window::error(const std::exception &exception) {
   if (advancing_) {
     advancing_ = false;
+    execution_.interrupt();
     try {
       execution_.wait();
     } catch (...) {
@@ -514,6 +532,9 @@ void Window::load(LaunchPreference preference) {
   gdb_.target(nullptr);
   gdb_connected_ = false;
   session_ = std::move(next);
+  session_->measure_output(bool(field_trace_));
+  worker_cpu_origin_.reset();
+  observed_worker_cpu_ = {};
   gdb_.target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
   if (preference == LaunchPreference::Remember)
     launch_on_restart_.reset();
@@ -812,15 +833,21 @@ void Window::advance() {
     execution_.submit([this, selected, previous_frame] {
       const auto advance_started =
           field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      if (field_trace_ && !worker_cpu_origin_)
+        worker_cpu_origin_ = thread_cpu_time();
       session_->input(selected);
       const auto started = session_->clocks();
       do {
         session_->run();
-      } while (session_->frames == previous_frame && session_->clocks() - started < 1875000 &&
+        if (session_->clocks() - started > 10 * n64::clock_frequency)
+          throw std::runtime_error("Emulation stopped because no video field was produced.");
+      } while (session_->frames == previous_frame && !execution_.interrupted() &&
                session_->diagnostics().control() == n64::HostControl::None);
       if (field_trace_) {
         last_advance_completed_ = std::chrono::steady_clock::now();
         last_advance_duration_ = last_advance_completed_ - advance_started;
+        last_advance_cpu_ = thread_cpu_time() - *worker_cpu_origin_;
+        last_advance_processor_ = GetCurrentProcessorNumber();
       }
     });
     advancing_ = true;
@@ -852,8 +879,12 @@ void Window::finish_advance() {
     return;
   advancing_ = false;
   execution_.wait();
-  if (field_trace_)
-    field_trace_->advance(last_advance_duration_);
+  if (field_trace_) {
+    // Cumulative snapshots include CPU accounting updates between execution intervals.
+    field_trace_->advance(last_advance_duration_, last_advance_cpu_ - observed_worker_cpu_,
+                          last_advance_processor_);
+    observed_worker_cpu_ = last_advance_cpu_;
+  }
   update_feedback();
   if (apply_homebrew_control() && quit_)
     return;
@@ -872,7 +903,8 @@ void Window::present() {
     field_trace_->presented(
         {last_frame_, session_->clocks(), session_->program_counter(), audio_.generated_samples(),
          audio_.available() && !audio_.muted && !audio_.suspended, video_presenter_.available(),
-         static_cast<std::uint64_t>(audio_.wait_time().count())});
+         static_cast<std::uint64_t>(audio_.wait_time().count()),
+         static_cast<std::uint64_t>(session_->renderer_time().count())});
     if (field_trace_->captures(last_frame_)) {
       session_->finish_frame();
       field_trace_->capture(last_frame_, session_->frame);

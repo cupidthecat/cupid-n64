@@ -47,11 +47,24 @@ int main() {
   worker.submit([&] { ++completed; });
   worker.wait();
   test::equal(completed.load(), 2);
+  std::promise<void> interruptible;
+  worker.submit([&] {
+    interruptible.set_value();
+    while (!worker.interrupted())
+      std::this_thread::yield();
+    ++completed;
+  });
+  interruptible.get_future().wait();
+  worker.interrupt();
+  worker.wait();
+  test::equal(completed.load(), 3);
+  worker.submit([&] { test::equal(worker.interrupted(), false); });
+  worker.wait();
   {
     ExecutionWorker ending;
     ending.submit([&] { ++completed; });
   }
-  test::equal(completed.load(), 3);
+  test::equal(completed.load(), 4);
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

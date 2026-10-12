@@ -1,13 +1,14 @@
 # Windows playback
 
-The Windows frontend uses three threads. The window thread handles input, menus,
-presentation and session commands. An execution worker advances the console using
-latched controller input. An audio thread owns the WASAPI endpoint and its COM
+The window thread handles input, menus, presentation and session commands. An
+execution worker advances the console using latched controller input for a
+complete video field. An audio thread owns the WASAPI endpoint and its COM
 rendering interfaces.
 
-The window waits for the current execution interval before changing the session,
-loading or saving a state, opening debugger tools, or shutting down. Painting uses
-an owned image while execution continues. Debugger execution uses the synchronous
+Session commands request an interrupt between console execution intervals and
+wait for the worker before changing the session, loading or saving a state,
+opening debugger tools, or shutting down. Painting uses an owned image while
+execution continues. Debugger execution uses the synchronous
 path so stop, step and memory operations retain their existing boundaries.
 
 Direct3D 11 uploads and scales the image into a flip-model swap chain. Scaling,
@@ -15,6 +16,11 @@ aspect ratio, fullscreen and screenshots retain the existing frame dimensions.
 When GPU presentation fails, the frontend falls back to software presentation.
 This presentation backend is separate from the Vulkan hardware renderer that
 executes RDP graphics.
+
+The hardware renderer reserves separate command-pool slots for its command queue,
+serialized caller and readback worker. Renderer entry points bind the calling
+thread to its slot when ownership transfers. State operations retain their GPU
+fences before reading or replacing renderer state.
 
 WASAPI uses shared-mode event-driven playback and a bounded stereo PCM queue.
 The producer waits when the configured latency budget is full. Endpoint callbacks
@@ -57,6 +63,13 @@ execution intervals; `paint_us` measures window painting; `wait_us` measures the
 gap from worker completion to observation. `audio_wait_us` measures producer
 buffer waits included in advance time. Painting and execution can overlap, so
 their durations must not be added as a decomposition of total field time.
+
+`worker_cpu_us` records the worker's kernel and user CPU time. Windows accounts
+that time in discrete quanta, so compare sums across field windows rather than
+individual fields. `worker_processor` samples the logical processor at interval
+completion. `renderer_us` measures command submission, register updates, scanout,
+readback and synchronization calls, including their CPU work and waits. It is also
+included in execution time when those calls run on the worker.
 
 Clock, PC, sample-count and image comparisons check the selected observations.
 They do not establish equality of every machine register or RAM byte. Audio

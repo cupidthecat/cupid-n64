@@ -25,6 +25,7 @@ public:
 
 private:
   friend class RendererState;
+  void bind_thread() const;
   struct Implementation;
   std::unique_ptr<Implementation> implementation_;
 };

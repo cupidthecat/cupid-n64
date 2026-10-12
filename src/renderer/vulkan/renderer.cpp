@@ -1,4 +1,5 @@
 #include "renderer/vulkan/implementation.hpp"
+#include "thread_id.hpp"
 #include <cstring>
 #include <stdexcept>
 
@@ -11,7 +12,10 @@ HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings s
   if (!Vulkan::Context::init_loader(nullptr) ||
       !context.init_instance_and_device(nullptr, 0, nullptr, 0, 0))
     throw std::runtime_error("Vulkan device initialization failed");
+  // The command queue, serialized caller, and readback worker use distinct pools.
+  context.set_num_thread_indices(3);
   device.set_context(context);
+  Util::register_thread_index(1);
   device.init_frame_contexts(3);
   RDP::CommandProcessorFlags flags = RDP::COMMAND_PROCESSOR_FLAG_HOST_VISIBLE_HIDDEN_RDRAM_BIT;
   if (settings.scale == 2)
@@ -34,6 +38,7 @@ HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings s
 }
 
 HardwareRenderer::Implementation::~Implementation() {
+  Util::register_thread_index(1);
   readback.reset();
   if (processor) {
     processor->idle();
@@ -42,6 +47,7 @@ HardwareRenderer::Implementation::~Implementation() {
 }
 
 VideoFrame HardwareRenderer::Implementation::read_pixels() {
+  Util::register_thread_index(2);
   if (!scanout.fence || !scanout.width || !scanout.height)
     return {1, 1, {0, 0, 0, 255}};
   scanout.fence->wait();
@@ -64,16 +70,24 @@ HardwareRenderer::HardwareRenderer(Rdram &ram, RenderSettings settings)
 
 HardwareRenderer::~HardwareRenderer() = default;
 
+void HardwareRenderer::bind_thread() const {
+  // Callers transfer ownership only after the previous execution interval completes.
+  Util::register_thread_index(1);
+}
+
 void HardwareRenderer::submit(std::span<const std::uint32_t> words) {
+  bind_thread();
   implementation_->processor->enqueue_command(static_cast<unsigned>(words.size()), words.data());
 }
 
 void HardwareRenderer::synchronize() {
+  bind_thread();
   auto &processor = *implementation_->processor;
   processor.wait_for_timeline(processor.signal_timeline());
 }
 
 void HardwareRenderer::write_video(unsigned index, std::uint32_t value) {
+  bind_thread();
   implementation_->processor->set_vi_register(static_cast<RDP::VIRegister>(index), value);
 }
 
@@ -86,6 +100,7 @@ RenderSettings HardwareRenderer::settings() const {
 }
 
 void HardwareRenderer::scanout_settings(RenderSettings settings) {
+  bind_thread();
   if (!settings.valid())
     throw std::runtime_error("Select a supported rendering configuration.");
   if (settings.scale != implementation_->settings.scale)
@@ -95,6 +110,7 @@ void HardwareRenderer::scanout_settings(RenderSettings settings) {
 }
 
 void HardwareRenderer::begin_frame(bool field) {
+  bind_thread();
   auto &state = *implementation_;
   state.readback->wait();
   state.processor->set_vi_register(RDP::VIRegister::VCurrentLine, unsigned(field));
@@ -113,6 +129,7 @@ void HardwareRenderer::begin_frame(bool field) {
 }
 
 VideoFrame HardwareRenderer::read_frame() {
+  bind_thread();
   auto &state = *implementation_;
   return state.readback->take();
 }

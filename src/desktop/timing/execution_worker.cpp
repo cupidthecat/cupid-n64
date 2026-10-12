@@ -1,12 +1,16 @@
 #include "desktop/timing/execution_worker.hpp"
 #include <stdexcept>
 #include <utility>
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace cupid::desktop {
 
 ExecutionWorker::ExecutionWorker() : thread_([this] { run(); }) {}
 
 ExecutionWorker::~ExecutionWorker() {
+  interrupt();
   try {
     wait();
   } catch (...) {
@@ -31,6 +35,7 @@ void ExecutionWorker::submit(std::function<void()> task) {
   task_ = std::move(task);
   pending_ = true;
   done_ = false;
+  interrupted_.store(false, std::memory_order_relaxed);
   changed_.notify_all();
 }
 
@@ -50,12 +55,15 @@ void ExecutionWorker::wait() {
 }
 
 void ExecutionWorker::run() {
+#if defined(_WIN32)
+  SetThreadDescription(GetCurrentThread(), L"Emulation");
+#endif
   for (;;) {
     std::unique_lock lock(mutex_);
     changed_.wait(lock, [this] { return stopping_ || bool(task_); });
     if (stopping_)
       return;
-    const auto task = std::move(task_);
+    const auto task = std::exchange(task_, {});
     lock.unlock();
     std::exception_ptr error;
     try {

@@ -204,6 +204,10 @@ private:
   std::unique_ptr<InputReplay> input_replay_;
   std::unique_ptr<FieldTrace> field_trace_;
   std::chrono::nanoseconds last_advance_duration_{};
+  std::chrono::nanoseconds last_advance_cpu_{};
+  std::optional<std::chrono::nanoseconds> worker_cpu_origin_;
+  std::chrono::nanoseconds observed_worker_cpu_{};
+  unsigned last_advance_processor_ = ~0u;
   std::chrono::steady_clock::time_point last_advance_completed_{};
   GdbServer gdb_;
   unsigned gdb_port_ = 2345;

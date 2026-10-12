@@ -47,6 +47,12 @@ public:
   FeedbackState feedback_state(unsigned port) const;
   void heart_rate(unsigned port, unsigned value);
   void finish_frame();
+  void measure_output(bool enabled) {
+    output_->measure(enabled);
+  }
+  std::chrono::nanoseconds renderer_time() const {
+    return output_->host_time();
+  }
   void reset();
   void save();
   void change_disk(const std::filesystem::path &path);
