@@ -12,6 +12,7 @@ void SerialInterface::power() {
   dram_address_ = read_address_ = write_address_ = latch_ = 0;
   pch_state_ = dma_state_ = 0;
   dma_busy_ = io_busy_ = interrupt_ = false;
+  read_origin_ = write_origin_ = {};
 }
 
 void SerialInterface::connect_sync(std::function<void()> callback) {
@@ -48,7 +49,7 @@ void SerialInterface::write_io(std::uint32_t address, std::uint32_t value) {
   case 1:
     read_address_ = value & ~1u;
     if (auto *diagnostics = pif_.diagnostics())
-      diagnostics->set_dma_origin(MemoryRequestor::SerialDma, diagnostics->origin());
+      read_origin_ = diagnostics->origin();
     dma_busy_ = true;
     dma_state_ = 1;
     pch_state_ = 4;
@@ -57,7 +58,7 @@ void SerialInterface::write_io(std::uint32_t address, std::uint32_t value) {
   case 4:
     write_address_ = value & ~1u;
     if (auto *diagnostics = pif_.diagnostics())
-      diagnostics->set_dma_origin(MemoryRequestor::SerialDma, diagnostics->origin());
+      write_origin_ = diagnostics->origin();
     dma_busy_ = true;
     dma_state_ = 4;
     pch_state_ = 1;
@@ -126,13 +127,19 @@ void SerialInterface::complete_write() {
 }
 
 void SerialInterface::dma_read() {
+  if (auto *diagnostics = pif_.diagnostics())
+    diagnostics->set_dma_origin(MemoryRequestor::SerialDma, read_origin_);
   pif_.dma_read(read_address_, dram_address_);
   complete_dma();
+  read_origin_ = {};
 }
 
 void SerialInterface::dma_write() {
+  if (auto *diagnostics = pif_.diagnostics())
+    diagnostics->set_dma_origin(MemoryRequestor::SerialDma, write_origin_);
   pif_.dma_write(write_address_, dram_address_);
   complete_dma();
+  write_origin_ = {};
 }
 
 } // namespace cupid::n64

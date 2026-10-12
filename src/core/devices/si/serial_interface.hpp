@@ -29,6 +29,7 @@ private:
   MipsInterface &interrupts_;
   EventQueue &events_;
   std::function<void()> sync_;
+  DiagnosticOrigin read_origin_{}, write_origin_{};
   std::uint32_t dram_address_ = 0;
   std::uint32_t read_address_ = 0;
   std::uint32_t write_address_ = 0;

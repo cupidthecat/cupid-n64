@@ -3,6 +3,7 @@
 #include "coherence.hpp"
 #include "core/debug/diagnostics.hpp"
 #include "homebrew.hpp"
+#include "native.hpp"
 #include "protocol.hpp"
 #include <stdexcept>
 
@@ -181,6 +182,9 @@ int main() {
   format_probes();
   counter_boundary_probes();
   signal_boundary_probes();
+  delay_profile_probes();
+  refill_profile_probes();
+  serial_dma_probes();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

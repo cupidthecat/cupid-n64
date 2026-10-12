@@ -210,6 +210,8 @@ struct CpuCompiler::Emitter {
   }
   static sljit_sw guard(Cpu *cpu, std::uint32_t physical, const Impl::Block::InstructionView *view);
   static sljit_sw helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
+  static sljit_sw profiled_helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks,
+                                  sljit_uw completion_clocks);
   static sljit_sw cop2_memory_helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);
   template <bool InvalidCop2>
   static sljit_sw helper_impl(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks);

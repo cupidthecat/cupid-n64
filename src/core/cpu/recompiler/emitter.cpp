@@ -79,6 +79,7 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {
       const auto instruction = line.words[((physical >> 2) ^ reverse) & 7];
       cpu->trace_instruction(cpu->state_.pc, instruction, 2);
+      Cpu::ProfileClockScope instruction_clock(*cpu, 2);
       helper(cpu, instruction, 0);
       return 0;
     }
@@ -105,6 +106,12 @@ sljit_sw CpuCompiler::Emitter::helper_impl(Cpu *cpu, std::uint32_t instruction, 
 
 sljit_sw CpuCompiler::Emitter::helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks) {
   return helper_impl<false>(cpu, instruction, clocks);
+}
+
+sljit_sw CpuCompiler::Emitter::profiled_helper(Cpu *cpu, std::uint32_t instruction, sljit_uw clocks,
+                                               sljit_uw completion_clocks) {
+  Cpu::ProfileClockScope profile_clock(*cpu, static_cast<unsigned>(completion_clocks));
+  return helper(cpu, instruction, clocks);
 }
 
 sljit_sw CpuCompiler::Emitter::cop2_memory_helper(Cpu *cpu, std::uint32_t instruction,

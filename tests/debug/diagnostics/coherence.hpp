@@ -254,4 +254,47 @@ inline void display_traffic_probes() {
         1);
 }
 
+inline void serial_dma_probes() {
+  for (unsigned scenario = 0; scenario < 4; ++scenario) {
+    const bool reverse = scenario & 1;
+    const bool restored = scenario & 2;
+    std::array<std::vector<std::uint8_t>, 2> states;
+    for (unsigned enabled = 0; enabled < 2; ++enabled) {
+      auto console = machine(141);
+      auto &cpu = console->cpu();
+      auto &diagnostics = console->diagnostics();
+      diagnostics.configure({.coherence = enabled != 0});
+      cpu.state().gpr[1] = 0xffffffff80002000;
+      cpu.state().gpr[2] = 0x55;
+      cpu.execute(test::i(40, 1, 2, 1));
+      console->write(0x04800000, 4, 0x2000);
+      const auto budget = std::uint64_t(console->pif().estimate_timing()) * 3 + 4096;
+      for (unsigned n = 0; n < 2; ++n) {
+        const bool read = (n == 0) != reverse;
+        cpu.set_pc(read ? 0xffffffff80003000 : 0xffffffff80004000);
+        console->write(read ? 0x04800004 : 0x04800010, 4, 0x1fc007c0);
+      }
+      if (restored)
+        CoreState::restore(*console, CoreState::capture(*console));
+      diagnostics.clear_log();
+      console->run_clocks(budget);
+      const auto records = diagnostics.records();
+      bool read = false, write = false;
+      for (const auto &record : records) {
+        if (record.requestor != MemoryRequestor::SerialDma)
+          continue;
+        const bool from_pif = record.kind == DiagnosticKind::CachedWrite;
+        read |= from_pif;
+        write |= record.kind == DiagnosticKind::DirtyRead;
+        equal(record.dma.known, !restored);
+        equal(record.dma.pc, restored ? 0 : from_pif ? 0xffffffff80003000 : 0xffffffff80004000);
+      }
+      equal(read, enabled != 0);
+      equal(write, enabled != 0);
+      states[enabled] = CoreState::capture(*console);
+    }
+    equal(states[0] == states[1], true);
+  }
+}
+
 } // namespace debug_test
