@@ -360,10 +360,10 @@ if(BUILD_TESTING)
   set_tests_properties(core_state_file_read PROPERTIES FIXTURES_REQUIRED core_state_file)
   cupid_add_core_test(disk_state_tests disk_state_test_entry tests/state/disk.cpp)
   add_test(NAME disk_state COMMAND ${disk_state_tests_command})
-  add_executable(video_output_tests tests/desktop/video_output.cpp)
-  target_link_libraries(video_output_tests PRIVATE cupid_video_output)
-  add_test(NAME cpu_video_output COMMAND video_output_tests)
-  add_test(NAME cpu_video_output_unavailable COMMAND video_output_tests --unavailable)
+  cupid_add_fixture_test(video_output_tests video_output_test_entry tests/desktop/video_output.cpp
+    GROUP desktop_fixture_tests LIBRARY cupid_video_output)
+  add_test(NAME cpu_video_output COMMAND ${video_output_tests_command})
+  add_test(NAME cpu_video_output_unavailable COMMAND ${video_output_tests_command} --unavailable)
   set_tests_properties(cpu_video_output_unavailable PROPERTIES ENVIRONMENT
     "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
   add_executable(desktop_resampler_tests tests/desktop/resampler.cpp src/desktop/audio/resampler.cpp)
@@ -442,37 +442,37 @@ if(BUILD_TESTING)
     add_test(NAME desktop_control_preferences COMMAND desktop_control_preferences_tests)
   endif()
   if(TARGET cupid_session)
-    add_executable(session_video_tests tests/desktop/session_video.cpp)
-    target_compile_definitions(session_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_video_tests PRIVATE cupid_session)
-    add_test(NAME desktop_software_video COMMAND session_video_tests)
-    add_test(NAME desktop_software_video_unavailable COMMAND session_video_tests --unavailable)
+    cupid_add_fixture_test(session_video_tests session_video_test_entry tests/desktop/session_video.cpp
+      GROUP desktop_fixture_tests LIBRARY cupid_session)
+    target_compile_definitions(${session_video_tests_compile_target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    add_test(NAME desktop_software_video COMMAND ${session_video_tests_command})
+    add_test(NAME desktop_software_video_unavailable COMMAND ${session_video_tests_command} --unavailable)
     set_tests_properties(desktop_software_video_unavailable PROPERTIES ENVIRONMENT
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
-    add_executable(session_state_tests tests/desktop/state/session.cpp)
-    target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_state_tests PRIVATE cupid_session)
-    add_test(NAME desktop_session_state COMMAND session_state_tests)
-    add_executable(session_launch_tests tests/desktop/session_launch.cpp)
-    target_compile_definitions(session_launch_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_launch_tests PRIVATE cupid_session)
+    cupid_add_fixture_test(session_state_tests session_state_test_entry tests/desktop/state/session.cpp
+      GROUP desktop_fixture_tests LIBRARY cupid_session)
+    target_compile_definitions(${session_state_tests_compile_target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    add_test(NAME desktop_session_state COMMAND ${session_state_tests_command})
+    cupid_add_fixture_test(session_launch_tests session_launch_test_entry tests/desktop/session_launch.cpp
+      GROUP desktop_fixture_tests LIBRARY cupid_session)
+    target_compile_definitions(${session_launch_tests_compile_target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     if(MSVC)
-      target_compile_options(session_launch_tests PRIVATE /W4 /WX /permissive-)
+      target_compile_options(${session_launch_tests_compile_target} PRIVATE /W4 /WX /permissive-)
     endif()
-    add_test(NAME desktop_launch_settings COMMAND session_launch_tests)
-    add_test(NAME desktop_state_file_write COMMAND session_state_tests --write-state
+    add_test(NAME desktop_launch_settings COMMAND ${session_launch_tests_command})
+    add_test(NAME desktop_state_file_write COMMAND ${session_state_tests_command} --write-state
       "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
-    add_test(NAME desktop_state_file_read COMMAND session_state_tests --read-state
+    add_test(NAME desktop_state_file_read COMMAND ${session_state_tests_command} --read-state
       "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
     set_tests_properties(desktop_state_file_write PROPERTIES FIXTURES_SETUP desktop_state_file)
     set_tests_properties(desktop_state_file_read PROPERTIES FIXTURES_REQUIRED desktop_state_file)
     if(CUPID_HARDWARE_RENDERER)
-      target_compile_definitions(session_state_tests PRIVATE CUPID_SESSION_HARDWARE_TESTS)
-      target_link_libraries(session_state_tests PRIVATE cupid_renderer)
-      add_test(NAME desktop_hardware_state COMMAND session_state_tests --hardware)
-      add_test(NAME desktop_hardware_state_file_write COMMAND session_state_tests --write-state
+      target_compile_definitions(${session_state_tests_compile_target} PRIVATE CUPID_SESSION_HARDWARE_TESTS)
+      target_link_libraries(${session_state_tests_link_target} PRIVATE cupid_renderer)
+      add_test(NAME desktop_hardware_state COMMAND ${session_state_tests_command} --hardware)
+      add_test(NAME desktop_hardware_state_file_write COMMAND ${session_state_tests_command} --write-state
         "${CMAKE_CURRENT_BINARY_DIR}/desktop-hardware-state-fixtures" --hardware)
-      add_test(NAME desktop_hardware_state_file_read COMMAND session_state_tests --read-state
+      add_test(NAME desktop_hardware_state_file_read COMMAND ${session_state_tests_command} --read-state
         "${CMAKE_CURRENT_BINARY_DIR}/desktop-hardware-state-fixtures" --hardware)
       set_tests_properties(desktop_hardware_state_file_write PROPERTIES
         FIXTURES_SETUP desktop_hardware_state_file)
@@ -679,38 +679,38 @@ if(BUILD_TESTING)
   cupid_add_core_test(rsp_vector_execution_tests rsp_vector_test_entry tests/rsp/vector/execution.cpp)
   add_test(NAME signal_processor_vector_execution COMMAND ${rsp_vector_execution_tests_command})
   if(CUPID_HARDWARE_RENDERER)
-    add_executable(renderer_settings_tests tests/renderer/settings.cpp)
-    target_link_libraries(renderer_settings_tests PRIVATE cupid_renderer)
-    add_test(NAME hardware_renderer_settings COMMAND renderer_settings_tests)
+    cupid_add_fixture_test(renderer_settings_tests renderer_settings_test_entry tests/renderer/settings.cpp
+      GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    add_test(NAME hardware_renderer_settings COMMAND ${renderer_settings_tests_command})
     set_tests_properties(hardware_renderer_settings PROPERTIES RESOURCE_LOCK vulkan)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
       set_tests_properties(hardware_renderer_settings PROPERTIES SKIP_RETURN_CODE 77)
     endif()
-    add_executable(renderer_undefined_tests tests/renderer/undefined/main.cpp
-      tests/renderer/undefined/subpasses.cpp tests/renderer/undefined/primitive_lod.cpp)
-    target_link_libraries(renderer_undefined_tests PRIVATE cupid_renderer cupid_renderer_dependency)
-    add_test(NAME renderer_subpass_attachments COMMAND renderer_undefined_tests --subpasses)
-    add_test(NAME renderer_primitive_lod COMMAND renderer_undefined_tests --lod)
-    add_executable(renderer_state_tests tests/state/renderer.cpp)
-    target_link_libraries(renderer_state_tests PRIVATE cupid_renderer)
-    add_test(NAME renderer_state COMMAND renderer_state_tests)
-    add_test(NAME renderer_state_fallback COMMAND renderer_state_tests)
+    cupid_add_fixture_test(renderer_undefined_tests renderer_undefined_test_entry tests/renderer/undefined/main.cpp
+      tests/renderer/undefined/subpasses.cpp tests/renderer/undefined/primitive_lod.cpp
+      GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    target_link_libraries(${renderer_undefined_tests_compile_target} PRIVATE cupid_renderer_dependency)
+    target_link_libraries(${renderer_undefined_tests_link_target} PRIVATE cupid_renderer_dependency)
+    add_test(NAME renderer_subpass_attachments COMMAND ${renderer_undefined_tests_command} --subpasses)
+    add_test(NAME renderer_primitive_lod COMMAND ${renderer_undefined_tests_command} --lod)
+    cupid_add_fixture_test(renderer_state_tests renderer_state_test_entry tests/state/renderer.cpp
+      GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    add_test(NAME renderer_state COMMAND ${renderer_state_tests_command})
+    add_test(NAME renderer_state_fallback COMMAND ${renderer_state_tests_command})
     set_tests_properties(renderer_state_fallback PROPERTIES
       ENVIRONMENT "PARALLEL_RDP_ALLOW_EXTERNAL_HOST=0")
     add_executable(renderer_readback_tests tests/renderer/readback.cpp)
     target_link_libraries(renderer_readback_tests PRIVATE cupid_renderer)
     add_test(NAME frame_readback COMMAND renderer_readback_tests)
     set_tests_properties(frame_readback PROPERTIES TIMEOUT 15)
-    add_executable(renderer_tests tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
+    cupid_add_fixture_test(renderer_tests renderer_test_entry tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
       tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp
       tests/renderer/replay/render.cpp
-      tests/renderer/replay/scanout.cpp)
-    target_link_libraries(renderer_tests PRIVATE cupid_renderer)
-    add_test(NAME hardware_renderer COMMAND renderer_tests)
-    add_executable(renderer_reset_tests tests/renderer/reset/main.cpp
-      tests/renderer/replay/reset.cpp)
-    target_link_libraries(renderer_reset_tests PRIVATE cupid_renderer)
-    add_test(NAME hardware_renderer_reset COMMAND renderer_reset_tests)
+      tests/renderer/replay/scanout.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    add_test(NAME hardware_renderer COMMAND ${renderer_tests_command})
+    cupid_add_fixture_test(renderer_reset_tests renderer_reset_test_entry tests/renderer/reset/main.cpp
+      tests/renderer/replay/reset.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    add_test(NAME hardware_renderer_reset COMMAND ${renderer_reset_tests_command})
     set_tests_properties(hardware_renderer hardware_renderer_reset renderer_state renderer_state_fallback
       renderer_subpass_attachments renderer_primitive_lod PROPERTIES RESOURCE_LOCK vulkan)
     if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
