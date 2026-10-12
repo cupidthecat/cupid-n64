@@ -97,6 +97,64 @@ void snapshots() {
   }
 }
 
+void active_device_snapshots() {
+  for (const auto device : {DeviceId::Vi, DeviceId::Ai, DeviceId::Si, DeviceId::Rdp}) {
+    auto console = machine();
+    console->run_interval(1);
+    const auto before = CoreState::capture(*console);
+    Inspection::properties(*console, device);
+    equal(CoreState::capture(*console) == before, true);
+  }
+  auto console = machine();
+  console->audio().write_word(0, 0x12340);
+  console->audio().write_word(8, 1);
+  console->audio().write_word(16, 1000);
+  console->audio().write_word(20, 15);
+  const auto audio = Inspection::properties(*console, DeviceId::Ai);
+  equal(value(audio, "AI_DRAM_ADDRESS") == "0x00012340", true);
+  equal(value(audio, "AI_CONTROL") == "0x00000001", true);
+  equal(value(audio, "AI_DACRATE") == "0x000003E8", true);
+  equal(value(audio, "AI_BITRATE") == "0x0000000F", true);
+  auto &command = const_cast<DisplayCommandState &>(console->display().command());
+  command.tmem_busy = 19;
+  equal(value(Inspection::properties(*console, DeviceId::Rdp), "DPC_TMEM_BUSY") == "0x00000013",
+        true);
+  console->cpu().write_control(Count, 0xffffffff);
+  console->cpu().advance_clocks(3);
+  const auto before = CoreState::capture(*console);
+  equal(value(Inspection::properties(*console, DeviceId::Cpu), "CP0 Count") == "0x00000000FFFFFFFF",
+        true);
+  equal(CoreState::capture(*console) == before, true);
+  console->cpu().advance_clocks(1);
+  equal(value(Inspection::properties(*console, DeviceId::Cpu), "CP0 Count") == "0x0000000000000000",
+        true);
+}
+
+void disk_boot_snapshots() {
+  for (const auto &boot : std::array{std::pair{"NDDJ", "8303"}, std::pair{"NDXJ", "8401"},
+                                     std::pair{"NDDE", "DDUS"}}) {
+    ConsoleConfig config;
+    config.random_seed = 133134;
+    config.disk_drive = true;
+    config.disk_clock = [] { return std::int64_t(946684800); };
+    auto console = std::make_unique<Console>(config);
+    std::vector<std::uint8_t> ipl(4096), firmware(0x7c0);
+    ipl[0] = 0x80;
+    ipl[1] = 0x27;
+    ipl[2] = 7;
+    ipl[3] = 0x40;
+    std::copy_n(boot.first, 4, ipl.begin() + 0x3b);
+    equal(console->load_disk(ipl, firmware), true);
+    const auto before = CoreState::capture(*console);
+    equal(value(Inspection::properties(*console, DeviceId::Console), "CIC") == boot.second, true);
+    equal(CoreState::capture(*console) == before, true);
+    ipl[1] = 0x37;
+    ipl[2] = 0x12;
+    equal(console->load(ipl, firmware), true);
+    equal(value(Inspection::properties(*console, DeviceId::Console), "CIC") == "6102", true);
+  }
+}
+
 void edits() {
   auto console = machine();
   for (const auto &region : Inspection::regions(*console)) {
@@ -236,6 +294,8 @@ void formatting() {
 int main() {
   try {
     snapshots();
+    active_device_snapshots();
+    disk_boot_snapshots();
     edits();
     cache();
     compiled_code();

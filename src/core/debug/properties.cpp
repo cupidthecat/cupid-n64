@@ -68,7 +68,7 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
     result.flag("Bus frozen", console.frozen_);
     result.text("Video region", console.config_.region == VideoRegion::Pal ? "PAL" : "NTSC");
     result.flag("Expansion Pak", console.config_.expansion);
-    result.text("CIC", cic.at(static_cast<unsigned>(console.config_.cic)));
+    result.text("CIC", cic.at(static_cast<unsigned>(console.boot_cic())));
     result.flag("Boot checksum verification", console.config_.boot_verification.checksum);
     result.flag("Boot region verification", console.config_.boot_verification.region);
     result.flag("64DD configured", console.config_.disk_drive);
@@ -108,11 +108,7 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
         result.text("CP0 Random", "Selected on guest read");
         continue;
       }
-      const auto value = n == Count
-                             ? ((cpu.count_ticks_ + ((state.clocks - cpu.count_clock_) >> 1)) &
-                                ((1ull << 33) - 1)) >>
-                                   1
-                             : cpu.control_[n];
+      const auto value = n == Count ? cpu.timer_count() : cpu.control_[n];
       result.hex(std::string("CP0 ") + control[n], value, 16);
     }
     for (unsigned n = 0; n < cpu.tlb_.size(); ++n) {
@@ -205,16 +201,21 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
                                 "VI_V_CURRENT_LINE", "VI_TIMING", "VI_V_SYNC", "VI_H_SYNC",
                                 "VI_H_SYNC_LEAP", "VI_H_VIDEO", "VI_V_VIDEO", "VI_V_BURST",
                                 "VI_X_SCALE", "VI_Y_SCALE"},
-                     [&](unsigned offset) { return console.vi_.read_word(offset); });
+                     [&](unsigned offset) { return console.vi_.peek_word(offset); });
     result.flag("Field", console.vi_.field());
     result.number("Frames", console.vi_.frames());
     result.number("Clock offset", console.vi_.clocks());
     result.number("Clock fraction", console.vi_.fraction());
     break;
-  case DeviceId::Ai:
+  case DeviceId::Ai: {
+    const auto &audio = console.audio_;
+    const auto &state = audio.state();
+    const std::array<std::uint32_t, 6> registers{state.addresses[0],     state.lengths[0],
+                                                 unsigned(state.enable), audio.status(),
+                                                 state.dac_rate,         state.bit_rate};
     result.registers(std::array{"AI_DRAM_ADDRESS", "AI_LENGTH", "AI_CONTROL", "AI_STATUS",
                                 "AI_DACRATE", "AI_BITRATE"},
-                     [&](unsigned offset) { return console.audio_.read_word(offset); });
+                     [&](unsigned offset) { return registers[offset / 4]; });
     for (unsigned n = 0; n < 2; ++n) {
       result.hex("DMA " + std::to_string(n) + " address", console.audio_.state().addresses[n]);
       result.number("DMA " + std::to_string(n) + " remaining bytes",
@@ -224,6 +225,7 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
     result.number("Frequency Hz", console.audio_.frequency());
     result.number("Clock offset", console.audio_.clocks());
     break;
+  }
   case DeviceId::Pi:
     result.registers(std::array{"PI_DRAM_ADDRESS", "PI_PBUS_ADDRESS", "PI_READ_LENGTH",
                                 "PI_WRITE_LENGTH", "PI_STATUS", "PI_BSD_DOM1_LAT",
@@ -236,7 +238,7 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
     result.registers(std::array{"SI_DRAM_ADDRESS", "SI_PIF_ADDRESS_READ64B",
                                 "SI_INT_ADDRESS_WRITE64B", "SI_RESERVED", "SI_PIF_ADDRESS_WRITE64B",
                                 "SI_INT_ADDRESS_READ64B", "SI_STATUS"},
-                     [&](unsigned offset) { return console.si_.read_io(offset); });
+                     [&](unsigned offset) { return console.si_.peek_io(offset); });
     break;
   case DeviceId::Ri:
     result.registers(std::array{"RI_MODE", "RI_CONFIG", "RI_CURRENT_LOAD", "RI_SELECT",
@@ -244,15 +246,21 @@ std::vector<DeviceProperty> Inspection::properties(const Console &console, Devic
                      [&](unsigned offset) { return console.ri_.read_word(offset); });
     result.flag("Memory bus active", console.ri_.active());
     break;
-  case DeviceId::Rdp:
+  case DeviceId::Rdp: {
+    const auto &rdp = console.rdp_;
+    const auto &command = rdp.command();
+    const std::array registers{command.start,     command.end,         command.current,
+                               rdp.status(),      rdp.clock_counter(), command.buffer_busy,
+                               command.pipe_busy, command.tmem_busy};
     result.registers(std::array{"DPC_START", "DPC_END", "DPC_CURRENT", "DPC_STATUS", "DPC_CLOCK",
                                 "DPC_BUSY", "DPC_PIPE_BUSY", "DPC_TMEM_BUSY"},
-                     [&](unsigned offset) { return console.rdp_.read_word(offset); });
+                     [&](unsigned offset) { return registers[offset / 4]; });
     result.number("Clock offset", console.rdp_.clocks());
     result.number("Buffered command words", console.rdp_.buffered_words());
     result.number("Consumed command words", console.rdp_.consumed_words());
     result.flag("Crashed", console.rdp_.command().crashed);
     break;
+  }
   case DeviceId::Pif: {
     constexpr std::array states{"Init",      "Lockout", "Get checksum", "Check checksum",
                                 "Terminate", "Run",     "Error"};

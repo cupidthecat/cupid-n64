@@ -92,6 +92,11 @@ bool Console::load_disk(std::span<const std::uint8_t> ipl, std::span<const std::
   return load({}, firmware);
 }
 
+CicModel Console::boot_cic() const {
+  return config_.disk_drive && rom_.data().empty() && disk_.firmware_loaded() ? disk_.cic()
+                                                                              : config_.cic;
+}
+
 void Console::power(bool reset) {
   if (!reset) {
     const auto seed = config_.random_seed     ? *config_.random_seed
@@ -110,8 +115,7 @@ void Console::power(bool reset) {
   audio_.power();
   pi_.power();
   pif_.power();
-  cic_.power(config_.disk_drive && rom_.data().empty() && disk_.firmware_loaded() ? disk_.cic()
-                                                                                  : config_.cic);
+  cic_.power(boot_cic());
   ri_.power(reset);
   si_.power();
   cpu_.power();

@@ -13,6 +13,7 @@ public:
   BusRead read(std::uint32_t address, unsigned bytes);
   BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value);
   std::uint32_t read_io(std::uint32_t address) const;
+  std::uint32_t peek_io(std::uint32_t address) const;
   void write_io(std::uint32_t address, std::uint32_t value);
   void dma_read();
   void dma_write();

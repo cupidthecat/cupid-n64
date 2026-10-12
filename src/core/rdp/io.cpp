@@ -2,6 +2,18 @@
 
 namespace cupid::n64 {
 
+std::uint32_t Rdp::status() const {
+  return unsigned(command_.source) | (unsigned(command_.freeze || command_.crashed) << 1) |
+         (unsigned(command_.flush) << 2) | (unsigned(command_.start_clock) << 3) |
+         (unsigned(command_.tmem_busy > 0) << 4) | (unsigned(command_.pipe_busy > 0) << 5) |
+         (unsigned(command_.buffer_busy > 0) << 6) | (unsigned(command_.ready) << 7) |
+         (unsigned(command_.end_valid) << 9) | (unsigned(command_.start_valid) << 10);
+}
+
+std::uint32_t Rdp::clock_counter(std::int64_t caller_clock) const {
+  return static_cast<std::uint32_t>(command_.clock - (clock_ - caller_clock) / 3) & 0xffffff;
+}
+
 std::uint32_t Rdp::read_word(std::uint32_t address, std::int64_t caller_clock, bool cpu) const {
   const auto index = (address & 31) >> 2;
   std::uint32_t value = 0;
@@ -16,14 +28,10 @@ std::uint32_t Rdp::read_word(std::uint32_t address, std::int64_t caller_clock, b
     value = command_.current;
     break;
   case 3:
-    value = unsigned(command_.source) | (unsigned(command_.freeze || command_.crashed) << 1) |
-            (unsigned(command_.flush) << 2) | (unsigned(command_.start_clock) << 3) |
-            (unsigned(command_.tmem_busy > 0) << 4) | (unsigned(command_.pipe_busy > 0) << 5) |
-            (unsigned(command_.buffer_busy > 0) << 6) | (unsigned(command_.ready) << 7) |
-            (unsigned(command_.end_valid) << 9) | (unsigned(command_.start_valid) << 10);
+    value = status();
     break;
   case 4:
-    value = static_cast<std::uint32_t>(command_.clock - (clock_ - caller_clock) / 3) & 0xffffff;
+    value = clock_counter(caller_clock);
     break;
   case 5:
     value = command_.buffer_busy;

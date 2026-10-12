@@ -18,6 +18,7 @@ public:
   void run();
   void run_until_frame(std::uint64_t target);
   std::uint32_t read_word(std::uint32_t address) const;
+  std::uint32_t peek_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
   void connect_frame(std::function<void(bool)> callback);
   void connect_registers(std::function<void(unsigned, std::uint32_t)> callback);

@@ -19,6 +19,12 @@ void SerialInterface::connect_sync(std::function<void()> callback) {
 }
 
 std::uint32_t SerialInterface::read_io(std::uint32_t address) const {
+  if (((address & 31) >> 2) == 6 && sync_)
+    sync_();
+  return peek_io(address);
+}
+
+std::uint32_t SerialInterface::peek_io(std::uint32_t address) const {
   switch ((address & 31) >> 2) {
   case 0:
     return dram_address_;
@@ -27,8 +33,6 @@ std::uint32_t SerialInterface::read_io(std::uint32_t address) const {
   case 4:
     return write_address_;
   case 6:
-    if (sync_)
-      sync_();
     return unsigned(dma_busy_) | (unsigned(io_busy_) << 1) | (pch_state_ << 4) | (dma_state_ << 8) |
            (unsigned(interrupt_) << 12);
   default:
