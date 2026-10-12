@@ -83,13 +83,6 @@ std::optional<std::string> unescape(std::string_view payload, unsigned limit) {
       if (++n == payload.size())
         return {};
       result += static_cast<char>(payload[n] ^ 0x20);
-    } else if (payload[n] == '*') {
-      if (result.empty() || ++n == payload.size())
-        return {};
-      const auto repeats = static_cast<unsigned char>(payload[n]);
-      if (repeats < 32 || repeats > 126 || result.size() + repeats - 29 > limit)
-        return {};
-      result.append(repeats - 29, result.back());
     } else
       result += payload[n];
     if (result.size() > limit)

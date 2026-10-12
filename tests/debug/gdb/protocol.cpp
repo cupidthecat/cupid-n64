@@ -45,9 +45,9 @@ void framing_tests() {
             binary,
         true);
   equal(gdb::unescape("}", 20).has_value(), false);
-  equal(gdb::unescape("* ", 20).has_value(), false);
-  equal(gdb::unescape("a* ", 20).value_or("") == "aaaa", true);
-  equal(gdb::unescape("a*~", 20).has_value(), false);
+  equal(gdb::unescape("* ", 20).value_or("") == "* ", true);
+  equal(gdb::unescape("a* ", 20).value_or("") == "a* ", true);
+  equal(gdb::unescape("a*~", 2).has_value(), false);
 }
 
 void register_and_memory_tests() {
@@ -83,10 +83,26 @@ void register_and_memory_tests() {
   const std::string binary = std::string("X80002000,5:$#}*") + '\0';
   equal(request(protocol, binary) == "+" + gdb::packet("OK"), true);
   equal(request(protocol, "m80002000,5") == "+" + gdb::packet("24237d2a00"), true);
+  for (auto payload : {std::string_view("X80002000,2:*A"), std::string_view("X80002000,1:*")}) {
+    unsigned checksum = 0;
+    for (auto byte : payload)
+      checksum = (checksum + static_cast<unsigned char>(byte)) & 255;
+    protocol.receive("$" + std::string(payload) + "#" + gdb::hex(checksum, 2));
+    equal(protocol.take_output() == "+" + gdb::packet("OK"), true);
+    equal(request(protocol, "m80002000,2") == "+" + gdb::packet("2a41"), true);
+  }
   equal(request(protocol, "M80002000,1:zz") == "+" + gdb::packet("E01"), true);
   const auto pc = console->cpu().state().pc;
   equal(request(protocol, "s80001001") == "+" + gdb::packet("E01"), true);
   equal(console->cpu().state().pc, pc);
+  console->cpu().write_control(Status, 0x30000080);
+  equal(request(protocol, "P25=0000000080001000") == "+" + gdb::packet("OK"), true);
+  equal(request(protocol, "p25") == "+" + gdb::packet("0000000080001000"), true);
+  equal(request(protocol, "m0000000080001000,4") == "+" + gdb::packet("E01"), true);
+  equal(request(protocol, "c0000000080001004") == "+", true);
+  equal(console->cpu().state().pc, 0x0000000080001004);
+  protocol.receive("\x03");
+  equal(protocol.take_output() == gdb::packet("T02thread:1;25:0000000080001004;"), true);
 }
 
 void execution_tests() {

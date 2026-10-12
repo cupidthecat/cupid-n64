@@ -12,7 +12,7 @@ struct Connection {
   unsigned listening;
 };
 
-INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam) {
+INT_PTR CALLBACK connection_procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam) {
   auto *model = reinterpret_cast<Connection *>(GetWindowLongPtrW(dialog, DWLP_USER));
   if (event == WM_INITDIALOG) {
     model = reinterpret_cast<Connection *>(lparam);
@@ -83,7 +83,7 @@ bool Window::gdb_command(unsigned id) {
     const auto data = dialog_template(L"GDB connection", 340, 224);
     const auto result = DialogBoxIndirectParamW(
         GetModuleHandleW(nullptr), reinterpret_cast<const DLGTEMPLATE *>(data.data()), window_,
-        procedure, reinterpret_cast<LPARAM>(&model));
+        connection_procedure, reinterpret_cast<LPARAM>(&model));
     if (result == -1)
       throw std::runtime_error("Could not open GDB connection settings.");
     if (result == IDOK) {

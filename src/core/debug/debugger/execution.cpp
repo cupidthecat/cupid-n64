@@ -11,8 +11,10 @@ Debugger::~Debugger() {
   detach();
 }
 
-std::uint64_t Debugger::canonical(std::uint64_t address) {
-  return address >= 0x80000000 && address <= 0xffffffff ? address | 0xffffffff00000000 : address;
+std::uint64_t Debugger::canonical(std::uint64_t address) const {
+  return !console_.cpu().extended_addressing() && address >= 0x80000000 && address <= 0xffffffff
+             ? address | 0xffffffff00000000
+             : address;
 }
 
 void Debugger::attach() {
@@ -109,7 +111,6 @@ void Debugger::advance(unsigned clocks) {
 void Debugger::memory_access(std::uint64_t address, unsigned bytes, bool write) {
   if (!attached_ || halted_ || !bytes)
     return;
-  const auto access = console_.cpu().inspect_address(address & ~3ull);
   for (const auto &point : points_) {
     if (point.kind == DebugPointKind::Software || point.kind == DebugPointKind::Hardware ||
         (write && point.kind == DebugPointKind::Read) ||
@@ -119,10 +120,22 @@ void Debugger::memory_access(std::uint64_t address, unsigned bytes, bool write) 
       return a <= b ? b - a < a_size : a - b < b_size;
     };
     bool hit = intersects(address, bytes, point.address, point.length);
-    const auto target = console_.cpu().inspect_address(point.address & ~3ull);
-    if (!hit && access && target)
-      hit = intersects(access->physical | (address & 3), bytes,
-                       target->physical | (point.address & 3), point.length);
+    for (unsigned accessed = 0; !hit && accessed < bytes;) {
+      const auto current = address + accessed;
+      const auto access_size = std::min(bytes - accessed, 4096u - unsigned(current & 4095));
+      const auto access = console_.cpu().inspect_address(current & ~3ull);
+      for (unsigned watched = 0; access && !hit && watched < point.length;) {
+        const auto target_address = point.address + watched;
+        const auto target_size =
+            std::min(point.length - watched, 4096u - unsigned(target_address & 4095));
+        const auto target = console_.cpu().inspect_address(target_address & ~3ull);
+        if (target)
+          hit = intersects(access->physical | (current & 3), access_size,
+                           target->physical | (target_address & 3), target_size);
+        watched += target_size;
+      }
+      accessed += access_size;
+    }
     if (hit) {
       halt(point.kind == DebugPointKind::Access ? DebugStopKind::AccessWatch
            : write                              ? DebugStopKind::WriteWatch

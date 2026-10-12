@@ -56,7 +56,7 @@ public:
   std::optional<std::vector<std::uint8_t>> read_memory(std::uint64_t address, unsigned length);
   bool write_memory(std::uint64_t address, std::span<const std::uint8_t> bytes);
   bool point(DebugPointKind kind, std::uint64_t address, unsigned length, bool insert);
-  static std::uint64_t canonical(std::uint64_t address);
+  std::uint64_t canonical(std::uint64_t address) const;
 
 private:
   friend class Cpu;

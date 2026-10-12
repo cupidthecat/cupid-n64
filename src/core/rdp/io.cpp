@@ -14,7 +14,7 @@ std::uint32_t Rdp::clock_counter(std::int64_t caller_clock) const {
   return static_cast<std::uint32_t>(command_.clock - (clock_ - caller_clock) / 3) & 0xffffff;
 }
 
-std::uint32_t Rdp::read_word(std::uint32_t address, std::int64_t caller_clock, bool cpu) const {
+std::uint32_t Rdp::register_word(std::uint32_t address, std::int64_t caller_clock) const {
   const auto index = (address & 31) >> 2;
   std::uint32_t value = 0;
   switch (index) {
@@ -42,6 +42,17 @@ std::uint32_t Rdp::read_word(std::uint32_t address, std::int64_t caller_clock, b
   default:
     break;
   }
+  return value;
+}
+
+std::uint32_t Rdp::peek_word(std::uint32_t address, std::int64_t caller_clock) const {
+  const auto value = register_word(address, caller_clock);
+  return value == 7 ? command_.tmem_busy : value;
+}
+
+std::uint32_t Rdp::read_word(std::uint32_t address, std::int64_t caller_clock, bool cpu) const {
+  const auto index = (address & 31) >> 2;
+  auto value = register_word(address, caller_clock);
   if (sync_ && index == 4)
     sync_();
   if (sync_ && cpu && index <= 6)

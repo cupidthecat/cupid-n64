@@ -14,37 +14,8 @@ std::optional<std::uint32_t> Debugger::io_word(std::uint32_t physical) const {
     if (physical >= 0x04080000 && physical < 0x040c0000)
       return (physical & 7) == 0 ? console_.signal().pc() : 0;
     return {};
-  case 0x04100000: {
-    const auto &rdp = console_.display();
-    const auto &command = rdp.command();
-    std::uint32_t value = 0;
-    switch (index) {
-    case 0:
-      value = command.start;
-      break;
-    case 1:
-      value = command.end;
-      break;
-    case 2:
-      value = command.current;
-      break;
-    case 3:
-      value = rdp.status();
-      break;
-    case 4:
-      value = rdp.clock_counter();
-      break;
-    case 5:
-      value = command.buffer_busy;
-      break;
-    case 6:
-      value = command.pipe_busy;
-      break;
-    default:
-      break;
-    }
-    return value == 7 ? command.tmem_busy : value;
-  }
+  case 0x04100000:
+    return console_.display().peek_word(physical);
   case 0x04200000:
     return console_.display().read_test(physical);
   case 0x04300000:
