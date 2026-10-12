@@ -198,12 +198,12 @@ void Window::fullscreen() {
     remember_window_size();
     GetWindowPlacement(window_, &placement_);
     fullscreen_ = true;
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN);
     SetMenu(window_, nullptr);
     position_fullscreen();
   } else {
     fullscreen_ = false;
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+    SetWindowLongPtrW(window_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN);
     SetMenu(window_, menu_);
     SetWindowPlacement(window_, &placement_);
     SetWindowPos(window_, nullptr, 0, 0, 0, 0,

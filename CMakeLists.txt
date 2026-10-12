@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
+find_package(Threads REQUIRED)
 
 add_library(cupid_core
   src/core/debug/debugger/execution.cpp
@@ -285,11 +286,13 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/controls/mapping_dialog.cpp
     src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
+    src/desktop/windows/video/presenter.cpp
     src/desktop/windows/video/shaders/settings.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(cupid_desktop PRIVATE cupid_session cupid_debug_format cupid_gdb cupid_display_shaders cupid_settings_transfer comdlg32 shell32 gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE d3d11 dxgi d3dcompiler)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -299,6 +302,26 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  add_executable(desktop_execution_worker_tests tests/desktop/execution_worker.cpp
+    src/desktop/timing/execution_worker.cpp)
+  target_include_directories(desktop_execution_worker_tests PRIVATE src)
+  target_compile_features(desktop_execution_worker_tests PRIVATE cxx_std_20)
+  target_link_libraries(desktop_execution_worker_tests PRIVATE Threads::Threads)
+  add_test(NAME desktop_execution_worker COMMAND desktop_execution_worker_tests)
+  add_executable(desktop_input_replay_tests tests/desktop/input_replay.cpp
+    src/desktop/replay/input.cpp src/desktop/replay/field_trace.cpp)
+  target_include_directories(desktop_input_replay_tests PRIVATE src)
+  target_compile_features(desktop_input_replay_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_input_replay COMMAND desktop_input_replay_tests)
+  if(WIN32)
+    add_executable(desktop_video_presenter_tests tests/desktop/video_presenter.cpp
+      src/desktop/windows/video/presenter.cpp src/desktop/video/viewport.cpp)
+    target_include_directories(desktop_video_presenter_tests PRIVATE src)
+    target_compile_features(desktop_video_presenter_tests PRIVATE cxx_std_20)
+    target_compile_definitions(desktop_video_presenter_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(desktop_video_presenter_tests PRIVATE d3d11 dxgi d3dcompiler)
+    add_test(NAME desktop_gpu_presentation COMMAND desktop_video_presenter_tests)
+  endif()
   if(TARGET cupid_linux_frontend)
     add_executable(linux_frontend_tests tests/desktop/linux/main.cpp
       tests/desktop/linux/settings.cpp tests/desktop/linux/input.cpp tests/desktop/linux/audio.cpp
@@ -487,6 +510,7 @@ if(BUILD_TESTING)
     endif()
     if(WIN32)
       add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
+      target_link_libraries(desktop_audio_tests PRIVATE cupid_session)
       target_include_directories(desktop_audio_tests PRIVATE src)
       target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
       target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

@@ -93,6 +93,9 @@ public:
     return console_->cpu().state().clocks;
   }
   unsigned frames = 0;
+  std::uint64_t program_counter() const {
+    return console_->cpu().state().pc;
+  }
   n64::VideoFrame frame;
 
 private:

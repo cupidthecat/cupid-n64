@@ -1,3 +1,4 @@
+#include "desktop/windows/audio/identity.hpp"
 #include "desktop/windows/commands.hpp"
 #include "desktop/windows/window.hpp"
 #include <algorithm>
@@ -29,7 +30,7 @@ void Window::load_playback_settings() {
   std::array<wchar_t, 32768> device{};
   GetPrivateProfileStringW(L"Audio", L"Device", L"", device.data(),
                            static_cast<DWORD>(device.size()), settings_.c_str());
-  audio.device = device.data();
+  audio.device = audio_endpoint_key(device.data());
   audio_.configure(std::move(audio));
 }
 
@@ -88,8 +89,11 @@ void Window::create_playback_settings_menu(HMENU emulation) {
 }
 
 void Window::refresh_audio_devices() {
-  audio_devices_ = audio_devices();
   audio_.recover();
+  audio_devices_.clear();
+  for (const auto &device : audio_.devices())
+    audio_devices_.push_back(
+        {static_cast<unsigned>(audio_devices_.size()), device.identity, device.name});
   if (audio_device_menu_) {
     while (GetMenuItemCount(audio_device_menu_) > 0)
       DeleteMenu(audio_device_menu_, 0, MF_BYPOSITION);
@@ -99,8 +103,9 @@ void Window::refresh_audio_devices() {
                   audio_devices_[n].name.c_str());
     const auto &selected = audio_.settings().device;
     if (!selected.empty() &&
-        std::none_of(audio_devices_.begin(), audio_devices_.end(),
-                     [&](const auto &device) { return device.identity == selected; }))
+        std::none_of(audio_devices_.begin(), audio_devices_.end(), [&](const auto &device) {
+          return same_audio_endpoint(device.identity, selected);
+        }))
       AppendMenuW(audio_device_menu_, MF_STRING | MF_GRAYED | MF_CHECKED, 0,
                   L"Selected output is unavailable; using fallback");
   }
@@ -128,8 +133,9 @@ void Window::update_playback_settings() {
                 MF_BYCOMMAND | (audio.device.empty() ? MF_CHECKED : MF_UNCHECKED));
   for (unsigned n = 0; n < audio_devices_.size(); ++n)
     CheckMenuItem(audio_device_menu_, AudioDeviceFirst + n,
-                  MF_BYCOMMAND |
-                      (audio.device == audio_devices_[n].identity ? MF_CHECKED : MF_UNCHECKED));
+                  MF_BYCOMMAND | (same_audio_endpoint(audio.device, audio_devices_[n].identity)
+                                      ? MF_CHECKED
+                                      : MF_UNCHECKED));
   if (audio_menu_) {
     const auto label = audio_.available() ? L"Active: " + audio_.device_name() +
                                                 (audio_.using_fallback() ? L" (fallback)" : L"")

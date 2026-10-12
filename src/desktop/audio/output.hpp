@@ -10,6 +10,12 @@ public:
   virtual ~AudioOutput() = default;
   virtual void configure(const Audio::Settings &settings) = 0;
   virtual bool recover() = 0;
+  virtual bool recovery_pending() const {
+    return !available();
+  }
+  virtual std::vector<Audio::Device> devices() const {
+    return {};
+  }
   virtual void clear() = 0;
   virtual bool wait(unsigned buffer) = 0;
   virtual void submit(unsigned buffer, std::span<const short> samples) = 0;

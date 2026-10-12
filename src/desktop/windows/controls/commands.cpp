@@ -113,6 +113,11 @@ HostInputs Window::host_inputs() const {
 }
 
 PlayerInputs Window::inputs() {
+  if (input_replay_ && session_) {
+    PlayerInputs players;
+    players[0] = input_replay_->at(session_->frames);
+    return players;
+  }
   std::array<bool, 4> wanted{};
   for (const auto &mapping : player_mappings_)
     if (mapping.source >= HostSource::Gamepad1 && mapping.source <= HostSource::Gamepad4)

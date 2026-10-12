@@ -2,10 +2,13 @@
 
 #include "desktop/debug/gdb/server.hpp"
 #include "desktop/launch/options.hpp"
+#include "desktop/replay/field_trace.hpp"
+#include "desktop/replay/input.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
+#include "desktop/timing/execution_worker.hpp"
 #include "desktop/timing/playback_clock.hpp"
 #include "desktop/timing/playback_settings.hpp"
 #include "desktop/video/viewport.hpp"
@@ -16,6 +19,7 @@
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
+#include "desktop/windows/video/presenter.hpp"
 #include "desktop/windows/video/shaders/processor.hpp"
 #include <array>
 #include <chrono>
@@ -124,6 +128,7 @@ private:
   void load(LaunchPreference preference = LaunchPreference::Remember);
   void paint();
   void advance();
+  void finish_advance();
   struct Input {
     std::uint16_t buttons;
     std::int8_t x, y;
@@ -192,8 +197,14 @@ private:
   std::filesystem::path game_image_;
   TimerResolution timer_resolution_;
   PaintBuffer paint_buffer_;
+  VideoPresenter video_presenter_;
   Audio audio_;
   std::unique_ptr<Session> session_;
+  bool advancing_ = false;
+  std::unique_ptr<InputReplay> input_replay_;
+  std::unique_ptr<FieldTrace> field_trace_;
+  std::chrono::nanoseconds last_advance_duration_{};
+  std::chrono::steady_clock::time_point last_advance_completed_{};
   GdbServer gdb_;
   unsigned gdb_port_ = 2345;
   bool gdb_enabled_ = false, gdb_connected_ = false, gdb_was_paused_ = false;
@@ -218,6 +229,8 @@ private:
   unsigned last_frame_ = 0, measured_frames_ = 0;
   unsigned pixel_width_ = 0, pixel_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
+  // Drain execution before destroying any object captured by the worker.
+  ExecutionWorker execution_;
 };
 
 } // namespace cupid::desktop

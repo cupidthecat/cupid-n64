@@ -50,6 +50,14 @@ bool Audio::recover() {
   return true;
 }
 
+bool Audio::recovery_pending() const {
+  return output_->recovery_pending();
+}
+
+std::vector<Audio::Device> Audio::devices() const {
+  return output_->devices();
+}
+
 void Audio::frequency(unsigned value) {
   resampler_.frequency(value);
 }
@@ -61,10 +69,12 @@ void Audio::clear() {
 }
 
 void Audio::sample(n64::StereoSample value) {
+  if (measure_)
+    ++generated_samples_;
   if (!available() || suspended)
     return;
   resampler_.write(value, [this](n64::StereoSample sample) {
-    if (!available() || (!offset_ && !output_->wait(buffer_)))
+    if (!available() || (!offset_ && !wait()))
       return;
     auto &buffer = buffers_[buffer_];
     const auto convert = [this](double value) {
@@ -79,7 +89,7 @@ void Audio::sample(n64::StereoSample value) {
 }
 
 void Audio::play_saved_output() {
-  if (!available() || muted || suspended || !offset_ || !output_->wait(buffer_))
+  if (!available() || muted || suspended || !offset_ || !wait())
     return;
   queue(offset_);
 }
@@ -91,6 +101,15 @@ void Audio::queue(unsigned samples) {
   output_->submit(buffer_, std::span(buffer.rendered).first(samples));
   offset_ = 0;
   buffer_ = (buffer_ + 1) % (settings_.latency / 10);
+}
+
+bool Audio::wait() {
+  if (!measure_)
+    return output_->wait(buffer_);
+  const auto started = std::chrono::steady_clock::now();
+  const auto ready = output_->wait(buffer_);
+  wait_time_ += std::chrono::steady_clock::now() - started;
+  return ready;
 }
 
 } // namespace cupid::desktop
