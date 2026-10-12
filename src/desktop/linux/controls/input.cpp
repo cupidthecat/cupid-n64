@@ -106,13 +106,23 @@ Input::~Input() {
     SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
 }
 
-void Input::key(unsigned keyval, bool pressed) {
-  if (const auto code = key_code(keyval))
-    host_.keys[code] = pressed;
+void Input::key(unsigned keyval, bool pressed, unsigned hardware_code) {
+  if (pressed) {
+    const auto entry = pressed_keys_.try_emplace(hardware_code, key_code(keyval)).first;
+    if (const auto code = entry->second)
+      host_.keys[code] = true;
+  } else if (const auto entry = pressed_keys_.find(hardware_code); entry != pressed_keys_.end()) {
+    const auto code = entry->second;
+    pressed_keys_.erase(entry);
+    if (code)
+      host_.keys[code] = std::any_of(pressed_keys_.begin(), pressed_keys_.end(),
+                                     [code](const auto &key) { return key.second == code; });
+  }
 }
 
 void Input::clear() {
   host_.keys.fill(false);
+  pressed_keys_.clear();
   stop();
 }
 

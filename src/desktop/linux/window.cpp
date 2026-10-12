@@ -77,7 +77,7 @@ int Window::run() {
   const auto key = +[](GtkWidget *, GdkEventKey *event, gpointer data) -> gboolean {
     auto &self = *static_cast<Window *>(data);
     const bool pressed = event->type == GDK_KEY_PRESS;
-    self.input_.key(event->keyval, pressed);
+    self.input_.key(event->keyval, pressed, event->hardware_keycode);
     constexpr std::array<unsigned, 5> keys{GDK_KEY_F11, GDK_KEY_F5, GDK_KEY_F7, GDK_KEY_F8,
                                            GDK_KEY_F9};
     constexpr std::array<Command, 5> actions{Command::Fullscreen, Command::SaveState,

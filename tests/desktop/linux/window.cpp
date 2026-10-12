@@ -38,6 +38,7 @@ void key(GtkWidget *window, unsigned keyval, bool release = true) {
   GdkEventKey event{};
   event.type = GDK_KEY_PRESS;
   event.keyval = keyval;
+  event.hardware_keycode = static_cast<guint16>(cupid::desktop::linux_host::key_code(keyval));
   gboolean handled = FALSE;
   g_signal_emit_by_name(window, "key-press-event", &event, &handled);
   test::equal(handled, true);

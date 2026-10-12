@@ -3,6 +3,7 @@
 #include "desktop/controls/mapping.hpp"
 #include <SDL.h>
 #include <chrono>
+#include <unordered_map>
 
 namespace cupid::desktop::linux_host {
 
@@ -14,7 +15,7 @@ public:
   ~Input();
   Input(const Input &) = delete;
   Input &operator=(const Input &) = delete;
-  void key(unsigned keyval, bool pressed);
+  void key(unsigned keyval, bool pressed, unsigned hardware_code);
   void clear();
   HostInputs poll();
   void rumble(const std::array<bool, 4> &motors);
@@ -23,6 +24,7 @@ public:
 private:
   void enumerate();
   HostInputs host_;
+  std::unordered_map<unsigned, unsigned> pressed_keys_;
   std::array<SDL_GameController *, 4> controllers_{};
   std::array<bool, 4> motors_{};
   std::chrono::steady_clock::time_point renewed_{};
