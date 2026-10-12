@@ -17,6 +17,12 @@ void Window::apply_imported_settings() {
   load_graphics_settings();
   shader_.select(read_shader_selection(settings_));
   load_playback_settings();
+  load_gdb_settings();
+  if (gdb_enabled_)
+    gdb_.listen(gdb_port_);
+  else
+    gdb_.close();
+  poll_gdb();
   const auto active = static_cast<LaunchFiles &>(options_);
   static_cast<LaunchFiles &>(options_) = {};
   load_launch_settings();

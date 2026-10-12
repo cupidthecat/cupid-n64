@@ -8,6 +8,8 @@ int rsp_vector_test_entry();
 int inspection_test_entry();
 int tracing_test_entry();
 int diagnostics_test_entry();
+int gdb_test_entry();
+int gdb_protocol_test_entry();
 
 int main(int argc, char **argv) {
   if (argc < 2)
@@ -29,6 +31,10 @@ int main(int argc, char **argv) {
     return tracing_test_entry();
   if (name == "diagnostics_tests")
     return diagnostics_test_entry();
+  if (name == "gdb_tests")
+    return gdb_test_entry();
+  if (name == "gdb_protocol_tests")
+    return gdb_protocol_test_entry();
   std::cerr << "Unknown checkpoint test: " << name << '\n';
   return 2;
 }

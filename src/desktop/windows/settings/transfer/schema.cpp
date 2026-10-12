@@ -18,6 +18,7 @@ struct Rule {
   std::vector<int> choices;
   std::optional<PathKind> path;
   std::size_t length = 32760;
+  bool optional = false;
 };
 
 using Rules = std::map<std::wstring, Rule, NameLess>;
@@ -81,6 +82,13 @@ Schema schema(const Document &document) {
   choice(rewind, L"Capacity", 10, {10, 20, 40, 80, 160, 320});
   choice(rewind, L"MemoryMB", 256, {256, 512, 1024});
   number(result[L"States"], L"Slot", 1, 1, 10);
+  auto &developer = result[L"Developer"];
+  number(developer, L"GDB enabled", 0, 0, 1);
+  number(developer, L"GDB port", 2345, 1, 65535);
+  for (auto &[key, rule] : developer) {
+    (void)key;
+    rule.optional = true;
+  }
   auto &graphics = result[L"Graphics"];
   choice(graphics, L"InternalScale", 1, {1, 2, 4, 8});
   for (const auto key : {L"Supersampling", L"Weave", L"BypassVI"})
@@ -236,7 +244,7 @@ Document normalize(const Document &document, bool complete) {
         const auto entry = found->second.find(key);
         return entry == found->second.end() ? nullptr : &entry->second;
       }();
-      if (!selected && complete)
+      if (!selected && complete && !rule.optional)
         throw std::runtime_error("The settings export is incomplete.");
       auto value = selected ? *selected : rule.fallback;
       validate(value, rule);

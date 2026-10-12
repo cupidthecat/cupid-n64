@@ -2,6 +2,7 @@
 
 #include "core/cartridge/profile/profile.hpp"
 #include "core/controller/accessories/cartridge/handheld.hpp"
+#include "core/debug/debugger.hpp"
 #include "core/debug/inspection.hpp"
 #include "core/system/console.hpp"
 #include "desktop/controls/feedback.hpp"
@@ -59,6 +60,15 @@ public:
   }
   std::vector<std::uint8_t> capture_state();
   void restore_state(std::span<const std::uint8_t> bytes);
+  n64::Debugger &debugger() {
+    return *debugger_;
+  }
+  const n64::Debugger &debugger() const {
+    return *debugger_;
+  }
+  void debug_memory_fence() {
+    output_->synchronize();
+  }
   std::vector<n64::MemoryRegion> memory_regions() const;
   std::vector<std::uint8_t> read_memory(n64::MemoryRegionId region, std::uint32_t offset,
                                         unsigned length);
@@ -115,6 +125,7 @@ private:
   std::vector<std::uint8_t> saved_clock_, saved_disk_;
   std::unique_ptr<n64::Console> console_;
   std::unique_ptr<VideoOutput> output_;
+  std::unique_ptr<n64::Debugger> debugger_;
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
   std::uint64_t disk_identity_ = 0;

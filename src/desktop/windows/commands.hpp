@@ -66,6 +66,7 @@ enum Command : unsigned {
   Disassembly,
   InstructionTrace,
   CoreDiagnostics,
+  GdbSettings,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,

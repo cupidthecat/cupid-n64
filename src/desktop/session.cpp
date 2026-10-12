@@ -89,6 +89,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     }
   }
   output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  debugger_ = std::make_unique<n64::Debugger>(*console_);
   console_->diagnostics().connect_memory_fence([this] { output_->synchronize(); });
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
@@ -105,6 +106,7 @@ void Session::reset() {
   output_.reset();
   frame_pending_ = false;
   console_->power(true);
+  debugger_->interrupt();
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
   output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
@@ -144,6 +146,8 @@ void Session::advance_to_frame() {
   const auto started = clocks();
   while (frames == before) {
     run_interval(true);
+    if (debugger_->halted())
+      break;
     if (diagnostics().control() != n64::HostControl::None)
       break;
     if (clocks() - started > 10 * n64::clock_frequency)
@@ -172,7 +176,9 @@ void Session::graphics_settings(n64::RenderSettings settings) {
 }
 
 void Session::run_interval(bool frame_boundary) {
-  if (frame_boundary)
+  if (debugger_->attached())
+    debugger_->advance();
+  else if (frame_boundary)
     console_->run_frame_interval();
   else
     console_->run_interval();
@@ -217,6 +223,7 @@ std::vector<std::uint8_t> Session::capture_state() {
 
 void Session::restore_state(std::span<const std::uint8_t> bytes) {
   SessionState::restore(*this, bytes);
+  debugger_->interrupt();
   clear_mouse_input();
 }
 
