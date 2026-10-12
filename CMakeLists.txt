@@ -154,6 +154,11 @@ if(MSVC)
   target_precompile_headers(cupid_core PRIVATE "<core/cpu/cpu.hpp>")
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
     COMPILE_OPTIONS /fp:strict SKIP_PRECOMPILE_HEADERS TRUE)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+     CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86)$")
+    set_source_files_properties(src/core/rsp/vector/simd/sse.cpp PROPERTIES
+      COMPILE_OPTIONS /clang:-msse4.1 SKIP_PRECOMPILE_HEADERS TRUE)
+  endif()
 else()
   target_compile_options(cupid_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES

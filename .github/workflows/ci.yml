@@ -65,6 +65,26 @@ jobs:
           path: build/cupid-n64
           if-no-files-found: error
 
+  windows-clang:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Windows with Clang
+        run: >-
+          cmake -S . -B build -A x64 -T ClangCL
+          -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCUPID_DESKTOP=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 2
+      - name: Upload Windows Clang frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: cupid-n64-windows-clang
+          path: build/Release/cupid-n64.exe
+          if-no-files-found: error
+
   software-video:
     strategy:
       matrix:

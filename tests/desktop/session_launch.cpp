@@ -23,7 +23,7 @@ void firmware(const std::filesystem::path &directory) {
   validate_firmware(pif, FirmwareType::Nintendo64);
   validate_firmware(pif, FirmwareType::Aleck64);
   validate_firmware(ipl, FirmwareType::DiskIpl);
-  LaunchFiles launch{ipl, pif};
+  LaunchFiles launch{ipl, pif, {}, {}};
   validate_launch(launch);
   launch.rom.clear();
   test::equal(rejects([&] { validate_launch(launch); }), true);

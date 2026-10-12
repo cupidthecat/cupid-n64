@@ -49,7 +49,8 @@ void ScrollForm::initialize(HWND dialog, int footer_y) {
   SendMessageW(content_, WM_SETFONT, SendMessageW(dialog, WM_GETFONT, 0, 0), FALSE);
   for (const auto &field : fields_)
     SetParent(field.window, content_);
-  MONITORINFO monitor{sizeof(MONITORINFO)};
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
   if (!GetMonitorInfoW(MonitorFromWindow(dialog, MONITOR_DEFAULTTONEAREST), &monitor))
     throw std::runtime_error("Could not determine the settings window work area.");
   fit(monitor.rcWork);
@@ -128,7 +129,9 @@ bool ScrollForm::message(UINT event, WPARAM wparam) {
     return false;
   const bool horizontal = event == WM_HSCROLL || event == WM_MOUSEHWHEEL;
   const auto bar = horizontal ? SB_HORZ : SB_VERT;
-  SCROLLINFO info{sizeof(SCROLLINFO), SIF_ALL};
+  SCROLLINFO info{};
+  info.cbSize = sizeof(info);
+  info.fMask = SIF_ALL;
   GetScrollInfo(dialog_, bar, &info);
   auto position = info.nPos;
   if (event == WM_MOUSEWHEEL || event == WM_MOUSEHWHEEL) {
