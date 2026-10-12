@@ -94,6 +94,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
       }
     }
     const auto info = block_instruction(instruction);
+    trace_instruction(pc, instruction, 2);
     begin_instruction();
     const auto memory_order = native_memory_order_;
     native_memory_order_ = native_cache_hit(instruction, ram_bytes);

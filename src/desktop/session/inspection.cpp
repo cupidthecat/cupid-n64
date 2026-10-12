@@ -22,4 +22,15 @@ std::vector<n64::DeviceProperty> Session::device_properties(n64::DeviceId device
   return n64::Inspection::properties(*console_, device);
 }
 
+std::uint64_t Session::instruction_pc(n64::DebugProcessor processor) const {
+  return processor == n64::DebugProcessor::Rsp ? console_->signal().pc()
+                                               : console_->cpu().state().pc;
+}
+
+std::optional<std::uint32_t> Session::instruction(n64::DebugProcessor processor,
+                                                  std::uint64_t address) {
+  output_->synchronize();
+  return n64::Inspection::instruction(*console_, processor, address);
+}
+
 } // namespace cupid::desktop

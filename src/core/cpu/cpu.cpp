@@ -82,11 +82,20 @@ void Cpu::request_nmi() {
 
 bool Cpu::poll_interrupt() {
   if ((control_[Status] & 7) == 1 && (control_[Status] & control_[Cause] & 0xff00)) {
+    if (trace_ && trace_->enabled(TraceKind::Interrupt))
+      trace_->record(
+          {.kind = TraceKind::Interrupt,
+           .clock = state_.clocks,
+           .pc = state_.pc,
+           .code = static_cast<std::uint32_t>((control_[Status] & control_[Cause]) >> 8) & 255,
+           .delay_slot = delay_slot_});
     advance_clocks(2);
     raise(Exception::Interrupt);
     return true;
   }
   if (nmi_pending_) {
+    if (trace_ && trace_->enabled(TraceKind::Nmi))
+      trace_->record({.kind = TraceKind::Nmi, .clock = state_.clocks, .pc = state_.pc});
     advance_clocks(2);
     control_[Status] = (control_[Status] | 0x00400004) & ~0x00300000ull;
     control_[ErrorEpc] = state_.pc;
@@ -124,6 +133,7 @@ void Cpu::step_instruction() {
   const auto instruction = read(state_.pc, 4, true);
   if (!instruction)
     return;
+  trace_instruction(state_.pc, static_cast<std::uint32_t>(*instruction));
   begin_instruction();
   decode(static_cast<std::uint32_t>(*instruction));
   end_instruction();
@@ -135,12 +145,20 @@ void Cpu::execute(std::uint32_t instruction) {
   advance_clocks(2);
   if (bus_.frozen())
     return;
+  trace_instruction(state_.pc, instruction);
   begin_instruction();
   decode(instruction);
   end_instruction();
 }
 
 void Cpu::raise(Exception code, unsigned coprocessor, bool tlb_miss) {
+  if (code != Exception::Interrupt && trace_ && trace_->enabled(TraceKind::Exception))
+    trace_->record({.kind = TraceKind::Exception,
+                    .clock = state_.clocks,
+                    .pc = state_.pc,
+                    .code = static_cast<unsigned>(code),
+                    .index = coprocessor,
+                    .delay_slot = delay_slot_});
   unsigned offset = 0x180;
   if (!(control_[Status] & 2)) {
     if (tlb_miss)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/debug/trace.hpp"
+
 #include "core/devices/mi/mips_interface.hpp"
 #include "core/rsp/state.hpp"
 #include <functional>
@@ -20,6 +22,12 @@ struct RspStatus {
 
 class Rsp {
 public:
+  void connect_trace(TraceLog *trace) {
+    trace_ = trace;
+  }
+  bool instruction_tracing() const {
+    return trace_ && trace_->enabled(TraceKind::RspInstruction);
+  }
   enum class Execution { Interpreted, Native };
   enum class VectorExecution { Scalar, Simd };
   Rsp(Rdram &ram, MipsInterface &interrupts, RandomGenerator &random);
@@ -83,6 +91,8 @@ public:
 
 private:
   friend class Inspection;
+  void trace_instruction(std::uint32_t pc, std::uint32_t instruction,
+                         unsigned pending_clocks = 0) const;
   friend class CoreState;
   friend class RspCompiler;
   enum OpFlag : unsigned {
@@ -166,6 +176,7 @@ private:
   std::function<void(unsigned, std::uint32_t)> display_write_;
   std::unique_ptr<RspCompiler> compiler_;
   VectorExecution vector_execution_ = VectorExecution::Simd;
+  TraceLog *trace_ = nullptr;
 };
 
 } // namespace cupid::n64

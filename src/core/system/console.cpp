@@ -33,6 +33,8 @@ Console::Console(ConsoleConfig config)
   pif_.connect_reset([this] { cpu_.request_nmi(); });
   auto request_sync = [this] { clock_target_ = cpu_.state().clocks; };
   cpu_.connect_sync(request_sync);
+  cpu_.connect_trace(&trace_);
+  rsp_.connect_trace(&trace_);
   rsp_.connect_sync(request_sync);
   rdp_.connect_sync(request_sync);
   vi_.connect_sync(request_sync);
@@ -98,6 +100,7 @@ CicModel Console::boot_cic() const {
 }
 
 void Console::power(bool reset) {
+  trace_.clear();
   if (!reset) {
     const auto seed = config_.random_seed     ? *config_.random_seed
                       : config_.entropy_clock ? config_.entropy_clock()

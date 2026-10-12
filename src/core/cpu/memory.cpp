@@ -56,24 +56,35 @@ std::optional<Address> Cpu::translate(std::uint64_t address, unsigned bytes, boo
     return {};
   }
   if (address >= 0xffffffff80000000ull && address < 0xffffffff83f00000ull)
-    return Address{static_cast<std::uint32_t>(address & 0x3effffff), true};
-  switch (segment(address)) {
-  case Segment::Invalid:
+    return direct_address(Segment::Cached, address);
+  const auto region = segment(address);
+  if (const auto direct = direct_address(region, address))
+    return direct;
+  if (region == Segment::Invalid) {
     address_exception(address);
     raise(store ? Exception::AddressStore : Exception::AddressLoad);
     return {};
+  }
+  return translate_tlb(address, store);
+}
+
+std::optional<Address> Cpu::direct_address(Segment region, std::uint64_t address) {
+  switch (region) {
   case Segment::Cached:
-    return Address{static_cast<std::uint32_t>(address & 0x1fffffff), true};
+    return Address{static_cast<std::uint32_t>(address & (address >= 0xffffffff80000000ull &&
+                                                                 address < 0xffffffff83f00000ull
+                                                             ? 0x3effffff
+                                                             : 0x1fffffff)),
+                   true};
   case Segment::Direct:
     return Address{static_cast<std::uint32_t>(address & 0x1fffffff), false};
   case Segment::Cached32:
     return Address{static_cast<std::uint32_t>(address), true};
   case Segment::Direct32:
     return Address{static_cast<std::uint32_t>(address), false};
-  case Segment::Mapped:
-    break;
+  default:
+    return {};
   }
-  return translate_tlb(address, store);
 }
 
 std::optional<std::uint64_t> Cpu::read(std::uint64_t address, unsigned bytes, bool instruction) {

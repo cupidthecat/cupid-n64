@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/debug/trace.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -73,6 +75,8 @@ public:
                     std::span<const std::uint8_t> bytes);
   static std::span<const DeviceInfo> devices();
   static std::vector<DeviceProperty> properties(const Console &console, DeviceId device);
+  static std::optional<std::uint32_t> instruction(const Console &console, DebugProcessor processor,
+                                                  std::uint64_t address);
 };
 
 } // namespace cupid::n64

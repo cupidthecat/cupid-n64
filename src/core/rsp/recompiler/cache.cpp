@@ -48,6 +48,16 @@ void RspCompiler::Impl::reset() {
   dirty.reset();
   blocks.clear();
   bytes = 0;
+  trace_bytes = 0;
+}
+
+void RspCompiler::Impl::clear_traced() {
+  for (auto &[key, versions] : blocks) {
+    static_cast<void>(key);
+    for (auto &block : versions)
+      block->traced.reset();
+  }
+  trace_bytes = 0;
 }
 
 void RspCompiler::invalidate(std::uint32_t address, unsigned bytes) {
@@ -145,8 +155,27 @@ bool RspCompiler::run() {
       block = cache.select();
     if (!block)
       return executed;
+    auto *execution = block;
+    if (rsp.instruction_tracing()) {
+      if (!block->traced) {
+        auto traced = std::make_unique<Impl::Block>();
+        traced->key = block->key;
+        traced->words = block->words;
+        Emitter emitter(rsp, *traced, true);
+        if (!emitter.compile())
+          return executed;
+        constexpr std::size_t limit = 64 * 1024 * 1024;
+        if (traced->bytes > limit)
+          return executed;
+        if (cache.trace_bytes > limit - traced->bytes)
+          cache.clear_traced();
+        cache.trace_bytes += traced->bytes;
+        block->traced = std::move(traced);
+      }
+      execution = block->traced.get();
+    }
     const auto before = rsp.clock_;
-    block->execute(rsp);
+    execution->execute(rsp);
     rsp.clock_ += rsp.pipeline_.clocks;
     rsp.advance_dma(static_cast<std::uint32_t>(rsp.clock_ - before));
     executed = true;

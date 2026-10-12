@@ -76,7 +76,7 @@ void Rdram::update_mapping() {
   }
 }
 
-std::optional<std::uint32_t> Rdram::translate(std::uint32_t address) {
+std::optional<std::uint32_t> Rdram::mapped_address(std::uint32_t address) const {
   if (identity_)
     return address < size() ? std::optional(address) : std::nullopt;
   if (interface_.active()) {
@@ -86,8 +86,30 @@ std::optional<std::uint32_t> Rdram::translate(std::uint32_t address) {
         return n * 0x200000 + (address & 0x1fffff);
     }
   }
-  interface_.acknowledge_error();
   return {};
+}
+
+std::optional<std::uint32_t> Rdram::translate(std::uint32_t address) {
+  const auto mapped = mapped_address(address);
+  if (!mapped && !identity_)
+    interface_.acknowledge_error();
+  return mapped;
+}
+
+std::optional<std::uint32_t> Rdram::inspect_word(std::uint32_t address, bool ebus) const {
+  const auto mapped = mapped_address(address);
+  if (!mapped)
+    return {};
+  if (ebus)
+    return hidden_nibble(*mapped);
+  if (!identity_) {
+    const auto &chip = chips_[*mapped / 0x200000];
+    if (chip.current <= chip.low_current)
+      return 0;
+    if (chip.current < chip.high_current)
+      return {};
+  }
+  return static_cast<std::uint32_t>(read_raw(*mapped, 4));
 }
 
 Rdram::Chip *Rdram::select_chip(unsigned id) {

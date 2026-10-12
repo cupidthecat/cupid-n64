@@ -44,6 +44,7 @@ struct RspCompiler::Impl {
     void *code = nullptr;
     std::size_t bytes = 0;
     std::uint64_t generation = 0;
+    std::unique_ptr<Block> traced;
     ~Block() {
       if (code)
         sljit_free_code(code, nullptr);
@@ -60,9 +61,11 @@ struct RspCompiler::Impl {
   std::bitset<128> dirty;
   bool external_memory = false;
   std::size_t bytes = 0;
+  std::size_t trace_bytes = 0;
   std::uint64_t generation = 1;
   explicit Impl(Rsp &rsp) : rsp(rsp) {}
   void reset();
+  void clear_traced();
   void clear_dirty();
   bool matches(Block &block);
   Block *select();
@@ -91,10 +94,11 @@ struct RspCompiler::Emitter {
   Rsp::Pipeline pipeline;
   std::uint32_t start;
   unsigned cycles = 0;
+  bool tracing;
   std::vector<Exit> exits;
   std::vector<MemoryPath> memory_paths;
 
-  Emitter(Rsp &rsp, Impl::Block &block);
+  Emitter(Rsp &rsp, Impl::Block &block, bool tracing = false);
   ~Emitter();
   bool compile();
   std::uint32_t word(unsigned index);
@@ -123,6 +127,7 @@ struct RspCompiler::Emitter {
   void store(unsigned dest, Operand source);
   static void helper(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc);
   static void end_delay(Rsp *rsp);
+  static void trace(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc, std::uint32_t clocks);
 
   static Operand reg(sljit_s32 index) {
     return {index};

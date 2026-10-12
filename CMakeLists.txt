@@ -3,6 +3,12 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
 
 add_library(cupid_core
+  src/core/debug/trace.cpp
+  src/core/debug/processor_trace.cpp
+  src/core/debug/instructions.cpp
+  src/core/debug/disassembly/cpu.cpp
+  src/core/debug/disassembly/rsp.cpp
+  src/core/debug/disassembly/scalar.cpp
   src/core/debug/memory.cpp
   src/core/debug/properties.cpp
   src/core/arcade/aleck64.cpp
@@ -31,6 +37,7 @@ add_library(cupid_core
   src/core/cpu/integer.cpp
   src/core/cpu/memory.cpp
   src/core/cpu/memory/tlb.cpp
+  src/core/cpu/memory/inspect.cpp
   src/core/cpu/memory/linked.cpp
   src/core/cpu/memory/merge_store.cpp
   src/core/cpu/control.cpp
@@ -183,6 +190,13 @@ if(WIN32)
     target_compile_options(cupid_settings_transfer PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
 endif()
+add_library(cupid_debug_format src/desktop/debug/format.cpp src/desktop/debug/trace.cpp)
+target_link_libraries(cupid_debug_format PUBLIC cupid_core)
+if(MSVC)
+  target_compile_options(cupid_debug_format PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(cupid_debug_format PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 add_library(cupid_video_output src/desktop/video/output.cpp)
 target_link_libraries(cupid_video_output PUBLIC cupid_core)
 if(CUPID_HARDWARE_RENDERER)
@@ -200,7 +214,8 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/debug/commands.cpp
     src/desktop/windows/debug/memory.cpp
     src/desktop/windows/debug/properties.cpp
-    src/desktop/debug/format.cpp
+    src/desktop/windows/debug/disassembly.cpp
+    src/desktop/windows/debug/trace.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
@@ -253,7 +268,7 @@ if(WIN32 AND CUPID_DESKTOP)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE cupid_debug_format cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -263,8 +278,16 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
-  cupid_add_core_test(inspection_tests inspection_test_entry tests/debug/inspection.cpp
-    src/desktop/debug/format.cpp)
+  cupid_add_core_test(tracing_tests tracing_test_entry tests/debug/tracing/main.cpp
+    tests/debug/tracing/instructions.cpp tests/debug/tracing/execution.cpp)
+  add_test(NAME instruction_tracing COMMAND ${tracing_tests_command})
+  cupid_add_core_test(inspection_tests inspection_test_entry tests/debug/inspection.cpp)
+  if(cupid_group_core_tests)
+    target_link_libraries(core_checkpoint_tests PRIVATE cupid_debug_format)
+  else()
+    target_link_libraries(inspection_tests PRIVATE cupid_debug_format)
+    target_link_libraries(tracing_tests PRIVATE cupid_debug_format)
+  endif()
   add_test(NAME debugger_inspection COMMAND ${inspection_tests_command})
   cupid_add_core_test(core_state_tests core_state_test_entry
     tests/state/archive.cpp

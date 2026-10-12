@@ -6,6 +6,7 @@ int machine_replay_test_entry(int argc, char **argv);
 int disk_state_test_entry();
 int rsp_vector_test_entry();
 int inspection_test_entry();
+int tracing_test_entry();
 
 int main(int argc, char **argv) {
   if (argc < 2)
@@ -23,6 +24,8 @@ int main(int argc, char **argv) {
     return rsp_vector_test_entry();
   if (name == "inspection_tests")
     return inspection_test_entry();
+  if (name == "tracing_tests")
+    return tracing_test_entry();
   std::cerr << "Unknown checkpoint test: " << name << '\n';
   return 2;
 }

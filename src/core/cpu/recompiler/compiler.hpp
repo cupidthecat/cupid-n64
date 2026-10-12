@@ -42,6 +42,7 @@ struct CpuCompiler::Impl {
     std::array<std::uint64_t, 2> floating_control{};
     void *code = nullptr;
     std::size_t bytes = 0;
+    std::unique_ptr<Block> traced;
     ~Block() {
       if (code)
         sljit_free_code(code, nullptr);
@@ -103,6 +104,8 @@ struct CpuCompiler::Impl {
   std::array<std::unique_ptr<Section>, 2048> sections;
   std::unordered_map<std::uint32_t, Section> other_sections;
   std::size_t bytes = 0;
+  std::size_t trace_bytes = 0;
+  void clear_traced();
   explicit Impl(Cpu &cpu) : cpu(cpu) {}
   Section &section(std::uint32_t page) {
     const auto index = page >> 12;
@@ -134,6 +137,7 @@ struct CpuCompiler::Emitter {
   std::uint64_t pc;
   std::uint32_t physical;
   bool wide;
+  bool tracing;
   unsigned cycles = 0;
   bool pipeline_dirty = false;
   std::vector<SlowPath> slow_paths;
@@ -141,7 +145,8 @@ struct CpuCompiler::Emitter {
   std::vector<sljit_label *> instruction_labels;
   std::vector<std::pair<sljit_jump *, unsigned>> internal_jumps;
 
-  Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc, std::uint32_t physical, bool wide);
+  Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc, std::uint32_t physical, bool wide,
+          bool tracing = false);
   ~Emitter();
   bool compile();
   bool integer(std::uint32_t instruction);
@@ -210,6 +215,7 @@ struct CpuCompiler::Emitter {
   static void cached_merge(Cpu *cpu, sljit_s32 instruction, Cpu::CacheLine *line,
                            sljit_uw physical);
   static sljit_sw loop_pending(Cpu *cpu);
+  static void trace(Cpu *cpu, sljit_uw pc, std::uint32_t instruction, std::uint32_t clocks);
 };
 
 } // namespace cupid::n64

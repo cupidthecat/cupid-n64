@@ -49,6 +49,20 @@ std::uint32_t inspection_offset(const n64::MemoryRegion &region, std::uint64_t a
   return static_cast<std::uint32_t>(address - start);
 }
 
+std::uint64_t instruction_address(n64::DebugProcessor processor, std::string_view text) {
+  auto address = inspection_address(text);
+  while (!text.empty() && space(text.front()))
+    text.remove_prefix(1);
+  while (!text.empty() && space(text.back()))
+    text.remove_suffix(1);
+  if (text.starts_with("0x") || text.starts_with("0X"))
+    text.remove_prefix(2);
+  if (processor == n64::DebugProcessor::Cpu && text.size() <= 8 && address >= 0x80000000 &&
+      address <= 0xffffffff)
+    address |= 0xffffffff00000000ull;
+  return address;
+}
+
 std::vector<std::uint8_t> inspection_bytes(std::string_view text) {
   std::vector<std::uint8_t> bytes;
   while (!text.empty()) {

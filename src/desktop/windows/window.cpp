@@ -151,6 +151,8 @@ int Window::run(HINSTANCE instance, int show) {
   const auto developer = CreatePopupMenu();
   AppendMenuW(developer, MF_STRING, MemoryInspection, L"&Memory inspection...");
   AppendMenuW(developer, MF_STRING, DeviceProperties, L"Device &properties...");
+  AppendMenuW(developer, MF_STRING, Disassembly, L"&Disassembly...");
+  AppendMenuW(developer, MF_STRING, InstructionTrace, L"Instruction &trace...");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");

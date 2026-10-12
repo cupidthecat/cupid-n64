@@ -65,6 +65,14 @@ public:
   void write_memory(n64::MemoryRegionId region, std::uint32_t offset,
                     std::span<const std::uint8_t> bytes);
   std::vector<n64::DeviceProperty> device_properties(n64::DeviceId device) const;
+  std::uint64_t instruction_pc(n64::DebugProcessor processor) const;
+  std::optional<std::uint32_t> instruction(n64::DebugProcessor processor, std::uint64_t address);
+  n64::TraceLog &tracing() {
+    return console_->tracing();
+  }
+  const n64::TraceLog &tracing() const {
+    return console_->tracing();
+  }
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
   }

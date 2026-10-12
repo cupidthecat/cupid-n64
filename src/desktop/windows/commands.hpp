@@ -63,6 +63,8 @@ enum Command : unsigned {
   ExportSettings,
   MemoryInspection,
   DeviceProperties,
+  Disassembly,
+  InstructionTrace,
   StateSlotFirst = 100,
   RewindIntervalFirst = 200,
   RewindCapacityFirst = 210,
