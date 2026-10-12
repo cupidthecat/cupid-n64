@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/cpu/state.hpp"
+#include "core/debug/trace.hpp"
 #include "core/memory/bus.hpp"
 #include "core/timing/random.hpp"
 #include <functional>
@@ -38,6 +39,12 @@ public:
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
   std::uint32_t timer_count() const;
+  void connect_trace(TraceLog *trace) {
+    trace_ = trace;
+  }
+  bool instruction_tracing() const {
+    return trace_ && trace_->enabled(TraceKind::CpuInstruction);
+  }
   void connect_sync(std::function<void()> callback) {
     synchronize_ = std::move(callback);
   }
@@ -58,6 +65,11 @@ private:
   friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
+  void trace_instruction(std::uint64_t pc, std::uint32_t instruction,
+                         unsigned fetch_clocks = 0) const;
+  void trace_tlb(TlbEvent event, std::uint64_t address, std::uint64_t physical = 0) const;
+  bool tlb_matches(const TlbEntry &entry, std::uint64_t address) const;
+  std::optional<Address> inspect_address(std::uint64_t address) const;
   enum class Mode { Kernel, Supervisor, User };
   enum class Segment { Invalid, Mapped, Cached, Direct, Cached32, Direct32 };
 
@@ -117,6 +129,8 @@ private:
   unsigned multiply(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
   unsigned divide(std::uint64_t a, std::uint64_t b, bool wide, bool is_signed);
   Segment segment(std::uint64_t address) const;
+  static std::optional<Address> direct_address(Segment segment, std::uint64_t address);
+  static Address tlb_address(const TlbEntry &entry, std::uint64_t address);
   std::optional<Address> translate(std::uint64_t address, unsigned bytes, bool store,
                                    bool alignment = true);
   std::optional<Address> translate_tlb(std::uint64_t address, bool store);
@@ -153,6 +167,7 @@ private:
   std::uint64_t cop2_latch_ = 0;
   std::uint64_t count_ticks_ = 0;
   std::uint64_t count_clock_ = 0;
+  TraceLog *trace_ = nullptr;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

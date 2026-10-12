@@ -5,7 +5,8 @@
 namespace cupid::desktop {
 
 bool Window::inspection_command(unsigned id) {
-  if (id != MemoryInspection && id != DeviceProperties)
+  if (id != MemoryInspection && id != DeviceProperties && id != Disassembly &&
+      id != InstructionTrace)
     return false;
   if (!session_)
     return true;
@@ -24,8 +25,12 @@ bool Window::inspection_command(unsigned id) {
           rewind_->clear();
         state_message_ = L"Memory edited; session paused";
       }
-    } else
+    } else if (id == DeviceProperties)
       show_device_properties(window_, *session_);
+    else if (id == Disassembly)
+      show_disassembly(window_, *session_);
+    else
+      show_instruction_trace(window_, *session_);
     refresh_frame();
   } catch (const std::exception &error) {
     status_error(L"Inspection", error);

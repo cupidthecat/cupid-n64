@@ -42,6 +42,12 @@ struct ConsoleConfig {
 
 class Console : public Bus {
 public:
+  TraceLog &tracing() {
+    return trace_;
+  }
+  const TraceLog &tracing() const {
+    return trace_;
+  }
   explicit Console(ConsoleConfig config = {});
   Console(const Console &) = delete;
   Console &operator=(const Console &) = delete;
@@ -163,6 +169,7 @@ private:
   Cpu cpu_;
   std::uint64_t synchronized_clock_ = 0;
   std::uint64_t clock_target_ = 0;
+  TraceLog trace_;
   std::optional<std::uint64_t> frame_limit_;
   bool frozen_ = false;
   std::unique_ptr<Aleck64> arcade_;

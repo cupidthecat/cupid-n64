@@ -4,9 +4,9 @@
 namespace cupid::n64 {
 
 CpuCompiler::Emitter::Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc,
-                              std::uint32_t physical, bool wide)
+                              std::uint32_t physical, bool wide, bool tracing)
     : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), start_pc(pc), pc(pc),
-      physical(physical), wide(wide) {}
+      physical(physical), wide(wide), tracing(tracing) {}
 
 CpuCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);
@@ -69,7 +69,9 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
   const unsigned reverse = cpu->reverse_endian() ? 1 : 0;
   for (unsigned n = 0; n < view->count; ++n)
     if (view->words[n] != line.words[(((physical >> 2) + n) ^ reverse) & 7]) {
-      helper(cpu, line.words[((physical >> 2) ^ reverse) & 7], 0);
+      const auto instruction = line.words[((physical >> 2) ^ reverse) & 7];
+      cpu->trace_instruction(cpu->state_.pc, instruction, 2);
+      helper(cpu, instruction, 0);
       return 0;
     }
   return 1;
@@ -173,6 +175,14 @@ bool CpuCompiler::Emitter::compile() {
     // Untracked memory validates additional entry points.
     if (!n || !(pc & 31) || (internal_entries[n] && !cpu.bus_.instruction_tracker()))
       cache_guard(physical + n * 4);
+    if (tracing) {
+      op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
+      op1(SLJIT_MOV, reg(SLJIT_R1), imm(pc));
+      op1(SLJIT_MOV32, reg(SLJIT_R2), imm(instruction));
+      op1(SLJIT_MOV32, reg(SLJIT_R3), imm(cycles + 2));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4V(P, W, 32, 32), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(trace));
+    }
     const auto opcode = instruction >> 26;
     const auto function = instruction & 63;
     const bool native =
@@ -237,6 +247,11 @@ bool CpuCompiler::Emitter::compile() {
   block.code = sljit_generate_code(compiler, 0, nullptr);
   block.bytes = static_cast<std::size_t>(sljit_get_generated_code_size(compiler));
   return block.code != nullptr;
+}
+
+void CpuCompiler::Emitter::trace(Cpu *cpu, sljit_uw pc, std::uint32_t instruction,
+                                 std::uint32_t clocks) {
+  cpu->trace_instruction(pc, instruction, clocks);
 }
 
 } // namespace cupid::n64

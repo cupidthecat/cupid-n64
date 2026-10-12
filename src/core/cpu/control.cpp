@@ -113,6 +113,16 @@ void Cpu::write_tlb(unsigned index) {
   const bool global = (entry.lo[0] & entry.lo[1] & 1) != 0;
   for (auto &lo : entry.lo)
     lo = (lo & ~1u) | static_cast<unsigned>(global);
+  if (trace_ && trace_->enabled(TraceKind::Tlb))
+    trace_->record({.kind = TraceKind::Tlb,
+                    .tlb = TlbEvent::Write,
+                    .clock = state_.clocks,
+                    .pc = state_.pc,
+                    .address = entry.hi,
+                    .index = index,
+                    .mask = entry.mask,
+                    .lo0 = entry.lo[0],
+                    .lo1 = entry.lo[1]});
 }
 
 void Cpu::cop0(std::uint32_t instruction) {

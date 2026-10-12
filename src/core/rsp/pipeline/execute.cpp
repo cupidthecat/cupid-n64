@@ -73,6 +73,7 @@ void Rsp::end_instruction() {
 
 std::uint32_t Rsp::execute(std::uint32_t instruction) {
   pipeline_.clocks = 0;
+  trace_instruction(pc_, instruction);
   begin_instruction();
   pipeline_.issue(decode_info(instruction));
   decode(instruction);
@@ -84,6 +85,7 @@ std::uint32_t Rsp::execute(std::uint32_t instruction) {
 std::uint32_t Rsp::step() {
   pipeline_.clocks = 0;
   auto instruction = static_cast<std::uint32_t>(read_local(0x1000 | pc_, 4));
+  trace_instruction(pc_, instruction);
   begin_instruction();
   const auto first = decode_info(instruction);
   pipeline_.issue(first);
@@ -93,6 +95,7 @@ std::uint32_t Rsp::step() {
     const auto second = decode_info(instruction);
     if (dual_issue(first, second)) {
       end_instruction();
+      trace_instruction(pc_, instruction);
       begin_instruction();
       pipeline_.issue(second);
       decode(instruction);

@@ -67,6 +67,8 @@ private:
   static std::uint32_t encode_current(unsigned current);
   void update_mapping();
   std::optional<std::uint32_t> translate(std::uint32_t address);
+  std::optional<std::uint32_t> mapped_address(std::uint32_t address) const;
+  std::optional<std::uint32_t> inspect_word(std::uint32_t address, bool ebus) const;
   Chip *select_chip(unsigned id);
   std::uint32_t read_register(const Chip &chip, unsigned index) const;
   void write_register(Chip &chip, unsigned index, std::uint32_t value, unsigned repeat_length);

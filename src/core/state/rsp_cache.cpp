@@ -136,6 +136,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       cache.context = restored->context;
       cache.alternate = restored->alternate;
       cache.bytes = restored->bytes;
+      cache.trace_bytes = 0;
       cache.generation = restored->generation;
       cache.external_memory = restored->external_memory;
       cache.dirty = restored->dirty;

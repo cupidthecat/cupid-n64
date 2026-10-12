@@ -11,6 +11,23 @@ void CpuCompiler::reset() {
     section.reset();
   impl_->other_sections.clear();
   impl_->bytes = 0;
+  impl_->trace_bytes = 0;
+}
+
+void CpuCompiler::Impl::clear_traced() {
+  const auto clear = [](Section &section) {
+    for (auto &head : section.entries)
+      for (auto *entry = head.get(); entry; entry = entry->next.get())
+        entry->block->traced.reset();
+  };
+  for (auto &section : sections)
+    if (section)
+      clear(*section);
+  for (auto &[page, section] : other_sections) {
+    static_cast<void>(page);
+    clear(section);
+  }
+  trace_bytes = 0;
 }
 
 bool CpuCompiler::run(const std::uint64_t &clock_target) {
@@ -151,9 +168,30 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
                    static_cast<std::uint32_t>((found->block->words.size() - found->index) * 4));
   found->tracked = tracker != nullptr;
   found->cache_generation = cpu.instruction_cache_generation_;
+  auto *execution = found->block.get();
+  if (cpu.instruction_tracing()) {
+    if (!execution->traced) {
+      auto traced = std::make_unique<Impl::Block>();
+      traced->key = execution->key;
+      traced->physical = execution->physical;
+      traced->words = execution->words;
+      Emitter emitter(cpu, *traced, traced->key.pc, traced->physical, (traced->key.mode & 2) != 0,
+                      true);
+      if (!emitter.compile())
+        return cpu.run_interpreted_block(clock_target);
+      constexpr std::size_t trace_limit = 64 * 1024 * 1024;
+      if (traced->bytes > trace_limit)
+        return cpu.run_interpreted_block(clock_target);
+      if (impl_->trace_bytes > trace_limit - traced->bytes)
+        impl_->clear_traced();
+      impl_->trace_bytes += traced->bytes;
+      execution->traced = std::move(traced);
+    }
+    execution = execution->traced.get();
+  }
   const auto previous = impl_->active;
   impl_->active = {tracker, page, generation};
-  found->block->execute(clock_target);
+  execution->execute(clock_target);
   impl_->active = previous;
   return true;
 #endif
