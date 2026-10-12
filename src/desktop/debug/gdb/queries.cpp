@@ -25,8 +25,8 @@ bool GdbProtocol::query(std::string_view payload) {
     reply(std::string(start + count == xml.size() ? "l" : "m") +
           std::string(xml.substr(start, count)));
   } else if (payload.starts_with("qSupported"))
-    reply(
-        "PacketSize=4000;swbreak+;hwbreak+;QStartNoAckMode+;qXfer:features:read+;vContSupported+");
+    reply("PacketSize=" + gdb::hex(n64::Debugger::maximum_transfer) +
+          ";swbreak+;hwbreak+;QStartNoAckMode+;qXfer:features:read+;vContSupported+");
   else if (payload == "QStartNoAckMode") {
     reply("OK");
     no_ack_ = true;

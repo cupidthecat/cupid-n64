@@ -3,6 +3,7 @@
 #include "desktop/debug/gdb/codec.hpp"
 #include "desktop/debug/gdb/server.hpp"
 #include "desktop/debug/gdb/transport/socket.hpp"
+#include <algorithm>
 #include <chrono>
 #include <thread>
 
@@ -135,6 +136,42 @@ void execution_tests() {
   equal(protocol.closing(), true);
 }
 
+void bulk_transfer_tests() {
+  auto console = machine(131);
+  Debugger debugger(*console);
+  GdbProtocol protocol(debugger);
+  const auto supported = request(protocol, "qSupported");
+  const auto start = supported.find("PacketSize=");
+  equal(start != supported.npos, true);
+  if (start == supported.npos)
+    return;
+  const auto first = start + std::string_view("PacketSize=").size();
+  const auto end = supported.find(';', first);
+  const auto negotiated = gdb::number(std::string_view(supported).substr(first, end - first));
+  equal(negotiated.has_value(), true);
+  if (!negotiated)
+    return;
+  equal(*negotiated <= Debugger::maximum_transfer && *negotiated > Debugger::register_count * 16,
+        true);
+  const auto clocks = console->cpu().state().clocks;
+  for (bool binary : {false, true}) {
+    const auto chunk = static_cast<unsigned>(*negotiated / (binary ? 1 : 2) - 64);
+    for (unsigned offset = 0; offset < 5000; offset += chunk) {
+      const auto length = std::min(chunk, 5000 - offset);
+      const auto address = gdb::hex(0xffffffffa0004000 + offset);
+      const std::vector<std::uint8_t> bytes(length, binary ? 0x42 : 0x41);
+      const auto data = binary ? std::string(bytes.begin(), bytes.end()) : gdb::encode(bytes);
+      const auto command = (binary ? "X" : "M") + address + "," + gdb::hex(length) + ":" + data;
+      equal(command.size() <= *negotiated, true);
+      equal(request(protocol, command) == "+" + gdb::packet("OK"), true);
+      equal(request(protocol, "m" + address + "," + gdb::hex(length)) ==
+                "+" + gdb::packet(gdb::encode(bytes)),
+            true);
+    }
+  }
+  equal(console->cpu().state().clocks, clocks);
+}
+
 gdb::Socket connect(GdbServer &server) {
   const auto client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   equal(client != gdb::invalid_socket, true);
@@ -221,6 +258,7 @@ int main() {
   framing_tests();
   register_and_memory_tests();
   execution_tests();
+  bulk_transfer_tests();
   server_tests();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
