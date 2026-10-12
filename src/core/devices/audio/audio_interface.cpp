@@ -11,6 +11,7 @@ AudioInterface::AudioInterface(Rdram &ram, MipsInterface &interrupts, VideoRegio
 
 void AudioInterface::power() {
   state_ = {};
+  diagnostic_origins_ = {};
   output_ = {};
   clock_ = 0;
   frequency_ = 44100;
@@ -39,7 +40,10 @@ StereoSample AudioInterface::sample() {
   bool active = false;
   if (state_.count && state_.lengths[0] && state_.enable) {
     state_.addresses[0] = (state_.addresses[0] + unsigned(state_.carry) * 0x2000) & 0xffffff;
-    const auto data = static_cast<std::uint32_t>(ram_.read(state_.addresses[0], 4));
+    if (auto *diagnostics = ram_.diagnostics())
+      diagnostics->set_dma_origin(MemoryRequestor::AudioDma, diagnostic_origins_[0]);
+    const auto data =
+        static_cast<std::uint32_t>(ram_.read(state_.addresses[0], 4, MemoryRequestor::AudioDma));
     output_.left = static_cast<std::int16_t>(data >> 16) / 32768.0;
     output_.right = static_cast<std::int16_t>(data) / 32768.0;
     state_.addresses[0] = (state_.addresses[0] & ~0x1fffu) | ((state_.addresses[0] + 4) & 0x1fff);
@@ -51,6 +55,7 @@ StereoSample AudioInterface::sample() {
     if (--state_.count) {
       state_.addresses[0] = state_.addresses[1];
       state_.lengths[0] = state_.lengths[1];
+      diagnostic_origins_[0] = diagnostic_origins_[1];
       interrupts_.raise(Interrupt::Audio);
     }
   }

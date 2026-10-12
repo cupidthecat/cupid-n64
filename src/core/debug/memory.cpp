@@ -106,6 +106,8 @@ void Inspection::write(Console &console, MemoryRegionId region, std::uint32_t of
     case MemoryRegionId::DataCache: {
       auto &line = console.cpu_.dcache_[(address >> 4) & 511];
       if (line.hit(address)) {
+        console.diagnostics_.cache_dirty((address >> 4) & 511, address,
+                                         static_cast<std::uint16_t>(1u << (address & 15)), 0);
         auto &word = line.words[(address >> 2) & 3];
         const auto shift = (3 - (address & 3)) * 8;
         word = (word & ~(255u << shift)) | (std::uint32_t(bytes[n]) << shift);

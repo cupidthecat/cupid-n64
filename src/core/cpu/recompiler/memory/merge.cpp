@@ -24,6 +24,19 @@ void CpuCompiler::Emitter::cached_merge(Cpu *cpu, sljit_s32 encoded, Cpu::CacheL
   const auto value = cpu->state_.gpr[target];
   if (write) {
     const auto mask = (left ? width_mask >> shift : width_mask << shift) & width_mask;
+    if (cpu->diagnostics_ && cpu->diagnostics_->instrumented()) {
+      std::uint16_t dirty = 0;
+      unsigned length = 0;
+      for (unsigned n = 0; n < bytes; ++n)
+        if ((mask >> ((bytes - n - 1) * 8)) & 255) {
+          dirty |= static_cast<std::uint16_t>(1u << ((physical & (16 - bytes)) + n));
+          ++length;
+        }
+      for (unsigned n = 0; n < static_cast<unsigned>(std::popcount(length)); ++n)
+        cpu->diagnostics_->cache_access(false, true);
+      cpu->diagnostics_->cache_dirty(static_cast<unsigned>(line - cpu->dcache_.data()),
+                                     static_cast<std::uint32_t>(physical), dirty, cpu->state_.pc);
+    }
     const auto inserted = left ? value >> shift : value << shift;
     const auto result = (memory & ~mask) | (inserted & mask);
     if (bytes == 8) {
@@ -32,7 +45,11 @@ void CpuCompiler::Emitter::cached_merge(Cpu *cpu, sljit_s32 encoded, Cpu::CacheL
     } else
       line->words[word] = static_cast<std::uint32_t>(result);
     line->dirty = true;
-  } else if (target) {
+  } else {
+    if (cpu->diagnostics_)
+      cpu->diagnostics_->cache_access(false, true);
+    if (!target)
+      return;
     const auto mask = left ? width_mask << shift : width_mask >> shift;
     const auto inserted = left ? memory << shift : memory >> shift;
     const auto result = (value & ~mask) | (inserted & mask);

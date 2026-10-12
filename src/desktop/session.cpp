@@ -89,6 +89,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     }
   }
   output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  console_->diagnostics().connect_memory_fence([this] { output_->synchronize(); });
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
   console_->video().connect_frame([this](bool field) {
@@ -143,6 +144,8 @@ void Session::advance_to_frame() {
   const auto started = clocks();
   while (frames == before) {
     run_interval(true);
+    if (diagnostics().control() != n64::HostControl::None)
+      break;
     if (clocks() - started > 10 * n64::clock_frequency)
       throw std::runtime_error("Frame advance stopped because no video frame was produced.");
   }

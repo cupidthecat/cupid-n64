@@ -25,6 +25,8 @@ void RspCompiler::Emitter::vector_address(unsigned offset, bool window) {
 }
 
 bool RspCompiler::Emitter::vector_memory(std::uint32_t instruction, std::uint32_t pc) {
+  if (diagnostics)
+    return false;
   const auto opcode = instruction >> 26;
   if (opcode != 50 && opcode != 58)
     return false;

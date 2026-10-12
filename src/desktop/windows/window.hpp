@@ -113,6 +113,7 @@ private:
   void update_playback();
   void update_fast_forward();
   void stop_fast_forward();
+  bool apply_homebrew_control();
   void record_history();
   void begin_rewind();
   void rewind_step();

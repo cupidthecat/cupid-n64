@@ -57,6 +57,8 @@ std::string cpu(const Fields &f) {
                        {reg(f.rt()), reg(f.rd(), 'c')});
     }
     if (f.op() == 16 && (f.rs() & 16)) {
+      if (const auto extension = homebrew(DebugProcessor::Cpu, f.word); !extension.empty())
+        return extension;
       switch (f.fn()) {
       case 1:
         return "tlbr";

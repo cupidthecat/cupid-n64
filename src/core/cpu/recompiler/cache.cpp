@@ -11,14 +11,16 @@ void CpuCompiler::reset() {
     section.reset();
   impl_->other_sections.clear();
   impl_->bytes = 0;
-  impl_->trace_bytes = 0;
+  impl_->instrumented_bytes = 0;
 }
 
-void CpuCompiler::Impl::clear_traced() {
+void CpuCompiler::Impl::clear_instrumented() {
   const auto clear = [](Section &section) {
     for (auto &head : section.entries)
-      for (auto *entry = head.get(); entry; entry = entry->next.get())
+      for (auto *entry = head.get(); entry; entry = entry->next.get()) {
         entry->block->traced.reset();
+        entry->block->diagnosed.reset();
+      }
   };
   for (auto &section : sections)
     if (section)
@@ -27,7 +29,7 @@ void CpuCompiler::Impl::clear_traced() {
     static_cast<void>(page);
     clear(section);
   }
-  trace_bytes = 0;
+  instrumented_bytes = 0;
 }
 
 bool CpuCompiler::run(const std::uint64_t &clock_target) {
@@ -169,28 +171,30 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   found->tracked = tracker != nullptr;
   found->cache_generation = cpu.instruction_cache_generation_;
   auto *execution = found->block.get();
-  if (cpu.instruction_tracing()) {
-    if (!execution->traced) {
+  if (cpu.instruction_tracing() || cpu.diagnostic_execution()) {
+    auto &variant = cpu.diagnostic_execution() ? execution->diagnosed : execution->traced;
+    if (!variant) {
       auto traced = std::make_unique<Impl::Block>();
       traced->key = execution->key;
       traced->physical = execution->physical;
       traced->words = execution->words;
       Emitter emitter(cpu, *traced, traced->key.pc, traced->physical, (traced->key.mode & 2) != 0,
-                      true);
+                      true, cpu.diagnostic_execution());
       if (!emitter.compile())
         return cpu.run_interpreted_block(clock_target);
       constexpr std::size_t trace_limit = 64 * 1024 * 1024;
       if (traced->bytes > trace_limit)
         return cpu.run_interpreted_block(clock_target);
-      if (impl_->trace_bytes > trace_limit - traced->bytes)
-        impl_->clear_traced();
-      impl_->trace_bytes += traced->bytes;
-      execution->traced = std::move(traced);
+      if (impl_->instrumented_bytes > trace_limit - traced->bytes)
+        impl_->clear_instrumented();
+      impl_->instrumented_bytes += traced->bytes;
+      variant = std::move(traced);
     }
-    execution = execution->traced.get();
+    execution = variant.get();
   }
   const auto previous = impl_->active;
   impl_->active = {tracker, page, generation};
+  cpu.native_fetch_miss_ = false;
   execution->execute(clock_target);
   impl_->active = previous;
   return true;

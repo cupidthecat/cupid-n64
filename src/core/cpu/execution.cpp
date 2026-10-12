@@ -78,10 +78,12 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
     auto instruction = instructions[index];
     bool changed = false;
+    bool fetch_miss = false;
     if (first_instruction || !(pc & 31)) {
       const auto address = physical + static_cast<std::uint32_t>(pc - start_pc);
       auto &line = icache_[(pc >> 5) & 511];
       if (!line.hit(address)) {
+        fetch_miss = true;
         if (!fill(line, address, static_cast<std::uint32_t>(pc) & 0xfe0, true)) {
           advance_clocks(2);
           return true;
@@ -93,6 +95,8 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
           instruction = line.words[((address >> 2) ^ reverse) & 7];
       }
     }
+    if (diagnostics_ && !fetch_miss)
+      diagnostics_->cache_access(true, true);
     const auto info = block_instruction(instruction);
     trace_instruction(pc, instruction, 2);
     begin_instruction();

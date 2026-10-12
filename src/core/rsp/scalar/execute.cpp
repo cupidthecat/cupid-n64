@@ -4,6 +4,8 @@
 namespace cupid::n64 {
 
 std::uint32_t Rsp::read_unaligned(std::uint32_t address, unsigned bytes) const {
+  if (diagnostics_)
+    diagnostics_->local_access(address & 0xfff, bytes, false);
   std::uint32_t value = 0;
   for (unsigned n = 0; n < bytes; ++n)
     value = (value << 8) | memory_[(address + n) & 0xfff];
@@ -11,6 +13,8 @@ std::uint32_t Rsp::read_unaligned(std::uint32_t address, unsigned bytes) const {
 }
 
 void Rsp::write_unaligned(std::uint32_t address, unsigned bytes, std::uint32_t value) {
+  if (diagnostics_)
+    diagnostics_->local_access(address & 0xfff, bytes, true);
   for (unsigned n = 0; n < bytes; ++n)
     memory_[(address + n) & 0xfff] = static_cast<std::uint8_t>(value >> ((bytes - n - 1) * 8));
 }
@@ -55,6 +59,8 @@ void Rsp::scalar_special(std::uint32_t instruction) {
     result = (pc_ + 8) & 0xfff;
     break;
   case 13:
+    if (diagnostics_)
+      diagnostics_->exception(9, delay_slot_);
     status_.halted = status_.broken = true;
     if (status_.interrupt_on_break)
       interrupts_.raise(Interrupt::Signal);
@@ -92,6 +98,11 @@ void Rsp::scalar_special(std::uint32_t instruction) {
 }
 
 void Rsp::decode(std::uint32_t instruction) {
+  DiagnosticScope context(diagnostics_ &&
+                                  (diagnostics_->instrumented() || diagnostics_->config().devices)
+                              ? diagnostics_
+                              : nullptr,
+                          {DebugProcessor::Rsp, pc_, static_cast<std::uint64_t>(clock_), true});
   const auto source = (instruction >> 21) & 31;
   const auto target = (instruction >> 16) & 31;
   const auto immediate = static_cast<std::int16_t>(instruction);
@@ -156,19 +167,32 @@ void Rsp::decode(std::uint32_t instruction) {
     result = instruction << 16;
     break;
   case 16: {
+    if (source >= 16 && diagnostics_) {
+      diagnostics_->rsp_extension(instruction);
+      break;
+    }
     const auto reg = (instruction >> 11) & 15;
     if (source == 0) {
       const auto value = reg < 8         ? read_io(reg * 4)
                          : display_read_ ? display_read_((reg & 7) * 4)
                                          : 0;
+      if (reg >= 8 && diagnostics_)
+        diagnostics_->register_access(DiagnosticDevice::Rdp, 0x04100000 | ((reg & 7) * 4), value,
+                                      false);
       if (target)
         result = value;
     }
     if (source == 4) {
       if (reg < 8)
         write_io(reg * 4, result);
-      else if (display_write_)
+      else if (display_write_) {
+        if (reg == 9 && diagnostics_)
+          diagnostics_->set_dma_origin(MemoryRequestor::DisplayDma, diagnostics_->origin());
+        if (diagnostics_)
+          diagnostics_->register_access(DiagnosticDevice::Rdp, 0x04100000 | ((reg & 7) * 4), result,
+                                        true);
         display_write_((reg & 7) * 4, result);
+      }
     }
     break;
   }

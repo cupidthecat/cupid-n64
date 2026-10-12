@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/debug/diagnostics.hpp"
 #include "core/debug/inspection.hpp"
 
 namespace cupid::desktop {
@@ -13,5 +14,7 @@ std::string inspection_properties(std::span<const n64::DeviceProperty> propertie
 std::string instruction_row(n64::DebugProcessor processor, std::uint64_t pc,
                             std::optional<std::uint32_t> instruction);
 std::string trace_dump(std::span<const n64::TraceRecord> records, unsigned limit = 256);
+std::string diagnostic_dump(std::span<const n64::DiagnosticRecord> records, unsigned limit = 256);
+std::string profile_dump(const n64::ProfileSnapshot &profile);
 
 } // namespace cupid::desktop

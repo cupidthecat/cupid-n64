@@ -15,6 +15,7 @@ void PeripheralInterface::power() {
   domain2_ = {};
   selected_ = -1;
   timing_ = {};
+  diagnostic_address_ = 0;
 }
 
 void PeripheralInterface::attach(PeripheralDevice &device, unsigned priority) {
@@ -47,6 +48,7 @@ const PeripheralInterface::Domain &PeripheralInterface::domain(std::uint32_t add
 
 void PeripheralInterface::select(std::uint32_t address) {
   address &= ~1u;
+  diagnostic_address_ = address;
   latch_ = (address & 0xffff) * 0x10001u;
   timing_ = domain(address);
   selected_ = -1;
@@ -63,14 +65,27 @@ std::uint16_t PeripheralInterface::read_half() {
     if (const auto value = devices_[selected_].target->read_half(timing_))
       latch_ = std::uint32_t(*value) * 0x10001u;
   }
-  return static_cast<std::uint16_t>(latch_);
+  const auto value = static_cast<std::uint16_t>(latch_);
+  if (selected_ >= 0)
+    if (auto *diagnostics = ram_.diagnostics())
+      diagnostics->register_access(diagnostic_address_ < 0x08000000 ? DiagnosticDevice::Disk
+                                                                    : DiagnosticDevice::Cartridge,
+                                   diagnostic_address_, value, false, 2);
+  diagnostic_address_ += 2;
+  return value;
 }
 
 void PeripheralInterface::write_half(std::uint16_t value) {
   if (!io_busy_)
     latch_ = std::uint32_t(value) * 0x10001u;
-  if (selected_ >= 0)
+  if (selected_ >= 0) {
+    if (auto *diagnostics = ram_.diagnostics())
+      diagnostics->register_access(diagnostic_address_ < 0x08000000 ? DiagnosticDevice::Disk
+                                                                    : DiagnosticDevice::Cartridge,
+                                   diagnostic_address_, value, true, 2);
     devices_[selected_].target->write_half(value, timing_);
+  }
+  diagnostic_address_ += 2;
 }
 
 BusRead PeripheralInterface::read_word(std::uint32_t address) {
@@ -174,12 +189,16 @@ void PeripheralInterface::write_io(std::uint32_t address, std::uint32_t value) {
   if (index == 1)
     bus_address_ = value & ~1u;
   if (index == 2) {
+    if (auto *diagnostics = ram_.diagnostics())
+      diagnostics->set_dma_origin(MemoryRequestor::PeripheralDma, diagnostics->origin());
     read_length_ = value & 0xffffff;
     dma_busy_ = true;
     events_.insert(Event::PeripheralRead, dma_duration(true));
     dma_read();
   }
   if (index == 3) {
+    if (auto *diagnostics = ram_.diagnostics())
+      diagnostics->set_dma_origin(MemoryRequestor::PeripheralDma, diagnostics->origin());
     write_length_ = value & 0xffffff;
     dma_busy_ = true;
     events_.insert(Event::PeripheralWrite, dma_duration(false));

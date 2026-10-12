@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/debug/disassembly.hpp"
+#include "core/debug/homebrew/command.hpp"
 #include <bit>
 #include <initializer_list>
 #include <iomanip>
@@ -30,6 +31,18 @@ inline std::string operation(std::string_view name, std::initializer_list<std::s
     first = false;
   }
   return result;
+}
+
+inline std::string homebrew(DebugProcessor processor, std::uint32_t word) {
+  const auto command = HomebrewCommand::decode(word);
+  const auto name = command.name(processor);
+  if (name.empty())
+    return {};
+  if (command.function == 0x23 || command.function == 0x24 || command.function == 0x2c)
+    return operation(name, {hex(command.code)});
+  if (command.function == 0x20 || command.function == 0x26 || command.function == 0x28)
+    return operation(name, {reg(command.rd), hex(command.code)});
+  return operation(name, {reg(command.rd), reg(command.rt), hex(command.code)});
 }
 
 struct Fields {

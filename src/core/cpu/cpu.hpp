@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/cpu/state.hpp"
-#include "core/debug/trace.hpp"
+#include "core/debug/diagnostics.hpp"
 #include "core/memory/bus.hpp"
 #include "core/timing/random.hpp"
 #include <functional>
@@ -39,6 +39,12 @@ public:
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
   std::uint32_t timer_count() const;
+  void connect_diagnostics(Diagnostics *diagnostics) {
+    diagnostics_ = diagnostics;
+  }
+  bool diagnostic_execution() const {
+    return diagnostics_ && diagnostics_->instrumented();
+  }
   void connect_trace(TraceLog *trace) {
     trace_ = trace;
   }
@@ -62,6 +68,7 @@ public:
   }
 
 private:
+  friend class Diagnostics;
   friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
@@ -168,6 +175,8 @@ private:
   std::uint64_t count_ticks_ = 0;
   std::uint64_t count_clock_ = 0;
   TraceLog *trace_ = nullptr;
+  Diagnostics *diagnostics_ = nullptr;
+  bool native_fetch_miss_ = false;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

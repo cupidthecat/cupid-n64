@@ -3,6 +3,12 @@ project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
 
 add_library(cupid_core
+  src/core/debug/diagnostics/log.cpp
+  src/core/debug/diagnostics/profile.cpp
+  src/core/debug/diagnostics/coherence.cpp
+  src/core/debug/homebrew/commands.cpp
+  src/core/debug/homebrew/memory.cpp
+  src/core/debug/homebrew/registers.cpp
   src/core/debug/trace.cpp
   src/core/debug/processor_trace.cpp
   src/core/debug/instructions.cpp
@@ -18,6 +24,7 @@ add_library(cupid_core
   src/core/cpu/execution.cpp
   src/core/cpu/execution/memory.cpp
   src/core/cpu/recompiler/cache.cpp
+  src/core/cpu/recompiler/diagnostics.cpp
   src/core/cpu/recompiler/clocks.cpp
   src/core/cpu/recompiler/pipeline.cpp
   src/core/cpu/recompiler/branch.cpp
@@ -190,7 +197,8 @@ if(WIN32)
     target_compile_options(cupid_settings_transfer PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
 endif()
-add_library(cupid_debug_format src/desktop/debug/format.cpp src/desktop/debug/trace.cpp)
+add_library(cupid_debug_format src/desktop/debug/format.cpp src/desktop/debug/trace.cpp
+  src/desktop/debug/diagnostics.cpp)
 target_link_libraries(cupid_debug_format PUBLIC cupid_core)
 if(MSVC)
   target_compile_options(cupid_debug_format PRIVATE /W4 /WX /permissive-)
@@ -216,6 +224,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/debug/properties.cpp
     src/desktop/windows/debug/disassembly.cpp
     src/desktop/windows/debug/trace.cpp
+    src/desktop/windows/debug/diagnostics.cpp
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
@@ -278,6 +287,8 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  cupid_add_core_test(diagnostics_tests diagnostics_test_entry tests/debug/diagnostics/main.cpp)
+  add_test(NAME core_diagnostics COMMAND ${diagnostics_tests_command})
   cupid_add_core_test(tracing_tests tracing_test_entry tests/debug/tracing/main.cpp
     tests/debug/tracing/instructions.cpp tests/debug/tracing/execution.cpp)
   add_test(NAME instruction_tracing COMMAND ${tracing_tests_command})
@@ -285,6 +296,7 @@ if(BUILD_TESTING)
   if(cupid_group_core_tests)
     target_link_libraries(core_checkpoint_tests PRIVATE cupid_debug_format)
   else()
+    target_link_libraries(diagnostics_tests PRIVATE cupid_debug_format)
     target_link_libraries(inspection_tests PRIVATE cupid_debug_format)
     target_link_libraries(tracing_tests PRIVATE cupid_debug_format)
   endif()

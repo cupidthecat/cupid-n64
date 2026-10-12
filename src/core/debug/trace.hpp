@@ -38,6 +38,7 @@ class TraceLog {
 public:
   static constexpr unsigned maximum_records = 65536;
   void configure(TraceConfig config);
+  void set_enabled(TraceKind kind, bool enabled);
   const TraceConfig &config() const {
     return config_;
   }

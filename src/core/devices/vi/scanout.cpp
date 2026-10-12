@@ -47,8 +47,8 @@ const VideoFrame &VideoInterface::scanout(Rdram &ram) {
     const auto row = registers_[1] + source_y * registers_[2] * bytes;
     auto source_x = x_offset + x_step * (left - horizontal_start);
     for (int x = left; x < right; ++x, source_x += x_step) {
-      const auto value =
-          static_cast<std::uint32_t>(ram.read(row + (source_x >> 10) * bytes, bytes));
+      const auto value = static_cast<std::uint32_t>(
+          ram.read(row + (source_x >> 10) * bytes, bytes, MemoryRequestor::VideoDma));
       auto *pixel = line + (x - horizontal_origin) * 4;
       if (depth == 2) {
         for (unsigned channel = 0; channel < 3; ++channel) {

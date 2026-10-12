@@ -1,6 +1,17 @@
 #include "core/system/console.hpp"
 
 namespace cupid::n64 {
+namespace {
+
+std::optional<DiagnosticDevice> register_device(std::uint32_t address) {
+  constexpr DiagnosticDevice devices[] = {
+      DiagnosticDevice::Rdp,   DiagnosticDevice::Rdp, DiagnosticDevice::Mi, DiagnosticDevice::Vi,
+      DiagnosticDevice::Audio, DiagnosticDevice::Pi,  DiagnosticDevice::Ri, DiagnosticDevice::Si};
+  const auto region = address >> 20;
+  return region >= 0x041 && region <= 0x048 ? std::optional(devices[region - 0x041]) : std::nullopt;
+}
+
+} // namespace
 
 std::span<const std::uint32_t> Console::instruction_data(std::uint32_t address) const {
   if (arcade_ && address >= 0xc0000000)
@@ -79,6 +90,13 @@ BusWrite Console::write(std::uint32_t address, unsigned bytes, std::uint64_t val
 }
 
 std::uint32_t Console::read_register(std::uint32_t address) {
+  const auto value = read_register_impl(address);
+  if (const auto device = register_device(address))
+    diagnostics_.register_access(*device, address, value, false);
+  return value;
+}
+
+std::uint32_t Console::read_register_impl(std::uint32_t address) {
   switch (address >> 20) {
   case 0x041:
     return rdp_.read_word(address, pending_clocks() + 40);
@@ -102,6 +120,12 @@ std::uint32_t Console::read_register(std::uint32_t address) {
 }
 
 void Console::write_register(std::uint32_t address, std::uint32_t value) {
+  if (const auto device = register_device(address))
+    diagnostics_.register_access(*device, address, value, true);
+  if ((address & ~3u) == 0x04100004)
+    diagnostics_.set_dma_origin(MemoryRequestor::DisplayDma, diagnostics_.origin());
+  if ((address & ~3u) == 0x04400004)
+    diagnostics_.set_dma_origin(MemoryRequestor::VideoDma, diagnostics_.origin());
   switch (address >> 20) {
   case 0x041:
     rdp_.write_word(address, value, pending_clocks());
@@ -142,6 +166,24 @@ BusWrite Console::read_burst(std::uint32_t address, std::span<std::uint32_t> wor
   }
   frozen_ = true;
   return {0, false};
+}
+
+BusWrite Console::read_cache_burst(std::uint32_t address, std::span<std::uint32_t> words,
+                                   bool instruction) {
+  if (address <= 0x03ffffff)
+    return mi_.read_burst(address, words,
+                          instruction ? MemoryRequestor::InstructionCache
+                                      : MemoryRequestor::DataCache);
+  return read_burst(address, words);
+}
+
+BusWrite Console::write_cache_burst(std::uint32_t address, std::span<const std::uint32_t> words,
+                                    bool instruction) {
+  if (address <= 0x03ffffff)
+    return mi_.write_burst(address, words,
+                           instruction ? MemoryRequestor::InstructionCache
+                                       : MemoryRequestor::DataCache);
+  return write_burst(address, words);
 }
 
 BusWrite Console::write_burst(std::uint32_t address, std::span<const std::uint32_t> words) {

@@ -48,16 +48,18 @@ void RspCompiler::Impl::reset() {
   dirty.reset();
   blocks.clear();
   bytes = 0;
-  trace_bytes = 0;
+  instrumented_bytes = 0;
 }
 
-void RspCompiler::Impl::clear_traced() {
+void RspCompiler::Impl::clear_instrumented() {
   for (auto &[key, versions] : blocks) {
     static_cast<void>(key);
-    for (auto &block : versions)
+    for (auto &block : versions) {
       block->traced.reset();
+      block->diagnosed.reset();
+    }
   }
-  trace_bytes = 0;
+  instrumented_bytes = 0;
 }
 
 void RspCompiler::invalidate(std::uint32_t address, unsigned bytes) {
@@ -156,23 +158,24 @@ bool RspCompiler::run() {
     if (!block)
       return executed;
     auto *execution = block;
-    if (rsp.instruction_tracing()) {
-      if (!block->traced) {
+    if (rsp.instruction_tracing() || rsp.diagnostic_execution()) {
+      auto &variant = rsp.diagnostic_execution() ? block->diagnosed : block->traced;
+      if (!variant) {
         auto traced = std::make_unique<Impl::Block>();
         traced->key = block->key;
         traced->words = block->words;
-        Emitter emitter(rsp, *traced, true);
+        Emitter emitter(rsp, *traced, true, rsp.diagnostic_execution());
         if (!emitter.compile())
           return executed;
         constexpr std::size_t limit = 64 * 1024 * 1024;
         if (traced->bytes > limit)
           return executed;
-        if (cache.trace_bytes > limit - traced->bytes)
-          cache.clear_traced();
-        cache.trace_bytes += traced->bytes;
-        block->traced = std::move(traced);
+        if (cache.instrumented_bytes > limit - traced->bytes)
+          cache.clear_instrumented();
+        cache.instrumented_bytes += traced->bytes;
+        variant = std::move(traced);
       }
-      execution = block->traced.get();
+      execution = variant.get();
     }
     const auto before = rsp.clock_;
     execution->execute(rsp);

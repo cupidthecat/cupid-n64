@@ -5,6 +5,8 @@ namespace cupid::n64::disassembly {
 
 std::string signal(const Fields &f) {
   if (f.op() == 16) {
+    if (f.rs() >= 16)
+      return homebrew(DebugProcessor::Rsp, f.word);
     constexpr std::array<std::string_view, 16> registers{
         "SP_MEM_ADDR", "SP_DRAM_ADDR", "SP_RD_LEN",    "SP_WR_LEN", "SP_STATUS",   "SP_DMA_FULL",
         "SP_DMA_BUSY", "SP_SEMAPHORE", "DPC_START",    "DPC_END",   "DPC_CURRENT", "DPC_STATUS",

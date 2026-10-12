@@ -47,6 +47,8 @@ void SerialInterface::write_io(std::uint32_t address, std::uint32_t value) {
     break;
   case 1:
     read_address_ = value & ~1u;
+    if (auto *diagnostics = pif_.diagnostics())
+      diagnostics->set_dma_origin(MemoryRequestor::SerialDma, diagnostics->origin());
     dma_busy_ = true;
     dma_state_ = 1;
     pch_state_ = 4;
@@ -54,6 +56,8 @@ void SerialInterface::write_io(std::uint32_t address, std::uint32_t value) {
     break;
   case 4:
     write_address_ = value & ~1u;
+    if (auto *diagnostics = pif_.diagnostics())
+      diagnostics->set_dma_origin(MemoryRequestor::SerialDma, diagnostics->origin());
     dma_busy_ = true;
     dma_state_ = 4;
     pch_state_ = 1;

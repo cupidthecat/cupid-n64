@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/debug/trace.hpp"
+#include "core/debug/diagnostics.hpp"
 
 #include "core/devices/mi/mips_interface.hpp"
 #include "core/rsp/state.hpp"
@@ -22,6 +22,12 @@ struct RspStatus {
 
 class Rsp {
 public:
+  void connect_diagnostics(Diagnostics *diagnostics) {
+    diagnostics_ = diagnostics;
+  }
+  bool diagnostic_execution() const {
+    return diagnostics_ && diagnostics_->instrumented();
+  }
   void connect_trace(TraceLog *trace) {
     trace_ = trace;
   }
@@ -44,7 +50,8 @@ public:
   void write_io(std::uint32_t address, std::uint32_t value, std::int64_t clock_difference = 0);
   std::uint32_t read_status(std::uint32_t address);
   void write_status(std::uint32_t address, std::uint32_t value);
-  std::uint64_t read_local(std::uint32_t address, unsigned bytes) const;
+  std::uint64_t read_local(std::uint32_t address, unsigned bytes,
+                           MemoryRequestor requestor = MemoryRequestor::Host) const;
   void write_local(std::uint32_t address, unsigned bytes, std::uint64_t value);
   void advance_dma(std::uint32_t clocks);
   std::uint32_t step();
@@ -91,6 +98,8 @@ public:
 
 private:
   friend class Inspection;
+  friend class Diagnostics;
+  std::uint32_t read_io_impl(std::uint32_t address);
   void trace_instruction(std::uint32_t pc, std::uint32_t instruction,
                          unsigned pending_clocks = 0) const;
   friend class CoreState;
@@ -101,7 +110,8 @@ private:
     Branch = 4,
     Vector = 8,
     NopGroup = 16,
-    Bypass = 32
+    Bypass = 32,
+    EndBlock = 64
   };
   struct OpInfo {
     unsigned flags = 0;
@@ -147,6 +157,7 @@ private:
     std::uint32_t skip = 0;
     std::uint32_t count = 0;
   } pending_, current_;
+  DiagnosticOrigin pending_origin_, current_origin_;
   void start_dma(std::int64_t clock_difference);
   void transfer_dma();
   bool dma_full() const {
@@ -177,6 +188,7 @@ private:
   std::unique_ptr<RspCompiler> compiler_;
   VectorExecution vector_execution_ = VectorExecution::Simd;
   TraceLog *trace_ = nullptr;
+  Diagnostics *diagnostics_ = nullptr;
 };
 
 } // namespace cupid::n64

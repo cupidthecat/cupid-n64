@@ -35,6 +35,11 @@ Console::Console(ConsoleConfig config)
   cpu_.connect_sync(request_sync);
   cpu_.connect_trace(&trace_);
   rsp_.connect_trace(&trace_);
+  diagnostics_.connect(*this, cpu_, trace_);
+  diagnostics_.set_homebrew(config_.homebrew);
+  cpu_.connect_diagnostics(&diagnostics_);
+  rsp_.connect_diagnostics(&diagnostics_);
+  ram_.connect_diagnostics(&diagnostics_);
   rsp_.connect_sync(request_sync);
   rdp_.connect_sync(request_sync);
   vi_.connect_sync(request_sync);
@@ -100,6 +105,7 @@ CicModel Console::boot_cic() const {
 }
 
 void Console::power(bool reset) {
+  diagnostics_.power();
   trace_.clear();
   if (!reset) {
     const auto seed = config_.random_seed     ? *config_.random_seed
@@ -204,6 +210,7 @@ void Console::synchronize(Rsp::Execution signal, std::int64_t signal_clock_targe
   const auto clocks = static_cast<std::uint32_t>(pending_clocks());
   synchronized_clock_ = cpu_.state().clocks;
   cpu_.synchronize_timer([&] {
+    const auto before_frames = vi_.frames();
     vi_.elapse(clocks);
     audio_.elapse(clocks);
     rsp_.elapse(clocks);
@@ -216,6 +223,8 @@ void Console::synchronize(Rsp::Execution signal, std::int64_t signal_clock_targe
     } else {
       vi_.run();
     }
+    if (vi_.frames() != before_frames)
+      diagnostics_.check_refresh(ri_.read_word(0x10));
     audio_.run();
     if (signal == Rsp::Execution::Native)
       rsp_.run();

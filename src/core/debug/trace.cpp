@@ -3,6 +3,15 @@
 
 namespace cupid::n64 {
 
+void TraceLog::set_enabled(TraceKind kind, bool enabled) {
+  const auto bit = trace_bit(kind);
+  if (!bit || kind > TraceKind::Tlb)
+    throw std::runtime_error("Invalid instruction trace category.");
+  if (enabled && storage_.empty())
+    storage_.resize(config_.capacity);
+  config_.mask = enabled ? config_.mask | bit : config_.mask & ~bit;
+}
+
 void TraceLog::configure(TraceConfig config) {
   constexpr auto known = (trace_bit(TraceKind::Tlb) << 1) - 1;
   if ((config.mask & ~known) || !config.capacity || config.capacity > maximum_records ||

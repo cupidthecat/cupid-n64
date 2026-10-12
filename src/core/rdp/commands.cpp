@@ -17,7 +17,8 @@ void Rdp::render() {
   for (unsigned n = 0; n < words; ++n) {
     for (unsigned half = 0; half < 2; ++half) {
       buffer_[queue_size_ * 2 + half] = static_cast<std::uint32_t>(
-          command_.source ? rsp_.read_local(current & 0xfff, 4) : ram_.read(current, 4));
+          command_.source ? rsp_.read_local(current & 0xfff, 4, MemoryRequestor::DisplayDma)
+                          : ram_.read(current, 4, MemoryRequestor::DisplayDma));
       current += 4;
     }
     ++queue_size_;

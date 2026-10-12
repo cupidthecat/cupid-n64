@@ -2,9 +2,9 @@
 
 namespace cupid::n64 {
 
-RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block, bool tracing)
+RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block, bool tracing, bool diagnostics)
     : rsp(rsp), block(block), compiler(sljit_create_compiler(nullptr)), start(block.key.pc),
-      tracing(tracing) {
+      tracing(tracing), diagnostics(diagnostics) {
   pipeline.single_issue = block.key.flags & 8;
   for (unsigned n = 0; n < pipeline.previous.size(); ++n) {
     pipeline.previous[n].gpr = static_cast<std::uint32_t>(block.key.registers[n]);
@@ -135,7 +135,8 @@ bool RspCompiler::Emitter::compile() {
     }
     const bool branched = first_branch || second_branch;
     const auto next = (start + n * 4) & 0xfff;
-    if (branched || n == 1024)
+    const bool terminal = (first.flags | (dual ? second.flags : 0)) & Rsp::EndBlock;
+    if (branched || terminal || n == 1024)
       commit(next, branched);
     const auto may_halt = [](std::uint32_t opcode) {
       return ((opcode >> 26) == 0 && (opcode & 63) == 13) ||
@@ -143,7 +144,7 @@ bool RspCompiler::Emitter::compile() {
     };
     if (may_halt(first_opcode) || (dual && may_halt(second_opcode)))
       halt_exit(next, branched);
-    if (n == 1024) {
+    if (terminal || n == 1024) {
       flush_clocks();
       sljit_emit_return_void(compiler);
       break;

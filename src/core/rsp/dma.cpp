@@ -7,6 +7,7 @@ void Rsp::start_dma(std::int64_t clock_difference) {
   if (dma_busy() || !dma_full())
     return;
   current_ = pending_;
+  current_origin_ = pending_origin_;
   busy_read_ = full_read_;
   busy_write_ = full_write_;
   full_read_ = full_write_ = false;
@@ -22,6 +23,8 @@ void Rsp::advance_dma(std::uint32_t clocks) {
 }
 
 void Rsp::transfer_dma() {
+  if (diagnostics_)
+    diagnostics_->set_dma_origin(MemoryRequestor::SignalDma, current_origin_);
   const auto region = current_.local_address & 0x1000;
   if (busy_read_ && region) {
     compiler_->invalidate(current_.local_address & 0xfff, current_.length + 8);
@@ -33,20 +36,28 @@ void Rsp::transfer_dma() {
     if (busy_read_) {
       std::uint64_t value;
       if (region)
-        value = ram_.read(current_.dram_address, 8);
+        value = ram_.read(current_.dram_address, 8, MemoryRequestor::SignalDma);
       else {
-        const auto upper = ram_.read(current_.dram_address, 4);
-        value = (upper << 32) | ram_.read(current_.dram_address + 4, 4);
+        const auto upper = ram_.read(current_.dram_address, 4, MemoryRequestor::SignalDma);
+        value = (upper << 32) | ram_.read(current_.dram_address + 4, 4, MemoryRequestor::SignalDma);
       }
       for (unsigned n = 0; n < 8; ++n)
         memory_[local_address + n] = static_cast<std::uint8_t>(value >> ((7 - n) * 8));
+      if (diagnostics_)
+        diagnostics_->dma_to_local(current_.dram_address, local_address, 8);
     }
     if (busy_write_) {
       if (region)
-        ram_.write(current_.dram_address, 8, read_local(local_address, 8));
+        ram_.write(current_.dram_address, 8,
+                   read_local(local_address, 8, MemoryRequestor::SignalDma),
+                   MemoryRequestor::SignalDma);
       else {
-        ram_.write(current_.dram_address, 4, read_local(local_address, 4));
-        ram_.write(current_.dram_address + 4, 4, read_local(local_address + 4, 4));
+        ram_.write(current_.dram_address, 4,
+                   read_local(local_address, 4, MemoryRequestor::SignalDma),
+                   MemoryRequestor::SignalDma);
+        ram_.write(current_.dram_address + 4, 4,
+                   read_local(local_address + 4, 4, MemoryRequestor::SignalDma),
+                   MemoryRequestor::SignalDma);
       }
     }
     current_.dram_address = (current_.dram_address + 8) & 0x00ffffff;

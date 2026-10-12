@@ -154,6 +154,8 @@ void Cpu::cop0(std::uint32_t instruction) {
     case 0x10:
       return raise(Exception::ReservedInstruction);
     default:
+      if (diagnostics_)
+        diagnostics_->cpu_extension(instruction);
       return;
     }
   }

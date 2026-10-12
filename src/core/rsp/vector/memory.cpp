@@ -15,8 +15,14 @@ void Rsp::vector_memory(std::uint32_t instruction) {
   constexpr unsigned scales[12] = {1, 2, 4, 8, 16, 16, 8, 8, 16, 16, 16, 16};
   auto address = state_.gpr[source] + static_cast<std::uint32_t>(immediate) * scales[operation];
   auto &vector = state_.vectors[target];
-  const auto read = [&](unsigned offset) { return memory_[offset & 0xfff]; };
+  const auto read = [&](unsigned offset) {
+    if (diagnostics_)
+      diagnostics_->local_access(offset & 0xfff, 1, false);
+    return memory_[offset & 0xfff];
+  };
   const auto write = [&](unsigned offset, unsigned value) {
+    if (diagnostics_)
+      diagnostics_->local_access(offset & 0xfff, 1, true);
     memory_[offset & 0xfff] = static_cast<std::uint8_t>(value);
   };
   if (operation <= 4) {

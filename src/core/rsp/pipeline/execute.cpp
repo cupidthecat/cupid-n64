@@ -79,6 +79,8 @@ std::uint32_t Rsp::execute(std::uint32_t instruction) {
   decode(instruction);
   pipeline_.end();
   end_instruction();
+  if (diagnostics_)
+    diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;
 }
 
@@ -103,6 +105,8 @@ std::uint32_t Rsp::step() {
   }
   pipeline_.end();
   end_instruction();
+  if (diagnostics_)
+    diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;
 }
 
@@ -123,7 +127,10 @@ void Rsp::run() {
   while (clock_ < 0) {
     if (!status_.halted && compiler_->run())
       continue;
-    const auto elapsed = status_.halted ? idle_clocks() : step();
+    const bool halted = status_.halted;
+    const auto elapsed = halted ? idle_clocks() : step();
+    if (halted && diagnostics_)
+      diagnostics_->rsp_cycles(elapsed, true);
     clock_ += elapsed;
     advance_dma(elapsed);
   }
@@ -131,7 +138,10 @@ void Rsp::run() {
 
 void Rsp::run_interpreted(std::int64_t clock_target) {
   while (clock_ < clock_target) {
-    const auto elapsed = status_.halted ? idle_clocks(clock_target) : step();
+    const bool halted = status_.halted;
+    const auto elapsed = halted ? idle_clocks(clock_target) : step();
+    if (halted && diagnostics_)
+      diagnostics_->rsp_cycles(elapsed, true);
     clock_ += elapsed;
     advance_dma(elapsed);
   }

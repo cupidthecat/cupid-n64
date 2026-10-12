@@ -3,13 +3,19 @@
 namespace cupid::n64 {
 
 bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, bool instruction) {
+  if (diagnostics_) {
+    diagnostics_->cache_access(instruction, false);
+    if (!instruction)
+      diagnostics_->cache_fill(static_cast<unsigned>(&line - dcache_.data()),
+                               (physical & ~0xfffu) | index, state_.pc);
+  }
   if (instruction)
     ++instruction_cache_generation_;
   advance_clocks(instruction ? 96 : 80);
   line.tag = physical & ~0xfffu;
   line.dirty = false;
-  const auto transfer =
-      bus_.read_burst(line.tag | index, std::span(line.words).first(instruction ? 8 : 4));
+  const auto transfer = bus_.read_cache_burst(
+      line.tag | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
   line.valid = instruction || transfer.success;
   if (!transfer.success && !bus_.frozen())
@@ -18,12 +24,16 @@ bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, boo
 }
 
 bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
+  if (diagnostics_)
+    diagnostics_->cache_writeback(instruction);
   advance_clocks(instruction ? 96 : 80);
-  const auto transfer =
-      bus_.write_burst(line.tag | index, std::span(line.words).first(instruction ? 8 : 4));
+  const auto transfer = bus_.write_cache_burst(
+      line.tag | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
   if (!transfer.success && !bus_.frozen())
     raise(Exception::BusData);
+  if (transfer.success && !instruction && diagnostics_)
+    diagnostics_->cache_clean(static_cast<unsigned>(&line - dcache_.data()));
   return transfer.success || bus_.frozen();
 }
 
@@ -33,6 +43,8 @@ std::optional<std::uint64_t> Cpu::cache_read(std::uint64_t virtual_address, std:
   const auto index = static_cast<unsigned>((virtual_address >> shift) & 511);
   auto &line = instruction ? icache_[index] : dcache_[index];
   const auto bus_index = (index << shift) & 0xfff;
+  if (line.hit(physical) && diagnostics_)
+    diagnostics_->cache_access(instruction, true);
   if (!line.hit(physical)) {
     if (!instruction && line.valid && line.dirty && !writeback(line, bus_index, false))
       return {};
@@ -56,6 +68,8 @@ bool Cpu::cache_write(std::uint64_t virtual_address, std::uint32_t physical, uns
   const auto index = static_cast<unsigned>((virtual_address >> 4) & 511);
   auto &line = dcache_[index];
   const auto bus_index = (index << 4) & 0xfff;
+  if (line.hit(physical) && diagnostics_)
+    diagnostics_->cache_access(false, true);
   if (!line.hit(physical)) {
     if (line.valid && line.dirty && !writeback(line, bus_index, false))
       return false;
@@ -63,6 +77,10 @@ bool Cpu::cache_write(std::uint64_t virtual_address, std::uint32_t physical, uns
       return false;
   } else
     advance_clocks(2);
+  if (diagnostics_)
+    diagnostics_->cache_dirty(
+        index, physical,
+        static_cast<std::uint16_t>(((1u << bytes) - 1) << (physical & (16 - bytes))), state_.pc);
   if (bytes == 8) {
     const auto word = (physical >> 2) & 2;
     line.words[word] = static_cast<std::uint32_t>(value >> 32);
