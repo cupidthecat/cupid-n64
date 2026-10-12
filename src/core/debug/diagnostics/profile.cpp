@@ -1,6 +1,32 @@
+#include "core/cpu/cpu.hpp"
 #include "core/debug/diagnostics.hpp"
 
 namespace cupid::n64 {
+
+ProfileSnapshot Diagnostics::profile() const noexcept {
+  auto result = profile_;
+  if (profiling() && cpu_) {
+    const auto clock = cpu_->state_.clocks + cpu_->profile_deferred_clocks_;
+    if (clock < cpu_profile_clock_)
+      return result;
+    const auto ticks = (clock - cpu_profile_clock_) >> 1;
+    result.cpu[0] += ticks;
+    if (cpu_->control_[Status] & 2)
+      result.cpu[1] += ticks;
+  }
+  return result;
+}
+
+void Diagnostics::synchronize_cpu(bool discard_remainder) noexcept {
+  if (!cpu_)
+    return;
+  profile_ = profile();
+  const auto clock = cpu_->state_.clocks + cpu_->profile_deferred_clocks_;
+  if (discard_remainder || clock < cpu_profile_clock_)
+    cpu_profile_clock_ = clock;
+  else
+    cpu_profile_clock_ += ((clock - cpu_profile_clock_) >> 1) << 1;
+}
 
 std::uint64_t ProfileSnapshot::read(unsigned code) const {
   if (code <= 1)
@@ -94,16 +120,16 @@ void Diagnostics::profile_command(std::uint64_t slot, unsigned command) {
   if (slots_.size() <= slot)
     slots_.resize(static_cast<std::size_t>(slot + 1));
   if (command == 1)
-    slots_[slot] -= profile_;
+    slots_[slot] -= profile();
   if (command == 2)
-    slots_[slot] += profile_;
+    slots_[slot] += profile();
   if (command == 3)
     slots_[slot] = {};
 }
 
 std::uint64_t Diagnostics::profile_read(std::uint64_t slot, unsigned code) const {
   if (slot & (1ull << 63))
-    return profile_.read(code);
+    return profile().read(code);
   return slot < slots_.size() ? slots_[slot].read(code) : 0;
 }
 

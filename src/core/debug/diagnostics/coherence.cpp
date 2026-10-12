@@ -13,7 +13,7 @@ Diagnostics::CacheObservation Diagnostics::observe_cache(std::uint32_t address) 
     const auto &line = cpu_->dcache_[index];
     if (!line.hit(address))
       continue;
-    const auto &context = cache_[index];
+    const auto context = cache_ ? (*cache_)[index] : CacheContext{};
     const bool known = context.known && context.address == (address & ~15u);
     if (!result.valid)
       result.fill_pc = known ? context.fill_pc : 0;
@@ -31,15 +31,15 @@ Diagnostics::CacheObservation Diagnostics::observe_cache(std::uint32_t address) 
 }
 
 void Diagnostics::cache_fill(unsigned index, std::uint32_t address, std::uint64_t pc) noexcept {
-  if (coherence() && index < cache_.size())
-    cache_[index] = {.address = address & ~15u, .known = true, .fill_pc = pc};
+  if (coherence() && cache_ && index < cache_->size())
+    (*cache_)[index] = {.address = address & ~15u, .known = true, .fill_pc = pc};
 }
 
 void Diagnostics::cache_dirty(unsigned index, std::uint32_t address, std::uint16_t mask,
                               std::uint64_t pc) noexcept {
-  if (!coherence() || index >= cache_.size())
+  if (!coherence() || !cache_ || index >= cache_->size())
     return;
-  auto &context = cache_[index];
+  auto &context = (*cache_)[index];
   if (!context.known || context.address != (address & ~15u))
     context = {.address = address & ~15u,
                .dirty = static_cast<std::uint16_t>(cpu_ && cpu_->dcache_[index].dirty ? 0xffff : 0),
@@ -49,8 +49,8 @@ void Diagnostics::cache_dirty(unsigned index, std::uint32_t address, std::uint16
 }
 
 void Diagnostics::cache_clean(unsigned index) noexcept {
-  if (index < cache_.size())
-    cache_[index].dirty = 0;
+  if (cache_ && index < cache_->size())
+    (*cache_)[index].dirty = 0;
 }
 
 void Diagnostics::memory_access(MemoryRequestor requestor, std::uint32_t address, unsigned bytes,

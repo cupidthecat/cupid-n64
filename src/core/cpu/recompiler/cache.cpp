@@ -195,6 +195,7 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto previous = impl_->active;
   impl_->active = {tracker, page, generation};
   cpu.native_fetch_miss_ = false;
+  Cpu::ProfileClockScope profile_clock(cpu, 2);
   execution->execute(clock_target);
   impl_->active = previous;
   return true;

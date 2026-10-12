@@ -43,7 +43,7 @@ struct DiagnosticConfig {
   std::uint32_t devices = 0;
   unsigned capacity = 2048;
   std::uint32_t first_address = 0, last_address = ~0u;
-  TraceAddressRange cpu, rsp{0, 0xfff};
+  TraceAddressRange cpu{}, rsp{0, 0xfff};
 };
 
 struct DiagnosticOrigin {
@@ -69,10 +69,10 @@ struct DiagnosticRecord {
   DiagnosticKind kind = DiagnosticKind::RegisterRead;
   DiagnosticDevice device = DiagnosticDevice::Mi;
   MemoryRequestor requestor = MemoryRequestor::Host;
-  DiagnosticOrigin origin, dma;
+  DiagnosticOrigin origin{}, dma{};
   std::uint64_t sequence = 0, value = 0, fill_pc = 0, write_pc = 0;
   std::uint32_t address = 0, related_address = 0, bytes = 0, code = 0;
-  std::string text;
+  std::string text{};
 };
 
 struct TrafficMetric {
@@ -129,9 +129,8 @@ public:
   std::uint64_t dropped() const {
     return dropped_;
   }
-  const ProfileSnapshot &profile() const {
-    return profile_;
-  }
+  ProfileSnapshot profile() const noexcept;
+  void synchronize_cpu(bool discard_remainder = false) noexcept;
   void cpu_cycles(std::uint64_t ticks, bool exception) noexcept;
   void cache_access(bool instruction, bool hit) noexcept;
   void cache_writeback(bool instruction) noexcept;
@@ -205,9 +204,10 @@ private:
   bool homebrew_ = false, refresh_warned_ = false;
   DiagnosticOrigin origin_;
   std::array<DiagnosticOrigin, static_cast<unsigned>(MemoryRequestor::Count)> dma_origins_{};
-  std::array<CacheContext, 512> cache_{};
+  std::unique_ptr<std::array<CacheContext, 512>> cache_;
   std::unique_ptr<std::array<LocalContext, 4096>> local_;
   ProfileSnapshot profile_;
+  std::uint64_t cpu_profile_clock_ = 0;
   std::vector<ProfileSnapshot> slots_;
   std::uint64_t exception_mask_ = 0;
   unsigned trace_countdown_ = 0;

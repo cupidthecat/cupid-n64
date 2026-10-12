@@ -95,7 +95,7 @@ void Diagnostics::rsp_instruction() noexcept {
 }
 
 void Diagnostics::request_control(unsigned code) {
-  if (code < 1 || code > 3)
+  if (code < 1 || code > 3 || control_ != HostControl::None)
     return;
   control_ = code == 1   ? HostControl::Exit
              : code == 2 ? HostControl::FastForward

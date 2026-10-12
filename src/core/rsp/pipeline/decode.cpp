@@ -3,7 +3,7 @@
 
 namespace cupid::n64 {
 
-Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction) {
+Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction, bool homebrew) {
   OpInfo info;
   const auto operation = instruction >> 26;
   const auto source = (instruction >> 21) & 31;
@@ -63,7 +63,7 @@ Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction) {
   } else if (operation >= 8 && operation <= 15) {
     info = {Bypass, operation == 15 ? 0 : r(source), r(target)};
   } else if (operation == 16) {
-    if (source >= 16) {
+    if (source >= 16 && homebrew) {
       const auto command = HomebrewCommand::decode(instruction);
       switch (command.function) {
       case 0x20:
@@ -71,6 +71,7 @@ Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction) {
         break;
       case 0x23:
       case 0x24:
+      case 0x2c:
         info.flags = EndBlock;
         break;
       case 0x25:

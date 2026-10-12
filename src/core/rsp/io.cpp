@@ -26,6 +26,21 @@ std::uint32_t Rsp::read_io(std::uint32_t address) {
 }
 
 std::uint32_t Rsp::read_io_impl(std::uint32_t address) {
+  const auto index = (address & 31) >> 2;
+  if (index == 4) {
+    if (sync_)
+      sync_();
+  } else if (index == 7) {
+    const auto value = peek_io(address);
+    status_.semaphore = true;
+    if (sync_)
+      sync_();
+    return value;
+  }
+  return peek_io(address);
+}
+
+std::uint32_t Rsp::peek_io(std::uint32_t address) const {
   switch ((address & 31) >> 2) {
   case 0:
     return current_.local_address;
@@ -35,8 +50,6 @@ std::uint32_t Rsp::read_io_impl(std::uint32_t address) {
   case 3:
     return current_.length | (current_.count << 12) | (current_.skip << 20);
   case 4:
-    if (sync_)
-      sync_();
     return unsigned(status_.halted) | (unsigned(status_.broken) << 1) |
            (unsigned(dma_busy()) << 2) | (unsigned(dma_full()) << 3) |
            (unsigned(status_.io_full) << 4) | (unsigned(status_.single_step) << 5) |
@@ -45,13 +58,8 @@ std::uint32_t Rsp::read_io_impl(std::uint32_t address) {
     return dma_full();
   case 6:
     return dma_busy();
-  case 7: {
-    const auto value = status_.semaphore;
-    status_.semaphore = true;
-    if (sync_)
-      sync_();
-    return value;
-  }
+  case 7:
+    return status_.semaphore;
   default:
     return 0;
   }

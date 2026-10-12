@@ -99,7 +99,7 @@ INT_PTR CALLBACK procedure(HWND dialog, UINT event, WPARAM wparam, LPARAM lparam
       dialog_control(dialog, L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, 300 + n, 160, y, 190, 17);
       std::ostringstream value;
       if (n < 6)
-        value << std::hex;
+        value << std::hex << std::setfill('0') << std::setw(n == 2 || n == 3 ? 16 : 1);
       value << values[n];
       SetDlgItemTextW(dialog, 300 + n, wide(value.str()).c_str());
     }

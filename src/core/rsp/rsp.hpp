@@ -47,6 +47,7 @@ public:
   std::uint32_t read_word(std::uint32_t address);
   void write_word(std::uint32_t address, std::uint32_t value, std::int64_t clock_difference = 0);
   std::uint32_t read_io(std::uint32_t address);
+  std::uint32_t peek_io(std::uint32_t address) const;
   void write_io(std::uint32_t address, std::uint32_t value, std::int64_t clock_difference = 0);
   std::uint32_t read_status(std::uint32_t address);
   void write_status(std::uint32_t address, std::uint32_t value);
@@ -135,7 +136,7 @@ private:
     void stall();
     void end();
   } pipeline_;
-  static OpInfo decode_info(std::uint32_t instruction);
+  static OpInfo decode_info(std::uint32_t instruction, bool homebrew = false);
   static bool dual_issue(const OpInfo &first, const OpInfo &second);
   void begin_instruction();
   void end_instruction();

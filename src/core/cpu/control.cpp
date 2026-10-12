@@ -61,6 +61,8 @@ void Cpu::write_control(unsigned index, std::uint64_t value) {
     set_interrupt(7, false);
     break;
   case Status:
+    if (diagnostics_)
+      diagnostics_->synchronize_cpu();
     control_[Status] = (value & 0xff57ffff) | (control_[Status] & 0x00200000);
     interrupt_changed();
     break;
@@ -212,6 +214,8 @@ void Cpu::cop0(std::uint32_t instruction) {
     }
     return;
   case 0x18: {
+    if (diagnostics_)
+      diagnostics_->synchronize_cpu();
     const bool error = control_[Status] & 4;
     const auto target = control_[error ? ErrorEpc : Epc];
     control_[Status] &= ~(error ? 4ull : 2ull);

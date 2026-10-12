@@ -24,27 +24,22 @@ void Diagnostics::register_log(std::uint32_t mask, unsigned code) {
   if ((code & 3) == 0) {
     const auto &dp = console_->display();
     const auto &command = dp.command();
-    const auto &status = rsp.status_;
-    const std::array<std::uint32_t, 16> registers{
-        rsp.current_.local_address,
-        rsp.current_.dram_address,
-        rsp.current_.length | (rsp.current_.count << 12) | (rsp.current_.skip << 20),
-        rsp.current_.length | (rsp.current_.count << 12) | (rsp.current_.skip << 20),
-        unsigned(status.halted) | (unsigned(status.broken) << 1) | (unsigned(rsp.dma_busy()) << 2) |
-            (unsigned(rsp.dma_full()) << 3) | (unsigned(status.io_full) << 4) |
-            (unsigned(status.single_step) << 5) | (unsigned(status.interrupt_on_break) << 6) |
-            (unsigned(status.signals) << 7),
-        unsigned(rsp.dma_full()),
-        unsigned(rsp.dma_busy()),
-        unsigned(status.semaphore),
-        command.start,
-        command.end,
-        command.current,
-        dp.status(),
-        dp.clock_counter(rsp.clock_),
-        command.buffer_busy,
-        command.pipe_busy,
-        command.tmem_busy};
+    const std::array<std::uint32_t, 16> registers{rsp.peek_io(0),
+                                                  rsp.peek_io(4),
+                                                  rsp.peek_io(8),
+                                                  rsp.peek_io(12),
+                                                  rsp.peek_io(16),
+                                                  rsp.peek_io(20),
+                                                  rsp.peek_io(24),
+                                                  rsp.peek_io(28),
+                                                  command.start,
+                                                  command.end,
+                                                  command.current,
+                                                  dp.status(),
+                                                  dp.clock_counter(rsp.clock_),
+                                                  command.buffer_busy,
+                                                  command.pipe_busy,
+                                                  command.tmem_busy};
     for (unsigned n = 0; n < registers.size(); ++n)
       if (mask & (1u << n)) {
         output << "COP0 " << std::dec << n << " = ";

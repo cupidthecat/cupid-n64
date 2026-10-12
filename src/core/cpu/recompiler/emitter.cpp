@@ -49,6 +49,7 @@ void CpuCompiler::Emitter::store(unsigned dest, Operand source, bool word) {
 
 sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
                                      const Impl::Block::InstructionView *view) {
+  Cpu::ProfileClockScope profile_clock(*cpu, 0);
   auto &line = cpu->icache_[(cpu->state_.pc >> 5) & 511];
   if (line.hit(physical))
     return 1;

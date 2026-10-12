@@ -148,7 +148,8 @@ bool RspCompiler::run() {
   auto &cache = *impl_;
   auto &rsp = cache.rsp;
   bool executed = false;
-  while (!rsp.status_.halted) {
+  while (!rsp.status_.halted &&
+         (!rsp.diagnostics_ || rsp.diagnostics_->control() == HostControl::None)) {
     if (cache.dirty.any())
       cache.clear_dirty();
     // Retain the selected schedule until its instruction range changes.
@@ -160,6 +161,10 @@ bool RspCompiler::run() {
     auto *execution = block;
     if (rsp.instruction_tracing() || rsp.diagnostic_execution()) {
       auto &variant = rsp.diagnostic_execution() ? block->diagnosed : block->traced;
+      if (variant && variant->homebrew != (rsp.diagnostics_ && rsp.diagnostics_->homebrew())) {
+        cache.instrumented_bytes -= variant->bytes;
+        variant.reset();
+      }
       if (!variant) {
         auto traced = std::make_unique<Impl::Block>();
         traced->key = block->key;

@@ -46,6 +46,7 @@ struct RspCompiler::Impl {
     std::uint64_t generation = 0;
     std::unique_ptr<Block> traced;
     std::unique_ptr<Block> diagnosed;
+    bool homebrew = false;
     ~Block() {
       if (code)
         sljit_free_code(code, nullptr);

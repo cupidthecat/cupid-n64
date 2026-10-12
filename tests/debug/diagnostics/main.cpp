@@ -1,4 +1,5 @@
 #include "../fixture.hpp"
+#include "boundaries.hpp"
 #include "coherence.hpp"
 #include "core/debug/diagnostics.hpp"
 #include "homebrew.hpp"
@@ -178,6 +179,8 @@ int main() {
   signal_command_boundaries();
   homebrew_memory_probes();
   format_probes();
+  counter_boundary_probes();
+  signal_boundary_probes();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

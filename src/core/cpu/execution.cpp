@@ -100,6 +100,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     const auto info = block_instruction(instruction);
     trace_instruction(pc, instruction, 2);
     begin_instruction();
+    ProfileClockScope profile_clock(*this, 2);
     const auto memory_order = native_memory_order_;
     native_memory_order_ = native_cache_hit(instruction, ram_bytes);
     if (!changed && cop2_memory_instruction(instruction))
@@ -109,6 +110,7 @@ bool Cpu::run_interpreted_block(const std::uint64_t &clock_target) {
     native_memory_order_ = memory_order;
     const bool written = tracker && tracker->generation(page) != generation;
     advance_clocks(2);
+    profile_deferred_clocks_ = 0;
     const auto self_jump = (2u << 26) | static_cast<std::uint32_t>((pc >> 2) & 0x03ffffff);
     if (instruction == 0x1000ffff || instruction == self_jump)
       advance_clocks(126);

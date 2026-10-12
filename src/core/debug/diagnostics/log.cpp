@@ -20,8 +20,12 @@ void Diagnostics::configure(DiagnosticConfig config) {
       (homebrew_ || config.devices || config.coherence) ? config.capacity : 0);
   auto local = (homebrew_ || config.coherence) ? std::make_unique<std::array<LocalContext, 4096>>()
                                                : nullptr;
+  auto cache =
+      (homebrew_ || config.coherence) ? std::make_unique<std::array<CacheContext, 512>>() : nullptr;
+  synchronize_cpu();
   storage_.swap(replacement);
   local_.swap(local);
+  cache_.swap(cache);
   config_ = config;
   clear_log();
   reset_context();
@@ -34,10 +38,13 @@ void Diagnostics::set_homebrew(bool enabled) {
     storage_.resize(config_.capacity);
   if (enabled && !local_)
     local_ = std::make_unique<std::array<LocalContext, 4096>>();
+  if (enabled && !cache_)
+    cache_ = std::make_unique<std::array<CacheContext, 512>>();
   if (!enabled && emux_trace_) {
     trace_->set_enabled(TraceKind::RspInstruction, previous_rsp_trace_);
     emux_trace_ = false;
   }
+  synchronize_cpu();
   homebrew_ = enabled;
   exception_mask_ = 0;
   trace_countdown_ = 0;
@@ -47,6 +54,7 @@ void Diagnostics::set_homebrew(bool enabled) {
 }
 
 void Diagnostics::stop() {
+  synchronize_cpu();
   set_homebrew(false);
   config_.profiling = config_.coherence = false;
   config_.devices = 0;
@@ -74,17 +82,20 @@ void Diagnostics::clear_log() noexcept {
 
 void Diagnostics::clear_profiles() noexcept {
   profile_ = {};
+  cpu_profile_clock_ = cpu_ ? cpu_->state().clocks : 0;
   slots_.clear();
 }
 
 void Diagnostics::reset_context() noexcept {
-  cache_ = {};
+  if (cache_)
+    cache_->fill({});
   if (local_)
     local_->fill({});
   dma_origins_ = {};
   origin_ = {};
   refresh_warned_ = false;
   control_ = HostControl::None;
+  cpu_profile_clock_ = cpu_ ? cpu_->state().clocks : 0;
 }
 
 DiagnosticOrigin Diagnostics::origin() const noexcept {

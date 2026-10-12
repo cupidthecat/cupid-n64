@@ -17,11 +17,11 @@ void Cpu::commit_count(std::uint64_t ticks) {
   if (remaining && ticks >= remaining)
     set_interrupt(7, true);
   count_ticks_ = (count_ticks_ + ticks) & mask;
-  if (diagnostics_)
-    diagnostics_->cpu_cycles(ticks, (control_[Status] & 2) != 0);
 }
 
 void Cpu::flush_count() {
+  if (diagnostics_)
+    diagnostics_->synchronize_cpu();
   const auto ticks = (state_.clocks - count_clock_) >> 1;
   count_clock_ += ticks << 1;
   commit_count(ticks);
