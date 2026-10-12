@@ -1,5 +1,6 @@
 #include "desktop/storage/save.hpp"
 #include <algorithm>
+#include <cctype>
 #include <cwctype>
 #include <fstream>
 #include <stdexcept>
@@ -44,9 +45,15 @@ void write_save(const std::filesystem::path &path, std::span<const std::uint8_t>
 std::filesystem::path save_path(const std::filesystem::path &image, const wchar_t *extension) {
   auto path = image;
   path.replace_extension(extension);
-  auto original_name = image.filename().wstring();
-  auto save_name = path.filename().wstring();
+  auto original_name = image.filename().native();
+  auto save_name = path.filename().native();
+#ifdef _WIN32
   const auto lower = [](wchar_t value) { return static_cast<wchar_t>(std::towlower(value)); };
+#else
+  const auto lower = [](unsigned char value) {
+    return static_cast<char>(value < 128 ? std::tolower(value) : value);
+  };
+#endif
   std::transform(original_name.begin(), original_name.end(), original_name.begin(), lower);
   std::transform(save_name.begin(), save_name.end(), save_name.begin(), lower);
   if (original_name == save_name)

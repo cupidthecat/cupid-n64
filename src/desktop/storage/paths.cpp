@@ -48,8 +48,11 @@ std::filesystem::path StoragePaths::save_image(const std::filesystem::path &imag
     return image;
   std::array<char, 16> hex{};
   const auto converted = std::to_chars(hex.data(), hex.data() + hex.size(), identity, 16);
-  const std::wstring suffix(hex.data(), converted.ptr);
-  return saves / (image.stem().wstring() + L"-" + suffix + image.extension().wstring());
+  auto name = image.stem().native();
+  name.push_back('-');
+  name.append(hex.data(), converted.ptr);
+  name += image.extension().native();
+  return saves / name;
 }
 
 void validate_directory(const std::filesystem::path &directory, bool writable) {

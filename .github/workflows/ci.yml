@@ -24,10 +24,14 @@ jobs:
       - name: Set up Vulkan
         if: runner.os == 'Linux'
         run: bash .github/scripts/setup-vulkan.sh
+      - name: Set up Linux desktop
+        if: runner.os == 'Linux' && matrix.ipo == 'ON'
+        run: sudo apt-get install --yes libgtk-3-dev libsdl2-dev xvfb pulseaudio pulseaudio-utils
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           -DCUPID_INTERPROCEDURAL_OPTIMIZATION=${{ matrix.ipo }}
+          -DCUPID_DESKTOP=${{ (runner.os == 'Windows' || matrix.ipo == 'ON') && 'ON' || 'OFF' }}
           -DCUPID_REQUIRE_HARDWARE_RENDERER_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }}
       - name: Build
         if: runner.os != 'Windows'
@@ -36,13 +40,29 @@ jobs:
         if: runner.os == 'Windows'
         run: cmake --build build --config Release --parallel 2 -- /p:CL_MP=true /p:CL_MPCount=2
       - name: Test
+        if: runner.os != 'Linux' || matrix.ipo != 'ON'
         run: ctest --test-dir build -C Release --output-on-failure --parallel 2
+      - name: Test Linux desktop
+        if: runner.os == 'Linux' && matrix.ipo == 'ON'
+        env:
+          SDL_AUDIODRIVER: dummy
+        run: xvfb-run -a ctest --test-dir build -C Release --output-on-failure --parallel 2
+      - name: Test Linux playback
+        if: runner.os == 'Linux' && matrix.ipo == 'ON'
+        run: python3 .github/scripts/test-linux-audio.py build/linux_frontend_tests
       - name: Upload Windows frontend
         if: runner.os == 'Windows' && matrix.ipo == 'ON'
         uses: actions/upload-artifact@v4
         with:
           name: cupid-n64-windows
           path: build/Release/cupid-n64.exe
+          if-no-files-found: error
+      - name: Upload Linux frontend
+        if: runner.os == 'Linux' && matrix.ipo == 'ON'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cupid-n64-linux
+          path: build/cupid-n64
           if-no-files-found: error
 
   software-video:
