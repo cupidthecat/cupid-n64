@@ -1,7 +1,7 @@
 #pragma once
 
 #include "desktop/debug/gdb/server.hpp"
-#include "desktop/launch/files.hpp"
+#include "desktop/launch/options.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
@@ -23,12 +23,6 @@
 #include <string_view>
 
 namespace cupid::desktop {
-
-struct Options : LaunchFiles {
-  std::filesystem::path capture;
-  unsigned frames = 0;
-  bool test_input = false;
-};
 
 class Window {
 public:

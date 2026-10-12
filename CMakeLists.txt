@@ -168,12 +168,25 @@ if(CUPID_HARDWARE_RENDERER)
   include(cmake/Renderer.cmake)
 endif()
 
-option(CUPID_DESKTOP "Build the Windows desktop frontend" ON)
+set(cupid_desktop_default OFF)
+if(WIN32)
+  set(cupid_desktop_default ON)
+endif()
+option(CUPID_DESKTOP "Build the desktop frontend" ${cupid_desktop_default})
+add_library(cupid_storage src/desktop/storage/save.cpp src/desktop/storage/paths.cpp)
+target_include_directories(cupid_storage PUBLIC src)
+target_compile_features(cupid_storage PUBLIC cxx_std_20)
+if(MSVC)
+  target_compile_options(cupid_storage PRIVATE /W4 /WX /permissive-)
+  target_compile_definitions(cupid_storage PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+else()
+  target_compile_options(cupid_storage PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
 if(WIN32)
   add_library(cupid_settings
     src/desktop/windows/settings/encoding.cpp
-    src/desktop/storage/save.cpp
   )
+  target_link_libraries(cupid_settings PUBLIC cupid_storage)
   target_include_directories(cupid_settings PUBLIC src)
   target_compile_features(cupid_settings PUBLIC cxx_std_20)
   target_compile_definitions(cupid_settings PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -233,6 +246,7 @@ if(MSVC)
 else()
   target_compile_options(cupid_video_output PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+include(cmake/Desktop.cmake)
 if(WIN32 AND CUPID_DESKTOP)
   add_executable(cupid_desktop WIN32
     src/desktop/windows/main.cpp
@@ -260,8 +274,6 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/dialogs/paths.cpp
     src/desktop/windows/display/size_dialog.cpp
     src/desktop/windows/display/screenshot.cpp
-    src/desktop/windows/audio.cpp
-    src/desktop/windows/audio/devices.cpp
     src/desktop/windows/controls/gamepads.cpp
     src/desktop/windows/controls/keys.cpp
     src/desktop/windows/controls/mouse/host.cpp
@@ -274,28 +286,10 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/windows/video/shaders/settings.cpp
-    src/desktop/audio/resampler.cpp
-    src/desktop/audio/levels.cpp
-    src/desktop/session.cpp
-    src/desktop/session/disk.cpp
-    src/desktop/session/controllers.cpp
-    src/desktop/session/inspection.cpp
-    src/desktop/controls/ports.cpp
-    src/desktop/controls/mapping.cpp
-    src/desktop/controls/shortcuts/bindings.cpp
-    src/desktop/launch/files.cpp
-    src/desktop/state/session_state.cpp
-    src/desktop/state/slots.cpp
-    src/desktop/state/rewind.cpp
-    src/desktop/storage/recent.cpp
-    src/desktop/storage/paths.cpp
-    src/desktop/video/viewport.cpp
-    src/desktop/video/bitmap.cpp
-    src/desktop/timing/playback_clock.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_debug_format cupid_gdb cupid_video_output cupid_display_shaders cupid_settings_transfer comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE cupid_session cupid_debug_format cupid_gdb cupid_display_shaders cupid_settings_transfer comdlg32 shell32 gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -305,6 +299,22 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  if(TARGET cupid_linux_frontend)
+    add_executable(linux_frontend_tests tests/desktop/linux/main.cpp
+      tests/desktop/linux/settings.cpp tests/desktop/linux/input.cpp tests/desktop/linux/audio.cpp
+      tests/desktop/linux/window.cpp)
+    target_link_libraries(linux_frontend_tests PRIVATE cupid_linux_frontend)
+    target_compile_options(linux_frontend_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME linux_frontend_settings COMMAND linux_frontend_tests --settings)
+    add_test(NAME linux_frontend_input COMMAND linux_frontend_tests --input)
+    add_test(NAME linux_frontend_audio COMMAND linux_frontend_tests --audio)
+    add_test(NAME linux_frontend_window COMMAND linux_frontend_tests --window)
+    set_tests_properties(linux_frontend_window PROPERTIES TIMEOUT 45)
+    if(CUPID_HARDWARE_RENDERER)
+      add_test(NAME linux_frontend_hardware_window COMMAND linux_frontend_tests --hardware)
+      set_tests_properties(linux_frontend_hardware_window PROPERTIES TIMEOUT 60 RESOURCE_LOCK vulkan)
+    endif()
+  endif()
   cupid_add_core_test(gdb_tests gdb_test_entry tests/debug/gdb/main.cpp)
   add_test(NAME gdb_debugging COMMAND ${gdb_tests_command})
   cupid_add_core_test(gdb_protocol_tests gdb_protocol_test_entry tests/debug/gdb/protocol.cpp)
@@ -420,7 +430,7 @@ if(BUILD_TESTING)
   target_include_directories(desktop_clock_tests PRIVATE src)
   target_compile_features(desktop_clock_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_playback_clock COMMAND desktop_clock_tests)
-  if(TARGET cupid_desktop)
+  if(WIN32 AND TARGET cupid_desktop)
     add_executable(desktop_control_preferences_tests tests/desktop/controls/preferences.cpp
       src/desktop/windows/controls/preferences.cpp src/desktop/controls/ports.cpp
       src/desktop/controls/mapping.cpp src/desktop/controls/shortcuts/bindings.cpp)
@@ -430,35 +440,22 @@ if(BUILD_TESTING)
       target_compile_options(desktop_control_preferences_tests PRIVATE /W4 /WX /permissive-)
     endif()
     add_test(NAME desktop_control_preferences COMMAND desktop_control_preferences_tests)
-    add_executable(session_video_tests tests/desktop/session_video.cpp
-      src/desktop/session.cpp src/desktop/session/disk.cpp
-      src/desktop/session/controllers.cpp src/desktop/controls/ports.cpp
-      src/desktop/storage/save.cpp src/desktop/storage/paths.cpp
-      src/desktop/state/session_state.cpp
-      src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
-      src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
+  endif()
+  if(TARGET cupid_session)
+    add_executable(session_video_tests tests/desktop/session_video.cpp)
     target_compile_definitions(session_video_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_video_tests PRIVATE cupid_video_output winmm)
+    target_link_libraries(session_video_tests PRIVATE cupid_session)
     add_test(NAME desktop_software_video COMMAND session_video_tests)
     add_test(NAME desktop_software_video_unavailable COMMAND session_video_tests --unavailable)
     set_tests_properties(desktop_software_video_unavailable PROPERTIES ENVIRONMENT
       "VK_DRIVER_FILES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json;VK_ICD_FILENAMES=${CMAKE_CURRENT_BINARY_DIR}/missing-vulkan-driver.json")
-    add_executable(session_state_tests tests/desktop/state/session.cpp
-      src/desktop/session.cpp src/desktop/session/disk.cpp
-      src/desktop/session/controllers.cpp src/desktop/controls/ports.cpp
-      src/desktop/storage/save.cpp src/desktop/storage/paths.cpp src/desktop/state/session_state.cpp
-      src/desktop/state/slots.cpp src/desktop/state/rewind.cpp
-      src/desktop/windows/audio.cpp src/desktop/windows/audio/devices.cpp
-      src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
+    add_executable(session_state_tests tests/desktop/state/session.cpp)
     target_compile_definitions(session_state_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_state_tests PRIVATE cupid_video_output winmm)
+    target_link_libraries(session_state_tests PRIVATE cupid_session)
     add_test(NAME desktop_session_state COMMAND session_state_tests)
-    get_target_property(session_launch_sources session_state_tests SOURCES)
-    list(REMOVE_ITEM session_launch_sources tests/desktop/state/session.cpp)
-    add_executable(session_launch_tests tests/desktop/session_launch.cpp
-      src/desktop/launch/files.cpp ${session_launch_sources})
+    add_executable(session_launch_tests tests/desktop/session_launch.cpp)
     target_compile_definitions(session_launch_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(session_launch_tests PRIVATE cupid_video_output winmm)
+    target_link_libraries(session_launch_tests PRIVATE cupid_session)
     if(MSVC)
       target_compile_options(session_launch_tests PRIVATE /W4 /WX /permissive-)
     endif()
@@ -488,11 +485,13 @@ if(BUILD_TESTING)
           desktop_hardware_state_file_read PROPERTIES SKIP_RETURN_CODE 77)
       endif()
     endif()
-    add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
-    target_include_directories(desktop_audio_tests PRIVATE src)
-    target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
-    target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    add_test(NAME desktop_audio_devices COMMAND desktop_audio_tests)
+    if(WIN32)
+      add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
+      target_include_directories(desktop_audio_tests PRIVATE src)
+      target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
+      target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+      add_test(NAME desktop_audio_devices COMMAND desktop_audio_tests)
+    endif()
   endif()
   if(WIN32)
     add_executable(desktop_shader_tests tests/desktop/shaders.cpp)
