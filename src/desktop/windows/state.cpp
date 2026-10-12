@@ -123,7 +123,10 @@ void Window::status_error(std::wstring_view action, const std::exception &error)
 
 void Window::refresh_frame() {
   const bool available = !pixels_.empty();
-  pixels_ = session_->frame.rgba;
+  const auto shown = shader_.apply(session_->frame);
+  pixels_.assign(shown.begin(), shown.end());
+  if (shader_.error().empty() != shader_message_.empty())
+    update_shader();
   pixel_width_ = session_->frame.width;
   pixel_height_ = session_->frame.height;
   for (std::size_t offset = 0; offset < pixels_.size(); offset += 4)

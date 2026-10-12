@@ -148,6 +148,30 @@ if(CUPID_HARDWARE_RENDERER)
 endif()
 
 option(CUPID_DESKTOP "Build the Windows desktop frontend" ON)
+if(WIN32)
+  add_library(cupid_settings
+    src/desktop/windows/settings/encoding.cpp
+    src/desktop/storage/save.cpp
+  )
+  target_include_directories(cupid_settings PUBLIC src)
+  target_compile_features(cupid_settings PUBLIC cxx_std_20)
+  target_compile_definitions(cupid_settings PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_library(cupid_display_shaders
+    src/desktop/windows/video/shaders/processor.cpp
+    src/desktop/windows/video/shaders/selection.cpp
+  )
+  target_include_directories(cupid_display_shaders PUBLIC src)
+  target_compile_features(cupid_display_shaders PUBLIC cxx_std_20)
+  target_compile_definitions(cupid_display_shaders PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+  target_link_libraries(cupid_display_shaders PRIVATE cupid_settings d3d11 d3dcompiler)
+  if(MSVC)
+    target_compile_options(cupid_display_shaders PRIVATE /W4 /WX /permissive-)
+    target_compile_options(cupid_settings PRIVATE /W4 /WX /permissive-)
+  else()
+    target_compile_options(cupid_display_shaders PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(cupid_settings PRIVATE -Wall -Wextra -Wpedantic -Werror)
+  endif()
+endif()
 add_library(cupid_video_output src/desktop/video/output.cpp)
 target_link_libraries(cupid_video_output PUBLIC cupid_core)
 if(CUPID_HARDWARE_RENDERER)
@@ -190,6 +214,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/controls/mapping_dialog.cpp
     src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
+    src/desktop/windows/video/shaders/settings.cpp
     src/desktop/audio/resampler.cpp
     src/desktop/audio/levels.cpp
     src/desktop/session.cpp
@@ -202,7 +227,6 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/state/session_state.cpp
     src/desktop/state/slots.cpp
     src/desktop/state/rewind.cpp
-    src/desktop/storage/save.cpp
     src/desktop/storage/recent.cpp
     src/desktop/storage/paths.cpp
     src/desktop/video/viewport.cpp
@@ -211,7 +235,7 @@ if(WIN32 AND CUPID_DESKTOP)
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(cupid_desktop PRIVATE cupid_video_output comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE cupid_video_output cupid_display_shaders comdlg32 shell32 winmm gdi32 dwmapi ole32 uuid)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -310,10 +334,9 @@ if(BUILD_TESTING)
   if(TARGET cupid_desktop)
     add_executable(desktop_control_preferences_tests tests/desktop/controls/preferences.cpp
       src/desktop/windows/controls/preferences.cpp src/desktop/controls/ports.cpp
-      src/desktop/controls/mapping.cpp src/desktop/controls/shortcuts/bindings.cpp
-      src/desktop/storage/save.cpp)
+      src/desktop/controls/mapping.cpp src/desktop/controls/shortcuts/bindings.cpp)
     target_compile_definitions(desktop_control_preferences_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(desktop_control_preferences_tests PRIVATE cupid_core)
+    target_link_libraries(desktop_control_preferences_tests PRIVATE cupid_core cupid_settings)
     if(MSVC)
       target_compile_options(desktop_control_preferences_tests PRIVATE /W4 /WX /permissive-)
     endif()
@@ -383,6 +406,15 @@ if(BUILD_TESTING)
     add_test(NAME desktop_audio_devices COMMAND desktop_audio_tests)
   endif()
   if(WIN32)
+    add_executable(desktop_shader_tests tests/desktop/shaders.cpp)
+    target_link_libraries(desktop_shader_tests PRIVATE cupid_display_shaders)
+    target_compile_definitions(desktop_shader_tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    if(MSVC)
+      target_compile_options(desktop_shader_tests PRIVATE /W4 /WX /permissive-)
+    else()
+      target_compile_options(desktop_shader_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    endif()
+    add_test(NAME desktop_display_shaders COMMAND desktop_shader_tests)
     add_executable(desktop_video_tests
       tests/desktop/paint_buffer.cpp
       src/desktop/windows/video/paint_buffer.cpp
