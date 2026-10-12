@@ -45,6 +45,7 @@ public:
   }
 
 private:
+  friend class Inspection;
   friend class CoreState;
   friend class HardwareRenderer;
   struct Chip {

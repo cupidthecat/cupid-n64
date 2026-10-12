@@ -30,6 +30,7 @@ public:
   void write_register(unsigned offset, std::uint16_t value);
 
 private:
+  friend class Inspection;
   friend class CoreState;
   enum Status : unsigned {
     Changed = 1,

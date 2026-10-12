@@ -2,6 +2,11 @@
 
 namespace cupid::n64 {
 
+std::uint32_t Cpu::timer_count() const {
+  return static_cast<std::uint32_t>(
+      ((count_ticks_ + ((state_.clocks - count_clock_) >> 1)) & ((1ull << 33) - 1)) >> 1);
+}
+
 void Cpu::advance_clocks(std::uint64_t clocks) {
   state_.clocks += clocks;
 }

@@ -17,6 +17,9 @@ public:
   std::span<std::uint8_t> data() {
     return data_;
   }
+  std::span<const std::uint8_t> data() const {
+    return data_;
+  }
 
 private:
   friend class CoreState;

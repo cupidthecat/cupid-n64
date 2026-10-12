@@ -148,10 +148,14 @@ int Window::run(HINSTANCE instance, int show) {
   create_shader_menu(view);
   create_controller_menus(emulation, view);
   AppendMenuW(view, MF_STRING, Controls, L"&Controls / help");
+  const auto developer = CreatePopupMenu();
+  AppendMenuW(developer, MF_STRING, MemoryInspection, L"&Memory inspection...");
+  AppendMenuW(developer, MF_STRING, DeviceProperties, L"Device &properties...");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(emulation), L"&Emulation");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(state_menu_), L"&States");
   AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(view), L"&View");
+  AppendMenuW(menu_, MF_POPUP, reinterpret_cast<UINT_PTR>(developer), L"&Developer");
   RECT bounds{0, 0, static_cast<LONG>(viewport_size_.width),
               static_cast<LONG>(viewport_size_.height + 24)};
   AdjustWindowRect(&bounds, WS_OVERLAPPEDWINDOW, TRUE);
@@ -527,6 +531,8 @@ std::filesystem::path Window::choose(bool firmware) {
 
 void Window::command(unsigned id) {
   if (settings_command(id))
+    return;
+  if (inspection_command(id))
     return;
   if (shader_command(id))
     return;

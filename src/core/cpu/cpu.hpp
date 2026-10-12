@@ -37,6 +37,7 @@ public:
   bool run_block(const std::uint64_t &clock_target);
   bool run_interpreted_block(const std::uint64_t &clock_target);
   std::uint64_t synchronization_limit() const;
+  std::uint32_t timer_count() const;
   void connect_sync(std::function<void()> callback) {
     synchronize_ = std::move(callback);
   }
@@ -54,6 +55,7 @@ public:
   }
 
 private:
+  friend class Inspection;
   friend class CoreState;
   friend class CpuCompiler;
   enum class Mode { Kernel, Supervisor, User };

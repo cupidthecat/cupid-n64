@@ -3,13 +3,16 @@
 namespace cupid::n64 {
 
 std::uint32_t VideoInterface::read_word(std::uint32_t address) const {
+  const auto value = peek_word(address);
+  if (((address & 63) >> 2) == 4 && sync_)
+    sync_();
+  return value;
+}
+
+std::uint32_t VideoInterface::peek_word(std::uint32_t address) const {
   const auto index = (address & 63) >> 2;
-  if (index == 4) {
-    const auto value = (counter_ << 1) | unsigned(field_);
-    if (sync_)
-      sync_();
-    return value;
-  }
+  if (index == 4)
+    return (counter_ << 1) | unsigned(field_);
   return index < registers_.size() ? registers_[index] : 0;
 }
 

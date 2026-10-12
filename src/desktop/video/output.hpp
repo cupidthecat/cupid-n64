@@ -20,6 +20,7 @@ public:
   bool hardware_rendering() const;
   static bool supports_hardware();
   void scanout_settings(n64::RenderSettings settings);
+  void synchronize();
   std::vector<std::uint8_t> capture_state();
   void restore_state(std::span<const std::uint8_t> bytes);
 

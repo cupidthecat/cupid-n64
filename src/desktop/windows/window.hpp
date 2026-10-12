@@ -41,6 +41,7 @@ private:
   bool settings_command(unsigned id);
   void apply_imported_settings();
   void load_history_settings();
+  bool inspection_command(unsigned id);
   bool input_tools_command(unsigned id);
   bool graphics_command(unsigned id);
   void load_graphics_settings();

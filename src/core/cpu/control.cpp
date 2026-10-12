@@ -14,7 +14,7 @@ std::uint64_t Cpu::read_control(unsigned index) {
   case Random:
     return random_index();
   case Count:
-    return ((count_ticks_ + ((state_.clocks - count_clock_) >> 1)) & ((1ull << 33) - 1)) >> 1;
+    return timer_count();
   case 7:
   case 21:
   case 22:

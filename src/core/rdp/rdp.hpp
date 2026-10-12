@@ -24,6 +24,8 @@ public:
   void connect(std::function<void(std::span<const std::uint32_t>)> submit,
                std::function<void()> synchronize, std::function<void()> complete = {});
   void connect_sync(std::function<void()> callback);
+  std::uint32_t status() const;
+  std::uint32_t clock_counter(std::int64_t caller_clock = 0) const;
   std::uint32_t read_word(std::uint32_t address, std::int64_t caller_clock = 0,
                           bool cpu = true) const;
   void write_word(std::uint32_t address, std::uint32_t value, std::int64_t caller_clock = 0,

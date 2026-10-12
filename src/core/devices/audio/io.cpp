@@ -3,12 +3,15 @@
 
 namespace cupid::n64 {
 
+std::uint32_t AudioInterface::status() const {
+  return unsigned(state_.count > 1) | (1u << 20) | (1u << 24) | (unsigned(state_.enable) << 25) |
+         (unsigned(state_.count > 0) << 30) | (unsigned(state_.count > 1) << 31);
+}
+
 std::uint32_t AudioInterface::read_word(std::uint32_t address) const {
   if (((address & 31) >> 2) != 3)
     return state_.lengths[0];
-  const auto value = unsigned(state_.count > 1) | (1u << 20) | (1u << 24) |
-                     (unsigned(state_.enable) << 25) | (unsigned(state_.count > 0) << 30) |
-                     (unsigned(state_.count > 1) << 31);
+  const auto value = status();
   if (sync_)
     sync_();
   return value;

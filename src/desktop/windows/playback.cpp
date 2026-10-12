@@ -4,6 +4,8 @@
 namespace cupid::desktop {
 
 void Window::update_playback() {
+  EnableMenuItem(menu_, MemoryInspection, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
+  EnableMenuItem(menu_, DeviceProperties, MF_BYCOMMAND | (session_ ? MF_ENABLED : MF_GRAYED));
   update_shortcuts();
   CheckMenuItem(menu_, Pause, MF_BYCOMMAND | (paused_ ? MF_CHECKED : MF_UNCHECKED));
   EnableMenuItem(menu_, FrameAdvance,

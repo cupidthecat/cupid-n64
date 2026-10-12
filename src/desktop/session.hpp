@@ -2,6 +2,7 @@
 
 #include "core/cartridge/profile/profile.hpp"
 #include "core/controller/accessories/cartridge/handheld.hpp"
+#include "core/debug/inspection.hpp"
 #include "core/system/console.hpp"
 #include "desktop/controls/feedback.hpp"
 #include "desktop/controls/input.hpp"
@@ -58,6 +59,12 @@ public:
   }
   std::vector<std::uint8_t> capture_state();
   void restore_state(std::span<const std::uint8_t> bytes);
+  std::vector<n64::MemoryRegion> memory_regions() const;
+  std::vector<std::uint8_t> read_memory(n64::MemoryRegionId region, std::uint32_t offset,
+                                        unsigned length);
+  void write_memory(n64::MemoryRegionId region, std::uint32_t offset,
+                    std::span<const std::uint8_t> bytes);
+  std::vector<n64::DeviceProperty> device_properties(n64::DeviceId device) const;
   std::uint64_t clocks() const {
     return console_->cpu().state().clocks;
   }

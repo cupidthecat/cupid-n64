@@ -31,6 +31,7 @@ public:
   }
   void run();
   StereoSample sample();
+  std::uint32_t status() const;
   std::uint32_t read_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
   void connect(std::function<void(StereoSample)> sample, std::function<void(unsigned)> rate = {});
