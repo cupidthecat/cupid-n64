@@ -113,7 +113,7 @@ void Window::settings_dialog() {
   const auto aspect = combo({"Standard N64 (4:3)", "Original pixel dimensions"},
                             static_cast<unsigned>(settings_.aspect));
   row(video, 0, "Renderer (next game load)", hardware);
-  row(video, 1, "Rendering resolution", render_scale);
+  row(video, 1, "Rendering resolution (next game load)", render_scale);
   row(video, 2, "", supersampling);
   row(video, 3, "", weave);
   row(video, 4, "", bypass);
@@ -287,14 +287,32 @@ void Window::settings_dialog() {
         if (!path.empty())
           validate_directory(path, location != StorageLocation::Firmware);
       }
-      if (next.gdb_enabled && (!gdb_.port() || next.gdb_port != gdb_.port()))
-        gdb_.listen(next.gdb_port);
+      std::unique_ptr<GdbServer> listener;
+      if (next.gdb_enabled && (!gdb_->port() || next.gdb_port != gdb_->port())) {
+        listener = std::make_unique<GdbServer>();
+        listener->listen(next.gdb_port);
+      }
+      const auto graphics = session_ ? session_->graphics_settings() : n64::RenderSettings{};
+      const bool live_graphics = session_ && session_->hardware_rendering() &&
+                                 next.session.graphics.scale == graphics.scale;
+      try {
+        if (live_graphics)
+          session_->graphics_settings(next.session.graphics);
+        if (!options_.frames && !settings_path_.empty())
+          save_settings(settings_path_, next);
+      } catch (...) {
+        if (live_graphics)
+          session_->graphics_settings(graphics);
+        throw;
+      }
+      if (listener) {
+        gdb_->target(nullptr);
+        gdb_.swap(listener);
+        if (session_)
+          gdb_->target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
+      }
       if (!next.gdb_enabled)
-        gdb_.close();
-      if (!options_.frames && !settings_path_.empty())
-        save_settings(settings_path_, next);
-      if (session_ && session_->hardware_rendering())
-        session_->graphics_settings(next.session.graphics);
+        gdb_->close();
       settings_ = std::move(next);
       audio_.configure(settings_.audio);
       audio_.muted = settings_.muted;

@@ -27,6 +27,12 @@ void linux_input_tests() {
   input.key(GDK_KEY_apostrophe, true);
   test::equal(map_input(default_mapping(HostSource::Keyboard), input.poll()).buttons, 0);
   input.clear();
+  input.key(GDK_KEY_2, true);
+  input.key(GDK_KEY_at, false);
+  auto custom = default_mapping(HostSource::Keyboard);
+  custom.buttons[0] = {BindingKind::Key, '2'};
+  test::equal(map_input(custom, input.poll()).buttons, 0);
+  input.clear();
   const int device = SDL_JoystickAttachVirtual(
       SDL_JOYSTICK_TYPE_GAMECONTROLLER, SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
   if (device < 0)

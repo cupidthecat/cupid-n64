@@ -32,6 +32,24 @@ unsigned key_code(unsigned keyval) {
     return 0x28;
   case GDK_KEY_percent:
     return '5';
+  case GDK_KEY_exclam:
+    return '1';
+  case GDK_KEY_at:
+    return '2';
+  case GDK_KEY_numbersign:
+    return '3';
+  case GDK_KEY_dollar:
+    return '4';
+  case GDK_KEY_asciicircum:
+    return '6';
+  case GDK_KEY_ampersand:
+    return '7';
+  case GDK_KEY_asterisk:
+    return '8';
+  case GDK_KEY_parenleft:
+    return '9';
+  case GDK_KEY_parenright:
+    return '0';
   case GDK_KEY_apostrophe:
   case GDK_KEY_quotedbl:
     return 0xde;

@@ -22,7 +22,7 @@ Window::Window(Options options, std::filesystem::path settings, std::optional<bo
 Window::~Window() {
   if (timer_)
     g_source_remove(timer_);
-  gdb_.target(nullptr);
+  gdb_->target(nullptr);
   input_.stop();
   if (session_)
     try {
@@ -144,7 +144,7 @@ int Window::run() {
   gtk_widget_show_all(window_);
   try {
     if (settings_.gdb_enabled && !options_.frames)
-      gdb_.listen(settings_.gdb_port);
+      gdb_->listen(settings_.gdb_port);
     if (!options_.rom.empty() || !options_.ipl.empty())
       load(options_);
   } catch (const std::exception &failure) {
@@ -268,7 +268,7 @@ void Window::load(LaunchFiles files) {
   auto next = std::make_unique<Session>(files.rom, files.firmware, audio_, files.ipl, files.disk,
                                         files.arcade_profile, std::nullopt, settings_.hardware,
                                         settings_.session);
-  gdb_.target(nullptr);
+  gdb_->target(nullptr);
   poll_gdb();
   states_.reset();
   session_ = std::move(next);
@@ -276,7 +276,7 @@ void Window::load(LaunchFiles files) {
   states_ = std::make_unique<StateSlots>(
       session_->storage_image(), [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
-  gdb_.target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
+  gdb_->target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
   paused_ = false;
   failed_ = false;
   feedback_.clear();
@@ -294,7 +294,7 @@ void Window::load(LaunchFiles files) {
 void Window::close_game() {
   if (session_)
     session_->save();
-  gdb_.target(nullptr);
+  gdb_->target(nullptr);
   states_.reset();
   session_.reset();
   input_.clear();
@@ -321,6 +321,7 @@ void Window::persist() {
 }
 
 void Window::rebase() {
+  last_frame_ = std::chrono::steady_clock::now();
   if (session_)
     clock_.reset(session_->clocks(), PlaybackClock::Clock::now());
 }
@@ -356,10 +357,8 @@ void Window::command(Command action) {
     const auto game = choose_file("Open Nintendo 64 game");
     if (game.empty())
       return;
-    auto files = static_cast<LaunchFiles>(options_);
+    LaunchFiles files;
     files.rom = game;
-    files.ipl.clear();
-    files.disk.clear();
     if (files.firmware.empty() && settings_.firmware.n64.empty())
       files.firmware = choose_file("Select Nintendo 64 PIF firmware");
     if (files.firmware.empty() && settings_.firmware.n64.empty())
@@ -402,6 +401,31 @@ void Window::command(Command action) {
   }
   if (!session_)
     return;
+  if (action == Command::SaveState || action == Command::LoadState || action == Command::UndoSave ||
+      action == Command::UndoLoad) {
+    bool restored = false;
+    if (action == Command::SaveState)
+      states_->save();
+    if (action == Command::LoadState && states_->occupied(states_->selected())) {
+      states_->load();
+      restored = true;
+    }
+    if (action == Command::UndoSave && states_->undo_save_slot())
+      states_->undo_save();
+    if (action == Command::UndoLoad && states_->can_undo_load()) {
+      states_->undo_load();
+      restored = true;
+    }
+    if (restored) {
+      clear_input();
+      audio_.suspended = false;
+      if (paused_)
+        session_->finish_frame();
+    }
+    rebase();
+    refresh();
+    return;
+  }
   if (action == Command::Pause && !session_->debugger().attached())
     paused_ = !paused_;
   if (action == Command::Advance && paused_ && !session_->debugger().attached())
@@ -410,14 +434,6 @@ void Window::command(Command action) {
     session_->reset();
     failed_ = false;
   }
-  if (action == Command::SaveState)
-    states_->save();
-  if (action == Command::LoadState && states_->occupied(states_->selected()))
-    states_->load();
-  if (action == Command::UndoSave && states_->undo_save_slot())
-    states_->undo_save();
-  if (action == Command::UndoLoad && states_->can_undo_load())
-    states_->undo_load();
   if (action == Command::Disk) {
     const auto selected = choose_file("Insert 64DD disk");
     if (!selected.empty()) {
@@ -469,13 +485,23 @@ PlayerInputs Window::inputs() {
 }
 
 void Window::poll_gdb() {
-  gdb_.poll();
-  const bool connected = gdb_.connected();
-  if (connected == gdb_connected_)
+  bool error = false;
+  try {
+    gdb_->poll();
+  } catch (const std::exception &failure) {
+    gdb_error_ = failure.what();
+    error = true;
+  }
+  const bool connected = gdb_->connected();
+  if (connected == gdb_connected_) {
+    if (error)
+      refresh();
     return;
-  if (connected)
+  }
+  if (connected) {
+    gdb_error_.clear();
     gdb_was_paused_ = paused_;
-  else
+  } else
     paused_ = gdb_was_paused_;
   gdb_connected_ = connected;
   audio_.clear();
@@ -591,8 +617,10 @@ void Window::refresh() {
     status += " | Slot " + std::to_string(states_->selected());
     status += audio_.available() ? " | Audio: " + utf8(audio_.device_name())
                                  : " | Audio unavailable: " + utf8(audio_.error());
-    if (gdb_.connected())
+    if (gdb_->connected())
       status += " | GDB connected";
+    if (!gdb_error_.empty())
+      status += " | GDB: " + gdb_error_;
   }
   if (pause_item_) {
     g_signal_handlers_block_matched(pause_item_, G_SIGNAL_MATCH_DATA, 0, 0, nullptr, nullptr, this);
