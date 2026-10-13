@@ -807,6 +807,7 @@ if(BUILD_TESTING)
     set_tests_properties(frame_readback PROPERTIES TIMEOUT 15)
     cupid_add_fixture_test(renderer_tests renderer_test_entry tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
       tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp tests/renderer/cache/burst.cpp
+      tests/renderer/cache/pipeline.cpp
       tests/renderer/replay/render.cpp
       tests/renderer/replay/scanout.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)
     target_link_libraries(${renderer_tests_compile_target} PRIVATE cupid_renderer_dependency)

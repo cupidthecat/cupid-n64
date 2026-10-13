@@ -24,7 +24,7 @@ public:
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
           n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled,
           std::optional<std::uint64_t> random_seed = {}, bool hardware_rendering = true,
-          SessionSettings settings = {});
+          SessionSettings settings = {}, std::filesystem::path pipeline_cache = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void run(const PlayerInputs &input);
@@ -134,6 +134,7 @@ private:
   std::array<TransferMedia, 4> transfer_media_;
   std::filesystem::path disk_image_, storage_image_;
   std::filesystem::path cartridge_image_, ipl_image_;
+  std::filesystem::path pipeline_cache_file_;
   std::uint64_t ipl_identity_ = 0;
   std::vector<MemorySave> saves_;
   std::filesystem::path cartridge_clock_path_;

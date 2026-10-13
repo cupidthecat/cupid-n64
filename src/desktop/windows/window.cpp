@@ -601,7 +601,9 @@ void Window::load(LaunchPreference preference) {
       options_.frames ? ControllerPorts{} : read_ports(settings_, controller_key);
   auto next = std::make_unique<Session>(
       options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
-      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, selected_settings);
+      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, selected_settings,
+      settings_.empty() ? std::filesystem::path{}
+                        : settings_.parent_path() / L"cache" / L"pipelines.bin");
   auto states = std::make_unique<StateSlots>(
       next->storage_image(), [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });

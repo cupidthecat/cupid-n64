@@ -36,14 +36,16 @@ struct VideoOutput::Implementation {
   std::unique_ptr<n64::HardwareRenderer> hardware;
 #endif
 
-  Implementation(n64::Console &console, bool hardware_rendering, n64::RenderSettings settings)
+  Implementation(n64::Console &console, bool hardware_rendering, n64::RenderSettings settings,
+                 std::filesystem::path pipeline_cache)
       : console(console) {
     if (!settings.valid())
       throw std::runtime_error("Select a supported rendering configuration.");
 #if defined(CUPID_HARDWARE_RENDERER)
     if (hardware_rendering) {
       try {
-        hardware = std::make_unique<n64::HardwareRenderer>(console.ram(), settings);
+        hardware = std::make_unique<n64::HardwareRenderer>(console.ram(), settings,
+                                                           std::move(pipeline_cache));
       } catch (const std::runtime_error &) {
       }
     }
@@ -72,6 +74,7 @@ struct VideoOutput::Implementation {
     }
 #else
     (void)hardware_rendering;
+    (void)pipeline_cache;
 #endif
     if (settings != n64::RenderSettings{})
       throw std::runtime_error("These graphics settings require an available hardware renderer.");
@@ -92,8 +95,9 @@ struct VideoOutput::Implementation {
 };
 
 VideoOutput::VideoOutput(n64::Console &console, bool hardware_rendering,
-                         n64::RenderSettings settings)
-    : implementation_(std::make_unique<Implementation>(console, hardware_rendering, settings)) {}
+                         n64::RenderSettings settings, std::filesystem::path pipeline_cache)
+    : implementation_(std::make_unique<Implementation>(console, hardware_rendering, settings,
+                                                       std::move(pipeline_cache))) {}
 
 VideoOutput::~VideoOutput() = default;
 

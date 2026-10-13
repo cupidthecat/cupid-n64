@@ -9,9 +9,10 @@ namespace cupid::desktop {
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
                  n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed,
-                 bool hardware_rendering, SessionSettings settings)
+                 bool hardware_rendering, SessionSettings settings,
+                 std::filesystem::path pipeline_cache)
     : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
-      hardware_rendering_(hardware_rendering) {
+      pipeline_cache_file_(std::move(pipeline_cache)), hardware_rendering_(hardware_rendering) {
   validate_ports(settings_.ports);
   if (!settings_.graphics.valid())
     throw std::runtime_error("Select a supported rendering configuration.");
@@ -88,7 +89,8 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       saved_cartridge_clock_.assign(clock.begin(), clock.end());
     }
   }
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics,
+                                          pipeline_cache_file_);
   debugger_ = std::make_unique<n64::Debugger>(*console_);
   console_->diagnostics().connect_memory_fence([this] { output_->synchronize(); });
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
@@ -111,7 +113,8 @@ void Session::reset() {
   debugger_->interrupt();
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics,
+                                          pipeline_cache_file_);
   output_->connect_present(frame_presenter_);
   frame = {};
   frames = 0;

@@ -14,6 +14,7 @@ void gpu_cache_visibility_tests(Console &console, HardwareRenderer &renderer);
 void gpu_depth_cache_tests(Console &console, HardwareRenderer &renderer);
 void gpu_cache_overlap_tests(Console &console, HardwareRenderer &renderer);
 void gpu_burst_coverage_tests(Console &console, HardwareRenderer &renderer);
+void gpu_pipeline_cache_tests();
 void gpu_command_replay_tests();
 void gpu_video_replay_tests();
 } // namespace test
@@ -164,6 +165,7 @@ int main() {
   test::gpu_depth_cache_tests(console, *renderer);
   test::gpu_cache_overlap_tests(console, *renderer);
   test::gpu_burst_coverage_tests(console, *renderer);
+  test::gpu_pipeline_cache_tests();
   auto &cpu = console.cpu();
   cpu.power();
   cpu.write_control(Status, 0x30000000);

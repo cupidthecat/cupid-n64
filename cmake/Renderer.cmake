@@ -63,6 +63,7 @@ endif()
 
 add_library(cupid_renderer
   src/renderer/vulkan/renderer.cpp
+  src/renderer/vulkan/cache_file.cpp
   src/renderer/state/renderer_state.cpp
   src/renderer/state/registers.cpp
   src/renderer/state/machine_state.cpp

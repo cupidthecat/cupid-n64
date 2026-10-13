@@ -3,6 +3,7 @@
 #include "core/devices/rdram/rdram.hpp"
 #include "renderer/video/frame.hpp"
 #include "renderer/video/settings.hpp"
+#include <filesystem>
 #include <functional>
 #include <memory>
 
@@ -10,7 +11,8 @@ namespace cupid::n64 {
 
 class HardwareRenderer {
 public:
-  explicit HardwareRenderer(Rdram &ram, RenderSettings settings = {});
+  explicit HardwareRenderer(Rdram &ram, RenderSettings settings = {},
+                            std::filesystem::path pipeline_cache = {});
   ~HardwareRenderer();
   HardwareRenderer(const HardwareRenderer &) = delete;
   HardwareRenderer &operator=(const HardwareRenderer &) = delete;

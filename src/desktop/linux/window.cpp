@@ -319,9 +319,12 @@ void Window::load(LaunchFiles files) {
   validate_launch(files);
   if (session_)
     session_->save();
-  auto next = std::make_unique<Session>(files.rom, files.firmware, audio_, files.ipl, files.disk,
-                                        files.arcade_profile, std::nullopt, settings_.hardware,
-                                        settings_.session);
+  auto next = std::make_unique<Session>(
+      files.rom, files.firmware, audio_, files.ipl, files.disk, files.arcade_profile, std::nullopt,
+      settings_.hardware, settings_.session,
+      settings_path_.empty()
+          ? std::filesystem::path{}
+          : std::filesystem::path(g_get_user_cache_dir()) / "cupid-n64" / "pipelines.bin");
   gdb_->target(nullptr);
   poll_gdb();
   states_.reset();

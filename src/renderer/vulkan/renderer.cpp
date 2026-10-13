@@ -5,8 +5,9 @@
 
 namespace cupid::n64 {
 
-HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings selected)
-    : ram(memory), settings(selected) {
+HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings selected,
+                                                 std::filesystem::path cache_file)
+    : ram(memory), settings(selected), pipeline_cache(std::move(cache_file)) {
   if (!settings.valid())
     throw std::runtime_error("Select a supported rendering configuration.");
   if (!Vulkan::Context::init_loader(nullptr) ||
@@ -15,6 +16,9 @@ HardwareRenderer::Implementation::Implementation(Rdram &memory, RenderSettings s
   // The command queue, serialized caller, and readback worker use distinct pools.
   context.set_num_thread_indices(3);
   device.set_context(context);
+  const auto cached = pipeline_cache.read();
+  if (!device.init_pipeline_cache(cached.data(), cached.size()))
+    device.init_pipeline_cache(nullptr, 0);
   Util::register_thread_index(1);
   device.init_frame_contexts(3);
   RDP::CommandProcessorFlags flags = RDP::COMMAND_PROCESSOR_FLAG_HOST_VISIBLE_HIDDEN_RDRAM_BIT;
@@ -44,6 +48,17 @@ HardwareRenderer::Implementation::~Implementation() {
     processor->idle();
     ram.bind_hidden({});
     processor.reset();
+    if (pipeline_cache.enabled()) {
+      try {
+        const auto size = device.get_pipeline_cache_size();
+        if (size && size <= PipelineCacheFile::maximum_bytes) {
+          std::vector<std::uint8_t> bytes(size);
+          if (device.get_pipeline_cache_data(bytes.data(), bytes.size()))
+            pipeline_cache.write(bytes);
+        }
+      } catch (...) {
+      }
+    }
   }
 }
 
@@ -66,8 +81,9 @@ void HardwareRenderer::Implementation::report_rdp_crash(RDP::ValidationError, co
   crashed.store(true, std::memory_order_relaxed);
 }
 
-HardwareRenderer::HardwareRenderer(Rdram &ram, RenderSettings settings)
-    : implementation_(std::make_unique<Implementation>(ram, settings)) {}
+HardwareRenderer::HardwareRenderer(Rdram &ram, RenderSettings settings,
+                                   std::filesystem::path pipeline_cache)
+    : implementation_(std::make_unique<Implementation>(ram, settings, std::move(pipeline_cache))) {}
 
 HardwareRenderer::~HardwareRenderer() = default;
 

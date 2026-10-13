@@ -3,6 +3,7 @@
 #include "core/system/console.hpp"
 #include "renderer/video/settings.hpp"
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <memory>
 
@@ -11,7 +12,8 @@ namespace cupid::desktop {
 class VideoOutput {
 public:
   explicit VideoOutput(n64::Console &console, bool hardware_rendering = true,
-                       n64::RenderSettings settings = {});
+                       n64::RenderSettings settings = {},
+                       std::filesystem::path pipeline_cache = {});
   ~VideoOutput();
   VideoOutput(const VideoOutput &) = delete;
   VideoOutput &operator=(const VideoOutput &) = delete;
