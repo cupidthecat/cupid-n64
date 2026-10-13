@@ -7,9 +7,16 @@
 
 namespace cupid::desktop {
 
-ExecutionWorker::ExecutionWorker() : thread_([this] { run(); }) {}
+ExecutionWorker::ExecutionWorker(std::wstring name)
+    : name_(std::move(name)), thread_([this] { run(); }) {}
 
 ExecutionWorker::~ExecutionWorker() {
+  shutdown();
+}
+
+void ExecutionWorker::shutdown() {
+  if (!thread_.joinable())
+    return;
   interrupt();
   try {
     wait();
@@ -90,7 +97,7 @@ void ExecutionWorker::wait() {
 
 void ExecutionWorker::run() {
 #if defined(_WIN32)
-  SetThreadDescription(GetCurrentThread(), L"Emulation");
+  SetThreadDescription(GetCurrentThread(), name_.c_str());
 #endif
   for (;;) {
     std::unique_lock lock(mutex_);

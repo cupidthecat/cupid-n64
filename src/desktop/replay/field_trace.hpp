@@ -24,7 +24,7 @@ public:
                unsigned processor = ~0u);
   void paint(std::chrono::nanoseconds duration);
   void ready(Clock::time_point completed = Clock::now());
-  void presented(Observation observation);
+  void presented(Observation observation, Clock::time_point presentation_completed = {});
   bool captures(unsigned field) const;
   void capture(unsigned field, const n64::VideoFrame &frame);
   void finish(bool complete);
@@ -35,6 +35,7 @@ private:
     double elapsed, total, advance, paint, wait;
     double cpu;
     unsigned processor;
+    double presentation_completed, delivery;
   };
   struct Capture {
     unsigned field;

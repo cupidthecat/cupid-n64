@@ -1,5 +1,6 @@
 #pragma once
 
+#include "desktop/video/presentation_worker.hpp"
 #include "desktop/video/viewport.hpp"
 #include "renderer/video/frame.hpp"
 #include <cstdint>
@@ -19,6 +20,12 @@ public:
   bool present(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
                unsigned viewport_width, unsigned viewport_height, DisplayScale scale,
                DisplayAspect aspect, bool blocking = false);
+  void prepare(const VideoSurface &surface);
+  bool render(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
+              const VideoSurface &surface);
+  void show(bool visible);
+  void close();
+  void release_graphics();
   std::vector<std::uint8_t> capture();
   bool available() const;
   void hide();

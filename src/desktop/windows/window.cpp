@@ -46,9 +46,27 @@ constexpr auto help = L"Default keyboard layout:\n"
                       L"is opened or the app closes.";
 } // namespace
 
-Window::Window(Options options) : options_(std::move(options)) {
+Window::Window(Options options)
+    : options_(std::move(options)),
+      presentation_([this](const PresentationWorker::Submission &submission) {
+        if (submission.operation == PresentationWorker::Submission::Operation::Release) {
+          video_presenter_.release_graphics();
+          return PresentationWorker::Result{};
+        }
+        if (submission.operation == PresentationWorker::Submission::Operation::Capture) {
+          auto captured = video_presenter_.capture();
+          return PresentationWorker::Result{false, video_presenter_.available(),
+                                            video_presenter_.error(), std::move(captured)};
+        }
+        const auto presented = submission.width && submission.height &&
+                               video_presenter_.render(submission.pixels, submission.width,
+                                                       submission.height, submission.surface);
+        return PresentationWorker::Result{
+            presented, video_presenter_.available(), video_presenter_.error(), {}};
+      }) {
   completed_fields_ = std::make_unique<ExecutionOutput<CompletedField>>(execution_);
   execution_.notify([this] { PostMessageW(window_, WM_APP + 1, 0, 0); });
+  presentation_.notify([this] { PostMessageW(window_, WM_APP + 2, 0, 0); });
   audio_.wait_interrupt([this] { return advancing_ && execution_.interrupted(); });
   if (!options_.input_replay.empty())
     input_replay_ = std::make_unique<InputReplay>(options_.input_replay);
@@ -74,6 +92,34 @@ Window::Window(Options options) : options_(std::move(options)) {
   player_mappings_ = read_mappings(settings_);
   shortcut_bindings_ = read_shortcuts(settings_);
   shortcuts_.bindings(shortcut_bindings_);
+}
+
+Window::~Window() {
+  execution_.interrupt();
+  try {
+    if (session_ && (advancing_ || presentation_.pending()))
+      finish_advance();
+    else
+      presentation_.quiesce();
+  } catch (...) {
+  }
+  execution_.shutdown();
+  try {
+    if (video_available_) {
+      PresentationWorker::Submission release;
+      release.operation = PresentationWorker::Submission::Operation::Release;
+      presentation_.submit(std::move(release), [this](const auto &) { video_available_ = false; });
+    }
+    presentation_.shutdown();
+  } catch (...) {
+    try {
+      presentation_.shutdown();
+    } catch (...) {
+    }
+  }
+  video_presenter_.close();
+  if (IsWindow(window_))
+    DestroyWindow(window_);
 }
 
 void Window::load_history_settings() {
@@ -178,6 +224,7 @@ int Window::run(HINSTANCE instance, int show) {
   if (!window_)
     throw std::runtime_error("Could not create the desktop window.");
   video_presenter_.initialize(window_);
+  video_available_ = video_presenter_.available();
   apply_window_size();
   DragAcceptFiles(window_, TRUE);
   update_recent();
@@ -275,6 +322,12 @@ int Window::run(HINSTANCE instance, int show) {
   }
   end_rewind();
   stop_fast_forward();
+  execution_.shutdown();
+  PresentationWorker::Submission release;
+  release.operation = PresentationWorker::Submission::Operation::Release;
+  presentation_.submit(std::move(release), [this](const auto &) { video_available_ = false; });
+  presentation_.shutdown();
+  video_presenter_.close();
   if (options_.frames && last_frame_ < options_.frames && exit_code_ == 0)
     exit_code_ = 2;
   if (field_trace_) {
@@ -344,6 +397,9 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   }
   switch (event) {
   case WM_APP + 1:
+    return 0;
+  case WM_APP + 2:
+    presentation_.poll();
     return 0;
   case WM_CLOSE:
     clear_host_input();
@@ -478,7 +534,7 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
-  if (advancing_) {
+  if (advancing_ || presentation_.pending()) {
     try {
       finish_advance();
     } catch (...) {
@@ -515,6 +571,7 @@ void Window::error(const std::exception &exception) {
 }
 
 void Window::rebase() {
+  presentation_.new_generation();
   video_sync_available_ = true;
   measured_time_ = std::chrono::steady_clock::now();
   playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
@@ -754,8 +811,9 @@ void Window::paint() {
     const int width = client.right, height = std::max(0L, client.bottom - status_height());
     if (!session_ || pixels_.empty() || !height)
       video_presenter_.hide();
-    const bool gpu = session_ && image_valid() && height &&
-                     (presenting_field_ ? field_presented_ : present_video());
+    const bool gpu =
+        session_ && image_valid() && height &&
+        (presentation_.pending() || presenting_field_ ? field_presented_ : present_video());
     const auto dc = gpu ? target : paint_buffer_.begin(target, client.right, client.bottom);
     if (!gpu)
       FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
@@ -870,7 +928,7 @@ void Window::present() {
       session_->program_counter(),
       audio_.generated_samples(),
       audio_.available() && !audio_.muted && !audio_.suspended,
-      video_presenter_.available(),
+      video_available_,
       static_cast<std::uint64_t>(audio_.wait_time().count()),
       static_cast<std::uint64_t>(session_->renderer_time().count())};
   if (field_trace_) {
@@ -906,6 +964,7 @@ void Window::present() {
 }
 
 void Window::capture() {
+  presentation_.quiesce();
   session_->finish_frame();
   if (session_->frame.rgba.empty())
     throw std::runtime_error("No video frame was produced.");

@@ -144,71 +144,107 @@ void Window::start_advance() {
   advancing_ = true;
 }
 
-void Window::drain_advance() {
+bool Window::drain_advance() {
+  bool accepted = false;
   // Bound UI work even when an unpaced producer keeps the queue occupied.
   for (unsigned consumed = 0; consumed < 3; ++consumed) {
+    presentation_.poll();
+    if (presentation_.pending())
+      return accepted;
     auto output = completed_fields_->take();
     if (!output)
-      return;
-    last_frame_ = output->observation.field;
-    if (field_trace_) {
-      field_trace_->advance(output->duration, output->cpu - observed_worker_cpu_,
-                            output->processor);
-      observed_worker_cpu_ = output->cpu;
-      field_trace_->ready(output->completed);
-      if (output->capture)
-        field_trace_->capture(last_frame_, *output->capture);
-    }
-    const auto motors = feedback_.update(output->feedback);
-    gamepads_.rumble(feedback_targets(player_mappings_, motors, last_host_inputs_,
-                                      session_ && !stopped() && !rewinding_));
-    audio_recovery_pending_ |= output->audio_recovery;
-    if (output->history_error) {
-      rewind_enabled_ = false;
-      try {
-        std::rethrow_exception(output->history_error);
-      } catch (const std::exception &error) {
-        status_error(L"Rewind disabled", error);
-      }
-      update_playback();
-    }
+      return accepted;
     refresh_frame(output->image);
-    present_field(output->observation);
-    const auto now = std::chrono::steady_clock::now();
-    const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
-    if (elapsed >= 1.0) {
-      const auto fps = (last_frame_ - measured_frames_) / elapsed;
-      const auto title = L"Cupid-N64 | " + game_image_.filename().wstring() + L" | " +
-                         std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s | Slot " +
-                         std::to_wstring(state_slot_) +
-                         (audio_.available() ? L"" : L" | Audio unavailable");
-      SetWindowTextW(window_, title.c_str());
-      measured_time_ = now;
-      measured_frames_ = last_frame_;
-    }
+    output->observation.image_valid = image_valid();
+    auto submission = video_submission(output->observation.field);
+    presentation_.submit(std::move(submission), [this, output = std::move(*output)](
+                                                    const auto &completion) mutable {
+      last_frame_ = output.observation.field;
+      if (field_trace_) {
+        field_trace_->advance(output.duration, output.cpu - observed_worker_cpu_, output.processor);
+        observed_worker_cpu_ = output.cpu;
+        field_trace_->ready(output.completed);
+        if (output.capture)
+          field_trace_->capture(last_frame_, *output.capture);
+      }
+      const auto motors = feedback_.update(output.feedback);
+      gamepads_.rumble(feedback_targets(player_mappings_, motors, last_host_inputs_,
+                                        session_ && !stopped() && !rewinding_));
+      audio_recovery_pending_ |= output.audio_recovery;
+      observe_presentation(output.observation, completion);
+      if (output.history_error) {
+        rewind_enabled_ = false;
+        try {
+          std::rethrow_exception(output.history_error);
+        } catch (const std::exception &error) {
+          status_error(L"Rewind disabled", error);
+        }
+        update_playback();
+      }
+      const auto now = std::chrono::steady_clock::now();
+      const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
+      if (elapsed >= 1.0) {
+        const auto fps = (last_frame_ - measured_frames_) / elapsed;
+        const auto title = L"Cupid-N64 | " + game_image_.filename().wstring() + L" | " +
+                           std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s | Slot " +
+                           std::to_wstring(state_slot_) +
+                           (audio_.available() ? L"" : L" | Audio unavailable");
+        SetWindowTextW(window_, title.c_str());
+        measured_time_ = now;
+        measured_frames_ = last_frame_;
+      }
+    });
+    accepted = true;
   }
+  return accepted;
 }
 
 void Window::finish_advance() {
-  if (!advancing_)
+  if (finishing_advance_)
     return;
-  execution_.interrupt();
-  std::exception_ptr failure;
+  finishing_advance_ = true;
   try {
-    execution_.wait();
+    const bool advancing = advancing_;
+    std::exception_ptr failure;
+    if (advancing) {
+      execution_.interrupt();
+      try {
+        execution_.wait();
+      } catch (...) {
+        failure = std::current_exception();
+      }
+      advancing_ = false;
+    }
+    for (;;) {
+      try {
+        presentation_.quiesce();
+      } catch (...) {
+        if (!failure)
+          failure = std::current_exception();
+      }
+      try {
+        if (!drain_advance())
+          break;
+      } catch (...) {
+        if (!failure)
+          failure = std::current_exception();
+      }
+    }
+    if (advancing) {
+      update_feedback();
+      apply_homebrew_control();
+    }
+    if (failure)
+      std::rethrow_exception(failure);
+    if (advancing && session_ && options_.frames && last_frame_ >= options_.frames) {
+      capture();
+      quit_ = true;
+    }
   } catch (...) {
-    failure = std::current_exception();
+    finishing_advance_ = false;
+    throw;
   }
-  advancing_ = false;
-  drain_advance();
-  update_feedback();
-  apply_homebrew_control();
-  if (failure)
-    std::rethrow_exception(failure);
-  if (options_.frames && last_frame_ >= options_.frames) {
-    capture();
-    quit_ = true;
-  }
+  finishing_advance_ = false;
 }
 
 } // namespace cupid::desktop

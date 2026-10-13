@@ -27,6 +27,7 @@ void check() {
 } // namespace
 
 struct VideoPresenter::Implementation {
+  DWORD ui_thread = GetCurrentThreadId();
   HWND window = nullptr;
   HDC display = nullptr;
   HGLRC context = nullptr;
@@ -39,7 +40,28 @@ struct VideoPresenter::Implementation {
   bool attempted = false;
   bool blocking = false;
 
+  void ui() const {
+    if (GetCurrentThreadId() != ui_thread)
+      throw std::logic_error("The video surface belongs to its window thread.");
+  }
+
   ~Implementation() {
+    release();
+  }
+
+  void release() {
+    release_graphics();
+    if (display)
+      ReleaseDC(window, display);
+    if (IsWindow(window))
+      DestroyWindow(window);
+    display = nullptr;
+    window = nullptr;
+  }
+
+  void release_graphics() {
+    if (!context)
+      return;
     const auto previous_display = wglGetCurrentDC();
     const auto previous_context = wglGetCurrentContext();
     if (context && wglMakeCurrent(display, context)) {
@@ -54,10 +76,8 @@ struct VideoPresenter::Implementation {
     }
     if (context)
       wglDeleteContext(context);
-    if (display)
-      ReleaseDC(window, display);
-    if (IsWindow(window))
-      DestroyWindow(window);
+    context = nullptr;
+    framebuffer = texture = 0;
   }
 
   void initialize(HWND parent, bool software_device) {
@@ -215,6 +235,7 @@ VideoPresenter::~VideoPresenter() = default;
 
 bool VideoPresenter::initialize(HWND parent, bool software_device) {
   auto &state = *implementation_;
+  state.ui();
   if (state.attempted)
     return available();
   state.attempted = true;
@@ -232,31 +253,43 @@ bool VideoPresenter::initialize(HWND parent, bool software_device) {
 bool VideoPresenter::present(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
                              unsigned viewport_width, unsigned viewport_height, DisplayScale scale,
                              DisplayAspect aspect, bool blocking) {
+  const VideoSurface surface{viewport_width, viewport_height, scale, aspect, blocking};
+  prepare(surface);
+  const auto presented = render(pixels, width, height, surface);
+  show(presented);
+  return presented;
+}
+
+void VideoPresenter::prepare(const VideoSurface &surface) {
+  implementation_->ui();
+  implementation_->resize(surface.width, surface.height);
+}
+
+bool VideoPresenter::render(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
+                            const VideoSurface &surface) {
   if (!available())
     return false;
   auto &state = *implementation_;
   try {
-    if (!width || !height || !viewport_width || !viewport_height ||
+    if (!width || !height || !surface.width || !surface.height ||
         width > n64::maximum_frame_width || height > n64::maximum_frame_height ||
         pixels.size() != std::size_t(width) * height * 4)
       throw std::runtime_error("The video presentation image has invalid dimensions.");
     opengl::Context current(state.display, state.context);
-    if (state.swap_interval && state.blocking != blocking) {
-      if (!state.swap_interval(blocking ? 1 : 0))
+    if (state.swap_interval && state.blocking != surface.blocking) {
+      if (!state.swap_interval(surface.blocking ? 1 : 0))
         throw std::runtime_error("Could not change the OpenGL swap interval.");
-      state.blocking = blocking;
+      state.blocking = surface.blocking;
     }
-    state.resize(viewport_width, viewport_height);
     state.upload(pixels, width, height);
-    state.viewport = image_viewport(width, height, viewport_width, viewport_height, scale, aspect);
+    state.viewport =
+        image_viewport(width, height, surface.width, surface.height, surface.scale, surface.aspect);
     state.draw();
-    ShowWindow(state.window, SW_SHOWNOACTIVATE);
     if (!SwapBuffers(state.display))
       throw std::runtime_error("Could not swap the OpenGL video buffers.");
     return true;
   } catch (const std::exception &exception) {
     state.error = exception.what();
-    ShowWindow(state.window, SW_HIDE);
     return false;
   }
 }
@@ -290,8 +323,22 @@ const std::string &VideoPresenter::error() const {
 }
 
 void VideoPresenter::hide() {
+  show(false);
+}
+
+void VideoPresenter::show(bool visible) {
+  implementation_->ui();
   if (IsWindow(implementation_->window))
-    ShowWindow(implementation_->window, SW_HIDE);
+    ShowWindow(implementation_->window, visible ? SW_SHOWNOACTIVATE : SW_HIDE);
+}
+
+void VideoPresenter::close() {
+  implementation_->ui();
+  implementation_->release();
+}
+
+void VideoPresenter::release_graphics() {
+  implementation_->release_graphics();
 }
 
 } // namespace cupid::desktop

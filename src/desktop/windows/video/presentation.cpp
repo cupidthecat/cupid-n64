@@ -3,6 +3,16 @@
 #include <utility>
 
 namespace cupid::desktop {
+namespace {
+struct PresentationGuard {
+  bool &active;
+  bool previous;
+  explicit PresentationGuard(bool &value) : active(value), previous(std::exchange(value, true)) {}
+  ~PresentationGuard() {
+    active = previous;
+  }
+};
+} // namespace
 
 bool Window::image_valid() const {
   return pixel_width_ && pixel_height_ && pixel_width_ <= n64::maximum_frame_width &&
@@ -10,10 +20,12 @@ bool Window::image_valid() const {
          pixels_.size() == std::size_t(pixel_width_) * pixel_height_ * 4;
 }
 
-bool Window::present_video() {
+PresentationWorker::Submission Window::video_submission(unsigned field) {
+  PresentationWorker::Submission submission;
+  submission.tag.field = field;
   if (!image_valid()) {
     video_presenter_.hide();
-    return false;
+    return submission;
   }
   RECT client{};
   GetClientRect(window_, &client);
@@ -26,33 +38,51 @@ bool Window::present_video() {
     cached_viewport_width_ = MulDiv(static_cast<int>(viewport_size_.width), dpi ? dpi : 96, 96);
     cached_viewport_height_ = MulDiv(static_cast<int>(viewport_size_.height), dpi ? dpi : 96, 96);
   }
-  return video_presenter_.present(pixels_, pixel_width_, pixel_height_, cached_viewport_width_,
-                                  cached_viewport_height_, display_scale_, display_aspect_,
-                                  !fast_forward_ && playback_sync_ == PlaybackSync::Video);
+  submission.pixels = pixels_;
+  submission.width = pixel_width_;
+  submission.height = pixel_height_;
+  submission.surface = {cached_viewport_width_, cached_viewport_height_, display_scale_,
+                        display_aspect_, !fast_forward_ && playback_sync_ == PlaybackSync::Video};
+  const PresentationGuard guard(presenting_field_);
+  video_presenter_.prepare(submission.surface);
+  video_presenter_.show(video_available_);
+  return submission;
+}
+
+bool Window::present_video() {
+  if (presentation_.pending())
+    return field_presented_;
+  presentation_.submit(video_submission(last_frame_), [this](const auto &completion) {
+    const PresentationGuard guard(presenting_field_);
+    field_presented_ = completion.result.presented;
+    video_available_ = completion.result.available;
+    video_presenter_.show(field_presented_);
+  });
+  presentation_.quiesce();
+  return field_presented_;
+}
+
+void Window::observe_presentation(FieldTrace::Observation &observation,
+                                  const PresentationWorker::Completion &completion) {
+  const PresentationGuard guard(presenting_field_);
+  field_presented_ = completion.result.presented;
+  video_available_ = completion.result.available;
+  video_presenter_.show(field_presented_);
+  observation.video_presented = field_presented_;
+  observation.gpu_ready = video_available_;
+  observation.presentation_ns = static_cast<std::uint64_t>(completion.duration.count());
+  if (field_trace_)
+    field_trace_->presented(observation, completion.completed);
+  UpdateWindow(window_);
 }
 
 void Window::present_field(FieldTrace::Observation &observation) {
-  const auto started =
-      field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-  const auto previous = std::exchange(presenting_field_, true);
-  try {
-    observation.image_valid = image_valid();
-    field_presented_ = present_video();
-    observation.video_presented = field_presented_;
-    observation.gpu_ready = video_presenter_.available();
-    if (field_trace_) {
-      observation.presentation_ns =
-          static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                         std::chrono::steady_clock::now() - started)
-                                         .count());
-      field_trace_->presented(observation);
-    }
-    UpdateWindow(window_);
-  } catch (...) {
-    presenting_field_ = previous;
-    throw;
-  }
-  presenting_field_ = previous;
+  observation.image_valid = image_valid();
+  presentation_.submit(video_submission(observation.field),
+                       [this, &observation](const auto &completion) {
+                         observe_presentation(observation, completion);
+                       });
+  presentation_.quiesce();
 }
 
 } // namespace cupid::desktop

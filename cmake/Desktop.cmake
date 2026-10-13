@@ -31,6 +31,7 @@ add_library(cupid_session
   ${PROJECT_SOURCE_DIR}/src/desktop/storage/recent.cpp
   ${PROJECT_SOURCE_DIR}/src/desktop/video/viewport.cpp
   ${PROJECT_SOURCE_DIR}/src/desktop/video/bitmap.cpp
+  ${PROJECT_SOURCE_DIR}/src/desktop/video/presentation_worker.cpp
   ${PROJECT_SOURCE_DIR}/src/desktop/timing/playback_clock.cpp
   ${PROJECT_SOURCE_DIR}/src/desktop/timing/execution_worker.cpp
   ${PROJECT_SOURCE_DIR}/src/desktop/replay/input.cpp

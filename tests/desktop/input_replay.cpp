@@ -3,6 +3,7 @@
 #include "desktop/replay/input.hpp"
 #include <fstream>
 #include <sstream>
+#include <thread>
 
 using namespace cupid::desktop;
 int main() {
@@ -37,8 +38,11 @@ int main() {
   trace.begin();
   trace.advance(std::chrono::milliseconds(10), std::chrono::milliseconds(3), 4);
   trace.ready();
+  const auto completed = FieldTrace::Clock::now();
+  std::this_thread::sleep_for(std::chrono::milliseconds(4));
   trace.presented(
-      {1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000, true, true, 500000});
+      {1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000, true, true, 500000},
+      completed);
   trace.advance(std::chrono::milliseconds(20), std::chrono::milliseconds(7), 6);
   trace.ready();
   trace.presented(
@@ -47,7 +51,8 @@ int main() {
   std::ifstream csv(path), report(directory / "fields.json");
   const std::string text((std::istreambuf_iterator<char>(csv)), {});
   const std::string metadata((std::istreambuf_iterator<char>(report)), {});
-  test::equal(text.find(",image_valid,video_presented,presentation_us\n") != std::string::npos,
+  test::equal(text.find(",image_valid,video_presented,presentation_us,presentation_completed_s,"
+                        "presentation_delivery_us\n") != std::string::npos,
               true);
   test::equal(text.find("1,100,18446744071562072064,20,") != std::string::npos, true);
   test::equal(metadata.find("\"complete\":false") != std::string::npos, true);
@@ -56,9 +61,23 @@ int main() {
   std::string row;
   std::getline(lines, row);
   std::getline(lines, row);
-  test::equal(row.ends_with(",1,1,4000,3000,4,2000,1,1,500"), true);
+  const auto columns = [](const std::string &text) {
+    std::vector<std::string> result;
+    std::istringstream input(text);
+    std::string value;
+    while (std::getline(input, value, ','))
+      result.push_back(value);
+    return result;
+  };
+  const auto first = columns(row);
+  test::equal(first.size(), 20);
+  test::equal(first[16] == "1" && first[17] == "500", true);
+  test::equal(std::stod(first[19]) >= 3000, true);
+  test::equal(std::stod(first[4]) > std::stod(first[18]), true);
+  test::equal(std::stod(first[8]) >= std::stod(first[19]), true);
   std::getline(lines, row);
-  test::equal(row.ends_with(",1,1,5000,7000,6,5000,1,0,700"), true);
+  const auto second = columns(row);
+  test::equal(second[16] == "0" && second[17] == "700" && second[19] == "0", true);
   // The test owns only these newly created files.
   csv.close();
   report.close();

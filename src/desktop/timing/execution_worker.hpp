@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <mutex>
+#include <string>
 #include <thread>
 
 namespace cupid::desktop {
@@ -13,7 +14,7 @@ namespace cupid::desktop {
 // The caller joins the owned task before changing its session.
 class ExecutionWorker {
 public:
-  ExecutionWorker();
+  explicit ExecutionWorker(std::wstring name = L"Emulation");
   ~ExecutionWorker();
   ExecutionWorker(const ExecutionWorker &) = delete;
   ExecutionWorker &operator=(const ExecutionWorker &) = delete;
@@ -26,6 +27,7 @@ public:
   bool wait_until(const std::function<bool()> &resume);
   bool wait_for(std::chrono::milliseconds duration);
   void wake();
+  void shutdown();
   bool interrupted() const noexcept {
     return interrupted_.load(std::memory_order_relaxed);
   }
@@ -38,6 +40,7 @@ private:
   std::exception_ptr error_;
   bool pending_ = false, done_ = false, stopping_ = false;
   std::atomic<bool> interrupted_{false};
+  std::wstring name_;
   std::thread thread_;
 };
 

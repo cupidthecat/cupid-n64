@@ -51,15 +51,18 @@ void FieldTrace::paint(std::chrono::nanoseconds duration) {
 void FieldTrace::ready(Clock::time_point completed) {
   ready_ = completed;
 }
-void FieldTrace::presented(Observation observation) {
+void FieldTrace::presented(Observation observation, Clock::time_point presentation_completed) {
   const auto now = Clock::now();
   const auto seconds = [](auto duration) {
     return std::chrono::duration<double>(duration).count();
   };
+  if (presentation_completed == Clock::time_point{})
+    presentation_completed = now;
   records_.push_back({observation, seconds(now - origin_), seconds(now - previous_) * 1e6,
                       seconds(advance_) * 1e6, seconds(paint_) * 1e6,
                       ready_ == Clock::time_point{} ? 0 : seconds(now - ready_) * 1e6,
-                      seconds(cpu_) * 1e6, processor_});
+                      seconds(cpu_) * 1e6, processor_, seconds(presentation_completed - origin_),
+                      seconds(now - presentation_completed) * 1e6});
   records_.back().observation.audio_wait_ns -= previous_audio_wait_;
   previous_audio_wait_ = observation.audio_wait_ns;
   records_.back().observation.renderer_ns -= previous_renderer_;
@@ -80,7 +83,8 @@ void FieldTrace::finish(bool complete) {
     std::ofstream stream(trace_);
     stream << "field,clocks,pc,audio,elapsed_s,total_us,advance_us,paint_us,wait_us,audio_ready,"
               "gpu_ready,audio_wait_us,worker_cpu_us,worker_processor,renderer_us,"
-              "image_valid,video_presented,presentation_us\n"
+              "image_valid,video_presented,presentation_us,presentation_completed_s,"
+              "presentation_delivery_us\n"
            << std::setprecision(12);
     for (const auto &r : records_) {
       const auto &f = r.observation;
@@ -88,7 +92,8 @@ void FieldTrace::finish(bool complete) {
              << ',' << r.total << ',' << r.advance << ',' << r.paint << ',' << r.wait << ','
              << f.audio_ready << ',' << f.gpu_ready << ',' << f.audio_wait_ns / 1000.0 << ','
              << r.cpu << ',' << r.processor << ',' << f.renderer_ns / 1000.0 << ',' << f.image_valid
-             << ',' << f.video_presented << ',' << f.presentation_ns / 1000.0 << '\n';
+             << ',' << f.video_presented << ',' << f.presentation_ns / 1000.0 << ','
+             << r.presentation_completed << ',' << r.delivery << '\n';
     }
     stream.close();
     if (!stream)

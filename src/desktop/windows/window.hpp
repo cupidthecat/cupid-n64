@@ -33,6 +33,7 @@ namespace cupid::desktop {
 class Window {
 public:
   explicit Window(Options options);
+  ~Window();
   int run(HINSTANCE instance, int show);
 
 private:
@@ -131,10 +132,13 @@ private:
   void paint();
   bool image_valid() const;
   bool present_video();
+  PresentationWorker::Submission video_submission(unsigned field);
+  void observe_presentation(FieldTrace::Observation &observation,
+                            const PresentationWorker::Completion &completion);
   void present_field(FieldTrace::Observation &observation);
   void advance();
   void finish_advance();
-  void drain_advance();
+  bool drain_advance();
   void publish_inputs();
   PlayerInputs take_inputs();
   void start_advance();
@@ -250,6 +254,7 @@ private:
   bool paused_ = false, active_ = true, modal_ = false, fullscreen_ = false, quit_ = false;
   bool frame_ready_ = false;
   bool presenting_field_ = false, field_presented_ = false;
+  bool video_available_ = false, finishing_advance_ = false;
   int exit_code_ = 0;
   PlaybackClock playback_clock_;
   unsigned last_frame_ = 0, measured_frames_ = 0;
@@ -257,6 +262,7 @@ private:
   unsigned cached_viewport_width_ = 0, cached_viewport_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
   std::unique_ptr<ExecutionOutput<CompletedField>> completed_fields_;
+  PresentationWorker presentation_;
   // Drain execution before destroying any object captured by the worker.
   ExecutionWorker execution_;
 };
