@@ -23,7 +23,7 @@ void linux_settings_tests() {
   session_test::Directory directory;
   const auto path = directory.path / "settings.ini";
   auto settings = load_settings(path);
-  test::equal(settings.audio.latency, 80);
+  test::equal(settings.audio.latency, 40);
   test::equal(settings.mappings[0].source == HostSource::Keyboard, true);
   const std::filesystem::path unicode(u8"café-日本.z64");
   const auto game = directory.path / unicode;
