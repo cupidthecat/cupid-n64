@@ -10,16 +10,6 @@
 
 namespace cupid::desktop {
 namespace {
-std::chrono::nanoseconds thread_cpu_time() {
-  FILETIME creation{}, exit{}, kernel{}, user{};
-  if (!GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user))
-    return {};
-  const auto ticks = [](FILETIME value) {
-    return (std::uint64_t(value.dwHighDateTime) << 32) | value.dwLowDateTime;
-  };
-  return std::chrono::nanoseconds((ticks(kernel) + ticks(user)) * 100);
-}
-
 void record_key(std::array<bool, 256> &keys, WPARAM key, LPARAM message, bool pressed) {
   if (key >= keys.size())
     return;
@@ -57,7 +47,9 @@ constexpr auto help = L"Default keyboard layout:\n"
 } // namespace
 
 Window::Window(Options options) : options_(std::move(options)) {
+  completed_fields_ = std::make_unique<ExecutionOutput<CompletedField>>(execution_);
   execution_.notify([this] { PostMessageW(window_, WM_APP + 1, 0, 0); });
+  audio_.wait_interrupt([this] { return advancing_ && execution_.interrupted(); });
   if (!options_.input_replay.empty())
     input_replay_ = std::make_unique<InputReplay>(options_.input_replay);
   if (!options_.field_trace.empty() || !options_.capture_fields.empty())
@@ -233,6 +225,22 @@ int Window::run(HINSTANCE instance, int show) {
       continue;
     }
     try {
+      if (advancing_) {
+        if (execution_.ready())
+          finish_advance();
+        else {
+          drain_advance();
+          publish_inputs();
+          if (audio_recovery_pending_ && std::chrono::steady_clock::now() >= next_audio_check_) {
+            finish_advance();
+            refresh_audio_devices();
+            audio_recovery_pending_ = false;
+            next_audio_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+          } else
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        continue;
+      }
       if (rewinding_) {
         if (std::chrono::steady_clock::now() >= next_rewind_)
           rewind_step();
@@ -247,8 +255,6 @@ int Window::run(HINSTANCE instance, int show) {
         const auto delay =
             playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
         if (!fast_forward_ && delay.count()) {
-          if (wait_for_video())
-            continue;
           MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
                                     QS_ALLINPUT);
           continue;
@@ -256,8 +262,6 @@ int Window::run(HINSTANCE instance, int show) {
         present();
       } else {
         advance();
-        if (advancing_ && !execution_.ready())
-          MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
       }
     } catch (const std::exception &exception) {
       error(exception);
@@ -315,9 +319,28 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
   // Paint consumes the owned image. Session commands wait at an execution boundary.
-  if (event != WM_PAINT && event != WM_ERASEBKGND && event != WM_APP + 1) {
-    execution_.interrupt();
+  switch (event) {
+  case WM_CLOSE:
+  case WM_COMMAND:
+  case WM_DROPFILES:
+  case WM_INITMENUPOPUP:
+  case WM_DEVICECHANGE:
+  case WM_ACTIVATE:
+  case WM_ENTERMENULOOP:
+  case WM_ENTERSIZEMOVE:
+  case WM_EXITMENULOOP:
+  case WM_EXITSIZEMOVE:
+  case WM_LBUTTONDOWN:
+  case WM_CAPTURECHANGED:
+  case WM_CANCELMODE:
+  case WM_SIZE:
+  case WM_MOVE:
+  case WM_DPICHANGED:
+  case WM_DISPLAYCHANGE:
     finish_advance();
+    break;
+  default:
+    break;
   }
   switch (event) {
   case WM_APP + 1:
@@ -456,10 +479,8 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 
 void Window::error(const std::exception &exception) {
   if (advancing_) {
-    advancing_ = false;
-    execution_.interrupt();
     try {
-      execution_.wait();
+      finish_advance();
     } catch (...) {
     }
   }
@@ -609,6 +630,7 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  finish_advance();
   if (settings_command(id))
     return;
   if (inspection_command(id))
@@ -735,7 +757,8 @@ void Window::paint() {
     const bool gpu =
         session_ && !pixels_.empty() && height &&
         video_presenter_.present(pixels_, pixel_width_, pixel_height_, static_cast<unsigned>(width),
-                                 static_cast<unsigned>(height), display_scale_, display_aspect_);
+                                 static_cast<unsigned>(height), display_scale_, display_aspect_,
+                                 !fast_forward_ && playback_sync_ == PlaybackSync::Video);
     const auto dc = gpu ? target : paint_buffer_.begin(target, client.right, client.bottom);
     if (!gpu)
       FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
@@ -809,48 +832,14 @@ Window::Input Window::input() const {
   auto x = stick.x;
   auto y = static_cast<std::int8_t>(-stick.y);
   if (options_.test_input) {
-    const unsigned frame = session_->frames;
-    const bool start = (frame >= 900 && frame < 960) || (frame >= 1200 && frame < 1260);
-    const bool jump = (frame >= 1600 && frame < 1660) || (frame >= 2200 && frame < 2260) ||
-                      (frame >= 2600 && frame < 2660) || (frame >= 3000 && frame < 3060) ||
-                      (frame >= 3200 && frame % 300 < 60);
-    buttons = static_cast<std::uint16_t>((start ? 0x1000 : 0) | (jump ? 0x8000 : 0));
-    x = 0;
-    y = frame >= 4800 ? -58 : 0;
+    return test_input(session_->frames);
   }
   return {buttons, x, y};
 }
 
 void Window::advance() {
   if (!gdb_.port() && !gdb_connected_ && !session_->debugger().attached()) {
-    if (advancing_) {
-      if (execution_.ready())
-        finish_advance();
-      return;
-    }
-    const auto selected = inputs();
-    const auto previous_frame = last_frame_;
-    execution_.submit([this, selected, previous_frame] {
-      const auto advance_started =
-          field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-      if (field_trace_ && !worker_cpu_origin_)
-        worker_cpu_origin_ = thread_cpu_time();
-      session_->input(selected);
-      const auto started = session_->clocks();
-      do {
-        session_->run();
-        if (session_->clocks() - started > 10 * n64::clock_frequency)
-          throw std::runtime_error("Emulation stopped because no video field was produced.");
-      } while (session_->frames == previous_frame && !execution_.interrupted() &&
-               session_->diagnostics().control() == n64::HostControl::None);
-      if (field_trace_) {
-        last_advance_completed_ = std::chrono::steady_clock::now();
-        last_advance_duration_ = last_advance_completed_ - advance_started;
-        last_advance_cpu_ = thread_cpu_time() - *worker_cpu_origin_;
-        last_advance_processor_ = GetCurrentProcessorNumber();
-      }
-    });
-    advancing_ = true;
+    start_advance();
     return;
   }
   session_->input(inputs());
@@ -872,27 +861,6 @@ void Window::advance() {
   if (session_->frames == last_frame_)
     return;
   frame_ready_ = true;
-}
-
-void Window::finish_advance() {
-  if (!advancing_)
-    return;
-  advancing_ = false;
-  execution_.wait();
-  if (field_trace_) {
-    // Cumulative snapshots include CPU accounting updates between execution intervals.
-    field_trace_->advance(last_advance_duration_, last_advance_cpu_ - observed_worker_cpu_,
-                          last_advance_processor_);
-    observed_worker_cpu_ = last_advance_cpu_;
-  }
-  update_feedback();
-  if (apply_homebrew_control() && quit_)
-    return;
-  if (session_->frames != last_frame_) {
-    frame_ready_ = true;
-    if (field_trace_)
-      field_trace_->ready(last_advance_completed_);
-  }
 }
 
 void Window::present() {

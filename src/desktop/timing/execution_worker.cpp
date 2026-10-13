@@ -39,6 +39,40 @@ void ExecutionWorker::submit(std::function<void()> task) {
   changed_.notify_all();
 }
 
+void ExecutionWorker::repeat(std::function<bool()> iteration) {
+  if (!iteration)
+    throw std::logic_error("The execution worker needs an iteration.");
+  submit([this, iteration = std::move(iteration)] {
+    while (!interrupted() && iteration()) {
+    }
+  });
+}
+
+void ExecutionWorker::interrupt() noexcept {
+  {
+    std::lock_guard lock(mutex_);
+    interrupted_.store(true, std::memory_order_relaxed);
+  }
+  changed_.notify_all();
+}
+
+bool ExecutionWorker::wait_until(const std::function<bool()> &resume) {
+  std::unique_lock lock(mutex_);
+  changed_.wait(lock, [&] { return interrupted() || resume(); });
+  return !interrupted();
+}
+
+bool ExecutionWorker::wait_for(std::chrono::milliseconds duration) {
+  std::unique_lock lock(mutex_);
+  changed_.wait_for(lock, duration, [this] { return interrupted(); });
+  return !interrupted();
+}
+
+void ExecutionWorker::wake() {
+  std::lock_guard lock(mutex_);
+  changed_.notify_all();
+}
+
 bool ExecutionWorker::ready() const {
   std::lock_guard lock(mutex_);
   return pending_ && done_;

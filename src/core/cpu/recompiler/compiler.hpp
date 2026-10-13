@@ -15,6 +15,14 @@
 namespace cupid::n64 {
 
 struct CpuCompiler::Impl {
+  enum MemoryMode : unsigned {
+    GpOffsetRange = 1u << 14,
+    GpAligned4 = 1u << 15,
+    GpAligned8 = 1u << 16,
+    SpAligned4 = 1u << 17,
+    SpAligned8 = 1u << 18,
+    MemoryModes = GpOffsetRange | GpAligned4 | GpAligned8 | SpAligned4 | SpAligned8,
+  };
   struct ActiveSection {
     InstructionTracker *tracker = nullptr;
     std::uint32_t page = 0;
@@ -140,6 +148,7 @@ struct CpuCompiler::Emitter {
   bool wide;
   bool tracing;
   bool diagnostics;
+  unsigned memory_mode;
   unsigned cycles = 0;
   bool pipeline_dirty = false;
   std::vector<SlowPath> slow_paths;

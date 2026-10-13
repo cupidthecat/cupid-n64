@@ -400,7 +400,7 @@ void dispatch_history_tests() {
         };
         std::vector<std::uint8_t> recipe;
         put(recipe, 8, 0xffffffff80001800ull);
-        put(recipe, 4, 0x20000002);
+        put(recipe, 4, 0x20000002 | (15u << 15));
         put(recipe, 4, 0x1800);
         const auto start =
             std::search(initial.begin(), initial.end(), recipe.begin(), recipe.end());
@@ -687,9 +687,105 @@ void boot_identity_tests() {
   }
 }
 
+void cpu_cache_context_tests() {
+  Machine machine(false);
+  auto &console = machine.console;
+  auto &cpu = console.cpu();
+  console.write(0x1000, 4, test::i(35, 28, 6, 0));
+  console.write(0x1004, 4, test::i(35, 29, 7, 0));
+  console.write(0x1008, 4, test::r(8, 31, 0, 0));
+  console.write(0x100c, 4, 0);
+  for (const auto gp : {0xffffffff80010000ull, 0xffffffff80010001ull, 0xffffffffa0010000ull}) {
+    for (const auto sp : {0xffffffff80010000ull, 0xffffffff80010004ull, 0xffffffff80010001ull}) {
+      cpu.write_control(Status, 0x30000000);
+      cpu.state().gpr[28] = gp;
+      cpu.state().gpr[29] = sp;
+      cpu.state().gpr[31] = 0xffffffff80003000ull;
+      cpu.set_pc(0xffffffff80001000ull);
+      test::equal(cpu.run_block(cpu.state().clocks + 1000), true);
+      const auto initial = CoreState::capture(console);
+      cpu.write_control(Status, 0x30000000);
+      cpu.set_pc(0xffffffff80001000ull);
+      test::equal(cpu.run_block(cpu.state().clocks + 1000), true);
+      const auto future = CoreState::capture(console);
+      CoreState::restore(console, initial);
+      test::equal(CoreState::capture(console) == initial, true);
+      cpu.write_control(Status, 0x30000000);
+      cpu.set_pc(0xffffffff80001000ull);
+      test::equal(cpu.run_block(cpu.state().clocks + 1000), true);
+      test::equal(CoreState::capture(console) == future, true);
+    }
+  }
+  for (bool valid : {false, true}) {
+    cpu.write_control(Status, 0x30000000);
+    for (unsigned cache : {0u, 1u}) {
+      cpu.state().gpr[4] = 0xffffffff80000000ull | (cache ? 0x10u : 0x20u);
+      cpu.write_control(TagLo, 0x3500 | (valid ? 0x80 : 0));
+      cpu.execute(test::i(47, 4, 8 + cache, 0));
+    }
+    const auto saved = CoreState::checkpoint(console);
+    for (const auto name :
+         {"cpu.icache[1].tag", "cpu.dcache[1].tag", "cpu.icache[1].valid", "cpu.dcache[1].valid"}) {
+      const auto range = std::find_if(saved.ranges.begin(), saved.ranges.end(),
+                                      [&](const auto &r) { return r.name == name; });
+      test::equal(range != saved.ranges.end(), true);
+      if (range == saved.ranges.end())
+        continue;
+      const bool tag = std::string_view(name).ends_with("tag");
+      test::equal(range->bytes, tag ? 4 : 1);
+      std::uint32_t bits = 0;
+      for (unsigned byte = 0; byte < range->bytes; ++byte)
+        bits |= std::uint32_t(saved.bytes[range->offset + byte]) << (byte * 8);
+      test::equal(bits, tag ? 0x35000u : unsigned(valid));
+    }
+    for (unsigned cache : {0u, 1u}) {
+      cpu.state().gpr[4] = 0xffffffff80000000ull | (cache ? 0x10u : 0x20u);
+      cpu.write_control(TagLo, 0);
+      cpu.execute(test::i(47, 4, 8 + cache, 0));
+    }
+    CoreState::restore(console, saved.bytes);
+    test::equal(CoreState::capture(console) == saved.bytes, true);
+    for (unsigned cache : {0u, 1u}) {
+      cpu.state().gpr[4] = 0xffffffff80000000ull | (cache ? 0x10u : 0x20u);
+      cpu.execute(test::i(47, 4, 4 + cache, 0));
+      test::equal(cpu.read_control(TagLo), 0x3500u | (valid ? (cache ? 0xc0u : 0x80u) : 0));
+    }
+  }
+}
+
+void cpu_extension_pointer_tests() {
+  for (bool native : {false, true}) {
+    for (unsigned base : {28u, 29u}) {
+      for (unsigned function : {0x20u, 0x29u}) {
+        Machine machine(false);
+        auto &console = machine.console;
+        auto &cpu = console.cpu();
+        console.diagnostics().set_homebrew(true);
+        cpu.state().gpr[base] = 0xffffffff80010000ull;
+        cpu.state().gpr[31] = 0xffffffff80003000ull;
+        cpu.state().gpr[4] = 0xffffffff80000000ull;
+        cpu.write_control(TagLo, 0x08000080);
+        cpu.execute(test::i(47, 4, 9, 0));
+        console.write(0x1000, 4,
+                      0x42000000u | (base << (function == 0x20 ? 20 : 15)) | (2u << 6) | function);
+        console.write(0x1004, 4, test::i(35, base, 2, 0));
+        console.write(0x1008, 4, test::r(8, 31, 0, 0));
+        console.write(0x100c, 4, 0);
+        cpu.set_pc(0xffffffff80001000ull);
+        test::equal(native ? cpu.run_block(1000) : cpu.run_interpreted_block(1000), true);
+        test::equal(cpu.state().gpr[base], function == 0x20 ? 0x0e : 0);
+        test::equal(cpu.read_control(Cause) & 0x7c, (function == 0x20 ? 4u : 2u) << 2);
+        test::equal(cpu.read_control(Epc), 0xffffffff80001004ull);
+      }
+    }
+  }
+}
+
 } // namespace
 
 void core_state_tests() {
+  cpu_extension_pointer_tests();
+  cpu_cache_context_tests();
   boot_identity_tests();
   checkpoint_tests();
   arcade_checkpoint_tests();

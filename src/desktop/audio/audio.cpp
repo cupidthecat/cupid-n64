@@ -68,12 +68,31 @@ void Audio::clear() {
   resampler_.clear();
 }
 
+void Audio::wait_interrupt(std::function<bool()> predicate) {
+  output_->wait_interrupt(std::move(predicate));
+}
+
 void Audio::sample(n64::StereoSample value) {
   if (measure_)
     ++generated_samples_;
   if (!available() || suspended)
     return;
+  if (output_->floating_samples() && offset_)
+    play_saved_output();
   resampler_.write(value, [this](n64::StereoSample sample) {
+    if (output_->floating_samples()) {
+      if (!available() || !wait())
+        return;
+      const double volume = muted ? 0.0 : settings_.levels.volume / 100.0;
+      const double balance = settings_.levels.balance / 100.0;
+      const std::array<float, 2> frame{
+          static_cast<float>(std::clamp(sample.left * volume, -1.0, 1.0) *
+                             (1.0 - std::max(balance, 0.0))),
+          static_cast<float>(std::clamp(sample.right * volume, -1.0, 1.0) *
+                             (1.0 + std::min(balance, 0.0)))};
+      output_->submit_float(frame);
+      return;
+    }
     if (!available() || (!offset_ && !wait()))
       return;
     auto &buffer = buffers_[buffer_];

@@ -8,6 +8,7 @@
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
+#include "desktop/timing/execution_output.hpp"
 #include "desktop/timing/execution_worker.hpp"
 #include "desktop/timing/playback_clock.hpp"
 #include "desktop/timing/playback_settings.hpp"
@@ -22,6 +23,7 @@
 #include "desktop/windows/video/presenter.hpp"
 #include "desktop/windows/video/shaders/processor.hpp"
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <optional>
 #include <string_view>
@@ -94,7 +96,6 @@ private:
   void create_playback_settings_menu(HMENU emulation);
   void update_playback_settings();
   void refresh_audio_devices();
-  bool wait_for_video();
   bool display_command(unsigned id);
   bool file_command(unsigned id);
   void load_recent();
@@ -124,16 +125,22 @@ private:
   void update_states();
   void state_loaded();
   void refresh_frame();
+  void refresh_frame(const n64::VideoFrame &frame);
   enum class LaunchPreference { Remember, Preserve };
   void load(LaunchPreference preference = LaunchPreference::Remember);
   void paint();
   void advance();
   void finish_advance();
+  void drain_advance();
+  void publish_inputs();
+  PlayerInputs take_inputs();
+  void start_advance();
   struct Input {
     std::uint16_t buttons;
     std::int8_t x, y;
   };
   Input input() const;
+  static Input test_input(unsigned frame);
   void present();
   void rebase();
   void fullscreen();
@@ -200,15 +207,26 @@ private:
   VideoPresenter video_presenter_;
   Audio audio_;
   std::unique_ptr<Session> session_;
-  bool advancing_ = false;
+  std::atomic<bool> advancing_{false};
   std::unique_ptr<InputReplay> input_replay_;
   std::unique_ptr<FieldTrace> field_trace_;
-  std::chrono::nanoseconds last_advance_duration_{};
-  std::chrono::nanoseconds last_advance_cpu_{};
   std::optional<std::chrono::nanoseconds> worker_cpu_origin_;
   std::chrono::nanoseconds observed_worker_cpu_{};
-  unsigned last_advance_processor_ = ~0u;
-  std::chrono::steady_clock::time_point last_advance_completed_{};
+  struct CompletedField {
+    n64::VideoFrame image;
+    std::optional<n64::VideoFrame> capture;
+    FieldTrace::Observation observation{};
+    std::array<FeedbackState, 4> feedback{};
+    std::chrono::steady_clock::time_point completed;
+    std::chrono::nanoseconds duration{}, cpu{};
+    unsigned processor = ~0u;
+    bool audio_recovery = false;
+    std::exception_ptr history_error;
+  };
+  bool audio_recovery_pending_ = false;
+  std::mutex input_mutex_;
+  PlayerInputs worker_inputs_;
+  std::array<MouseMotion, 4> worker_mouse_;
   GdbServer gdb_;
   unsigned gdb_port_ = 2345;
   bool gdb_enabled_ = false, gdb_connected_ = false, gdb_was_paused_ = false;
@@ -233,6 +251,7 @@ private:
   unsigned last_frame_ = 0, measured_frames_ = 0;
   unsigned pixel_width_ = 0, pixel_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
+  std::unique_ptr<ExecutionOutput<CompletedField>> completed_fields_;
   // Drain execution before destroying any object captured by the worker.
   ExecutionWorker execution_;
 };

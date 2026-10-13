@@ -91,11 +91,22 @@ private:
 
   struct CacheLine {
     std::array<std::uint32_t, 8> words{};
-    std::uint32_t tag = 0;
-    bool valid = false;
+    std::uint32_t tag_key = 0;
     bool dirty = false;
+    std::uint32_t tag() const {
+      return tag_key & ~1u;
+    }
+    bool valid() const {
+      return tag_key & 1;
+    }
+    void set_tag(std::uint32_t tag) {
+      tag_key = tag | (tag_key & 1);
+    }
+    void set_valid(bool valid) {
+      tag_key = tag() | unsigned(valid);
+    }
     bool hit(std::uint32_t address) const {
-      return valid && tag == (address & ~0xfffu);
+      return tag_key == ((address & ~0xfffu) | 1);
     }
   };
 

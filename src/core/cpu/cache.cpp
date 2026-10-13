@@ -12,12 +12,12 @@ bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, boo
   if (instruction)
     ++instruction_cache_generation_;
   advance_clocks(instruction ? 96 : 80);
-  line.tag = physical & ~0xfffu;
+  line.set_tag(physical & ~0xfffu);
   line.dirty = false;
   const auto transfer = bus_.read_cache_burst(
-      line.tag | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
+      line.tag() | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
-  line.valid = instruction || transfer.success;
+  line.set_valid(instruction || transfer.success);
   if (!transfer.success && !bus_.frozen())
     raise(instruction ? Exception::BusInstruction : Exception::BusData);
   return transfer.success || (instruction && bus_.frozen());
@@ -28,7 +28,7 @@ bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
     diagnostics_->cache_writeback(instruction);
   advance_clocks(instruction ? 96 : 80);
   const auto transfer = bus_.write_cache_burst(
-      line.tag | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
+      line.tag() | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
   if (!transfer.success && !bus_.frozen())
     raise(Exception::BusData);
@@ -46,7 +46,7 @@ std::optional<std::uint64_t> Cpu::cache_read(std::uint64_t virtual_address, std:
   if (line.hit(physical) && diagnostics_)
     diagnostics_->cache_access(instruction, true);
   if (!line.hit(physical)) {
-    if (!instruction && line.valid && line.dirty && !writeback(line, bus_index, false))
+    if (!instruction && line.valid() && line.dirty && !writeback(line, bus_index, false))
       return {};
     if (!fill(line, physical, bus_index, instruction) && (instruction || !bus_.frozen()))
       return {};
@@ -71,7 +71,7 @@ bool Cpu::cache_write(std::uint64_t virtual_address, std::uint32_t physical, uns
   if (line.hit(physical) && diagnostics_)
     diagnostics_->cache_access(false, true);
   if (!line.hit(physical)) {
-    if (line.valid && line.dirty && !writeback(line, bus_index, false))
+    if (line.valid() && line.dirty && !writeback(line, bus_index, false))
       return false;
     if (!fill(line, physical, bus_index, false) && !bus_.frozen())
       return false;
@@ -109,38 +109,39 @@ void Cpu::cache_operation(unsigned operation, std::uint64_t address) {
   const auto tag = access->physical & ~0xfffu;
   switch (operation) {
   case 0x00:
-    line.tag = tag;
-    line.valid = false;
+    line.set_tag(tag);
+    line.set_valid(false);
     break;
   case 0x01:
-    if (line.valid && line.dirty && !writeback(line, bus_index, false))
+    if (line.valid() && line.dirty && !writeback(line, bus_index, false))
       return;
-    if (line.valid)
-      line.tag = tag;
-    line.valid = false;
+    if (line.valid())
+      line.set_tag(tag);
+    line.set_valid(false);
     break;
   case 0x04:
   case 0x05:
-    control_[TagLo] = ((line.tag >> 12) << 8) | (line.valid ? (instruction ? 2ull : 3ull) << 6 : 0);
+    control_[TagLo] =
+        ((line.tag() >> 12) << 8) | (line.valid() ? (instruction ? 2ull : 3ull) << 6 : 0);
     break;
   case 0x08:
   case 0x09:
-    line.tag = static_cast<std::uint32_t>((control_[TagLo] & 0x0fffff00) << 4);
-    line.valid = control_[TagLo] & 0x80;
+    line.set_tag(static_cast<std::uint32_t>((control_[TagLo] & 0x0fffff00) << 4));
+    line.set_valid(control_[TagLo] & 0x80);
     break;
   case 0x0d:
     if (!line.hit(access->physical)) {
-      if (line.valid && line.dirty && !writeback(line, bus_index, false))
+      if (line.valid() && line.dirty && !writeback(line, bus_index, false))
         return;
       line.dirty = false;
     }
-    line.tag = tag;
-    line.valid = true;
+    line.set_tag(tag);
+    line.set_valid(true);
     break;
   case 0x10:
   case 0x11:
     if (line.hit(access->physical))
-      line.valid = false;
+      line.set_valid(false);
     break;
   case 0x14:
     fill(line, access->physical, bus_index, true);
@@ -149,7 +150,7 @@ void Cpu::cache_operation(unsigned operation, std::uint64_t address) {
     if (line.hit(access->physical)) {
       if (line.dirty && !writeback(line, bus_index, false))
         return;
-      line.valid = false;
+      line.set_valid(false);
     }
     break;
   case 0x18:

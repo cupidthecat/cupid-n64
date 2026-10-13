@@ -122,8 +122,11 @@ bool RspCompiler::Emitter::compile() {
     if (delay)
       begin_delay();
     instruction(first_opcode, (start + n * 4) & 0xfff, first_branch, delay);
-    if (dual)
+    constants.track(first_opcode, (start + n * 4) & 0xfff, first.write_gpr);
+    if (dual) {
       instruction(second_opcode, (start + (n + 1) * 4) & 0xfff, second_branch, delay);
+      constants.track(second_opcode, (start + (n + 1) * 4) & 0xfff, second.write_gpr);
+    }
     n += dual ? 2 : 1;
     cycles += pipeline.clocks;
     if (delay) {

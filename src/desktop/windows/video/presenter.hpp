@@ -18,7 +18,7 @@ public:
   bool initialize(HWND parent, bool software_device = false);
   bool present(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
                unsigned viewport_width, unsigned viewport_height, DisplayScale scale,
-               DisplayAspect aspect);
+               DisplayAspect aspect, bool blocking = false);
   std::vector<std::uint8_t> capture();
   bool available() const;
   void hide();

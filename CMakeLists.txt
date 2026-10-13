@@ -266,6 +266,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
+    src/desktop/windows/playback/execution.cpp
     src/desktop/windows/playback/settings.cpp
     src/desktop/windows/display.cpp
     src/desktop/windows/graphics/settings.cpp
@@ -297,7 +298,7 @@ if(WIN32 AND CUPID_DESKTOP)
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(cupid_desktop PRIVATE cupid_session cupid_debug_format cupid_gdb cupid_display_shaders cupid_settings_transfer comdlg32 shell32 gdi32 dwmapi ole32 uuid)
-  target_link_libraries(cupid_desktop PRIVATE d3d11 dxgi d3dcompiler)
+  target_link_libraries(cupid_desktop PRIVATE opengl32)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -324,8 +325,12 @@ if(BUILD_TESTING)
     target_include_directories(desktop_video_presenter_tests PRIVATE src)
     target_compile_features(desktop_video_presenter_tests PRIVATE cxx_std_20)
     target_compile_definitions(desktop_video_presenter_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(desktop_video_presenter_tests PRIVATE d3d11 dxgi d3dcompiler)
+    target_link_libraries(desktop_video_presenter_tests PRIVATE opengl32 gdi32)
     add_test(NAME desktop_gpu_presentation COMMAND desktop_video_presenter_tests)
+    add_test(NAME desktop_opengl_presentation COMMAND desktop_video_presenter_tests --hardware)
+    if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
+      set_tests_properties(desktop_opengl_presentation PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
   endif()
   if(TARGET cupid_linux_frontend)
     add_executable(linux_frontend_tests tests/desktop/linux/main.cpp
@@ -402,6 +407,18 @@ if(BUILD_TESTING)
   target_include_directories(desktop_audio_levels_tests PRIVATE src)
   target_compile_features(desktop_audio_levels_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_audio_levels COMMAND desktop_audio_levels_tests)
+  add_executable(desktop_audio_float_tests tests/desktop/audio_float.cpp
+    src/desktop/audio/audio.cpp src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
+  target_include_directories(desktop_audio_float_tests PRIVATE src)
+  target_compile_features(desktop_audio_float_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_audio_float COMMAND desktop_audio_float_tests)
+  if(WIN32 AND TARGET cupid_session)
+    add_executable(desktop_audio_stream_tests tests/desktop/audio_stream.cpp)
+    target_link_libraries(desktop_audio_stream_tests PRIVATE cupid_session)
+    target_compile_definitions(desktop_audio_stream_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    add_test(NAME desktop_audio_stream COMMAND desktop_audio_stream_tests)
+    set_tests_properties(desktop_audio_stream PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy")
+  endif()
   add_executable(desktop_controls_tests tests/desktop/controls/mapping.cpp
     src/desktop/controls/mapping.cpp src/desktop/controls/ports.cpp)
   target_link_libraries(desktop_controls_tests PRIVATE cupid_core)

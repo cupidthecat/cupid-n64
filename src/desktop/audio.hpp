@@ -4,6 +4,7 @@
 #include "desktop/audio/resampler.hpp"
 #include <array>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -22,9 +23,10 @@ public:
   void frequency(unsigned value);
   void clear();
   void play_saved_output();
+  void wait_interrupt(std::function<bool()> predicate);
   struct Settings {
     AudioLevels levels;
-    unsigned latency = 80;
+    unsigned latency = 40;
     std::wstring device;
   };
   struct Device {

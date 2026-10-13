@@ -16,7 +16,7 @@ int main() {
   test::equal(same_audio_endpoint(id, L"another-device"), false);
   test::equal(same_audio_endpoint(id, L""), false);
 
-  // Construction and control operations join the audio thread's COM work.
+  // Construction and endpoint recovery finish before submitting samples.
   auto output = make_audio_output({});
   const auto initial = output->devices();
   output->recover();

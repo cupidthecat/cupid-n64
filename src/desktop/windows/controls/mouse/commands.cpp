@@ -11,6 +11,12 @@ bool Window::has_mouse() const {
 }
 
 void Window::release_mouse() {
+  finish_advance();
+  {
+    std::lock_guard lock(input_mutex_);
+    for (auto &motion : worker_mouse_)
+      motion.clear();
+  }
   mouse_capture_pending_ = false;
   mouse_.release();
   if (session_)

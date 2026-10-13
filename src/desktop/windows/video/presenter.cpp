@@ -1,22 +1,11 @@
 #include "desktop/windows/video/presenter.hpp"
+#include "desktop/windows/video/opengl/functions.hpp"
 #include "renderer/video/settings.hpp"
 #include <algorithm>
-#include <cstring>
-#include <d3d11.h>
-#include <d3dcompiler.h>
-#include <dxgi1_2.h>
 #include <stdexcept>
-#include <wrl/client.h>
 
 namespace cupid::desktop {
 namespace {
-using Microsoft::WRL::ComPtr;
-
-void require(HRESULT result, const char *description) {
-  if (FAILED(result))
-    throw std::runtime_error(description);
-}
-
 LRESULT CALLBACK video_message(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
   if (message == WM_NCHITTEST)
     return HTTRANSPARENT;
@@ -31,50 +20,37 @@ LRESULT CALLBACK video_message(HWND window, UINT message, WPARAM wparam, LPARAM 
   return DefWindowProcW(window, message, wparam, lparam);
 }
 
-constexpr char shaders[] = R"(
-struct Vertex { float4 position : SV_Position; float2 uv : TEXCOORD0; };
-Vertex vertex(uint index : SV_VertexID) {
-  Vertex output;
-  output.uv = float2((index << 1) & 2, index & 2);
-  output.position = float4(output.uv * float2(2, -2) + float2(-1, 1), 0, 1);
-  return output;
-}
-Texture2D<float4> Image : register(t0);
-SamplerState Pixels : register(s0);
-float4 pixel(Vertex input) : SV_Target { return Image.Sample(Pixels, input.uv); }
-)";
-
-ComPtr<ID3DBlob> shader(const char *entry, const char *target) {
-  ComPtr<ID3DBlob> code, errors;
-  require(D3DCompile(shaders, sizeof(shaders) - 1, nullptr, nullptr, nullptr, entry, target,
-                     D3DCOMPILE_ENABLE_STRICTNESS | D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code,
-                     &errors),
-          "Could not compile the video presentation shader.");
-  return code;
+void check() {
+  if (glGetError() != GL_NO_ERROR)
+    throw std::runtime_error("OpenGL video presentation failed.");
 }
 } // namespace
 
 struct VideoPresenter::Implementation {
   HWND window = nullptr;
-  ComPtr<ID3D11Device> device;
-  ComPtr<ID3D11DeviceContext> context;
-  ComPtr<IDXGISwapChain> chain;
-  ComPtr<ID3D11RenderTargetView> target;
-  ComPtr<ID3D11Texture2D> texture;
-  ComPtr<ID3D11ShaderResourceView> image;
-  ComPtr<ID3D11VertexShader> vertex;
-  ComPtr<ID3D11PixelShader> pixel;
-  ComPtr<ID3D11SamplerState> sampler;
+  HDC display = nullptr;
+  HGLRC context = nullptr;
+  std::unique_ptr<opengl::Functions> gl;
+  opengl::Functions::SwapInterval swap_interval = nullptr;
+  GLuint texture = 0, framebuffer = 0;
   unsigned width = 0, height = 0, image_width = 0, image_height = 0;
   Viewport viewport{};
   std::string error;
   bool attempted = false;
+  bool blocking = false;
 
   ~Implementation() {
+    if (context && wglMakeCurrent(display, context)) {
+      if (framebuffer)
+        gl->delete_framebuffers(1, &framebuffer);
+      if (texture)
+        glDeleteTextures(1, &texture);
+      wglMakeCurrent(nullptr, nullptr);
+    }
     if (context)
-      context->ClearState();
-    target.Reset();
-    chain.Reset();
+      wglDeleteContext(context);
+    if (display)
+      ReleaseDC(window, display);
     if (IsWindow(window))
       DestroyWindow(window);
   }
@@ -84,79 +60,74 @@ struct VideoPresenter::Implementation {
     type.hInstance = GetModuleHandleW(nullptr);
     type.lpszClassName = L"CupidVideoSurface";
     type.lpfnWndProc = video_message;
+    type.style = CS_OWNDC;
     if (!RegisterClassW(&type) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
       throw std::runtime_error("Could not register the video surface.");
     window = CreateWindowW(type.lpszClassName, L"", WS_CHILD, 0, 0, 1, 1, parent, nullptr,
                            type.hInstance, nullptr);
-    if (!window)
+    if (!window || !(display = GetDC(window)))
       throw std::runtime_error("Could not create the video surface.");
-    ComPtr<IDXGIFactory1> factory;
-    require(CreateDXGIFactory1(IID_PPV_ARGS(&factory)), "Could not create the video factory.");
-    ComPtr<IDXGIAdapter1> selected;
-    SIZE_T memory = 0;
-    if (!software_device) {
-      for (UINT index = 0;; ++index) {
-        ComPtr<IDXGIAdapter1> adapter;
-        if (factory->EnumAdapters1(index, &adapter) == DXGI_ERROR_NOT_FOUND)
+    PIXELFORMATDESCRIPTOR format{};
+    format.nSize = sizeof(format);
+    format.nVersion = 1;
+    format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    format.iPixelType = PFD_TYPE_RGBA;
+    format.cColorBits = 32;
+    format.cAlphaBits = 8;
+    int selected = ChoosePixelFormat(display, &format);
+    if (software_device) {
+      selected = 0;
+      const auto count = DescribePixelFormat(display, 1, sizeof(format), &format);
+      for (int index = 1; index <= count; ++index) {
+        DescribePixelFormat(display, index, sizeof(format), &format);
+        if ((format.dwFlags &
+             (PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_GENERIC_FORMAT)) ==
+                (PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_GENERIC_FORMAT) &&
+            format.iPixelType == PFD_TYPE_RGBA && format.cColorBits >= 24) {
+          selected = index;
           break;
-        DXGI_ADAPTER_DESC1 description{};
-        if (adapter && SUCCEEDED(adapter->GetDesc1(&description)) &&
-            !(description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) &&
-            (!selected || description.DedicatedVideoMemory > memory)) {
-          selected = adapter;
-          memory = description.DedicatedVideoMemory;
         }
       }
     }
-    const D3D_FEATURE_LEVEL levels[]{D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1,
-                                     D3D_FEATURE_LEVEL_10_0};
-    require(D3D11CreateDevice(selected.Get(),
-                              software_device ? D3D_DRIVER_TYPE_WARP
-                              : selected      ? D3D_DRIVER_TYPE_UNKNOWN
-                                              : D3D_DRIVER_TYPE_HARDWARE,
-                              nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels,
-                              static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION, &device,
-                              nullptr, &context),
-            "Could not initialize GPU video presentation.");
-    const auto vs = shader("vertex", "vs_4_0"), ps = shader("pixel", "ps_4_0");
-    require(
-        device->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr, &vertex),
-        "Could not create the video vertex shader.");
-    require(device->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr, &pixel),
-            "Could not create the video pixel shader.");
-    D3D11_SAMPLER_DESC sampling{};
-    sampling.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
-    sampling.AddressU = sampling.AddressV = sampling.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    sampling.MaxLOD = D3D11_FLOAT32_MAX;
-    require(device->CreateSamplerState(&sampling, &sampler), "Could not create the pixel sampler.");
-    DXGI_SWAP_CHAIN_DESC swap{};
-    swap.BufferDesc.Width = swap.BufferDesc.Height = 1;
-    swap.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    swap.SampleDesc.Count = 1;
-    swap.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    swap.BufferCount = 2;
-    swap.OutputWindow = window;
-    swap.Windowed = TRUE;
-    swap.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    require(factory->CreateSwapChain(device.Get(), &swap, &chain),
-            "Could not create the video swap chain.");
-    factory->MakeWindowAssociation(parent, DXGI_MWA_NO_ALT_ENTER);
-    ComPtr<IDXGIDevice1> latency;
-    if (SUCCEEDED(device.As(&latency)))
-      latency->SetMaximumFrameLatency(1);
+    if (!selected || !DescribePixelFormat(display, selected, sizeof(format), &format) ||
+        !SetPixelFormat(display, selected, &format) || !(context = wglCreateContext(display)))
+      throw std::runtime_error("Could not initialize OpenGL video presentation.");
+    opengl::Context current(display, context);
+    if (!software_device) {
+      const int attributes[]{0x2091, 3, 0x2092, 2, 0x9126, 1, 0};
+      const auto create =
+          opengl::load<opengl::Functions::CreateContext>("wglCreateContextAttribsARB");
+      const auto core = create(display, nullptr, attributes);
+      if (!core)
+        throw std::runtime_error("Could not create the OpenGL 3.2 presentation context.");
+      wglMakeCurrent(nullptr, nullptr);
+      wglDeleteContext(context);
+      context = core;
+      if (!wglMakeCurrent(display, context))
+        throw std::runtime_error("Could not acquire the OpenGL presentation context.");
+      gl = std::make_unique<opengl::Functions>();
+      gl->gen_framebuffers(1, &framebuffer);
+      const auto swap = wglGetProcAddress("wglSwapIntervalEXT");
+      if (swap) {
+        swap_interval = reinterpret_cast<opengl::Functions::SwapInterval>(swap);
+        swap_interval(0);
+      }
+    }
+    glDisable(GL_BLEND);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, gl ? opengl::clamp_to_edge : GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, gl ? opengl::clamp_to_edge : GL_CLAMP);
+    check();
   }
 
   void resize(unsigned next_width, unsigned next_height) {
     if (width == next_width && height == next_height)
       return;
-    context->OMSetRenderTargets(0, nullptr, nullptr);
-    target.Reset();
-    require(chain->ResizeBuffers(0, next_width, next_height, DXGI_FORMAT_UNKNOWN, 0),
-            "Could not resize the video surface.");
-    ComPtr<ID3D11Texture2D> buffer;
-    require(chain->GetBuffer(0, IID_PPV_ARGS(&buffer)), "Could not obtain the video back buffer.");
-    require(device->CreateRenderTargetView(buffer.Get(), nullptr, &target),
-            "Could not create the video render target.");
     width = next_width;
     height = next_height;
     SetWindowPos(window, nullptr, 0, 0, static_cast<int>(width), static_cast<int>(height),
@@ -164,45 +135,74 @@ struct VideoPresenter::Implementation {
   }
 
   void upload(std::span<const std::uint8_t> pixels, unsigned next_width, unsigned next_height) {
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     if (image_width != next_width || image_height != next_height) {
-      ID3D11ShaderResourceView *unbound = nullptr;
-      context->PSSetShaderResources(0, 1, &unbound);
-      image.Reset();
-      texture.Reset();
-      D3D11_TEXTURE2D_DESC description{};
-      description.Width = next_width;
-      description.Height = next_height;
-      description.MipLevels = description.ArraySize = description.SampleDesc.Count = 1;
-      description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-      description.Usage = D3D11_USAGE_DEFAULT;
-      description.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-      require(device->CreateTexture2D(&description, nullptr, &texture),
-              "Could not allocate the video image.");
-      require(device->CreateShaderResourceView(texture.Get(), nullptr, &image),
-              "Could not create the video image view.");
+      glTexImage2D(GL_TEXTURE_2D, 0, gl ? opengl::rgba8 : GL_RGBA, static_cast<GLsizei>(next_width),
+                   static_cast<GLsizei>(next_height), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
       image_width = next_width;
       image_height = next_height;
+      if (gl) {
+        gl->bind_framebuffer(opengl::framebuffer, framebuffer);
+        gl->framebuffer_texture(opengl::framebuffer, opengl::color_attachment, GL_TEXTURE_2D,
+                                texture, 0);
+        if (gl->check_framebuffer(opengl::framebuffer) != opengl::framebuffer_complete)
+          throw std::runtime_error("Could not create the OpenGL image framebuffer.");
+        gl->bind_framebuffer(opengl::framebuffer, 0);
+      }
     }
-    context->UpdateSubresource(texture.Get(), 0, nullptr, pixels.data(), next_width * 4, 0);
+    if (gl) {
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(image_width),
+                      static_cast<GLsizei>(image_height), opengl::bgra, GL_UNSIGNED_BYTE,
+                      pixels.data());
+      gl->generate_mipmap(GL_TEXTURE_2D);
+    } else {
+      std::vector<std::uint8_t> rgba(pixels.begin(), pixels.end());
+      for (std::size_t offset = 0; offset < rgba.size(); offset += 4)
+        std::swap(rgba[offset], rgba[offset + 2]);
+      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, static_cast<GLsizei>(image_width),
+                      static_cast<GLsizei>(image_height), GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+    }
+    check();
   }
 
   void draw() {
-    const float black[]{0, 0, 0, 1};
-    context->ClearRenderTargetView(target.Get(), black);
-    const D3D11_VIEWPORT area{static_cast<float>(viewport.x),
-                              static_cast<float>(viewport.y),
-                              static_cast<float>(viewport.width),
-                              static_cast<float>(viewport.height),
-                              0,
-                              1};
-    context->RSSetViewports(1, &area);
-    context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context->VSSetShader(vertex.Get(), nullptr, 0);
-    context->PSSetShader(pixel.Get(), nullptr, 0);
-    context->PSSetShaderResources(0, 1, image.GetAddressOf());
-    context->PSSetSamplers(0, 1, sampler.GetAddressOf());
-    context->OMSetRenderTargets(1, target.GetAddressOf(), nullptr);
-    context->Draw(3, 0);
+    if (gl)
+      gl->bind_framebuffer(opengl::draw_framebuffer, 0);
+    glDrawBuffer(GL_BACK);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    const auto bottom = static_cast<GLint>(height - viewport.y - viewport.height);
+    if (gl) {
+      gl->bind_framebuffer(opengl::read_framebuffer, framebuffer);
+      gl->blit_framebuffer(
+          0, static_cast<GLint>(image_height), static_cast<GLint>(image_width), 0,
+          static_cast<GLint>(viewport.x), bottom, static_cast<GLint>(viewport.x + viewport.width),
+          bottom + static_cast<GLint>(viewport.height), GL_COLOR_BUFFER_BIT, GL_NEAREST);
+      gl->bind_framebuffer(opengl::read_framebuffer, 0);
+    } else {
+      glViewport(static_cast<GLint>(viewport.x), bottom, static_cast<GLsizei>(viewport.width),
+                 static_cast<GLsizei>(viewport.height));
+      glEnable(GL_TEXTURE_2D);
+      glBindTexture(GL_TEXTURE_2D, texture);
+      glMatrixMode(GL_PROJECTION);
+      glLoadIdentity();
+      glMatrixMode(GL_MODELVIEW);
+      glLoadIdentity();
+      glColor4f(1, 1, 1, 1);
+      glBegin(GL_QUADS);
+      glTexCoord2f(0, 1);
+      glVertex2f(-1, -1);
+      glTexCoord2f(1, 1);
+      glVertex2f(1, -1);
+      glTexCoord2f(1, 0);
+      glVertex2f(1, 1);
+      glTexCoord2f(0, 0);
+      glVertex2f(-1, 1);
+      glEnd();
+      glDisable(GL_TEXTURE_2D);
+    }
+    check();
   }
 };
 
@@ -227,7 +227,7 @@ bool VideoPresenter::initialize(HWND parent, bool software_device) {
 
 bool VideoPresenter::present(std::span<const std::uint8_t> pixels, unsigned width, unsigned height,
                              unsigned viewport_width, unsigned viewport_height, DisplayScale scale,
-                             DisplayAspect aspect) {
+                             DisplayAspect aspect, bool blocking) {
   if (!available())
     return false;
   auto &state = *implementation_;
@@ -236,12 +236,19 @@ bool VideoPresenter::present(std::span<const std::uint8_t> pixels, unsigned widt
         width > n64::maximum_frame_width || height > n64::maximum_frame_height ||
         pixels.size() != std::size_t(width) * height * 4)
       throw std::runtime_error("The video presentation image has invalid dimensions.");
+    opengl::Context current(state.display, state.context);
+    if (state.swap_interval && state.blocking != blocking) {
+      if (!state.swap_interval(blocking ? 1 : 0))
+        throw std::runtime_error("Could not change the OpenGL swap interval.");
+      state.blocking = blocking;
+    }
     state.resize(viewport_width, viewport_height);
     state.upload(pixels, width, height);
     state.viewport = image_viewport(width, height, viewport_width, viewport_height, scale, aspect);
     state.draw();
     ShowWindow(state.window, SW_SHOWNOACTIVATE);
-    require(state.chain->Present(0, 0), "GPU video presentation failed.");
+    if (!SwapBuffers(state.display))
+      throw std::runtime_error("Could not swap the OpenGL video buffers.");
     return true;
   } catch (const std::exception &exception) {
     state.error = exception.what();
@@ -252,36 +259,26 @@ bool VideoPresenter::present(std::span<const std::uint8_t> pixels, unsigned widt
 
 std::vector<std::uint8_t> VideoPresenter::capture() {
   auto &state = *implementation_;
-  if (!available() || !state.target || !state.image)
+  if (!available() || !state.image_width || !state.image_height)
     return {};
+  opengl::Context current(state.display, state.context);
   state.draw();
-  ComPtr<ID3D11Texture2D> buffer, staging;
-  require(state.chain->GetBuffer(0, IID_PPV_ARGS(&buffer)),
-          "Could not obtain the captured surface.");
-  D3D11_TEXTURE2D_DESC description{};
-  buffer->GetDesc(&description);
-  description.Usage = D3D11_USAGE_STAGING;
-  description.BindFlags = 0;
-  description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-  description.MiscFlags = 0;
-  require(state.device->CreateTexture2D(&description, nullptr, &staging),
-          "Could not create the presentation capture.");
-  state.context->CopyResource(staging.Get(), buffer.Get());
-  D3D11_MAPPED_SUBRESOURCE mapped{};
-  require(state.context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped),
-          "Could not read the presentation capture.");
+  glReadBuffer(GL_BACK);
   std::vector<std::uint8_t> pixels(std::size_t(state.width) * state.height * 4);
-  for (unsigned row = 0; row < state.height; ++row)
-    std::memcpy(pixels.data() + std::size_t(row) * state.width * 4,
-                static_cast<const std::uint8_t *>(mapped.pData) +
-                    std::size_t(row) * mapped.RowPitch,
-                std::size_t(state.width) * 4);
-  state.context->Unmap(staging.Get(), 0);
+  glReadPixels(0, 0, static_cast<GLsizei>(state.width), static_cast<GLsizei>(state.height), GL_RGBA,
+               GL_UNSIGNED_BYTE, pixels.data());
+  check();
+  const auto pitch = std::size_t(state.width) * 4;
+  for (unsigned row = 0; row < state.height / 2; ++row)
+    std::swap_ranges(pixels.begin() + row * pitch, pixels.begin() + (row + 1) * pitch,
+                     pixels.begin() + (state.height - row - 1) * pitch);
+  for (std::size_t offset = 0; offset < pixels.size(); offset += 4)
+    std::swap(pixels[offset], pixels[offset + 2]);
   return pixels;
 }
 
 bool VideoPresenter::available() const {
-  return implementation_->chain && implementation_->error.empty();
+  return implementation_->context && implementation_->error.empty();
 }
 
 const std::string &VideoPresenter::error() const {

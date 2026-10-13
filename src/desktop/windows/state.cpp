@@ -122,13 +122,17 @@ void Window::status_error(std::wstring_view action, const std::exception &error)
 }
 
 void Window::refresh_frame() {
+  refresh_frame(session_->frame);
+}
+
+void Window::refresh_frame(const n64::VideoFrame &frame) {
   const bool available = !pixels_.empty();
-  const auto shown = shader_.apply(session_->frame);
+  const auto shown = shader_.apply(frame);
   pixels_.assign(shown.begin(), shown.end());
   if (shader_.error().empty() != shader_message_.empty())
     update_shader();
-  pixel_width_ = session_->frame.width;
-  pixel_height_ = session_->frame.height;
+  pixel_width_ = frame.width;
+  pixel_height_ = frame.height;
   for (std::size_t offset = 0; offset < pixels_.size(); offset += 4)
     std::swap(pixels_[offset], pixels_[offset + 2]);
   if (available != !pixels_.empty())

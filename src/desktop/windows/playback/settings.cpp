@@ -2,7 +2,6 @@
 #include "desktop/windows/commands.hpp"
 #include "desktop/windows/window.hpp"
 #include <algorithm>
-#include <dwmapi.h>
 #include <stdexcept>
 
 namespace cupid::desktop {
@@ -22,11 +21,11 @@ void Window::load_playback_settings() {
   const auto balance =
       static_cast<int>(GetPrivateProfileIntW(L"Audio", L"Balance", 0, settings_.c_str()));
   audio.levels.balance = balance >= -100 && balance <= 100 ? balance : 0;
-  const auto latency = GetPrivateProfileIntW(L"Audio", L"Latency", 80, settings_.c_str());
+  const auto latency = GetPrivateProfileIntW(L"Audio", L"Latency", 40, settings_.c_str());
   audio.latency =
       std::find(audio_latencies.begin(), audio_latencies.end(), latency) != audio_latencies.end()
           ? latency
-          : 80;
+          : 40;
   std::array<wchar_t, 32768> device{};
   GetPrivateProfileStringW(L"Audio", L"Device", L"", device.data(),
                            static_cast<DWORD>(device.size()), settings_.c_str());
@@ -190,17 +189,6 @@ bool Window::playback_settings_command(unsigned id) {
   update_playback_settings();
   InvalidateRect(window_, nullptr, FALSE);
   return true;
-}
-
-bool Window::wait_for_video() {
-  if (fast_forward_ || playback_sync_ != PlaybackSync::Video || !video_sync_available_)
-    return false;
-  if (SUCCEEDED(DwmFlush()))
-    return true;
-  video_sync_available_ = false;
-  state_message_ = L"Monitor synchronization unavailable; using normal playback timing.";
-  InvalidateRect(window_, nullptr, FALSE);
-  return false;
 }
 
 } // namespace cupid::desktop

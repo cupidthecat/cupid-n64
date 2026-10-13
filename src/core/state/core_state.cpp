@@ -253,9 +253,11 @@ void CoreState::visit(state::Archive &a, Cpu &c) {
       a.indexed_label(name, index, "words", 4);
       a.array(line.words);
       a.indexed_label(name, index, "tag", 4);
-      a.field(line.tag);
+      const auto tag = a.literal(line.tag());
+      state::Archive::require(!(tag & 0xfff));
       a.indexed_label(name, index, "valid");
-      a.field(line.valid);
+      const auto valid = a.literal(line.valid());
+      a.defer([&line, tag, valid] { line.tag_key = tag | unsigned(valid); });
       a.indexed_label(name, index, "dirty");
       a.field(line.dirty);
     }

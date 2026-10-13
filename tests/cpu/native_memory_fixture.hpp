@@ -6,8 +6,8 @@
 namespace test::native_memory {
 using namespace cupid::n64;
 
-struct CachedMemory : Memory {
-  std::array<std::uint32_t, 2048> words{};
+template <std::size_t Words> struct SizedCachedMemory : Memory {
+  std::array<std::uint32_t, Words> words{};
   std::span<const std::uint32_t> instruction_data(std::uint32_t address) const override {
     return address < sizeof(words) ? std::span(words).subspan(address >> 2)
                                    : std::span<const std::uint32_t>();
@@ -29,10 +29,12 @@ struct CachedMemory : Memory {
   }
 };
 
-struct CachedFixture {
-  CachedMemory memory;
+using CachedMemory = SizedCachedMemory<2048>;
+
+template <typename CachedBus> struct SizedCachedFixture {
+  CachedBus memory;
   Cpu cpu{memory};
-  CachedFixture() {
+  SizedCachedFixture() {
     cpu.write_control(Status, 0x30000000);
     cpu.set_pc(0xffffffff80001000);
     for (unsigned n = 0; n < 1024; ++n)
@@ -43,7 +45,11 @@ struct CachedFixture {
   }
 };
 
-inline void compare(CachedFixture &actual, CachedFixture &expected, bool timing = true) {
+using CachedFixture = SizedCachedFixture<CachedMemory>;
+
+template <typename CachedBus>
+inline void compare(SizedCachedFixture<CachedBus> &actual, SizedCachedFixture<CachedBus> &expected,
+                    bool timing = true) {
   const auto &a = actual.cpu.state();
   const auto &b = expected.cpu.state();
   equal(a.pc, b.pc);

@@ -131,7 +131,7 @@ Settings load_settings(const std::filesystem::path &path) {
   settings.session.memory.expansion = document.flag("Memory", "Expansion", true);
   settings.audio.levels.volume = document.number("Audio", "Volume", 100);
   settings.audio.levels.balance = document.signed_number("Audio", "Balance", 0);
-  settings.audio.latency = document.number("Audio", "Latency", 80);
+  settings.audio.latency = document.number("Audio", "Latency", 40);
   settings.audio.device = wide(document.text("Audio", "Device"));
   settings.muted = document.flag("Audio", "Muted", false);
   settings.feedback = document.flag("Input", "Feedback", true);

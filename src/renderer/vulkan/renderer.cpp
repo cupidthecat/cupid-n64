@@ -43,6 +43,7 @@ HardwareRenderer::Implementation::~Implementation() {
   if (processor) {
     processor->idle();
     ram.bind_hidden({});
+    processor.reset();
   }
 }
 

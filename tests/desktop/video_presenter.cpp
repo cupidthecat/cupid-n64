@@ -4,7 +4,8 @@
 
 using namespace cupid::desktop;
 
-int main() {
+int main(int argc, char **) {
+  const bool software = argc == 1;
   const auto parent = CreateWindowW(L"STATIC", L"video test", WS_OVERLAPPEDWINDOW, 0, 0, 120, 120,
                                     nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
   test::equal(parent != nullptr, true);
@@ -12,7 +13,18 @@ int main() {
     return 1;
   {
     VideoPresenter video;
-    test::equal(video.initialize(parent, true), true);
+    const bool initialized = video.initialize(parent, software);
+    if (!initialized && !software) {
+      std::cerr << video.error() << '\n';
+      DestroyWindow(parent);
+      return 77;
+    }
+    test::equal(initialized, true);
+    if (!initialized) {
+      std::cerr << video.error() << '\n';
+      DestroyWindow(parent);
+      return 1;
+    }
     const std::array<std::uint8_t, 16> image{0,   0, 255, 255, 0,   255, 0,   255,
                                              255, 0, 0,   255, 255, 255, 255, 255};
     test::equal(video.present(image, 2, 2, 64, 48, DisplayScale::Stretch, DisplayAspect::Standard),
@@ -32,6 +44,19 @@ int main() {
     check(64, 56, 8, {0, 255, 0, 255});
     check(64, 8, 40, {255, 0, 0, 255});
     check(64, 56, 40, {255, 255, 255, 255});
+    const std::array<std::uint8_t, 24> resized{0,   0, 255, 255, 0,   255, 0,   255,
+                                               255, 0, 0,   255, 255, 255, 255, 255,
+                                               0,   0, 0,   255, 0,   255, 255, 255};
+    if (!software) {
+      test::equal(
+          video.present(resized, 3, 2, 90, 60, DisplayScale::Stretch, DisplayAspect::Pixels), true);
+      pixels = video.capture();
+      test::equal(pixels.size(), 90 * 60 * 4);
+      check(90, 15, 15, {0, 0, 255, 255});
+      check(90, 75, 15, {255, 0, 0, 255});
+      check(90, 15, 45, {255, 255, 255, 255});
+      check(90, 75, 45, {0, 255, 255, 255});
+    }
     test::equal(video.present(image, 2, 2, 80, 80, DisplayScale::Fit, DisplayAspect::Standard),
                 true);
     pixels = video.capture();

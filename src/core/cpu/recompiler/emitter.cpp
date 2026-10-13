@@ -6,7 +6,26 @@ namespace cupid::n64 {
 CpuCompiler::Emitter::Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc,
                               std::uint32_t physical, bool wide, bool tracing, bool diagnostics)
     : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), start_pc(pc), pc(pc),
-      physical(physical), wide(wide), tracing(tracing), diagnostics(diagnostics) {}
+      physical(physical), wide(wide), tracing(tracing), diagnostics(diagnostics),
+      memory_mode(block.key.mode & Impl::MemoryModes) {
+  // Secondary entries and loop backedges must retain the same stack alignment guarantees.
+  for (const auto instruction : block.words) {
+    const auto opcode = instruction >> 26;
+    const auto info = block_instruction(instruction);
+    if (info.writes_gp)
+      memory_mode &= ~(Impl::GpOffsetRange | Impl::GpAligned4 | Impl::GpAligned8);
+    if (info.writes_sp) {
+      if ((opcode != 9 && opcode != 25) || ((instruction >> 21) & 31) != 29) {
+        memory_mode &= ~(Impl::SpAligned4 | Impl::SpAligned8);
+        continue;
+      }
+      if (instruction & 3)
+        memory_mode &= ~Impl::SpAligned4;
+      if (instruction & 7)
+        memory_mode &= ~Impl::SpAligned8;
+    }
+  }
+}
 
 CpuCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);
@@ -65,9 +84,9 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
     }
     ++cpu->instruction_cache_generation_;
     cpu->advance_clocks(96);
-    line.tag = physical & ~0xfffu;
+    line.set_tag(physical & ~0xfffu);
     line.dirty = false;
-    line.valid = true;
+    line.set_valid(true);
     std::copy_n(data.begin(), line.words.size(), line.words.begin());
   } else if (!cpu->fill(line, physical, index, true)) {
     return 0;
@@ -124,11 +143,9 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   advance(cycles);
   cycles = 0;
   const auto &line = cpu.icache_[(pc >> 5) & 511];
-  op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&line.valid));
-  const auto invalid = sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
-  const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, field(&line.tag).type,
-                                  field(&line.tag).value, SLJIT_IMM, address & ~0xfffu);
-  sljit_set_label(invalid, sljit_emit_label(compiler));
+  const auto key = field(&line.tag_key);
+  const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, key.type, key.value, SLJIT_IMM,
+                                  (address & ~0xfffu) | 1);
   const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
   auto &view = block.views.emplace_back();
   view.count = static_cast<unsigned>(

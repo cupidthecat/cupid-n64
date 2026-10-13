@@ -1,10 +1,12 @@
 #pragma once
 
 #include "core/rsp/recompiler.hpp"
+#include "core/rsp/recompiler/constants.hpp"
 #include "core/rsp/rsp.hpp"
 #include <bit>
 #include <bitset>
 #include <cstddef>
+#include <optional>
 #include <sljitLir.h>
 #include <unordered_map>
 #include <vector>
@@ -96,6 +98,10 @@ struct RspCompiler::Emitter {
   Rsp::Pipeline pipeline;
   std::uint32_t start;
   unsigned cycles = 0;
+  RspConstants constants;
+  std::optional<std::uint32_t> vector_base;
+  std::uint32_t vector_window_base = 0;
+  std::uint32_t vector_window_offset = 0;
   bool tracing;
   bool diagnostics;
   std::vector<Exit> exits;
@@ -118,6 +124,7 @@ struct RspCompiler::Emitter {
   static Operand vector_byte(unsigned index, unsigned byte);
   static Operand vector_half(unsigned index, unsigned lane);
   void vector_address(unsigned offset, bool window = false);
+  Operand vector_location(unsigned offset, bool window = false);
   bool branch(std::uint32_t instruction, std::uint32_t pc);
   void instruction(std::uint32_t instruction, std::uint32_t pc, bool branch, bool delay);
   void commit(std::uint32_t pc, bool branch);

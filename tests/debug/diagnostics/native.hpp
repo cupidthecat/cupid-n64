@@ -44,7 +44,7 @@ struct DiagnosticRefillMemory : test::native_memory::CachedMemory {
   BusWrite read_burst(std::uint32_t address, std::span<std::uint32_t> output) override {
     if (wrote && fail_fill)
       return {0, false};
-    return CachedMemory::read_burst(address, output);
+    return test::native_memory::CachedMemory::read_burst(address, output);
   }
   BusWrite write(std::uint32_t address, unsigned bytes, std::uint64_t value) override {
     wrote = true;

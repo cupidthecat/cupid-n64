@@ -32,6 +32,13 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   if (!ram_bytes)
     return false;
   const bool little = cpu.reverse_endian();
+  const bool range_known = source == 28 && (memory_mode & Impl::GpOffsetRange);
+  const bool aligned4 = (source == 28 && (memory_mode & Impl::GpAligned4)) ||
+                        (source == 29 && (memory_mode & Impl::SpAligned4));
+  const bool aligned8 = (source == 28 && (memory_mode & Impl::GpAligned8)) ||
+                        (source == 29 && (memory_mode & Impl::SpAligned8));
+  const bool alignment_known = bytes == 1 || (bytes <= 4 && aligned4 && !(offset & (bytes - 1))) ||
+                               (bytes == 8 && aligned8 && !(offset & 7));
   const auto address = [&] {
     op2(SLJIT_ADD, reg(SLJIT_R0), gpr(source), imm(offset));
     op2(SLJIT_SUB, reg(SLJIT_R1), reg(SLJIT_R0), imm(0xffffffff80000000ull));
@@ -53,18 +60,18 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   commit_pipeline();
   SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};
   address();
-  path.enter.push_back(
-      sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, ram_bytes - 1));
-  if (bytes > 1 && !partial) {
+  if (!range_known)
+    path.enter.push_back(
+        sljit_emit_cmp(compiler, SLJIT_GREATER, SLJIT_R1, 0, SLJIT_IMM, ram_bytes - 1));
+  if (!alignment_known && !partial) {
     op2(SLJIT_AND, reg(SLJIT_R2), reg(SLJIT_R1), imm(bytes - 1));
     path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL, SLJIT_R2, 0, SLJIT_IMM, 0));
   }
   line();
-  op1(SLJIT_MOV_U8, reg(SLJIT_R3), {SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, valid)});
-  path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_R3, 0, SLJIT_IMM, 0));
   op2(SLJIT_AND, reg(SLJIT_R3), reg(SLJIT_R1), imm(~0xfffull));
+  op2(SLJIT_OR | SLJIT_32, reg(SLJIT_R3), reg(SLJIT_R3), imm(1));
   path.enter.push_back(sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R3, 0,
-                                      SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, tag)));
+                                      SLJIT_MEM1(SLJIT_R2), offsetof(Cpu::CacheLine, tag_key)));
   if (diagnostics && !partial) {
     op1(SLJIT_MOV, reg(SLJIT_R2), reg(SLJIT_R1));
     op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));

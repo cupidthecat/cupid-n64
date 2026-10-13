@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <exception>
 #include <functional>
@@ -9,7 +10,7 @@
 
 namespace cupid::desktop {
 
-// One owned execution interval at a time. The caller joins it before changing the session.
+// The caller joins the owned task before changing its session.
 class ExecutionWorker {
 public:
   ExecutionWorker();
@@ -18,11 +19,13 @@ public:
   ExecutionWorker &operator=(const ExecutionWorker &) = delete;
   void notify(std::function<void()> callback);
   void submit(std::function<void()> task);
+  void repeat(std::function<bool()> iteration);
   bool ready() const;
   void wait();
-  void interrupt() noexcept {
-    interrupted_.store(true, std::memory_order_relaxed);
-  }
+  void interrupt() noexcept;
+  bool wait_until(const std::function<bool()> &resume);
+  bool wait_for(std::chrono::milliseconds duration);
+  void wake();
   bool interrupted() const noexcept {
     return interrupted_.load(std::memory_order_relaxed);
   }
