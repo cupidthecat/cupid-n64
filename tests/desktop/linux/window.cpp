@@ -29,6 +29,9 @@ struct WindowTestAccess {
   static bool ready(const Window &window) {
     return window.execution_.ready();
   }
+  static bool video(const Window &window) {
+    return window.video_available_;
+  }
   static unsigned frames(const Window &window) {
     return window.observed_frames_;
   }
@@ -42,7 +45,7 @@ struct WindowTestAccess {
     return window.pixels_;
   }
   static bool queued(Window &window) {
-    return bool(window.completed_fields_->take());
+    return bool(window.completed_fields_.take());
   }
   static void mouse(Window &window, std::int32_t x, std::int32_t y) {
     window.controllers_[0] = ControllerType::Mouse;
@@ -206,13 +209,17 @@ void playback_ownership(const std::filesystem::path &directory) {
   Window blocked({}, {}, false);
   WindowTestAccess::attach(blocked, directory);
   WindowTestAccess::start(blocked);
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  const auto producer_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (WindowTestAccess::refreshes(blocked) < 4 &&
+         std::chrono::steady_clock::now() < producer_deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  test::equal(WindowTestAccess::refreshes(blocked) >= 4, true);
   test::equal(WindowTestAccess::running(blocked), true);
   test::equal(WindowTestAccess::ready(blocked), false);
   const auto joined = std::chrono::steady_clock::now();
   WindowTestAccess::finish(blocked);
   test::equal(std::chrono::steady_clock::now() - joined < std::chrono::seconds(1), true);
-  test::equal(WindowTestAccess::frames(blocked), 3);
+  test::equal(WindowTestAccess::frames(blocked) > 3, true);
   test::equal(WindowTestAccess::queued(blocked), false);
 
   changing_video(directory, true);
@@ -438,6 +445,7 @@ void linux_window_tests(bool hardware) {
           return G_SOURCE_REMOVE;
         key(window, GDK_KEY_F5);
         test::equal(WindowTestAccess::running(*observation.owner), false);
+        test::equal(WindowTestAccess::video(*observation.owner), true);
         const auto path = observation.directory / "game.z64.states" / "slot-1.state";
         const auto saved = read_file(path, 256 * 1024 * 1024);
         const auto menu = find(window, [](GtkWidget *widget) {

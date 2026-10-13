@@ -369,6 +369,13 @@ if(BUILD_TESTING)
     endif()
   endif()
   if(TARGET cupid_linux_frontend)
+    add_executable(linux_video_presenter_tests tests/desktop/linux/video_presenter.cpp)
+    target_link_libraries(linux_video_presenter_tests PRIVATE cupid_linux_video cupid_frame_readback
+      PkgConfig::cupid_epoxy PkgConfig::cupid_x11 Threads::Threads)
+    target_compile_options(linux_video_presenter_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME linux_opengl_presentation COMMAND linux_video_presenter_tests)
+    set_tests_properties(linux_opengl_presentation PROPERTIES TIMEOUT 30
+      ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
     add_executable(linux_frontend_tests tests/desktop/linux/main.cpp
       tests/desktop/linux/settings.cpp tests/desktop/linux/input.cpp tests/desktop/linux/audio.cpp
       tests/desktop/linux/window.cpp)
@@ -379,12 +386,15 @@ if(BUILD_TESTING)
     add_test(NAME linux_frontend_audio COMMAND linux_frontend_tests --audio)
     set_tests_properties(linux_frontend_audio PROPERTIES TIMEOUT 15)
     add_test(NAME linux_frontend_window COMMAND linux_frontend_tests --window)
-    set_tests_properties(linux_frontend_window PROPERTIES TIMEOUT 45)
+    set_tests_properties(linux_frontend_window PROPERTIES TIMEOUT 45
+      ENVIRONMENT "GDK_BACKEND=x11;LIBGL_ALWAYS_SOFTWARE=1;G_DEBUG=fatal-warnings")
     add_test(NAME linux_frontend_playback COMMAND linux_frontend_tests --playback)
     set_tests_properties(linux_frontend_playback PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 15)
     if(CUPID_HARDWARE_RENDERER)
       add_test(NAME linux_frontend_hardware_window COMMAND linux_frontend_tests --hardware)
       set_tests_properties(linux_frontend_hardware_window PROPERTIES TIMEOUT 60 RESOURCE_LOCK vulkan)
+      set_tests_properties(linux_frontend_hardware_window PROPERTIES
+        ENVIRONMENT "GDK_BACKEND=x11;LIBGL_ALWAYS_SOFTWARE=1;G_DEBUG=fatal-warnings")
     endif()
   endif()
   cupid_add_core_test(gdb_tests gdb_test_entry tests/debug/gdb/main.cpp)

@@ -4,10 +4,11 @@
 #include "desktop/launch/options.hpp"
 #include "desktop/linux/controls/input.hpp"
 #include "desktop/linux/settings/settings.hpp"
+#include "desktop/linux/video/presenter.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/slots.hpp"
-#include "desktop/timing/execution_output.hpp"
 #include "desktop/timing/playback_clock.hpp"
+#include "desktop/video/frame_delivery.hpp"
 #include <atomic>
 #include <gtk/gtk.h>
 #include <mutex>
@@ -63,11 +64,14 @@ private:
   bool synchronous_tick();
   void start_playback();
   void finish_playback();
-  void drain_playback();
+  bool drain_playback();
   void publish_inputs();
   PlayerInputs take_inputs();
   void cache_session();
   void refresh_frame(const n64::VideoFrame &frame);
+  void initialize_video();
+  VideoSurface video_surface() const;
+  void refresh_presented_image();
   bool stopped() const;
   PlayerInputs inputs(bool scripted = true);
   void draw(cairo_t *context);
@@ -104,7 +108,6 @@ private:
   struct CompletedField {
     unsigned frame = 0;
     std::uint64_t clocks = 0;
-    n64::VideoFrame image;
     std::array<FeedbackState, 4> feedback{};
   };
   unsigned observed_frames_ = 0;
@@ -118,7 +121,9 @@ private:
   std::atomic<std::uint64_t> refresh_count_{0};
   std::uint64_t observed_refreshes_ = 0;
   std::atomic<n64::HostControl> worker_control_{n64::HostControl::None};
-  std::unique_ptr<ExecutionOutput<CompletedField>> completed_fields_;
+  FrameDelivery<CompletedField> completed_fields_;
+  VideoPresenter video_;
+  bool video_available_ = false;
   // Join execution before destroying the session and other captured members.
   ExecutionWorker execution_;
 };

@@ -1,4 +1,7 @@
 #include "desktop/linux/window.hpp"
+#include <gdk/gdkx.h>
+#undef None
+#include <algorithm>
 #include <stdexcept>
 
 namespace cupid::desktop::linux_host {
@@ -24,6 +27,37 @@ void Window::refresh_frame(const n64::VideoFrame &frame) {
     std::swap(pixels_[n], pixels_[n + 2]);
   frame_width_ = frame.width;
   frame_height_ = frame.height;
+}
+
+VideoSurface Window::video_surface() const {
+  const auto factor = drawing_ ? gtk_widget_get_scale_factor(drawing_) : 1;
+  const auto width = drawing_ ? gtk_widget_get_allocated_width(drawing_) * factor : 1;
+  const auto height = drawing_ ? gtk_widget_get_allocated_height(drawing_) * factor : 1;
+  return {static_cast<unsigned>(std::max(1, width)), static_cast<unsigned>(std::max(1, height)),
+          settings_.scale, settings_.aspect, settings_.sync == PlaybackSync::Video};
+}
+
+void Window::initialize_video() {
+  finish_playback();
+  if (!drawing_)
+    return;
+  auto window = gtk_widget_get_window(drawing_);
+  if (!window || !GDK_IS_X11_DISPLAY(gdk_window_get_display(window)) ||
+      !gdk_window_ensure_native(window))
+    return;
+  gdk_display_sync(gdk_window_get_display(window));
+  video_available_ = video_.initialize(gdk_x11_window_get_xid(window));
+  if (video_available_)
+    video_.prepare(video_surface());
+}
+
+void Window::refresh_presented_image() {
+  auto image = completed_fields_.take_image();
+  if (!image)
+    return;
+  pixels_ = std::move(image->pixels);
+  frame_width_ = image->width;
+  frame_height_ = image->height;
 }
 
 void Window::publish_inputs() {
@@ -52,29 +86,67 @@ void Window::start_playback() {
   cache_session();
   publish_inputs();
   worker_control_ = n64::HostControl::None;
-  session_->observe_frames([this](unsigned field) {
-    if ((options_.frames && field > options_.frames) || !completed_fields_->writable())
+  const auto surface = video_surface();
+  if (video_available_) {
+    video_.prepare(surface);
+    video_.show(true);
+  }
+  session_->connect_present([this, surface](unsigned field, const n64::VideoFrame &frame) {
+    if (options_.frames && field > options_.frames)
       return;
-    session_->finish_frame();
+    FrameDelivery<CompletedField>::Presented output;
+    FrameDelivery<CompletedField>::Image image;
+    image.pixels = frame.rgba;
+    image.width = frame.width;
+    image.height = frame.height;
+    for (std::size_t offset = 0; offset < image.pixels.size(); offset += 4)
+      std::swap(image.pixels[offset], image.pixels[offset + 2]);
+    output.image_valid = !image.pixels.empty();
+    output.completion.result.presented =
+        video_.render(image.pixels, image.width, image.height, surface);
+    output.completion.result.available = video_.available();
+    output.completion.result.error = video_.error();
+    output.completion.result.width = image.width;
+    output.completion.result.height = image.height;
+    output.completion.completed = PlaybackClock::Clock::now();
+    completed_fields_.presented(field, std::move(output), std::move(image));
+  });
+  auto ready = std::make_shared<std::vector<CompletedField>>();
+  session_->observe_frames([this, ready](unsigned field) {
+    if (options_.frames && field > options_.frames)
+      return;
     CompletedField output;
     output.frame = field;
-    output.clocks = session_->clocks();
-    output.image = session_->frame;
-    for (unsigned port = 0; port < output.feedback.size(); ++port)
-      output.feedback[port] = session_->feedback_state(port);
-    completed_fields_->publish(std::move(output));
+    ready->push_back(std::move(output));
   });
   advancing_ = true;
   try {
-    execution_.repeat([this, clock = clock_, sync = settings_.sync]() mutable {
+    execution_.repeat([this, clock = clock_, sync = settings_.sync, ready]() mutable {
       auto selected = take_inputs();
       if (options_.test_input && session_->frames >= 120 && session_->frames % 120 < 60)
         selected[0].buttons |= 0x1000;
       session_->input(selected);
       session_->clear_refresh();
       const auto origin = session_->clocks();
+      const auto publish = [&] {
+        for (auto &output : *ready) {
+          const auto field = output.frame;
+          output.clocks = session_->clocks();
+          for (unsigned port = 0; port < output.feedback.size(); ++port)
+            output.feedback[port] = session_->feedback_state(port);
+          completed_fields_.metadata(field, std::move(output));
+        }
+        ready->clear();
+      };
       do {
-        session_->run();
+        try {
+          session_->run();
+        } catch (...) {
+          const auto failure = std::current_exception();
+          publish();
+          std::rethrow_exception(failure);
+        }
+        publish();
         const auto control = session_->diagnostics().take_control();
         if (control == n64::HostControl::Exit) {
           worker_control_ = control;
@@ -100,21 +172,29 @@ void Window::start_playback() {
   } catch (...) {
     advancing_ = false;
     session_->observe_frames({});
+    session_->connect_present({});
     throw;
   }
 }
 
-void Window::drain_playback() {
+bool Window::drain_playback() {
+  bool consumed_output = false;
   for (unsigned consumed = 0; consumed < 3; ++consumed) {
-    auto output = completed_fields_->take();
+    auto output = completed_fields_.take();
     if (!output)
       break;
-    observed_frames_ = output->frame;
-    feedback_state_ = output->feedback;
-    refresh_frame(output->image);
+    observed_frames_ = output->metadata.frame;
+    feedback_state_ = output->metadata.feedback;
+    refresh_presented_image();
+    const bool lost_video = video_available_ && !output->presentation.completion.result.available;
+    video_available_ = output->presentation.completion.result.available;
     last_frame_ = PlaybackClock::Clock::now();
     refresh(false);
+    consumed_output = true;
+    if (lost_video && advancing_)
+      finish_playback();
   }
+  refresh_presented_image();
   const auto refreshed = refresh_count_.load();
   if (refreshed != observed_refreshes_) {
     observed_refreshes_ = refreshed;
@@ -122,6 +202,7 @@ void Window::drain_playback() {
   }
   input_.rumble(feedback_targets(settings_.mappings, feedback_.update(feedback_state_), host_,
                                  settings_.feedback && !stopped()));
+  return consumed_output;
 }
 
 void Window::finish_playback() {
@@ -134,9 +215,23 @@ void Window::finish_playback() {
   } catch (...) {
     failure = std::current_exception();
   }
+  try {
+    session_->wait_presented();
+  } catch (...) {
+    if (!failure)
+      failure = std::current_exception();
+  }
   session_->observe_frames({});
+  try {
+    session_->connect_present({});
+  } catch (...) {
+    if (!failure)
+      failure = std::current_exception();
+  }
   advancing_ = false;
-  drain_playback();
+  while (drain_playback()) {
+  }
+  video_.show(video_available_ && !pixels_.empty());
   if (failure)
     std::rethrow_exception(failure);
 }

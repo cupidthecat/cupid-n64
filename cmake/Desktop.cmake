@@ -46,6 +46,12 @@ if(WIN32)
   target_link_libraries(cupid_session PRIVATE winmm ole32 uuid)
   target_compile_definitions(cupid_session PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 else()
+  pkg_check_modules(cupid_epoxy REQUIRED IMPORTED_TARGET epoxy)
+  pkg_check_modules(cupid_x11 REQUIRED IMPORTED_TARGET x11)
+  add_library(cupid_linux_video ${PROJECT_SOURCE_DIR}/src/desktop/linux/video/presenter.cpp)
+  target_link_libraries(cupid_linux_video PUBLIC cupid_session
+    PRIVATE PkgConfig::cupid_epoxy PkgConfig::cupid_x11)
+  target_compile_options(cupid_linux_video PRIVATE -Wall -Wextra -Wpedantic -Werror)
   target_sources(cupid_session PRIVATE
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/audio/output.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/text.cpp)
@@ -58,7 +64,7 @@ else()
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/controls/input.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/controls/mapping.cpp)
   target_link_libraries(cupid_linux_frontend PUBLIC cupid_session cupid_gdb
-    PkgConfig::cupid_gtk3 SDL3::SDL3-static)
+    PkgConfig::cupid_gtk3 SDL3::SDL3-static cupid_linux_video)
   target_compile_options(cupid_linux_frontend PRIVATE -Wall -Wextra -Wpedantic -Werror)
   add_executable(cupid_desktop ${PROJECT_SOURCE_DIR}/src/desktop/linux/main.cpp)
   target_link_libraries(cupid_desktop PRIVATE cupid_linux_frontend)

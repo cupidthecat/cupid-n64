@@ -1,6 +1,8 @@
 #include "desktop/linux/window.hpp"
 #include "desktop/linux/text.hpp"
 #include "desktop/video/bitmap.hpp"
+#include <gdk/gdkx.h>
+#undef None
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -10,7 +12,6 @@ namespace cupid::desktop::linux_host {
 Window::Window(Options options, std::filesystem::path settings, std::optional<bool> hardware)
     : options_(std::move(options)), settings_path_(std::move(settings)),
       settings_(settings_path_.empty() ? Settings{} : load_settings(settings_path_)) {
-  completed_fields_ = std::make_unique<ExecutionOutput<CompletedField>>(execution_);
   audio_.wait_interrupt([this] { return advancing_.load() && execution_.interrupted(); });
   if (hardware) {
     settings_.hardware = *hardware;
@@ -38,6 +39,8 @@ Window::~Window() {
       std::cerr << failure.what() << '\n';
     }
   if (window_)
+    video_.close();
+  if (window_)
     gtk_widget_destroy(window_);
 }
 
@@ -62,6 +65,32 @@ int Window::run() {
                    G_CALLBACK(+[](GtkWidget *, cairo_t *context, gpointer data) -> gboolean {
                      static_cast<Window *>(data)->draw(context);
                      return TRUE;
+                   }),
+                   this);
+  g_signal_connect(drawing_, "size-allocate",
+                   G_CALLBACK(+[](GtkWidget *, GtkAllocation *, gpointer data) {
+                     auto &self = *static_cast<Window *>(data);
+                     try {
+                       self.finish_playback();
+                       if (self.video_available_)
+                         self.video_.prepare(self.video_surface());
+                       self.refresh(false);
+                     } catch (const std::exception &failure) {
+                       self.error(failure);
+                     }
+                   }),
+                   this);
+  g_signal_connect(drawing_, "unrealize", G_CALLBACK(+[](GtkWidget *, gpointer data) {
+                     auto &self = *static_cast<Window *>(data);
+                     try {
+                       self.finish_playback();
+                       self.video_.close();
+                       self.video_available_ = false;
+                     } catch (const std::exception &failure) {
+                       std::cerr << failure.what() << '\n';
+                       self.failed_ = true;
+                       self.result_ = 1;
+                     }
                    }),
                    this);
   g_signal_connect(window_, "delete-event",
@@ -156,6 +185,7 @@ int Window::run() {
   g_signal_connect(drawing_, "button-press-event", G_CALLBACK(mouse), this);
   g_signal_connect(drawing_, "button-release-event", G_CALLBACK(mouse), this);
   gtk_widget_show_all(window_);
+  initialize_video();
   try {
     if (settings_.gdb_enabled && !options_.frames)
       gdb_->listen(settings_.gdb_port);
@@ -329,6 +359,7 @@ void Window::close_game() {
   input_.clear();
   audio_.clear();
   pixels_.clear();
+  video_.show(false);
   refresh();
 }
 
@@ -351,6 +382,7 @@ void Window::persist() {
 
 void Window::rebase() {
   finish_playback();
+  completed_fields_.new_generation();
   last_frame_ = std::chrono::steady_clock::now();
   if (session_)
     clock_.reset(session_->clocks(), PlaybackClock::Clock::now());
@@ -679,6 +711,16 @@ void Window::draw(cairo_t *context) {
   cairo_paint(context);
   if (pixels_.empty())
     return;
+  if (video_available_) {
+    if (!advancing_) {
+      const auto surface = video_surface();
+      video_.prepare(surface);
+      video_available_ = video_.render(pixels_, frame_width_, frame_height_, surface);
+      video_.show(video_available_);
+    }
+    if (video_available_)
+      return;
+  }
   const auto area_width = static_cast<unsigned>(gtk_widget_get_allocated_width(drawing_));
   const auto area_height = static_cast<unsigned>(gtk_widget_get_allocated_height(drawing_));
   const auto viewport = image_viewport(frame_width_, frame_height_, area_width, area_height,
