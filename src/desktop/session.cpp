@@ -98,6 +98,8 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     output_->begin_frame(field);
     frame_pending_ = true;
     ++frames;
+    if (frame_observer_)
+      frame_observer_(frames);
   });
 }
 
@@ -119,6 +121,10 @@ void Session::finish_frame() {
     frame = output_->read_frame();
     frame_pending_ = false;
   }
+}
+
+void Session::observe_frames(std::function<void(unsigned)> observer) {
+  frame_observer_ = std::move(observer);
 }
 
 void Session::clear_refresh() {

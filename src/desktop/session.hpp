@@ -13,6 +13,7 @@
 #include "desktop/storage/save.hpp"
 #include "desktop/video/output.hpp"
 #include <filesystem>
+#include <functional>
 #include <memory>
 
 namespace cupid::desktop {
@@ -47,6 +48,8 @@ public:
   FeedbackState feedback_state(unsigned port) const;
   void heart_rate(unsigned port, unsigned value);
   void finish_frame();
+  // Replace the observer only while session execution is stopped.
+  void observe_frames(std::function<void(unsigned)> observer);
   void clear_refresh();
   bool refreshed() const;
   void measure_output(bool enabled) {
@@ -139,6 +142,7 @@ private:
   std::unique_ptr<n64::Debugger> debugger_;
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
+  std::function<void(unsigned)> frame_observer_;
   std::uint64_t disk_identity_ = 0;
 };
 

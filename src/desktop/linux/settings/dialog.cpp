@@ -78,6 +78,7 @@ bool selected(GtkWidget *widget) {
 } // namespace
 
 void Window::settings_dialog() {
+  finish_playback();
   modal_ = true;
   audio_.clear();
   input_.clear();

@@ -51,6 +51,7 @@ else()
   target_link_libraries(cupid_session PRIVATE PkgConfig::cupid_gtk3)
   add_library(cupid_linux_frontend
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/window.cpp
+    ${PROJECT_SOURCE_DIR}/src/desktop/linux/playback.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/settings/settings.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/settings/dialog.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/linux/controls/input.cpp
