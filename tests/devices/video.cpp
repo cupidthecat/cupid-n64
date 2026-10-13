@@ -21,6 +21,40 @@ void video_tests() {
   equal(video.frames(), 0);
   equal(video.clocks(), (2048ull * clock_frequency / video_frequency(VideoRegion::Ntsc)) - 1);
   equal(video.fraction(), 2048ull * clock_frequency % video_frequency(VideoRegion::Ntsc));
+  for (const auto region : {VideoRegion::Ntsc, VideoRegion::Pal}) {
+    VideoInterface inactive(f.mi, region);
+    inactive.write_word(16, 0);
+    unsigned inactive_frames = 0;
+    inactive.connect_frame([&](bool) { ++inactive_frames; });
+    for (unsigned n = 0; n < 199; ++n) {
+      inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));
+      equal(inactive.refreshed(), false);
+      equal(inactive.read_word(16), 0);
+      equal(inactive.frames(), 0);
+      equal(inactive_frames, 0);
+      equal(f.mi.read_word(8) & 8, 0);
+    }
+    inactive.elapse(static_cast<std::uint32_t>(inactive.clocks() + 1));
+    inactive.run_until_refresh();
+    equal(inactive.refreshed(), true);
+    equal(inactive.frames(), 0);
+    equal(inactive_frames, 0);
+    equal(f.mi.read_word(8) & 8, 0);
+    const auto clock = inactive.clocks();
+    inactive.run_until_refresh();
+    equal(inactive.clocks(), clock);
+    inactive.clear_refresh();
+    equal(inactive.refreshed(), false);
+    inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));
+    equal(inactive.refreshed(), false);
+    inactive.power();
+    equal(inactive.refreshed(), false);
+    for (unsigned n = 0; n < 199; ++n)
+      inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));
+    equal(inactive.refreshed(), false);
+    inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));
+    equal(inactive.refreshed(), true);
+  }
   unsigned frames = 0;
   video.connect_frame([&](bool field) {
     ++frames;

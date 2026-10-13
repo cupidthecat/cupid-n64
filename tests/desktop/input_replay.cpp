@@ -37,14 +37,18 @@ int main() {
   trace.begin();
   trace.advance(std::chrono::milliseconds(10), std::chrono::milliseconds(3), 4);
   trace.ready();
-  trace.presented({1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000});
+  trace.presented(
+      {1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000, true, true, 500000});
   trace.advance(std::chrono::milliseconds(20), std::chrono::milliseconds(7), 6);
   trace.ready();
-  trace.presented({2, 200, 0xffffffff80001004, 40, true, true, 9000000, 7000000});
+  trace.presented(
+      {2, 200, 0xffffffff80001004, 40, true, true, 9000000, 7000000, true, false, 700000});
   trace.finish(false);
   std::ifstream csv(path), report(directory / "fields.json");
   const std::string text((std::istreambuf_iterator<char>(csv)), {});
   const std::string metadata((std::istreambuf_iterator<char>(report)), {});
+  test::equal(text.find(",image_valid,video_presented,presentation_us\n") != std::string::npos,
+              true);
   test::equal(text.find("1,100,18446744071562072064,20,") != std::string::npos, true);
   test::equal(metadata.find("\"complete\":false") != std::string::npos, true);
   test::equal(metadata.find("\"fields\":2") != std::string::npos, true);
@@ -52,9 +56,9 @@ int main() {
   std::string row;
   std::getline(lines, row);
   std::getline(lines, row);
-  test::equal(row.ends_with(",1,1,4000,3000,4,2000"), true);
+  test::equal(row.ends_with(",1,1,4000,3000,4,2000,1,1,500"), true);
   std::getline(lines, row);
-  test::equal(row.ends_with(",1,1,5000,7000,6,5000"), true);
+  test::equal(row.ends_with(",1,1,5000,7000,6,5000,1,0,700"), true);
   // The test owns only these newly created files.
   csv.close();
   report.close();

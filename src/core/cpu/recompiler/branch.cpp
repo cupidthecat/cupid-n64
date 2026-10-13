@@ -162,8 +162,9 @@ std::optional<unsigned> CpuCompiler::Emitter::internal_target(unsigned branch) c
   const auto entry = entry_index(*target);
   if (!entry)
     return {};
-  // Keep repeated fetches in one cache line when guest stores change the backing memory.
-  if ((*target & ~31ull) != ((start_pc + branch * 4 + 4) & ~31ull))
+  const auto opcode = block.words[branch] >> 26;
+  // Unconditional jumps keep their existing fetch window.
+  if ((opcode == 2 || opcode == 3) && (*target & ~31ull) != ((start_pc + branch * 4 + 4) & ~31ull))
     return {};
   const auto index = *entry;
   for (unsigned n = std::min(index, branch); n <= std::max(index, branch + 1); ++n)

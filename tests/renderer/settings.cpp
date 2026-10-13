@@ -183,23 +183,37 @@ void textured_readback() {
 }
 
 void interlaced_supersampling() {
+  constexpr std::uint64_t expected[2][RenderSettings::scales.size()][2]{
+      {{0x726930ee858cde65, 0x726930ee858cde65},
+       {0xee957ab37d1b836d, 0x396872ff7fa50b0d},
+       {0x07d7162775af1fa7, 0x45ae2bb8eab9134b},
+       {0x22e52e5ee32ea760, 0x24d63fde706ba00e}},
+      {{0x378875e83ca2fea5, 0x378875e83ca2fea5},
+       {0x166c7191c895a685, 0xbca0542d296b4c1d},
+       {0x5bbe22d3643b491d, 0xed89297a3fd7ca2d},
+       {0xe6df7e2f38e3a766, 0x684db2683b39d44a}}};
   for (const auto pal : {false, true}) {
     const unsigned height = pal ? 288 : 240;
     auto registers = base_video(2);
     registers[0] |= 0x40;
     registers[6] = pal ? 624 : 524;
     registers[10] = pal ? (44u << 16) | 620 : (34u << 16) | 514;
-    for (const auto scale : RenderSettings::scales) {
+    for (std::size_t index = 0; index < RenderSettings::scales.size(); ++index) {
+      const auto scale = RenderSettings::scales[index];
       GpuFixture fixture;
       recreate(fixture, {.scale = scale, .supersampling = scale > 1});
       fixture.program(registers);
-      fill(fixture, 0xf801f801);
+      for (unsigned y = 0; y < 512; ++y)
+        for (unsigned x = 0; x < 64; x += 2)
+          fixture.put(0x100000 + (y * 64 + x) * 2,
+                      (std::uint32_t(pixel16(x, y)) << 16) | pixel16(x + 1, y));
       const auto guest = CoreState::capture(fixture.console);
       for (const auto field : {false, true}) {
         const auto frame = fixture.renderer->frame(field);
         std::cout << (pal ? "PAL" : "NTSC") << ' ' << scale << "x field " << field << ": "
                   << frame.width << 'x' << frame.height << '\n';
-        dimensions(frame, 1, height);
+        dimensions(frame, 1, height * (scale > 1 ? 2 : 1));
+        test::equal(fingerprint(frame.rgba), expected[pal][index][field]);
         test::equal(CoreState::capture(fixture.console) == guest, true);
       }
     }

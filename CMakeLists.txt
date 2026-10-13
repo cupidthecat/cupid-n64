@@ -293,6 +293,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
     src/desktop/windows/video/presenter.cpp
+    src/desktop/windows/video/presentation.cpp
     src/desktop/windows/video/shaders/settings.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)

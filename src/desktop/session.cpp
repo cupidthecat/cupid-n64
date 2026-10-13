@@ -121,6 +121,14 @@ void Session::finish_frame() {
   }
 }
 
+void Session::clear_refresh() {
+  console_->video().clear_refresh();
+}
+
+bool Session::refreshed() const {
+  return console_->video().refreshed();
+}
+
 void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
   legacy_input(buttons, x, y);
   advance_to_frame();
@@ -142,9 +150,9 @@ void Session::advance_to_frame() {
   } quiet{audio_, audio_.muted};
   audio_.clear();
   audio_.muted = true;
-  const auto before = frames;
+  clear_refresh();
   const auto started = clocks();
-  while (frames == before) {
+  while (!refreshed()) {
     run_interval(true);
     if (debugger_->halted())
       break;

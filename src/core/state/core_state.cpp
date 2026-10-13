@@ -35,6 +35,7 @@ std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
     console.rsp_.pending_origin_ = console.rsp_.current_origin_ = {};
     console.audio_.diagnostic_origins_ = {};
     console.si_.read_origin_ = console.si_.write_origin_ = {};
+    console.vi_.clear_refresh();
     if (console.audio_.frequency_ != frequency && console.audio_.rate_)
       console.audio_.rate_(console.audio_.frequency_);
   });
@@ -44,7 +45,8 @@ std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
 void CoreState::visit(state::Archive &a, Console &c) {
   a.label("machine.identity");
   a.identity<std::uint64_t>(0x4554415453445043ull);
-  a.identity<std::uint32_t>(3);
+  const auto version = a.literal<std::uint32_t>(4);
+  state::Archive::require(version == 3 || version == 4);
   a.identity(c.config_.region);
   a.identity(c.config_.expansion);
   // Keep the normal configuration compatible with existing state files.
@@ -182,6 +184,12 @@ void CoreState::visit(state::Archive &a, Console &c) {
   visit(a, c.ram_.instructions_);
   a.label("cpu.execution_history");
   visit(a, *c.cpu_.compiler_, c.ram_.instructions_);
+  if (version >= 4) {
+    a.label("vi.inactive_counter", sizeof(c.vi_.inactive_counter_));
+    a.bounded(c.vi_.inactive_counter_, 0u, 199u);
+  } else {
+    a.defer([&c] { c.vi_.inactive_counter_ = 0; });
+  }
 }
 
 void CoreState::visit(state::Archive &a, RandomGenerator &r) {

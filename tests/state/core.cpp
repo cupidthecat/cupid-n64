@@ -344,7 +344,7 @@ void invalid_tests() {
     if (fault == 0)
       bytes[0] ^= 1;
     if (fault == 1) {
-      bytes[8] = 4;
+      bytes[8] = 5;
       rewrite_checksum(bytes);
     }
     if (fault == 2) {
@@ -781,9 +781,98 @@ void cpu_extension_pointer_tests() {
   }
 }
 
+void inactive_video_tests() {
+  for (const auto region : {VideoRegion::Ntsc, VideoRegion::Pal}) {
+    ConsoleConfig config;
+    config.region = region;
+    config.random_seed = 0;
+    config.homebrew = true;
+    Console console(config);
+    auto &video = console.video();
+    video.write_word(16, 0);
+    console.diagnostics().configure({.devices = diagnostic_bit(DiagnosticDevice::Ri)});
+    unsigned fields = 0;
+    video.connect_frame([&](bool) { ++fields; });
+    const auto line = [&] { video.advance(static_cast<std::uint32_t>(video.clocks() + 1)); };
+    const auto counter = [&] {
+      const auto checkpoint = CoreState::checkpoint(console);
+      const auto found =
+          std::find_if(checkpoint.ranges.begin(), checkpoint.ranges.end(),
+                       [](const auto &range) { return range.name == "vi.inactive_counter"; });
+      test::equal(found != checkpoint.ranges.end(), true);
+      if (found == checkpoint.ranges.end())
+        return ~0u;
+      test::equal(found->bytes, std::size_t(4));
+      unsigned value = 0;
+      for (unsigned n = 0; n < 4; ++n)
+        value |= unsigned(checkpoint.bytes[found->offset + n]) << (n * 8);
+      return value;
+    };
+    for (unsigned n = 0; n < 199; ++n) {
+      line();
+      test::equal(video.refreshed(), false);
+    }
+    test::equal(counter(), 199);
+    const auto phase = CoreState::capture(console);
+    console.cpu().state().clocks += static_cast<std::uint32_t>(video.clocks() + 1);
+    console.synchronize();
+    test::equal(video.refreshed(), true);
+    test::equal(counter(), 0);
+    test::equal(video.frames(), 0);
+    test::equal(fields, 0);
+    test::equal(console.interrupts().read_word(8) & 8, 0);
+    const auto records = console.diagnostics().records();
+    test::equal(std::none_of(records.begin(), records.end(),
+                             [](const auto &record) {
+                               return record.kind == DiagnosticKind::RefreshDisabled;
+                             }),
+                true);
+    CoreState::restore(console, phase);
+    test::equal(counter(), 199);
+    test::equal(video.refreshed(), false);
+    video.elapse(static_cast<std::uint32_t>(video.clocks() + 1));
+    const auto clocks = console.cpu().state().clocks;
+    test::equal(console.run_frame_interval(), 0);
+    test::equal(console.cpu().state().clocks, clocks);
+    test::equal(video.refreshed(), true);
+    test::equal(counter(), 0);
+    test::equal(video.frames(), 0);
+    test::equal(fields, 0);
+    test::equal(console.interrupts().read_word(8) & 8, 0);
+    auto invalid = phase;
+    invalid[invalid.size() - 12] = 200;
+    rewrite_checksum(invalid);
+    const auto unchanged = CoreState::capture(console);
+    test::equal(rejects(console, invalid), true);
+    test::equal(CoreState::capture(console) == unchanged, true);
+    test::equal(video.refreshed(), true);
+    auto legacy = phase;
+    legacy[8] = 3;
+    legacy.erase(legacy.end() - 12, legacy.end() - 8);
+    rewrite_checksum(legacy);
+    CoreState::restore(console, legacy);
+    test::equal(counter(), 0);
+    test::equal(video.refreshed(), false);
+    for (unsigned n = 0; n < 199; ++n) {
+      line();
+      test::equal(video.refreshed(), false);
+    }
+    line();
+    test::equal(video.refreshed(), true);
+    test::equal(counter(), 0);
+    test::equal(video.frames(), 0);
+    test::equal(fields, 0);
+    test::equal(console.interrupts().read_word(8) & 8, 0);
+    video.power();
+    test::equal(counter(), 0);
+    test::equal(video.refreshed(), false);
+  }
+}
+
 } // namespace
 
 void core_state_tests() {
+  inactive_video_tests();
   cpu_extension_pointer_tests();
   cpu_cache_context_tests();
   boot_identity_tests();

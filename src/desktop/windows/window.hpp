@@ -129,6 +129,9 @@ private:
   enum class LaunchPreference { Remember, Preserve };
   void load(LaunchPreference preference = LaunchPreference::Remember);
   void paint();
+  bool image_valid() const;
+  bool present_video();
+  void present_field(FieldTrace::Observation &observation);
   void advance();
   void finish_advance();
   void drain_advance();
@@ -246,10 +249,12 @@ private:
   std::vector<std::uint8_t> pixels_;
   bool paused_ = false, active_ = true, modal_ = false, fullscreen_ = false, quit_ = false;
   bool frame_ready_ = false;
+  bool presenting_field_ = false, field_presented_ = false;
   int exit_code_ = 0;
   PlaybackClock playback_clock_;
   unsigned last_frame_ = 0, measured_frames_ = 0;
   unsigned pixel_width_ = 0, pixel_height_ = 0;
+  unsigned cached_viewport_width_ = 0, cached_viewport_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
   std::unique_ptr<ExecutionOutput<CompletedField>> completed_fields_;
   // Drain execution before destroying any object captured by the worker.

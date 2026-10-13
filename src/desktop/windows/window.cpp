@@ -754,11 +754,8 @@ void Window::paint() {
     const int width = client.right, height = std::max(0L, client.bottom - status_height());
     if (!session_ || pixels_.empty() || !height)
       video_presenter_.hide();
-    const bool gpu =
-        session_ && !pixels_.empty() && height &&
-        video_presenter_.present(pixels_, pixel_width_, pixel_height_, static_cast<unsigned>(width),
-                                 static_cast<unsigned>(height), display_scale_, display_aspect_,
-                                 !fast_forward_ && playback_sync_ == PlaybackSync::Video);
+    const bool gpu = session_ && image_valid() && height &&
+                     (presenting_field_ ? field_presented_ : present_video());
     const auto dc = gpu ? target : paint_buffer_.begin(target, client.right, client.bottom);
     if (!gpu)
       FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
@@ -867,21 +864,24 @@ void Window::present() {
   // The VI callback takes the prior readback; let the new one overlap emulation.
   frame_ready_ = false;
   last_frame_ = session_->frames;
+  FieldTrace::Observation observation{
+      last_frame_,
+      session_->clocks(),
+      session_->program_counter(),
+      audio_.generated_samples(),
+      audio_.available() && !audio_.muted && !audio_.suspended,
+      video_presenter_.available(),
+      static_cast<std::uint64_t>(audio_.wait_time().count()),
+      static_cast<std::uint64_t>(session_->renderer_time().count())};
   if (field_trace_) {
-    field_trace_->presented(
-        {last_frame_, session_->clocks(), session_->program_counter(), audio_.generated_samples(),
-         audio_.available() && !audio_.muted && !audio_.suspended, video_presenter_.available(),
-         static_cast<std::uint64_t>(audio_.wait_time().count()),
-         static_cast<std::uint64_t>(session_->renderer_time().count())});
     if (field_trace_->captures(last_frame_)) {
       session_->finish_frame();
       field_trace_->capture(last_frame_, session_->frame);
     }
   }
   refresh_frame();
+  present_field(observation);
   record_history();
-  if (!fast_forward_ && playback_sync_ == PlaybackSync::Video)
-    UpdateWindow(window_);
   if (last_frame_ % 300 == 0)
     session_->save();
   if (options_.frames && last_frame_ >= options_.frames) {

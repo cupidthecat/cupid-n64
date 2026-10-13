@@ -50,9 +50,21 @@ void Window::start_advance() {
   auto clock = playback_clock_;
   const auto unpaced = fast_forward_;
   auto history = rewind_enabled_ && rewind_;
-  execution_.repeat([this, clock, unpaced, history]() mutable {
+  execution_.repeat([this, clock, unpaced, history,
+                     duration = std::chrono::nanoseconds{}]() mutable {
     if (!completed_fields_->writable())
       return false;
+    const auto pace = [&](std::uint64_t clocks) {
+      if (!unpaced) {
+        auto delay = clock.delay(clocks, std::chrono::steady_clock::now());
+        while (delay.count()) {
+          if (!execution_.wait_for(delay))
+            return false;
+          delay = clock.delay(clocks, std::chrono::steady_clock::now());
+        }
+      }
+      return true;
+    };
     const auto before = session_->frames;
     auto selected = take_inputs();
     if (input_replay_) {
@@ -70,20 +82,28 @@ void Window::start_advance() {
     if (field_trace_ && !worker_cpu_origin_)
       worker_cpu_origin_ = thread_cpu_time();
     session_->input(selected);
+    session_->clear_refresh();
     const auto origin = session_->clocks();
     do {
       session_->run();
-      if (session_->clocks() - origin > 10 * n64::clock_frequency)
+      if (!session_->refreshed() && session_->clocks() - origin > 10 * n64::clock_frequency)
         throw std::runtime_error("Emulation stopped because no video field was produced.");
-    } while (session_->frames == before && !execution_.interrupted() &&
+    } while (!session_->refreshed() && session_->frames == before && !execution_.interrupted() &&
              session_->diagnostics().control() == n64::HostControl::None);
-    if (session_->frames == before)
-      return false;
+    const auto completed = std::chrono::steady_clock::now();
+    if (field_trace_)
+      duration += std::chrono::duration_cast<std::chrono::nanoseconds>(completed - started);
+    if (session_->frames == before) {
+      if (!session_->refreshed() || session_->diagnostics().control() != n64::HostControl::None)
+        return false;
+      return pace(session_->clocks());
+    }
 
     CompletedField output;
-    output.completed = std::chrono::steady_clock::now();
+    output.completed = completed;
     if (field_trace_) {
-      output.duration = output.completed - started;
+      output.duration = duration;
+      duration = {};
       output.cpu = thread_cpu_time() - *worker_cpu_origin_;
       output.processor = GetCurrentProcessorNumber();
     }
@@ -119,15 +139,7 @@ void Window::start_advance() {
     if ((options_.frames && session_->frames >= options_.frames) ||
         session_->diagnostics().control() != n64::HostControl::None)
       return false;
-    if (!unpaced) {
-      auto delay = clock.delay(clocks, std::chrono::steady_clock::now());
-      while (delay.count()) {
-        if (!execution_.wait_for(delay))
-          return false;
-        delay = clock.delay(clocks, std::chrono::steady_clock::now());
-      }
-    }
-    return true;
+    return pace(clocks);
   });
   advancing_ = true;
 }
@@ -140,12 +152,10 @@ void Window::drain_advance() {
       return;
     last_frame_ = output->observation.field;
     if (field_trace_) {
-      output->observation.gpu_ready = video_presenter_.available();
       field_trace_->advance(output->duration, output->cpu - observed_worker_cpu_,
                             output->processor);
       observed_worker_cpu_ = output->cpu;
       field_trace_->ready(output->completed);
-      field_trace_->presented(output->observation);
       if (output->capture)
         field_trace_->capture(last_frame_, *output->capture);
     }
@@ -163,7 +173,7 @@ void Window::drain_advance() {
       update_playback();
     }
     refresh_frame(output->image);
-    UpdateWindow(window_);
+    present_field(output->observation);
     const auto now = std::chrono::steady_clock::now();
     const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
     if (elapsed >= 1.0) {

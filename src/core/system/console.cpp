@@ -135,6 +135,7 @@ void Console::power(bool reset) {
     disk_.power();
   synchronized_clock_ = 0;
   clock_target_ = 0;
+  refresh_limit_ = false;
   frozen_ = false;
 }
 
@@ -186,15 +187,16 @@ std::uint32_t Console::run_interval(std::uint32_t limit) {
 }
 
 std::uint32_t Console::run_frame_interval(std::uint32_t limit) {
-  struct FrameLimit {
-    std::optional<std::uint64_t> &value;
-    ~FrameLimit() {
-      value.reset();
+  struct RefreshLimit {
+    bool &value;
+    ~RefreshLimit() {
+      value = false;
     }
-  } guard{frame_limit_};
-  frame_limit_ = vi_.frames() + 1;
-  vi_.run_until_frame(*frame_limit_);
-  if (vi_.frames() == *frame_limit_)
+  } guard{refresh_limit_};
+  refresh_limit_ = true;
+  vi_.clear_refresh();
+  vi_.run_until_refresh();
+  if (vi_.refreshed())
     return 0;
   const auto line_limit = static_cast<std::uint64_t>(std::max<std::int64_t>(1, vi_.clocks() + 1));
   return run_interval(static_cast<std::uint32_t>(std::min(std::uint64_t(limit), line_limit)));
@@ -216,9 +218,9 @@ void Console::synchronize(Rsp::Execution signal, std::int64_t signal_clock_targe
     rsp_.elapse(clocks);
     rdp_.elapse(clocks);
     pif_.elapse(clocks);
-    if (frame_limit_) {
-      vi_.run_until_frame(*frame_limit_);
-      if (vi_.frames() == *frame_limit_)
+    if (refresh_limit_) {
+      vi_.run_until_refresh();
+      if (vi_.refreshed())
         clock_target_ = cpu_.state().clocks;
     } else {
       vi_.run();

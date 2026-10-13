@@ -47,6 +47,8 @@ public:
   FeedbackState feedback_state(unsigned port) const;
   void heart_rate(unsigned port, unsigned value);
   void finish_frame();
+  void clear_refresh();
+  bool refreshed() const;
   void measure_output(bool enabled) {
     output_->measure(enabled);
   }

@@ -14,6 +14,8 @@ public:
     bool audio_ready, gpu_ready;
     std::uint64_t audio_wait_ns = 0;
     std::uint64_t renderer_ns = 0;
+    bool image_valid = false, video_presented = false;
+    std::uint64_t presentation_ns = 0;
   };
   FieldTrace(std::filesystem::path trace, std::filesystem::path captures,
              const std::filesystem::path &capture_fields, unsigned requested);

@@ -185,7 +185,7 @@ private:
   std::uint64_t clock_target_ = 0;
   TraceLog trace_;
   Diagnostics diagnostics_;
-  std::optional<std::uint64_t> frame_limit_;
+  bool refresh_limit_ = false;
   bool frozen_ = false;
   std::unique_ptr<Aleck64> arcade_;
 };

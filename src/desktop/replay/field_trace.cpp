@@ -79,14 +79,16 @@ void FieldTrace::finish(bool complete) {
   if (!trace_.empty()) {
     std::ofstream stream(trace_);
     stream << "field,clocks,pc,audio,elapsed_s,total_us,advance_us,paint_us,wait_us,audio_ready,"
-              "gpu_ready,audio_wait_us,worker_cpu_us,worker_processor,renderer_us\n"
+              "gpu_ready,audio_wait_us,worker_cpu_us,worker_processor,renderer_us,"
+              "image_valid,video_presented,presentation_us\n"
            << std::setprecision(12);
     for (const auto &r : records_) {
       const auto &f = r.observation;
       stream << f.field << ',' << f.clocks << ',' << f.pc << ',' << f.audio << ',' << r.elapsed
              << ',' << r.total << ',' << r.advance << ',' << r.paint << ',' << r.wait << ','
              << f.audio_ready << ',' << f.gpu_ready << ',' << f.audio_wait_ns / 1000.0 << ','
-             << r.cpu << ',' << r.processor << ',' << f.renderer_ns / 1000.0 << '\n';
+             << r.cpu << ',' << r.processor << ',' << f.renderer_ns / 1000.0 << ',' << f.image_valid
+             << ',' << f.video_presented << ',' << f.presentation_ns / 1000.0 << '\n';
     }
     stream.close();
     if (!stream)
