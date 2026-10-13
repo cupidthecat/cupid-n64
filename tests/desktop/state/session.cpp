@@ -208,6 +208,46 @@ void short_period_stepping(unsigned line_clocks) {
   test::equal(resumed.capture_state() == session.capture_state(), true);
 }
 
+void pending_audio(const std::filesystem::path &directory) {
+  using namespace cupid::desktop;
+  Audio audio;
+  Session session(directory / "game.z64", directory / "pif.bin", audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, false);
+  const auto initial = session.capture_state();
+  test::equal(initial[8], 1);
+  // Version 1 places pending PCM after the empty frame and resampler state.
+  constexpr unsigned offset = 313;
+  test::equal(initial[offset] == 0 && initial[offset + 1] == 0 && initial[offset + 2] == 0 &&
+                  initial[offset + 3] == 0,
+              true);
+  auto legacy = initial;
+  legacy[offset] = 4;
+  const std::array<std::uint8_t, 8> pcm{1, 0, 255, 255, 255, 127, 0, 128};
+  legacy.insert(legacy.begin() + offset + 4, pcm.begin(), pcm.end());
+  seal(legacy);
+  session.restore_state(legacy);
+  test::equal(session.capture_state() == legacy, true);
+  audio.muted = true;
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.muted = false;
+  audio.suspended = true;
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.suspended = false;
+  audio.wait_interrupt([] { return true; });
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.wait_interrupt({});
+  test::equal(audio.available(), true);
+  audio.play_saved_output();
+  test::equal(session.capture_state() == initial, true);
+  legacy[offset] = 3;
+  seal(legacy);
+  test::equal(rejects([&] { session.restore_state(legacy); }), true);
+  test::equal(session.capture_state() == initial, true);
+}
+
 void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
   using namespace cupid::desktop;
   Audio audio;
@@ -274,6 +314,7 @@ int main(int argc, char **argv) {
       stepping(directory.path, hardware);
       rewind_gameplay(directory.path, hardware);
       if (!hardware) {
+        pending_audio(directory.path);
         short_period_stepping(32);
         short_period_stepping(2);
       }

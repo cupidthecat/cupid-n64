@@ -94,16 +94,16 @@ unsigned key_code(unsigned keyval) {
 Input::Input() {
   SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
   SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-  initialized_ = SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0;
+  initialized_ = SDL_InitSubSystem(SDL_INIT_GAMEPAD);
 }
 
 Input::~Input() {
   stop();
   for (auto controller : controllers_)
     if (controller)
-      SDL_GameControllerClose(controller);
+      SDL_CloseGamepad(controller);
   if (initialized_)
-    SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
 void Input::key(unsigned keyval, bool pressed, unsigned hardware_code) {
@@ -128,66 +128,62 @@ void Input::clear() {
 
 void Input::enumerate() {
   for (unsigned n = 0; n < controllers_.size(); ++n)
-    if (controllers_[n] && !SDL_GameControllerGetAttached(controllers_[n])) {
-      SDL_GameControllerClose(controllers_[n]);
+    if (controllers_[n] && !SDL_GamepadConnected(controllers_[n])) {
+      SDL_CloseGamepad(controllers_[n]);
       controllers_[n] = nullptr;
       motors_[n] = false;
     }
-  for (int device = 0; device < SDL_NumJoysticks(); ++device) {
-    if (!SDL_IsGameController(device))
-      continue;
-    const auto id = SDL_JoystickGetDeviceInstanceID(device);
+  int count = 0;
+  const auto devices = SDL_GetGamepads(&count);
+  for (int device = 0; device < count; ++device) {
+    const auto id = devices[device];
     const bool opened = std::any_of(controllers_.begin(), controllers_.end(), [&](auto controller) {
-      return controller && SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller)) == id;
+      return controller && SDL_GetGamepadID(controller) == id;
     });
     if (opened)
       continue;
     const auto slot = std::find(controllers_.begin(), controllers_.end(), nullptr);
     if (slot == controllers_.end())
       break;
-    *slot = SDL_GameControllerOpen(device);
+    *slot = SDL_OpenGamepad(id);
   }
+  SDL_free(devices);
 }
 
 HostInputs Input::poll() {
   if (!initialized_)
     return host_;
-  SDL_GameControllerUpdate();
+  SDL_UpdateGamepads();
   enumerate();
-  constexpr std::array<SDL_GameControllerButton, 12> buttons{SDL_CONTROLLER_BUTTON_DPAD_UP,
-                                                             SDL_CONTROLLER_BUTTON_DPAD_DOWN,
-                                                             SDL_CONTROLLER_BUTTON_DPAD_LEFT,
-                                                             SDL_CONTROLLER_BUTTON_DPAD_RIGHT,
-                                                             SDL_CONTROLLER_BUTTON_START,
-                                                             SDL_CONTROLLER_BUTTON_BACK,
-                                                             SDL_CONTROLLER_BUTTON_LEFTSTICK,
-                                                             SDL_CONTROLLER_BUTTON_RIGHTSTICK,
-                                                             SDL_CONTROLLER_BUTTON_LEFTSHOULDER,
-                                                             SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
-                                                             SDL_CONTROLLER_BUTTON_A,
-                                                             SDL_CONTROLLER_BUTTON_B};
+  constexpr std::array<SDL_GamepadButton, 12> buttons{
+      SDL_GAMEPAD_BUTTON_DPAD_UP,       SDL_GAMEPAD_BUTTON_DPAD_DOWN,
+      SDL_GAMEPAD_BUTTON_DPAD_LEFT,     SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
+      SDL_GAMEPAD_BUTTON_START,         SDL_GAMEPAD_BUTTON_BACK,
+      SDL_GAMEPAD_BUTTON_LEFT_STICK,    SDL_GAMEPAD_BUTTON_RIGHT_STICK,
+      SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
+      SDL_GAMEPAD_BUTTON_SOUTH,         SDL_GAMEPAD_BUTTON_EAST};
   constexpr std::array<unsigned, 12> masks{1,    2,    4,     8,     0x10,   0x20,
                                            0x40, 0x80, 0x100, 0x200, 0x1000, 0x2000};
-  constexpr std::array<SDL_GameControllerAxis, 6> axes{
-      SDL_CONTROLLER_AXIS_LEFTX,       SDL_CONTROLLER_AXIS_LEFTY,
-      SDL_CONTROLLER_AXIS_RIGHTX,      SDL_CONTROLLER_AXIS_RIGHTY,
-      SDL_CONTROLLER_AXIS_TRIGGERLEFT, SDL_CONTROLLER_AXIS_TRIGGERRIGHT};
+  constexpr std::array<SDL_GamepadAxis, 6> axes{
+      SDL_GAMEPAD_AXIS_LEFTX,  SDL_GAMEPAD_AXIS_LEFTY,        SDL_GAMEPAD_AXIS_RIGHTX,
+      SDL_GAMEPAD_AXIS_RIGHTY, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER};
   for (unsigned n = 0; n < controllers_.size(); ++n) {
     auto &pad = host_.gamepads[n];
     pad = {};
     if (!controllers_[n])
       continue;
     pad.connected = true;
-    pad.feedback = SDL_GameControllerHasRumble(controllers_[n]);
+    pad.feedback = SDL_GetBooleanProperty(SDL_GetGamepadProperties(controllers_[n]),
+                                          SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
     for (unsigned b = 0; b < buttons.size(); ++b)
-      if (SDL_GameControllerGetButton(controllers_[n], buttons[b]))
+      if (SDL_GetGamepadButton(controllers_[n], buttons[b]))
         pad.buttons |= masks[b];
-    if (SDL_GameControllerGetButton(controllers_[n], SDL_CONTROLLER_BUTTON_X))
+    if (SDL_GetGamepadButton(controllers_[n], SDL_GAMEPAD_BUTTON_WEST))
       pad.buttons |= 0x4000;
-    if (SDL_GameControllerGetButton(controllers_[n], SDL_CONTROLLER_BUTTON_Y))
+    if (SDL_GetGamepadButton(controllers_[n], SDL_GAMEPAD_BUTTON_NORTH))
       pad.buttons |= 0x8000;
     for (unsigned a = 0; a < axes.size(); ++a)
-      pad.axes[a] = SDL_GameControllerGetAxis(controllers_[n], axes[a]);
+      pad.axes[a] = SDL_GetGamepadAxis(controllers_[n], axes[a]);
   }
   return host_;
 }
@@ -200,7 +196,7 @@ void Input::rumble(const std::array<bool, 4> &motors) {
     if (active == motors_[n] && (!active || !renew))
       continue;
     if (controllers_[n])
-      SDL_GameControllerRumble(controllers_[n], active ? 0xffff : 0, active ? 0xffff : 0, 1000);
+      SDL_RumbleGamepad(controllers_[n], active ? 0xffff : 0, active ? 0xffff : 0, 1000);
     motors_[n] = active;
   }
   if (renew)

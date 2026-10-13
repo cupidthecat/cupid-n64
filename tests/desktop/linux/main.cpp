@@ -11,6 +11,8 @@ int main(int argc, char **argv) {
       linux_input_tests();
     else if (mode == "--audio")
       linux_audio_tests();
+    else if (mode == "--audio-recovery")
+      linux_audio_recovery_tests();
     else if (mode == "--window" || mode == "--hardware")
       linux_window_tests(mode == "--hardware");
     else

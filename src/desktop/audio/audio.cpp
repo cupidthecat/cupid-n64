@@ -54,6 +54,10 @@ bool Audio::recovery_pending() const {
   return output_->recovery_pending();
 }
 
+void Audio::probe() {
+  output_->probe();
+}
+
 std::vector<Audio::Device> Audio::devices() const {
   return output_->devices();
 }

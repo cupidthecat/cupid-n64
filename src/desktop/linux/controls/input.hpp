@@ -1,7 +1,7 @@
 #pragma once
 
 #include "desktop/controls/mapping.hpp"
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <chrono>
 #include <unordered_map>
 
@@ -25,7 +25,7 @@ private:
   void enumerate();
   HostInputs host_;
   std::unordered_map<unsigned, unsigned> pressed_keys_;
-  std::array<SDL_GameController *, 4> controllers_{};
+  std::array<SDL_Gamepad *, 4> controllers_{};
   std::array<bool, 4> motors_{};
   std::chrono::steady_clock::time_point renewed_{};
   bool initialized_ = false;

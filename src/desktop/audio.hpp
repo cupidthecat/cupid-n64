@@ -35,6 +35,8 @@ public:
   std::vector<Device> devices() const;
   void configure(Settings settings);
   bool recover();
+  // Probe on the main thread; recovery still requires a joined producer.
+  void probe();
   bool recovery_pending() const;
   void measure(bool enabled) {
     measure_ = enabled;

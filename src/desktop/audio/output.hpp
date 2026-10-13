@@ -12,6 +12,7 @@ public:
   virtual ~AudioOutput() = default;
   virtual void configure(const Audio::Settings &settings) = 0;
   virtual bool recover() = 0;
+  virtual void probe() {}
   virtual bool recovery_pending() const {
     return !available();
   }
