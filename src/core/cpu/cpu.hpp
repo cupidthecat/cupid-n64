@@ -210,6 +210,8 @@ private:
   unsigned profile_deferred_clocks_ = 0;
   Debugger *debugger_ = nullptr;
   bool native_fetch_miss_ = false;
+  const std::uint32_t *native_fill_page_ = nullptr;
+  std::size_t native_fill_words_ = 0;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

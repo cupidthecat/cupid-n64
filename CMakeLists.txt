@@ -28,6 +28,7 @@ add_library(cupid_core
   src/core/cpu/execution.cpp
   src/core/cpu/execution/memory.cpp
   src/core/cpu/recompiler/cache.cpp
+  src/core/cpu/recompiler/cache/refill.cpp
   src/core/cpu/recompiler/diagnostics.cpp
   src/core/cpu/recompiler/clocks.cpp
   src/core/cpu/recompiler/pipeline.cpp

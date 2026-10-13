@@ -24,6 +24,8 @@ void Cpu::power() {
   profile_deferred_clocks_ = 0;
   llbit_ = nmi_pending_ = false;
   native_memory_order_ = false;
+  native_fill_page_ = nullptr;
+  native_fill_words_ = 0;
   control_[Status] = 0x3450ff04;
   control_[Config] = 0x7006e460;
   control_[PrId] = 0x0b22;

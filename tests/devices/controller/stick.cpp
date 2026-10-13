@@ -60,6 +60,16 @@ void stick_tests() {
   }
   pad.input(0x8010, 100, -110);
   equal(pad.state(), 0x80106492);
+  constexpr Case arcade_cases[]{
+      {0, 0, 0x0000},      {4096, 0, 0x0500},      {-4096, 0, 0xfb00},       {0, 4096, 0x00fb},
+      {0, -4096, 0x0005},  {16384, 28672, 0x2ab5}, {-16384, -28672, 0xd64b}, {32767, 0, 0x5500},
+      {-32768, 0, 0xab00}, {32767, 32767, 0x45bb}, {-32768, -32768, 0xbb45}, {2000, 0, 0x0000},
+  };
+  for (const auto &row : arcade_cases) {
+    const auto position = stick_response(row.x, row.y, StickGate::Aleck64);
+    equal(static_cast<std::uint8_t>(position.x), row.report >> 8);
+    equal(static_cast<std::uint8_t>(-position.y), row.report & 255);
+  }
   for (int x = 0; x <= 32767; ++x) {
     const auto positive =
         stick_response(static_cast<std::int16_t>(x), static_cast<std::int16_t>(x / 2));

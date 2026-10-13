@@ -8,7 +8,7 @@ struct StickPosition {
   std::int8_t x, y;
 };
 
-enum class StickGate { Nintendo64, GameCubeMain, GameCubeC };
+enum class StickGate { Nintendo64, GameCubeMain, GameCubeC, Aleck64 };
 
 // Applies the selected deadzone and gate while keeping the host axis orientation.
 StickPosition stick_response(std::int16_t x, std::int16_t y,

@@ -167,6 +167,7 @@ struct CpuCompiler::Emitter {
   bool control_noop(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
+  void merge(std::uint32_t instruction);
   void finish_slow_path(SlowPath path, bool delay);
   void emit_slow_paths();
   bool floating(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
@@ -194,6 +195,7 @@ struct CpuCompiler::Emitter {
   void return_now(unsigned clocks);
   void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
   void cache_guard(std::uint32_t address);
+  sljit_jump *refill(std::uint32_t address);
   std::optional<unsigned> internal_target(unsigned branch) const;
   std::optional<std::uint64_t> branch_target(unsigned branch) const;
   std::optional<unsigned> entry_index(std::uint64_t target) const;

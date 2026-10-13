@@ -205,6 +205,10 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto previous = impl_->active;
   impl_->active = {tracker, page, generation};
   cpu.native_fetch_miss_ = false;
+  const auto fill =
+      fully_tracked ? cpu.bus_.cache_fill_data(page) : std::span<const std::uint32_t>();
+  cpu.native_fill_page_ = fill.data();
+  cpu.native_fill_words_ = fill.size();
   Cpu::ProfileClockScope profile_clock(cpu, 2);
   execution->execute(clock_target);
   impl_->active = previous;

@@ -58,7 +58,7 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
 #endif
   };
   SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};
-  if (!full && !partial && !tracing && !diagnostics) {
+  if (!full && !tracing && !diagnostics) {
     if (pipeline_dirty)
       path.materialize_pc = pc;
   } else {
@@ -91,11 +91,15 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
   // Cache hits keep the native instruction batch pending through the memory operation.
   advance(2);
   if (partial) {
-    op1(SLJIT_MOV, reg(SLJIT_R3), reg(SLJIT_R1));
-    op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
-    op1(SLJIT_MOV32, reg(SLJIT_R1), imm(instruction));
-    sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4V(P, 32, P, W), SLJIT_IMM,
-                     SLJIT_FUNC_ADDR(cached_merge));
+    if (diagnostics) {
+      op1(SLJIT_MOV, reg(SLJIT_R3), reg(SLJIT_R1));
+      op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
+      op1(SLJIT_MOV32, reg(SLJIT_R1), imm(instruction));
+      sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4V(P, 32, P, W), SLJIT_IMM,
+                       SLJIT_FUNC_ADDR(cached_merge));
+    } else {
+      merge(instruction);
+    }
   } else {
     sljit_jump *unlinked = nullptr;
     if (linked) {

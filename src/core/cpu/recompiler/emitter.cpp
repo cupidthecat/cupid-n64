@@ -150,6 +150,7 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   // Hits retain the pending pipeline; miss helpers need the current fetch PC.
   if (pipeline_dirty)
     materialize_pipeline(pc);
+  auto *refilled = refill(address);
   const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
   auto &view = block.views.emplace_back();
   view.count = static_cast<unsigned>(
@@ -161,7 +162,10 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, P), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 2);
-  sljit_set_label(hit, sljit_emit_label(compiler));
+  const auto ready = sljit_emit_label(compiler);
+  sljit_set_label(hit, ready);
+  if (refilled)
+    sljit_set_label(refilled, ready);
 }
 
 void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
@@ -186,7 +190,7 @@ bool CpuCompiler::Emitter::compile() {
     return false;
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 5 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
   host_address(SLJIT_S1, &cpu.state_);
   host_address(SLJIT_S2, &cpu);
   plan_entries();

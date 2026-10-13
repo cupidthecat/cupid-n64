@@ -1,3 +1,4 @@
+#include "native/cache_refill.hpp"
 #include "../support/test.hpp"
 
 namespace test {
@@ -97,6 +98,7 @@ void run(RefillFixture &actual, RefillFixture &expected, bool native, unsigned i
 } // namespace
 
 void cache_refill_tests() {
+  native_memory::direct_refill();
   for (bool native : {false, true}) {
     for (unsigned bytes : {1u, 2u, 8u}) {
       RefillFixture actual(0x1000, 0, false);
