@@ -15,8 +15,11 @@ public:
   ~FrameReadback();
   FrameReadback(const FrameReadback &) = delete;
   FrameReadback &operator=(const FrameReadback &) = delete;
-  void start();
+  void start(unsigned field = 0);
   void wait();
+  void wait_presented();
+  // Stop frame submission before replacing the presenter.
+  void connect_present(std::function<void(unsigned, const VideoFrame &)> present);
   VideoFrame take();
   VideoFrame capture();
   void restore(VideoFrame frame);
@@ -24,11 +27,13 @@ public:
 private:
   void run();
   std::function<VideoFrame()> read_;
+  std::function<void(unsigned, const VideoFrame &)> present_;
   std::mutex mutex_;
   std::condition_variable condition_;
   VideoFrame frame_;
   std::exception_ptr error_;
-  bool pending_ = false, stopping_ = false;
+  unsigned field_ = 0;
+  bool pending_ = false, presenting_ = false, stopping_ = false;
   std::thread worker_;
 };
 
