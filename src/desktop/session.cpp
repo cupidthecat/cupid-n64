@@ -95,7 +95,7 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
                             [this](unsigned rate) { audio_.frequency(rate); });
   console_->video().connect_frame([this](bool field) {
     finish_frame();
-    output_->begin_frame(field);
+    output_->begin_frame(field, frames + 1);
     frame_pending_ = true;
     ++frames;
     if (frame_observer_)
@@ -112,6 +112,7 @@ void Session::reset() {
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
   output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  output_->connect_present(frame_presenter_);
   frame = {};
   frames = 0;
 }
@@ -125,6 +126,16 @@ void Session::finish_frame() {
 
 void Session::observe_frames(std::function<void(unsigned)> observer) {
   frame_observer_ = std::move(observer);
+}
+
+void Session::connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present) {
+  finish_frame();
+  output_->connect_present(present);
+  frame_presenter_ = std::move(present);
+}
+
+void Session::wait_presented() {
+  output_->wait_presented();
 }
 
 void Session::clear_refresh() {

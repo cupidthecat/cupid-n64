@@ -61,10 +61,13 @@ Window::Window(Options options)
         const auto presented = submission.width && submission.height &&
                                video_presenter_.render(submission.pixels, submission.width,
                                                        submission.height, submission.surface);
-        return PresentationWorker::Result{
-            presented, video_presenter_.available(), video_presenter_.error(), {}};
+        return PresentationWorker::Result{presented,
+                                          video_presenter_.available(),
+                                          video_presenter_.error(),
+                                          {},
+                                          submission.width,
+                                          submission.height};
       }) {
-  completed_fields_ = std::make_unique<ExecutionOutput<CompletedField>>(execution_);
   execution_.notify([this] { PostMessageW(window_, WM_APP + 1, 0, 0); });
   presentation_.notify([this] { PostMessageW(window_, WM_APP + 2, 0, 0); });
   audio_.wait_interrupt([this] { return advancing_ && execution_.interrupted(); });
@@ -572,6 +575,8 @@ void Window::error(const std::exception &exception) {
 
 void Window::rebase() {
   presentation_.new_generation();
+  completed_fields_.new_generation();
+  target_capture_.reset();
   video_sync_available_ = true;
   measured_time_ = std::chrono::steady_clock::now();
   playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
@@ -748,6 +753,9 @@ void Window::command(unsigned id) {
     if (session_) {
       session_->save();
       session_->reset();
+      presentation_.new_generation();
+      completed_fields_.new_generation();
+      target_capture_.reset();
       pixels_.clear();
       pixel_width_ = pixel_height_ = 0;
       update_display();
@@ -813,7 +821,9 @@ void Window::paint() {
       video_presenter_.hide();
     const bool gpu =
         session_ && image_valid() && height &&
-        (presentation_.pending() || presenting_field_ ? field_presented_ : present_video());
+        (advancing_ || finishing_advance_ || presentation_.pending() || presenting_field_
+             ? field_presented_
+             : present_video());
     const auto dc = gpu ? target : paint_buffer_.begin(target, client.right, client.bottom);
     if (!gpu)
       FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
@@ -965,12 +975,14 @@ void Window::present() {
 
 void Window::capture() {
   presentation_.quiesce();
+  session_->wait_presented();
   session_->finish_frame();
-  if (session_->frame.rgba.empty())
+  const auto &frame =
+      target_capture_ && last_frame_ == options_.frames ? *target_capture_ : session_->frame;
+  if (frame.rgba.empty())
     throw std::runtime_error("No video frame was produced.");
   if (options_.capture.empty())
     return;
-  const auto &frame = session_->frame;
   std::ofstream stream(options_.capture, std::ios::binary);
   stream << "P6\n" << frame.width << ' ' << frame.height << "\n255\n";
   for (std::size_t n = 0; n < frame.rgba.size(); n += 4)

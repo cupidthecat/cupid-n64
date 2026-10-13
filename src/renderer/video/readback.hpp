@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <exception>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -30,7 +31,7 @@ private:
   std::function<void(unsigned, const VideoFrame &)> present_;
   std::mutex mutex_;
   std::condition_variable condition_;
-  VideoFrame frame_;
+  std::shared_ptr<VideoFrame> frame_;
   std::exception_ptr error_;
   unsigned field_ = 0;
   bool pending_ = false, presenting_ = false, stopping_ = false;

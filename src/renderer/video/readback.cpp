@@ -50,7 +50,12 @@ VideoFrame FrameReadback::take() {
   condition_.wait(lock, [this] { return !pending_; });
   if (error_)
     std::rethrow_exception(error_);
-  return std::exchange(frame_, {});
+  if (!frame_)
+    return {};
+  // A presenter may still own the pixels after readback is acknowledged.
+  auto frame = frame_.use_count() == 1 ? std::move(*frame_) : *frame_;
+  frame_.reset();
+  return frame;
 }
 
 VideoFrame FrameReadback::capture() {
@@ -58,13 +63,13 @@ VideoFrame FrameReadback::capture() {
   condition_.wait(lock, [this] { return !pending_; });
   if (error_)
     std::rethrow_exception(error_);
-  return frame_;
+  return frame_ ? *frame_ : VideoFrame{};
 }
 
 void FrameReadback::restore(VideoFrame frame) {
   std::unique_lock lock(mutex_);
   condition_.wait(lock, [this] { return !pending_ && !presenting_; });
-  frame_ = std::move(frame);
+  frame_ = std::make_shared<VideoFrame>(std::move(frame));
   error_ = {};
 }
 
@@ -77,16 +82,15 @@ void FrameReadback::run() {
     const auto field = field_;
     const bool present = bool(present_);
     lock.unlock();
-    VideoFrame frame, stored;
+    std::shared_ptr<VideoFrame> frame;
     std::exception_ptr error;
     try {
-      frame = read_();
-      stored = present ? frame : std::move(frame);
+      frame = std::make_shared<VideoFrame>(read_());
     } catch (...) {
       error = std::current_exception();
     }
     lock.lock();
-    frame_ = std::move(stored);
+    frame_ = present ? frame : std::move(frame);
     error_ = error;
     pending_ = false;
     presenting_ = present && !error;
@@ -94,7 +98,7 @@ void FrameReadback::run() {
     if (presenting_) {
       lock.unlock();
       try {
-        present_(field, frame);
+        present_(field, *frame);
       } catch (...) {
         error = std::current_exception();
       }

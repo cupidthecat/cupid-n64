@@ -20,13 +20,7 @@ bool Window::image_valid() const {
          pixels_.size() == std::size_t(pixel_width_) * pixel_height_ * 4;
 }
 
-PresentationWorker::Submission Window::video_submission(unsigned field) {
-  PresentationWorker::Submission submission;
-  submission.tag.field = field;
-  if (!image_valid()) {
-    video_presenter_.hide();
-    return submission;
-  }
+VideoSurface Window::video_surface() {
   RECT client{};
   GetClientRect(window_, &client);
   const auto height = std::max(0L, client.bottom - status_height());
@@ -38,15 +32,38 @@ PresentationWorker::Submission Window::video_submission(unsigned field) {
     cached_viewport_width_ = MulDiv(static_cast<int>(viewport_size_.width), dpi ? dpi : 96, 96);
     cached_viewport_height_ = MulDiv(static_cast<int>(viewport_size_.height), dpi ? dpi : 96, 96);
   }
+  return {cached_viewport_width_, cached_viewport_height_, display_scale_, display_aspect_,
+          !fast_forward_ && playback_sync_ == PlaybackSync::Video};
+}
+
+PresentationWorker::Submission Window::video_submission(unsigned field) {
+  PresentationWorker::Submission submission;
+  submission.tag.field = field;
+  if (!image_valid()) {
+    video_presenter_.hide();
+    return submission;
+  }
   submission.pixels = pixels_;
   submission.width = pixel_width_;
   submission.height = pixel_height_;
-  submission.surface = {cached_viewport_width_, cached_viewport_height_, display_scale_,
-                        display_aspect_, !fast_forward_ && playback_sync_ == PlaybackSync::Video};
+  submission.surface = video_surface();
   const PresentationGuard guard(presenting_field_);
   video_presenter_.prepare(submission.surface);
   video_presenter_.show(video_available_);
   return submission;
+}
+
+void Window::refresh_presented_image() {
+  auto image = completed_fields_.take_image();
+  if (!image)
+    return;
+  const bool available = !pixels_.empty();
+  pixels_ = std::move(image->pixels);
+  pixel_width_ = image->width;
+  pixel_height_ = image->height;
+  if (available != !pixels_.empty())
+    update_display();
+  InvalidateRect(window_, nullptr, FALSE);
 }
 
 bool Window::present_video() {
@@ -71,6 +88,9 @@ void Window::observe_presentation(FieldTrace::Observation &observation,
   observation.video_presented = field_presented_;
   observation.gpu_ready = video_available_;
   observation.presentation_ns = static_cast<std::uint64_t>(completion.duration.count());
+  observation.presentation_field = completion.tag.field;
+  observation.presentation_generation = completion.tag.generation;
+  observation.presentation_sequence = completion.tag.sequence;
   if (field_trace_)
     field_trace_->presented(observation, completion.completed);
   UpdateWindow(window_);

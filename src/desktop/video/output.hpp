@@ -3,6 +3,7 @@
 #include "core/system/console.hpp"
 #include "renderer/video/settings.hpp"
 #include <chrono>
+#include <functional>
 #include <memory>
 
 namespace cupid::desktop {
@@ -14,7 +15,9 @@ public:
   ~VideoOutput();
   VideoOutput(const VideoOutput &) = delete;
   VideoOutput &operator=(const VideoOutput &) = delete;
-  void begin_frame(bool field);
+  void begin_frame(bool field, unsigned number = 0);
+  void connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present);
+  void wait_presented();
   n64::VideoFrame read_frame();
   bool requires_hardware() const;
   bool crashed() const;

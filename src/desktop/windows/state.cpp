@@ -98,6 +98,9 @@ bool Window::state_command(unsigned id) {
 }
 
 void Window::state_loaded() {
+  presentation_.new_generation();
+  completed_fields_.new_generation();
+  target_capture_.reset();
   gamepads_.stop();
   feedback_.clear();
   if (rewinding_)

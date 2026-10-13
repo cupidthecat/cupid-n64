@@ -1,5 +1,6 @@
 #include "desktop/video/output.hpp"
 #include "core/state/core_state.hpp"
+#include "renderer/video/readback.hpp"
 #if defined(CUPID_HARDWARE_RENDERER)
 #include "renderer/state/machine_state.hpp"
 #include "renderer/vulkan/renderer.hpp"
@@ -26,8 +27,9 @@ struct VideoOutput::Implementation {
   };
   n64::Console &console;
   n64::VideoFrame software_frame;
+  std::unique_ptr<n64::FrameReadback> software_readback;
   bool requires_hardware = false;
-  std::function<void(bool)> begin;
+  std::function<void(bool, unsigned)> begin;
   std::function<n64::VideoFrame()> read;
   std::function<bool()> crashed;
 #if defined(CUPID_HARDWARE_RENDERER)
@@ -63,7 +65,7 @@ struct VideoOutput::Implementation {
         const Timer timer(*this);
         hardware->write_video(index, value);
       });
-      begin = [this](bool field) { hardware->begin_frame(field); };
+      begin = [this](bool field, unsigned number) { hardware->begin_frame(field, number); };
       read = [this] { return hardware->read_frame(); };
       crashed = [this] { return hardware->crashed(); };
       return;
@@ -95,18 +97,54 @@ VideoOutput::VideoOutput(n64::Console &console, bool hardware_rendering,
 
 VideoOutput::~VideoOutput() = default;
 
-void VideoOutput::begin_frame(bool field) {
+void VideoOutput::begin_frame(bool field, unsigned number) {
   auto &state = *implementation_;
   const Implementation::Timer timer(state);
   if (state.begin)
-    state.begin(field);
-  else
+    state.begin(field, number);
+  else {
+    if (state.software_readback)
+      state.software_readback->wait();
     state.software_frame = state.console.video().scanout(state.console.ram());
+    if (state.software_readback)
+      state.software_readback->start(number);
+  }
+}
+
+void VideoOutput::connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present) {
+  auto &state = *implementation_;
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (state.hardware) {
+    state.hardware->connect_present(std::move(present));
+    return;
+  }
+#endif
+  if (!present) {
+    state.software_readback.reset();
+    return;
+  }
+  if (!state.software_readback)
+    state.software_readback =
+        std::make_unique<n64::FrameReadback>([&state] { return state.software_frame; });
+  state.software_readback->connect_present(std::move(present));
+}
+
+void VideoOutput::wait_presented() {
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (implementation_->hardware) {
+    implementation_->hardware->wait_presented();
+    return;
+  }
+#endif
+  if (implementation_->software_readback)
+    implementation_->software_readback->wait_presented();
 }
 
 n64::VideoFrame VideoOutput::read_frame() {
   auto &state = *implementation_;
   const Implementation::Timer timer(state);
+  if (state.software_readback)
+    state.software_readback->wait();
   return state.read ? state.read() : std::exchange(state.software_frame, {});
 }
 
@@ -132,6 +170,7 @@ bool VideoOutput::supports_hardware() {
 }
 
 void VideoOutput::scanout_settings(n64::RenderSettings settings) {
+  wait_presented();
 #if defined(CUPID_HARDWARE_RENDERER)
   if (implementation_->hardware) {
     implementation_->hardware->scanout_settings(settings);
@@ -160,6 +199,7 @@ std::chrono::nanoseconds VideoOutput::host_time() const {
 }
 
 std::vector<std::uint8_t> VideoOutput::capture_state() {
+  wait_presented();
   auto &state = *implementation_;
   n64::state::Archive archive;
   archive.identity<std::uint64_t>(0x45544154534f5043ull);
@@ -181,6 +221,7 @@ std::vector<std::uint8_t> VideoOutput::capture_state() {
 }
 
 void VideoOutput::restore_state(std::span<const std::uint8_t> bytes) {
+  wait_presented();
   auto &state = *implementation_;
   n64::state::Archive archive(bytes);
   archive.identity<std::uint64_t>(0x45544154534f5043ull);

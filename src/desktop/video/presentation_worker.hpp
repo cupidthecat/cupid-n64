@@ -9,6 +9,13 @@
 
 namespace cupid::desktop {
 
+namespace detail {
+inline std::uint64_t presentation_generation() {
+  static std::atomic<std::uint64_t> next{1};
+  return next.fetch_add(1, std::memory_order_relaxed);
+}
+} // namespace detail
+
 struct VideoSurface {
   unsigned width = 0, height = 0;
   DisplayScale scale = DisplayScale::Fit;
@@ -35,6 +42,7 @@ public:
     bool presented = false, available = false;
     std::string error;
     std::vector<std::uint8_t> captured;
+    unsigned width = 0, height = 0;
   };
   struct Completion {
     Tag tag;
@@ -64,7 +72,7 @@ private:
   Delivered delivered_;
   std::optional<Completion> completion_;
   bool pending_ = false, closing_ = false;
-  std::uint64_t generation_ = 1, sequence_ = 0;
+  std::uint64_t generation_ = detail::presentation_generation(), sequence_ = 0;
   ExecutionWorker execution_{L"Presentation"};
 };
 

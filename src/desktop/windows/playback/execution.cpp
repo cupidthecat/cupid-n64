@@ -47,101 +47,168 @@ void Window::start_advance() {
   if (advancing_)
     return;
   publish_inputs();
-  auto clock = playback_clock_;
-  const auto unpaced = fast_forward_;
-  auto history = rewind_enabled_ && rewind_;
-  execution_.repeat([this, clock, unpaced, history,
-                     duration = std::chrono::nanoseconds{}]() mutable {
-    if (!completed_fields_->writable())
-      return false;
-    const auto pace = [&](std::uint64_t clocks) {
-      if (!unpaced) {
-        auto delay = clock.delay(clocks, std::chrono::steady_clock::now());
-        while (delay.count()) {
-          if (!execution_.wait_for(delay))
-            return false;
-          delay = clock.delay(clocks, std::chrono::steady_clock::now());
-        }
-      }
-      return true;
-    };
-    const auto before = session_->frames;
-    auto selected = take_inputs();
-    if (input_replay_) {
-      selected = {};
-      selected[0] = input_replay_->at(before);
-    } else if (options_.test_input) {
-      const auto scripted = test_input(before);
-      selected[0].buttons = scripted.buttons;
-      selected[0].x = scripted.x;
-      selected[0].y = scripted.y;
-      selected[0].calibrated_stick = true;
+  presentation_.quiesce();
+  const auto surface = video_surface();
+  video_presenter_.prepare(surface);
+  video_presenter_.show(video_available_);
+  session_->connect_present([this, surface](unsigned field, const n64::VideoFrame &frame) {
+    if (options_.frames && field > options_.frames)
+      return;
+    const auto started = std::chrono::steady_clock::now();
+    FrameDelivery<CompletedField>::Presented output;
+    FrameDelivery<CompletedField>::Image image;
+    output.image_valid = frame.width && frame.height && frame.width <= n64::maximum_frame_width &&
+                         frame.height <= n64::maximum_frame_height &&
+                         frame.rgba.size() == std::size_t(frame.width) * frame.height * 4;
+    try {
+      if ((field_trace_ && field_trace_->captures(field)) || field == options_.frames)
+        output.capture = frame;
+      const auto shown = shader_.apply(frame);
+      image.pixels.assign(shown.begin(), shown.end());
+      image.width = frame.width;
+      image.height = frame.height;
+      output.completion.result.width = frame.width;
+      output.completion.result.height = frame.height;
+      for (std::size_t offset = 0; offset < image.pixels.size(); offset += 4)
+        std::swap(image.pixels[offset], image.pixels[offset + 2]);
+      output.shader_failed = !shader_.error().empty();
+      output.completion.result.presented =
+          output.image_valid &&
+          video_presenter_.render(image.pixels, image.width, image.height, surface);
+      output.completion.result.available = video_presenter_.available();
+      output.completion.result.error = video_presenter_.error();
+    } catch (...) {
+      output.completion.failure = std::current_exception();
     }
-    const auto started =
-        field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-    if (field_trace_ && !worker_cpu_origin_)
-      worker_cpu_origin_ = thread_cpu_time();
-    session_->input(selected);
-    session_->clear_refresh();
-    const auto origin = session_->clocks();
-    do {
-      session_->run();
-      if (!session_->refreshed() && session_->clocks() - origin > 10 * n64::clock_frequency)
-        throw std::runtime_error("Emulation stopped because no video field was produced.");
-    } while (!session_->refreshed() && session_->frames == before && !execution_.interrupted() &&
-             session_->diagnostics().control() == n64::HostControl::None);
-    const auto completed = std::chrono::steady_clock::now();
-    if (field_trace_)
-      duration += std::chrono::duration_cast<std::chrono::nanoseconds>(completed - started);
-    if (session_->frames == before) {
-      if (!session_->refreshed() || session_->diagnostics().control() != n64::HostControl::None)
-        return false;
-      return pace(session_->clocks());
-    }
-
+    output.completion.completed = std::chrono::steady_clock::now();
+    output.completion.duration = output.completion.completed - started;
+    const auto failure = output.completion.failure;
+    completed_fields_.presented(field, std::move(output), std::move(image));
+    PostMessageW(window_, WM_APP + 1, 0, 0);
+    if (failure)
+      std::rethrow_exception(failure);
+  });
+  struct Measurement {
+    std::chrono::steady_clock::time_point started;
+    std::chrono::nanoseconds duration{};
+    bool history;
+    std::vector<CompletedField> ready;
+  };
+  auto measurement = std::make_shared<Measurement>();
+  measurement->history = rewind_enabled_ && rewind_;
+  session_->observe_frames([this, measurement](unsigned field) {
+    if (options_.frames && field > options_.frames)
+      return;
     CompletedField output;
-    output.completed = completed;
+    output.completed = std::chrono::steady_clock::now();
     if (field_trace_) {
-      output.duration = duration;
-      duration = {};
+      measurement->duration += output.completed - measurement->started;
+      measurement->started = output.completed;
+      output.duration = std::exchange(measurement->duration, {});
       output.cpu = thread_cpu_time() - *worker_cpu_origin_;
       output.processor = GetCurrentProcessorNumber();
     }
-    output.observation = {session_->frames,
-                          session_->clocks(),
-                          session_->program_counter(),
-                          audio_.generated_samples(),
-                          audio_.available() && !audio_.muted && !audio_.suspended,
-                          false,
-                          static_cast<std::uint64_t>(audio_.wait_time().count()),
-                          static_cast<std::uint64_t>(session_->renderer_time().count())};
-    if (field_trace_ && field_trace_->captures(session_->frames)) {
-      session_->finish_frame();
-      output.capture = session_->frame;
-    }
-    output.image = session_->frame;
-    output.feedback = feedback_state();
-    output.audio_recovery = audio_.recovery_pending();
-    if (history) {
-      try {
-        rewind_->record(session_->frames);
-      } catch (...) {
-        history = false;
-        rewind_->clear();
-        output.history_error = std::current_exception();
-      }
-    }
-    const auto clocks = output.observation.clocks;
-    completed_fields_->publish(std::move(output));
-    PostMessageW(window_, WM_APP + 1, 0, 0);
-    if (session_->frames % 300 == 0)
-      session_->save();
-    if ((options_.frames && session_->frames >= options_.frames) ||
-        session_->diagnostics().control() != n64::HostControl::None)
-      return false;
-    return pace(clocks);
+    output.observation.field = field;
+    measurement->ready.push_back(std::move(output));
   });
   advancing_ = true;
+  try {
+    execution_.repeat([this, clock = playback_clock_, unpaced = fast_forward_,
+                       measurement]() mutable {
+      const auto pace = [&](std::uint64_t clocks) {
+        if (!unpaced) {
+          auto delay = clock.delay(clocks, std::chrono::steady_clock::now());
+          while (delay.count()) {
+            if (!execution_.wait_for(delay))
+              return false;
+            delay = clock.delay(clocks, std::chrono::steady_clock::now());
+          }
+        }
+        return true;
+      };
+      const auto before = session_->frames;
+      auto selected = take_inputs();
+      if (input_replay_) {
+        selected = {};
+        selected[0] = input_replay_->at(before);
+      } else if (options_.test_input) {
+        const auto scripted = test_input(before);
+        selected[0].buttons = scripted.buttons;
+        selected[0].x = scripted.x;
+        selected[0].y = scripted.y;
+        selected[0].calibrated_stick = true;
+      }
+      measurement->started =
+          field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      if (field_trace_ && !worker_cpu_origin_)
+        worker_cpu_origin_ = thread_cpu_time();
+      session_->input(selected);
+      session_->clear_refresh();
+      const auto origin = session_->clocks();
+      const auto publish = [&] {
+        if (measurement->ready.empty())
+          return;
+        if (measurement->history) {
+          try {
+            rewind_->record(session_->frames);
+          } catch (...) {
+            measurement->history = false;
+            rewind_->clear();
+            measurement->ready.back().history_error = std::current_exception();
+          }
+        }
+        for (auto &output : measurement->ready) {
+          const auto field = output.observation.field;
+          output.observation = {field,
+                                session_->clocks(),
+                                session_->program_counter(),
+                                audio_.generated_samples(),
+                                audio_.available() && !audio_.muted && !audio_.suspended,
+                                false,
+                                static_cast<std::uint64_t>(audio_.wait_time().count()),
+                                static_cast<std::uint64_t>(session_->renderer_time().count())};
+          output.feedback = feedback_state();
+          output.audio_recovery = audio_.recovery_pending();
+          completed_fields_.metadata(field, std::move(output));
+        }
+        measurement->ready.clear();
+        PostMessageW(window_, WM_APP + 1, 0, 0);
+      };
+      do {
+        try {
+          session_->run();
+        } catch (...) {
+          const auto failure = std::current_exception();
+          publish();
+          std::rethrow_exception(failure);
+        }
+        // Metadata observes the complete ordinary interval, including audio and events.
+        publish();
+        if (!session_->refreshed() && session_->clocks() - origin > 10 * n64::clock_frequency)
+          throw std::runtime_error("Emulation stopped because no video field was produced.");
+      } while (!session_->refreshed() && session_->frames == before && !execution_.interrupted() &&
+               session_->diagnostics().control() == n64::HostControl::None);
+      if (field_trace_)
+        measurement->duration += std::chrono::steady_clock::now() - measurement->started;
+      if (session_->frames == before) {
+        if (!session_->refreshed() || session_->diagnostics().control() != n64::HostControl::None)
+          return false;
+        return pace(session_->clocks());
+      }
+
+      if (session_->frames % 300 == 0)
+        session_->save();
+      if ((options_.frames && session_->frames >= options_.frames) ||
+          session_->diagnostics().control() != n64::HostControl::None)
+        return false;
+      return pace(session_->clocks());
+    });
+  } catch (...) {
+    advancing_ = false;
+    session_->observe_frames({});
+    session_->connect_present({});
+    throw;
+  }
 }
 
 bool Window::drain_advance() {
@@ -151,49 +218,56 @@ bool Window::drain_advance() {
     presentation_.poll();
     if (presentation_.pending())
       return accepted;
-    auto output = completed_fields_->take();
-    if (!output)
+    auto delivered = completed_fields_.take();
+    if (!delivered) {
+      refresh_presented_image();
       return accepted;
-    refresh_frame(output->image);
-    output->observation.image_valid = image_valid();
-    auto submission = video_submission(output->observation.field);
-    presentation_.submit(std::move(submission), [this, output = std::move(*output)](
-                                                    const auto &completion) mutable {
-      last_frame_ = output.observation.field;
-      if (field_trace_) {
-        field_trace_->advance(output.duration, output.cpu - observed_worker_cpu_, output.processor);
-        observed_worker_cpu_ = output.cpu;
-        field_trace_->ready(output.completed);
-        if (output.capture)
-          field_trace_->capture(last_frame_, *output.capture);
+    }
+    auto &output = delivered->metadata;
+    auto &presented = delivered->presentation;
+    const auto &completion = presented.completion;
+    refresh_presented_image();
+    output.observation.image_valid = presented.image_valid;
+    if (presented.shader_failed != !shader_message_.empty())
+      update_shader(presented.shader_failed);
+    last_frame_ = output.observation.field;
+    if (field_trace_) {
+      field_trace_->advance(output.duration, output.cpu - observed_worker_cpu_, output.processor);
+      observed_worker_cpu_ = output.cpu;
+      field_trace_->ready(output.completed);
+      if (presented.capture && field_trace_->captures(last_frame_))
+        field_trace_->capture(last_frame_, *presented.capture);
+    }
+    if (last_frame_ == options_.frames)
+      target_capture_ = std::move(presented.capture);
+    const auto motors = feedback_.update(output.feedback);
+    gamepads_.rumble(feedback_targets(player_mappings_, motors, last_host_inputs_,
+                                      session_ && !stopped() && !rewinding_));
+    audio_recovery_pending_ |= output.audio_recovery;
+    observe_presentation(output.observation, completion);
+    if (output.history_error) {
+      rewind_enabled_ = false;
+      try {
+        std::rethrow_exception(output.history_error);
+      } catch (const std::exception &error) {
+        status_error(L"Rewind disabled", error);
       }
-      const auto motors = feedback_.update(output.feedback);
-      gamepads_.rumble(feedback_targets(player_mappings_, motors, last_host_inputs_,
-                                        session_ && !stopped() && !rewinding_));
-      audio_recovery_pending_ |= output.audio_recovery;
-      observe_presentation(output.observation, completion);
-      if (output.history_error) {
-        rewind_enabled_ = false;
-        try {
-          std::rethrow_exception(output.history_error);
-        } catch (const std::exception &error) {
-          status_error(L"Rewind disabled", error);
-        }
-        update_playback();
-      }
-      const auto now = std::chrono::steady_clock::now();
-      const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
-      if (elapsed >= 1.0) {
-        const auto fps = (last_frame_ - measured_frames_) / elapsed;
-        const auto title = L"Cupid-N64 | " + game_image_.filename().wstring() + L" | " +
-                           std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s | Slot " +
-                           std::to_wstring(state_slot_) +
-                           (audio_.available() ? L"" : L" | Audio unavailable");
-        SetWindowTextW(window_, title.c_str());
-        measured_time_ = now;
-        measured_frames_ = last_frame_;
-      }
-    });
+      update_playback();
+    }
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration<double>(now - measured_time_).count();
+    if (elapsed >= 1.0) {
+      const auto fps = (last_frame_ - measured_frames_) / elapsed;
+      const auto title = L"Cupid-N64 | " + game_image_.filename().wstring() + L" | " +
+                         std::to_wstring(static_cast<unsigned>(fps + 0.5)) + L" VI/s | Slot " +
+                         std::to_wstring(state_slot_) +
+                         (audio_.available() ? L"" : L" | Audio unavailable");
+      SetWindowTextW(window_, title.c_str());
+      measured_time_ = now;
+      measured_frames_ = last_frame_;
+    }
+    if (completion.failure)
+      std::rethrow_exception(completion.failure);
     accepted = true;
   }
   return accepted;
@@ -212,6 +286,19 @@ void Window::finish_advance() {
         execution_.wait();
       } catch (...) {
         failure = std::current_exception();
+      }
+      try {
+        session_->wait_presented();
+      } catch (...) {
+        if (!failure)
+          failure = std::current_exception();
+      }
+      session_->observe_frames({});
+      try {
+        session_->connect_present({});
+      } catch (...) {
+        if (!failure)
+          failure = std::current_exception();
       }
       advancing_ = false;
     }

@@ -106,11 +106,20 @@ void HardwareRenderer::scanout_settings(RenderSettings settings) {
     throw std::runtime_error("Select a supported rendering configuration.");
   if (settings.scale != implementation_->settings.scale)
     throw std::runtime_error("Reload the game to change internal rendering resolution.");
-  implementation_->readback->wait();
+  implementation_->readback->wait_presented();
   implementation_->settings = settings;
 }
 
-void HardwareRenderer::begin_frame(bool field) {
+void HardwareRenderer::connect_present(std::function<void(unsigned, const VideoFrame &)> present) {
+  bind_thread();
+  implementation_->readback->connect_present(std::move(present));
+}
+
+void HardwareRenderer::wait_presented() {
+  implementation_->readback->wait_presented();
+}
+
+void HardwareRenderer::begin_frame(bool field, unsigned number) {
   bind_thread();
   auto &state = *implementation_;
   state.readback->wait();
@@ -126,7 +135,7 @@ void HardwareRenderer::begin_frame(bool field) {
     state.scanout.fence->wait();
   state.processor->scanout_async_buffer(state.scanout, options);
   state.processor->begin_frame_context();
-  state.readback->start();
+  state.readback->start(number);
 }
 
 VideoFrame HardwareRenderer::read_frame() {

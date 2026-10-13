@@ -48,6 +48,9 @@ public:
   FeedbackState feedback_state(unsigned port) const;
   void heart_rate(unsigned port, unsigned value);
   void finish_frame();
+  // Replace the presenter only while session execution is stopped.
+  void connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present);
+  void wait_presented();
   // Replace the observer only while session execution is stopped.
   void observe_frames(std::function<void(unsigned)> observer);
   void clear_refresh();
@@ -143,6 +146,7 @@ private:
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
   std::function<void(unsigned)> frame_observer_;
+  std::function<void(unsigned, const n64::VideoFrame &)> frame_presenter_;
   std::uint64_t disk_identity_ = 0;
 };
 

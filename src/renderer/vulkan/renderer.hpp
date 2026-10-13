@@ -3,6 +3,7 @@
 #include "core/devices/rdram/rdram.hpp"
 #include "renderer/video/frame.hpp"
 #include "renderer/video/settings.hpp"
+#include <functional>
 #include <memory>
 
 namespace cupid::n64 {
@@ -16,7 +17,9 @@ public:
   void submit(std::span<const std::uint32_t> words);
   void synchronize();
   void write_video(unsigned index, std::uint32_t value);
-  void begin_frame(bool field);
+  void begin_frame(bool field, unsigned number = 0);
+  void connect_present(std::function<void(unsigned, const VideoFrame &)> present);
+  void wait_presented();
   VideoFrame read_frame();
   VideoFrame frame(bool field);
   bool crashed() const;

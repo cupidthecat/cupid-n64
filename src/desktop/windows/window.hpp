@@ -8,10 +8,10 @@
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
-#include "desktop/timing/execution_output.hpp"
 #include "desktop/timing/execution_worker.hpp"
 #include "desktop/timing/playback_clock.hpp"
 #include "desktop/timing/playback_settings.hpp"
+#include "desktop/video/frame_delivery.hpp"
 #include "desktop/video/viewport.hpp"
 #include "desktop/windows/audio/devices.hpp"
 #include "desktop/windows/controls/gamepads.hpp"
@@ -56,7 +56,7 @@ private:
   bool shader_command(unsigned id);
   void select_shader(ShaderSelection selection);
   void create_shader_menu(HMENU view);
-  void update_shader();
+  void update_shader(std::optional<bool> failed = {});
   void shortcuts_dialog();
   void shortcut(ShortcutEvent event);
   bool shortcut_key(unsigned key, bool pressed, bool repeat);
@@ -133,6 +133,8 @@ private:
   bool image_valid() const;
   bool present_video();
   PresentationWorker::Submission video_submission(unsigned field);
+  VideoSurface video_surface();
+  void refresh_presented_image();
   void observe_presentation(FieldTrace::Observation &observation,
                             const PresentationWorker::Completion &completion);
   void present_field(FieldTrace::Observation &observation);
@@ -220,8 +222,6 @@ private:
   std::optional<std::chrono::nanoseconds> worker_cpu_origin_;
   std::chrono::nanoseconds observed_worker_cpu_{};
   struct CompletedField {
-    n64::VideoFrame image;
-    std::optional<n64::VideoFrame> capture;
     FieldTrace::Observation observation{};
     std::array<FeedbackState, 4> feedback{};
     std::chrono::steady_clock::time_point completed;
@@ -261,7 +261,8 @@ private:
   unsigned pixel_width_ = 0, pixel_height_ = 0;
   unsigned cached_viewport_width_ = 0, cached_viewport_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
-  std::unique_ptr<ExecutionOutput<CompletedField>> completed_fields_;
+  FrameDelivery<CompletedField> completed_fields_;
+  std::optional<n64::VideoFrame> target_capture_;
   PresentationWorker presentation_;
   // Drain execution before destroying any object captured by the worker.
   ExecutionWorker execution_;

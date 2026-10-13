@@ -41,7 +41,7 @@ int main() {
   const auto completed = FieldTrace::Clock::now();
   std::this_thread::sleep_for(std::chrono::milliseconds(4));
   trace.presented(
-      {1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000, true, true, 500000},
+      {1, 100, 0xffffffff80001000, 20, true, true, 4000000, 2000000, true, true, 500000, 1, 3, 7},
       completed);
   trace.advance(std::chrono::milliseconds(20), std::chrono::milliseconds(7), 6);
   trace.ready();
@@ -52,7 +52,8 @@ int main() {
   const std::string text((std::istreambuf_iterator<char>(csv)), {});
   const std::string metadata((std::istreambuf_iterator<char>(report)), {});
   test::equal(text.find(",image_valid,video_presented,presentation_us,presentation_completed_s,"
-                        "presentation_delivery_us\n") != std::string::npos,
+                        "presentation_delivery_us,presentation_field,presentation_generation,"
+                        "presentation_sequence\n") != std::string::npos,
               true);
   test::equal(text.find("1,100,18446744071562072064,20,") != std::string::npos, true);
   test::equal(metadata.find("\"complete\":false") != std::string::npos, true);
@@ -70,7 +71,8 @@ int main() {
     return result;
   };
   const auto first = columns(row);
-  test::equal(first.size(), 20);
+  test::equal(first.size(), 23);
+  test::equal(first[20] == "1" && first[21] == "3" && first[22] == "7", true);
   test::equal(first[16] == "1" && first[17] == "500", true);
   test::equal(std::stod(first[19]) >= 3000, true);
   test::equal(std::stod(first[4]) > std::stod(first[18]), true);

@@ -69,7 +69,7 @@ void RendererState::require_memory(HardwareRenderer &renderer, Rdram &memory) {
 void RendererState::fence(HardwareRenderer &renderer) {
   renderer.bind_thread();
   auto &s = *renderer.implementation_;
-  s.readback->wait();
+  s.readback->wait_presented();
   s.processor->idle();
   if (s.scanout.fence)
     s.scanout.fence->wait();

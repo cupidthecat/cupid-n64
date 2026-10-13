@@ -82,7 +82,7 @@ void PresentationWorker::deliver() {
 
 void PresentationWorker::new_generation() {
   quiesce();
-  ++generation_;
+  generation_ = detail::presentation_generation();
 }
 
 void PresentationWorker::shutdown() {
