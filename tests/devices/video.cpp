@@ -49,7 +49,7 @@ void video_tests() {
     equal(inactive.refreshed(), false);
     inactive.power();
     equal(inactive.refreshed(), false);
-    for (unsigned n = 0; n < 199; ++n)
+    for (unsigned n = 0; n < 198; ++n)
       inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));
     equal(inactive.refreshed(), false);
     inactive.advance(static_cast<std::uint32_t>(inactive.clocks() + 1));

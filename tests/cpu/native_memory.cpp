@@ -1,4 +1,5 @@
 #include "native/memory_context.hpp"
+#include "native/pipeline.hpp"
 #include "native_memory_fixture.hpp"
 
 namespace test {
@@ -6,6 +7,7 @@ using namespace cupid::n64;
 using namespace native_memory;
 
 void native_memory_tests() {
+  pipeline_materialization_tests();
   memory_context_tests();
   for (bool little : {false, true}) {
     for (unsigned operation : {32u, 33u, 35u, 36u, 37u, 39u, 40u, 41u, 43u, 55u, 63u}) {

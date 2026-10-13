@@ -57,8 +57,13 @@ bool CpuCompiler::Emitter::memory(std::uint32_t instruction, bool full, bool def
         imm(reinterpret_cast<std::uintptr_t>(cpu.dcache_.data())));
 #endif
   };
-  commit_pipeline();
   SlowPath path{{}, nullptr, instruction, cycles, delay ? 0u : 2u};
+  if (!full && !partial && !tracing && !diagnostics) {
+    if (pipeline_dirty)
+      path.materialize_pc = pc;
+  } else {
+    commit_pipeline();
+  }
   address();
   if (!range_known)
     path.enter.push_back(
@@ -173,6 +178,8 @@ void CpuCompiler::Emitter::emit_slow_paths() {
     const auto entry = sljit_emit_label(compiler);
     for (auto jump : path.enter)
       sljit_set_label(jump, entry);
+    if (path.materialize_pc)
+      materialize_pipeline(*path.materialize_pc);
     op1(SLJIT_MOV, reg(SLJIT_R0), reg(SLJIT_S2));
     op1(SLJIT_MOV32, reg(SLJIT_R1), imm(path.instruction));
     op1(SLJIT_MOV, reg(SLJIT_R2), imm(path.clocks));

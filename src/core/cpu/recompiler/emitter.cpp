@@ -139,13 +139,17 @@ sljit_sw CpuCompiler::Emitter::cop2_memory_helper(Cpu *cpu, std::uint32_t instru
 }
 
 void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
-  commit_pipeline();
+  if (tracing || diagnostics)
+    commit_pipeline();
   advance(cycles);
   cycles = 0;
   const auto &line = cpu.icache_[(pc >> 5) & 511];
   const auto key = field(&line.tag_key);
   const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, key.type, key.value, SLJIT_IMM,
                                   (address & ~0xfffu) | 1);
+  // Hits retain the pending pipeline; miss helpers need the current fetch PC.
+  if (pipeline_dirty)
+    materialize_pipeline(pc);
   const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
   auto &view = block.views.emplace_back();
   view.count = static_cast<unsigned>(

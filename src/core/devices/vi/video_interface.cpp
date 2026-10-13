@@ -12,7 +12,6 @@ void VideoInterface::power() {
   registers_.fill(0);
   registers_[3] = 256;
   counter_ = leap_counter_ = fraction_ = 0;
-  inactive_counter_ = 0;
   refreshed_ = false;
   field_ = false;
   clock_ = 0;

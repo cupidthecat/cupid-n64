@@ -866,6 +866,19 @@ void inactive_video_tests() {
     video.power();
     test::equal(counter(), 0);
     test::equal(video.refreshed(), false);
+    for (const auto warm : {false, true}) {
+      CoreState::restore(console, phase);
+      console.power(warm);
+      test::equal(counter(), 199);
+      test::equal(video.refreshed(), false);
+      video.write_word(16, 0);
+      line();
+      test::equal(counter(), 0);
+      test::equal(video.refreshed(), true);
+      test::equal(video.frames(), 0);
+      test::equal(fields, 0);
+      test::equal(console.interrupts().read_word(8) & 8, 0);
+    }
   }
 }
 

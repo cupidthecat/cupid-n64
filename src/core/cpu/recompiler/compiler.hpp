@@ -138,6 +138,7 @@ struct CpuCompiler::Emitter {
     std::uint32_t instruction;
     unsigned clocks;
     unsigned completion_clocks = 2;
+    std::optional<std::uint64_t> materialize_pc = {};
   };
   Cpu &cpu;
   Impl::Block &block;
@@ -187,6 +188,7 @@ struct CpuCompiler::Emitter {
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
   void compare(Operand dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source, bool word = false);
+  void materialize_pipeline(std::uint64_t address);
   void commit_pipeline();
   void advance(unsigned clocks);
   void return_now(unsigned clocks);

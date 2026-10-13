@@ -2,12 +2,16 @@
 
 namespace cupid::n64 {
 
+void CpuCompiler::Emitter::materialize_pipeline(std::uint64_t address) {
+  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), imm(address));
+  op1(SLJIT_MOV, field(&cpu.pipeline_pc_), imm(address));
+  op1(SLJIT_MOV, field(&cpu.next_pc_), imm(address + 4));
+}
+
 void CpuCompiler::Emitter::commit_pipeline() {
   if (!pipeline_dirty)
     return;
-  op1(SLJIT_MOV, state(offsetof(CpuState, pc)), imm(pc));
-  op1(SLJIT_MOV, field(&cpu.pipeline_pc_), imm(pc));
-  op1(SLJIT_MOV, field(&cpu.next_pc_), imm(pc + 4));
+  materialize_pipeline(pc);
   pipeline_dirty = false;
 }
 
