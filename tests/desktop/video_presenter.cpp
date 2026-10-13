@@ -1,4 +1,5 @@
 #include "../support/test.hpp"
+#include "desktop/windows/video/opengl/functions.hpp"
 #include "desktop/windows/video/presenter.hpp"
 #include <array>
 
@@ -6,11 +7,26 @@ using namespace cupid::desktop;
 
 int main(int argc, char **) {
   const bool software = argc == 1;
+  test::equal(opengl::valid(nullptr), false);
+  for (auto address : {std::intptr_t(1), std::intptr_t(2), std::intptr_t(3), std::intptr_t(-1)})
+    test::equal(opengl::valid(reinterpret_cast<PROC>(address)), false);
   const auto parent = CreateWindowW(L"STATIC", L"video test", WS_OVERLAPPEDWINDOW, 0, 0, 120, 120,
                                     nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
   test::equal(parent != nullptr, true);
   if (!parent)
     return 1;
+  const auto external_display = GetDC(parent);
+  PIXELFORMATDESCRIPTOR format{};
+  format.nSize = sizeof(format);
+  format.nVersion = 1;
+  format.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+  format.iPixelType = PFD_TYPE_RGBA;
+  format.cColorBits = 32;
+  const auto pixel_format = ChoosePixelFormat(external_display, &format);
+  test::equal(SetPixelFormat(external_display, pixel_format, &format) != FALSE, true);
+  const auto external_context = wglCreateContext(external_display);
+  test::equal(external_context != nullptr, true);
+  test::equal(wglMakeCurrent(external_display, external_context) != FALSE, true);
   {
     VideoPresenter video;
     const bool initialized = video.initialize(parent, software);
@@ -20,6 +36,7 @@ int main(int argc, char **) {
       return 77;
     }
     test::equal(initialized, true);
+    test::equal(wglGetCurrentContext() == external_context, true);
     if (!initialized) {
       std::cerr << video.error() << '\n';
       DestroyWindow(parent);
@@ -30,6 +47,7 @@ int main(int argc, char **) {
     test::equal(video.present(image, 2, 2, 64, 48, DisplayScale::Stretch, DisplayAspect::Standard),
                 true);
     auto pixels = video.capture();
+    test::equal(wglGetCurrentContext() == external_context, true);
     test::equal(pixels.size(), 64 * 48 * 4);
     const auto check = [&](unsigned width, unsigned x, unsigned y,
                            std::array<std::uint8_t, 4> expected) {
@@ -72,6 +90,11 @@ int main(int argc, char **) {
     pixels = video.capture();
     check(64, 56, 8, {0, 255, 0, 255});
   }
+  test::equal(wglGetCurrentContext() == external_context, true);
+  test::equal(wglGetCurrentDC() == external_display, true);
+  wglMakeCurrent(nullptr, nullptr);
+  wglDeleteContext(external_context);
+  ReleaseDC(parent, external_display);
   DestroyWindow(parent);
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;

@@ -40,12 +40,17 @@ struct VideoPresenter::Implementation {
   bool blocking = false;
 
   ~Implementation() {
+    const auto previous_display = wglGetCurrentDC();
+    const auto previous_context = wglGetCurrentContext();
     if (context && wglMakeCurrent(display, context)) {
       if (framebuffer)
         gl->delete_framebuffers(1, &framebuffer);
       if (texture)
         glDeleteTextures(1, &texture);
-      wglMakeCurrent(nullptr, nullptr);
+      if (previous_context != context)
+        wglMakeCurrent(previous_display, previous_context);
+      else
+        wglMakeCurrent(nullptr, nullptr);
     }
     if (context)
       wglDeleteContext(context);
@@ -107,9 +112,8 @@ struct VideoPresenter::Implementation {
         throw std::runtime_error("Could not acquire the OpenGL presentation context.");
       gl = std::make_unique<opengl::Functions>();
       gl->gen_framebuffers(1, &framebuffer);
-      const auto swap = wglGetProcAddress("wglSwapIntervalEXT");
-      if (swap) {
-        swap_interval = reinterpret_cast<opengl::Functions::SwapInterval>(swap);
+      swap_interval = opengl::find<opengl::Functions::SwapInterval>("wglSwapIntervalEXT");
+      if (swap_interval) {
         swap_interval(0);
       }
     }

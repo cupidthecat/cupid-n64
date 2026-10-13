@@ -1,8 +1,9 @@
 #pragma once
 
+#include <windows.h>
+
 #include <GL/gl.h>
 #include <stdexcept>
-#include <windows.h>
 
 namespace cupid::desktop::opengl {
 
@@ -10,12 +11,21 @@ constexpr GLenum framebuffer = 0x8d40, read_framebuffer = 0x8ca8, draw_framebuff
 constexpr GLenum color_attachment = 0x8ce0, framebuffer_complete = 0x8cd5;
 constexpr GLenum bgra = 0x80e1, clamp_to_edge = 0x812f, rgba8 = 0x8058;
 
-template <typename Function> Function load(const char *name) {
+inline bool valid(PROC address) {
+  return address && address != reinterpret_cast<PROC>(1) && address != reinterpret_cast<PROC>(2) &&
+         address != reinterpret_cast<PROC>(3) && address != reinterpret_cast<PROC>(-1);
+}
+
+template <typename Function> Function find(const char *name) {
   const auto address = wglGetProcAddress(name);
-  if (!address || address == reinterpret_cast<PROC>(1) || address == reinterpret_cast<PROC>(2) ||
-      address == reinterpret_cast<PROC>(3) || address == reinterpret_cast<PROC>(-1))
+  return valid(address) ? reinterpret_cast<Function>(address) : nullptr;
+}
+
+template <typename Function> Function load(const char *name) {
+  const auto function = find<Function>(name);
+  if (!function)
     throw std::runtime_error("The OpenGL presentation driver lacks a required function.");
-  return reinterpret_cast<Function>(address);
+  return function;
 }
 
 struct Functions {
