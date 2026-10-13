@@ -190,7 +190,9 @@ bool CpuCompiler::Emitter::compile() {
     return false;
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 5 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
+  const auto vectors = sljit_has_cpu_feature(SLJIT_HAS_SIMD) ? SLJIT_ENTER_VECTOR(1) : 0;
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 5 | SLJIT_ENTER_FLOAT(2) | vectors, 4,
+                   2 * sizeof(sljit_sw));
   host_address(SLJIT_S1, &cpu.state_);
   host_address(SLJIT_S2, &cpu);
   plan_entries();
