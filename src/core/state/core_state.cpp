@@ -6,6 +6,7 @@
 namespace cupid::n64 {
 
 std::vector<std::uint8_t> CoreState::capture(Console &console) {
+  console.rsp_.compiler_->reset();
   state::Archive archive;
   visit(archive, console);
   return archive.finish();
@@ -31,6 +32,7 @@ std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
   visit(*archive, console);
   archive->validate();
   archive->defer([&console, frequency] {
+    console.rsp_.compiler_->reset();
     console.diagnostics_.reset_context();
     console.rsp_.pending_origin_ = console.rsp_.current_origin_ = {};
     console.audio_.diagnostic_origins_ = {};

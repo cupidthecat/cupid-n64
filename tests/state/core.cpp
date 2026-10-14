@@ -3,6 +3,7 @@
 #include "core/controller/accessories/cartridge/handheld.hpp"
 #include "core/state/archive.hpp"
 #include "core/state/core_state.hpp"
+#include "rsp_schedule.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -521,8 +522,9 @@ void rsp_cache_history_tests() {
     test::equal(rsp.status().broken, true);
     test::equal(rsp.read_local(0x1000 | pc, 4), opcode);
   }
-  std::vector<std::uint8_t> initial;
+  std::vector<std::uint8_t> history, initial;
   try {
+    history = CoreState::checkpoint(machine.console).bytes;
     initial = CoreState::capture(machine.console);
   } catch (const state::InvalidState &) {
     test::equal(false, true);
@@ -530,21 +532,21 @@ void rsp_cache_history_tests() {
   }
   const std::array<std::uint8_t, 33> cache_start{1, 0, 1, 0};
   const auto count =
-      std::search(initial.begin(), initial.end(), cache_start.begin(), cache_start.end());
-  test::equal(count != initial.end(), true);
-  if (count != initial.end()) {
-    auto broken = initial;
-    const auto offset = static_cast<std::size_t>(count - initial.begin());
+      std::search(history.begin(), history.end(), cache_start.begin(), cache_start.end());
+  test::equal(count != history.end(), true);
+  if (count != history.end()) {
+    auto broken = history;
+    const auto offset = static_cast<std::size_t>(count - history.begin());
     broken[offset + 2] = 0x40;
     broken[offset + 3] = 2;
     rewrite_checksum(broken);
     test::equal(rejects(machine.console, broken), true);
     test::equal(CoreState::capture(machine.console) == initial, true);
   }
-  CoreState::restore(machine.console, initial);
+  CoreState::restore(machine.console, history);
   test::equal(CoreState::capture(machine.console) == initial, true);
   Machine fresh;
-  CoreState::restore(fresh.console, initial);
+  CoreState::restore(fresh.console, history);
   test::equal(CoreState::capture(fresh.console) == initial, true);
   const auto resume = [](Machine &m) {
     auto &signal = m.console.signal();
@@ -885,6 +887,7 @@ void inactive_video_tests() {
 } // namespace
 
 void core_state_tests() {
+  test::rsp_snapshot_schedule_tests();
   inactive_video_tests();
   cpu_extension_pointer_tests();
   cpu_cache_context_tests();
