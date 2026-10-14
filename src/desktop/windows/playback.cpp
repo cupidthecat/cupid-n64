@@ -49,8 +49,9 @@ void Window::update_fast_forward() {
                        (fast_forward_hold_ || fast_forward_toggle_);
   if (enabled != fast_forward_) {
     fast_forward_ = enabled;
-    audio_.suspended = enabled;
-    audio_.clear();
+    auto audio = audio_.settings();
+    audio.blocking = playback_sync_.audio && !enabled;
+    audio_.configure(std::move(audio));
     rebase();
   }
   update_playback();

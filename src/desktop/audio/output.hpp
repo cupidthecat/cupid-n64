@@ -25,6 +25,9 @@ public:
   virtual bool floating_samples() const {
     return false;
   }
+  virtual bool wait_after_submit() const {
+    return false;
+  }
   virtual void submit_float(std::span<const float>) {
     throw std::logic_error("The audio output does not accept floating point samples.");
   }

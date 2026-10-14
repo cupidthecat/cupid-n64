@@ -34,7 +34,7 @@ VideoSurface Window::video_surface() const {
   const auto width = drawing_ ? gtk_widget_get_allocated_width(drawing_) * factor : 1;
   const auto height = drawing_ ? gtk_widget_get_allocated_height(drawing_) * factor : 1;
   return {static_cast<unsigned>(std::max(1, width)), static_cast<unsigned>(std::max(1, height)),
-          settings_.scale, settings_.aspect, settings_.sync == PlaybackSync::Video};
+          settings_.scale, settings_.aspect, settings_.sync.video};
 }
 
 void Window::initialize_video() {
@@ -121,7 +121,7 @@ void Window::start_playback() {
   });
   advancing_ = true;
   try {
-    execution_.repeat([this, clock = clock_, sync = settings_.sync, ready]() mutable {
+    execution_.repeat([this, ready] {
       auto selected = take_inputs();
       if (options_.test_input && session_->frames >= 120 && session_->frames % 120 < 60)
         selected[0].buttons |= 0x1000;
@@ -159,14 +159,6 @@ void Window::start_playback() {
         ++refresh_count_;
       if ((options_.frames && session_->frames >= options_.frames) || execution_.interrupted())
         return false;
-      if (sync == PlaybackSync::Video || !audio_.available()) {
-        auto delay = clock.delay(session_->clocks(), PlaybackClock::Clock::now());
-        while (delay.count()) {
-          if (!execution_.wait_for(delay))
-            return false;
-          delay = clock.delay(session_->clocks(), PlaybackClock::Clock::now());
-        }
-      }
       return true;
     });
   } catch (...) {

@@ -8,6 +8,8 @@ struct Capture {
   std::vector<float> samples;
   unsigned integer_submissions = 0;
   bool interrupted = false;
+  bool wait_after = false;
+  std::size_t samples_at_wait = 0;
 } capture;
 
 class Output final : public AudioOutput {
@@ -18,6 +20,7 @@ public:
   }
   void clear() override {}
   bool wait(unsigned) override {
+    capture.samples_at_wait = capture.samples.size();
     return !capture.interrupted;
   }
   void submit(unsigned, std::span<const short>) override {
@@ -25,6 +28,9 @@ public:
   }
   bool floating_samples() const override {
     return true;
+  }
+  bool wait_after_submit() const override {
+    return capture.wait_after;
   }
   void submit_float(std::span<const float> samples) override {
     test::equal(samples.size(), std::size_t(2));
@@ -66,6 +72,11 @@ int main() {
     test::equal(std::abs(capture.samples.back() + 1e-8f) < 1e-12f, true);
   }
   test::equal(audio.generated_samples(), std::uint64_t(8));
+
+  capture.wait_after = true;
+  audio.sample({0.25, -0.25});
+  test::equal(capture.samples_at_wait, capture.samples.size());
+  capture.wait_after = false;
 
   const auto before = capture.samples.size();
   capture.interrupted = true;

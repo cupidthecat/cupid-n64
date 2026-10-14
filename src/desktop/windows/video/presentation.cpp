@@ -33,7 +33,7 @@ VideoSurface Window::video_surface() {
     cached_viewport_height_ = MulDiv(static_cast<int>(viewport_size_.height), dpi ? dpi : 96, 96);
   }
   return {cached_viewport_width_, cached_viewport_height_, display_scale_, display_aspect_,
-          !fast_forward_ && playback_sync_ == PlaybackSync::Video};
+          !fast_forward_ && playback_sync_.video};
 }
 
 PresentationWorker::Submission Window::video_submission(unsigned field) {

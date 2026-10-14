@@ -18,6 +18,7 @@ Window::Window(Options options, std::filesystem::path settings, std::optional<bo
     if (!*hardware)
       settings_.session.graphics = {};
   }
+  settings_.audio.blocking = settings_.sync.audio;
   audio_.configure(settings_.audio);
   audio_.muted = settings_.muted;
 }
@@ -389,8 +390,6 @@ void Window::rebase() {
   finish_playback();
   completed_fields_.new_generation();
   last_frame_ = std::chrono::steady_clock::now();
-  if (session_)
-    clock_.reset(session_->clocks(), PlaybackClock::Clock::now());
 }
 
 void Window::clear_input() {
@@ -643,9 +642,6 @@ bool Window::synchronous_tick() {
     last_frame_ = std::chrono::steady_clock::now();
     return true;
   }
-  if ((settings_.sync == PlaybackSync::Video || !audio_.available()) &&
-      clock_.delay(session_->clocks(), now).count())
-    return true;
   const auto deadline = now + std::chrono::milliseconds(4);
   const auto before = session_->frames;
   session_->input(inputs());

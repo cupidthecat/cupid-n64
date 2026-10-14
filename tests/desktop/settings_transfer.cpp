@@ -56,6 +56,8 @@ settings::Document configured(const Directory &directory) {
   document[L"Graphics"][L"Supersampling"] = L"1";
   document[L"Graphics"][L"BypassVI"] = L"1";
   document[L"Playback"][L"Sync"] = L"1";
+  document[L"Playback"][L"AudioSync"] = L"0";
+  document[L"Playback"][L"VideoSync"] = L"1";
   document[L"Playback"][L"Focus"] = L"2";
   document[L"Rewind"][L"Enabled"] = L"1";
   document[L"Rewind"][L"Mute"] = L"0";

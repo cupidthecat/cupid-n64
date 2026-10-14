@@ -13,19 +13,23 @@ void Window::load_playback_settings() {
     const auto value = GetPrivateProfileIntW(L"Playback", key, 0, settings_.c_str());
     return value <= maximum ? value : 0;
   };
-  playback_sync_ = static_cast<PlaybackSync>(playback(L"Sync", 1));
+  playback_sync_.audio =
+      GetPrivateProfileIntW(L"Playback", L"AudioSync", 1, settings_.c_str()) != 0;
+  playback_sync_.video = GetPrivateProfileIntW(L"Playback", L"VideoSync", playback(L"Sync", 1),
+                                               settings_.c_str()) != 0;
   focus_behavior_ = static_cast<FocusBehavior>(playback(L"Focus", 2));
   auto audio = audio_.settings();
+  audio.blocking = playback_sync_.audio && !fast_forward_;
   const auto volume = GetPrivateProfileIntW(L"Audio", L"Volume", 100, settings_.c_str());
   audio.levels.volume = volume <= 200 ? volume : 100;
   const auto balance =
       static_cast<int>(GetPrivateProfileIntW(L"Audio", L"Balance", 0, settings_.c_str()));
   audio.levels.balance = balance >= -100 && balance <= 100 ? balance : 0;
-  const auto latency = GetPrivateProfileIntW(L"Audio", L"Latency", 40, settings_.c_str());
+  const auto latency = GetPrivateProfileIntW(L"Audio", L"Latency", 0, settings_.c_str());
   audio.latency =
       std::find(audio_latencies.begin(), audio_latencies.end(), latency) != audio_latencies.end()
           ? latency
-          : 40;
+          : 0;
   std::array<wchar_t, 32768> device{};
   GetPrivateProfileStringW(L"Audio", L"Device", L"", device.data(),
                            static_cast<DWORD>(device.size()), settings_.c_str());
@@ -41,7 +45,8 @@ void Window::save_playback_settings() {
                                       settings_.c_str()) != 0;
   };
   const auto &audio = audio_.settings();
-  if (!write(L"Playback", L"Sync", static_cast<unsigned>(playback_sync_)) ||
+  if (!write(L"Playback", L"AudioSync", playback_sync_.audio) ||
+      !write(L"Playback", L"VideoSync", playback_sync_.video) ||
       !write(L"Playback", L"Focus", static_cast<unsigned>(focus_behavior_)) ||
       !write(L"Audio", L"Volume", audio.levels.volume) ||
       !write(L"Audio", L"Balance", audio.levels.balance) ||
@@ -66,7 +71,8 @@ void Window::create_playback_settings_menu(HMENU emulation) {
     AppendMenuW(balance, MF_STRING, AudioBalanceFirst + n, label.c_str());
   }
   for (unsigned n = 0; n < audio_latencies.size(); ++n) {
-    const auto label = std::to_wstring(audio_latencies[n]) + L" ms";
+    const auto label =
+        audio_latencies[n] ? std::to_wstring(audio_latencies[n]) + L" ms" : L"Device default";
     AppendMenuW(latency, MF_STRING, AudioLatencyFirst + n, label.c_str());
   }
   audio_device_menu_ = CreatePopupMenu();
@@ -77,8 +83,8 @@ void Window::create_playback_settings_menu(HMENU emulation) {
               L"Output &device");
   AppendMenuW(emulation, MF_POPUP, reinterpret_cast<UINT_PTR>(audio_menu_), L"&Audio");
   const auto sync = CreatePopupMenu(), focus = CreatePopupMenu();
-  AppendMenuW(sync, MF_STRING, SyncAudio, L"&Audio output");
-  AppendMenuW(sync, MF_STRING, SyncVideo, L"&Monitor refresh");
+  AppendMenuW(sync, MF_STRING, SyncAudio, L"Synchronize &audio");
+  AppendMenuW(sync, MF_STRING, SyncVideo, L"Synchronize &video");
   AppendMenuW(focus, MF_STRING, FocusPause, L"&Pause");
   AppendMenuW(focus, MF_STRING, FocusBlockInput, L"Continue, &block game input");
   AppendMenuW(focus, MF_STRING, FocusAllowInput, L"Continue, &allow game input");
@@ -113,8 +119,10 @@ void Window::refresh_audio_devices() {
 
 void Window::update_playback_settings() {
   const auto &audio = audio_.settings();
-  CheckMenuRadioItem(menu_, SyncAudio, SyncVideo,
-                     playback_sync_ == PlaybackSync::Audio ? SyncAudio : SyncVideo, MF_BYCOMMAND);
+  CheckMenuItem(menu_, SyncAudio,
+                MF_BYCOMMAND | (playback_sync_.audio ? MF_CHECKED : MF_UNCHECKED));
+  CheckMenuItem(menu_, SyncVideo,
+                MF_BYCOMMAND | (playback_sync_.video ? MF_CHECKED : MF_UNCHECKED));
   CheckMenuRadioItem(menu_, FocusPause, FocusAllowInput,
                      FocusPause + static_cast<unsigned>(focus_behavior_), MF_BYCOMMAND);
   for (unsigned n = 0; n <= 20; ++n)
@@ -155,7 +163,13 @@ bool Window::playback_settings_command(unsigned id) {
       id != AudioDeviceDefault)
     return false;
   if (id == SyncAudio || id == SyncVideo) {
-    playback_sync_ = id == SyncAudio ? PlaybackSync::Audio : PlaybackSync::Video;
+    if (id == SyncAudio)
+      playback_sync_.audio = !playback_sync_.audio;
+    else
+      playback_sync_.video = !playback_sync_.video;
+    auto audio = audio_.settings();
+    audio.blocking = playback_sync_.audio && !fast_forward_;
+    audio_.configure(std::move(audio));
     rebase();
   } else if (focus) {
     const bool was_stopped = stopped();

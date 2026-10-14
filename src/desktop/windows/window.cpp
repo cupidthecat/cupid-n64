@@ -302,13 +302,6 @@ int Window::run(HINSTANCE instance, int show) {
           refresh_audio_devices();
           next_audio_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         }
-        const auto delay =
-            playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
-        if (!fast_forward_ && delay.count()) {
-          MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
-                                    QS_ALLINPUT);
-          continue;
-        }
         present();
       } else {
         advance();
@@ -579,7 +572,6 @@ void Window::rebase() {
   target_capture_.reset();
   video_sync_available_ = true;
   measured_time_ = std::chrono::steady_clock::now();
-  playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
   measured_frames_ = session_ ? session_->frames : 0;
   InvalidateRect(window_, nullptr, FALSE);
 }

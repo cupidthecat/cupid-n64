@@ -113,19 +113,7 @@ void Window::start_advance() {
   });
   advancing_ = true;
   try {
-    execution_.repeat([this, clock = playback_clock_, unpaced = fast_forward_,
-                       measurement]() mutable {
-      const auto pace = [&](std::uint64_t clocks) {
-        if (!unpaced) {
-          auto delay = clock.delay(clocks, std::chrono::steady_clock::now());
-          while (delay.count()) {
-            if (!execution_.wait_for(delay))
-              return false;
-            delay = clock.delay(clocks, std::chrono::steady_clock::now());
-          }
-        }
-        return true;
-      };
+    execution_.repeat([this, measurement] {
       const auto before = session_->frames;
       auto selected = take_inputs();
       if (input_replay_) {
@@ -193,7 +181,7 @@ void Window::start_advance() {
       if (session_->frames == before) {
         if (!session_->refreshed() || session_->diagnostics().control() != n64::HostControl::None)
           return false;
-        return pace(session_->clocks());
+        return true;
       }
 
       if (session_->frames % 300 == 0)
@@ -201,7 +189,7 @@ void Window::start_advance() {
       if ((options_.frames && session_->frames >= options_.frames) ||
           session_->diagnostics().control() != n64::HostControl::None)
         return false;
-      return pace(session_->clocks());
+      return true;
     });
   } catch (...) {
     advancing_ = false;

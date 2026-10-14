@@ -42,6 +42,7 @@ target_link_libraries(cupid_session PRIVATE Threads::Threads SDL3::SDL3-static)
 if(WIN32)
   target_sources(cupid_session PRIVATE
     ${PROJECT_SOURCE_DIR}/src/desktop/windows/audio/output.cpp
+    ${PROJECT_SOURCE_DIR}/src/desktop/windows/audio/wasapi.cpp
     ${PROJECT_SOURCE_DIR}/src/desktop/windows/audio/devices.cpp)
   target_link_libraries(cupid_session PRIVATE winmm ole32 uuid)
   target_compile_definitions(cupid_session PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)

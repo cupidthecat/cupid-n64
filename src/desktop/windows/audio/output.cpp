@@ -2,12 +2,15 @@
 #include "desktop/windows/audio/devices.hpp"
 #include "desktop/windows/audio/endpoints.hpp"
 #include "desktop/windows/audio/identity.hpp"
+#include <array>
 #include <atomic>
 #include <mmsystem.h>
+#include <string_view>
 #include <utility>
 #include <windows.h>
 
 namespace cupid::desktop {
+std::unique_ptr<AudioOutput> make_wasapi_audio_output();
 namespace {
 using Microsoft::WRL::ComPtr;
 
@@ -115,6 +118,11 @@ private:
 } // namespace
 
 std::unique_ptr<AudioOutput> make_audio_output(std::span<short *const>) {
-  return std::make_unique<WindowsAudioOutput>();
+  std::array<wchar_t, 16> driver{};
+  if (GetEnvironmentVariableW(L"SDL_AUDIODRIVER", driver.data(),
+                              static_cast<DWORD>(driver.size())) == 5 &&
+      std::wstring_view(driver.data()) == L"dummy")
+    return std::make_unique<WindowsAudioOutput>();
+  return make_wasapi_audio_output();
 }
 } // namespace cupid::desktop

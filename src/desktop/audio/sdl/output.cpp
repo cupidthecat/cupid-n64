@@ -21,9 +21,12 @@ SdlAudioOutput::~SdlAudioOutput() {
 
 void SdlAudioOutput::configure(const Audio::Settings &settings) {
   const bool changed = settings.device != settings_.device || settings.latency != settings_.latency;
+  const bool blocking_changed = settings.blocking != settings_.blocking;
   settings_ = settings;
   if (changed || !available())
     open();
+  else if (blocking_changed)
+    clear();
 }
 
 bool SdlAudioOutput::recover() {
@@ -86,8 +89,9 @@ void SdlAudioOutput::clear() {
 bool SdlAudioOutput::wait(unsigned) {
   if (!available())
     return false;
-  const auto limit = static_cast<int>((AudioResampler::output_frequency / 100) * sizeof(float) * 2 *
-                                      (settings_.latency / 10));
+  const auto latency = settings_.latency ? settings_.latency : 20;
+  const auto limit =
+      static_cast<int>((AudioResampler::output_frequency / 1000) * sizeof(float) * 2 * latency);
   std::uint64_t progress = 0;
   auto timeout = std::uint64_t{5000000000};
   int previous = std::numeric_limits<int>::max();
@@ -101,6 +105,9 @@ bool SdlAudioOutput::wait(unsigned) {
     }
     if (queued <= limit)
       return true;
+    if (!settings_.blocking) {
+      return true;
+    }
     const auto now = SDL_GetTicksNS();
     if (!progress)
       progress = now;
@@ -116,7 +123,7 @@ bool SdlAudioOutput::wait(unsigned) {
     const auto frames = static_cast<std::uint64_t>(queued - limit) / (sizeof(float) * 2);
     const auto delay =
         std::max<std::uint64_t>(1000, frames * 1000000000 / AudioResampler::output_frequency);
-    SDL_DelayNS(std::min<std::uint64_t>(delay, 1000000));
+    SDL_DelayNS(std::min<std::uint64_t>(delay, 10000000));
     if (!SDL_GetAudioDeviceName(SDL_GetAudioStreamDevice(stream_))) {
       fail();
       return false;
@@ -226,7 +233,9 @@ void SdlAudioOutput::open() {
       return;
     }
   }
-  SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "480");
+  const auto latency = settings_.latency ? settings_.latency : 20;
+  const auto frames = std::to_string(AudioResampler::output_frequency * latency / 1000);
+  SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, frames.c_str());
   SDL_AudioSpec format{SDL_AUDIO_F32, 2, AudioResampler::output_frequency};
   const auto desired = endpoint();
   requested_ = selected_ = desired.device;

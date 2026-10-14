@@ -112,8 +112,8 @@ void Settings::validate() const {
   if (!session.graphics.valid() || audio.levels.volume > 200 || audio.levels.balance < -100 ||
       audio.levels.balance > 100 || audio.latency < 20 || audio.latency > 320 ||
       audio.latency % 10 || scale > DisplayScale::Stretch || aspect > DisplayAspect::Pixels ||
-      sync > PlaybackSync::Video || focus > FocusBehavior::AllowInput || !gdb_port ||
-      gdb_port > 65535 || width < 320 || width > 8192 || height < 240 || height > 8192)
+      focus > FocusBehavior::AllowInput || !gdb_port || gdb_port > 65535 || width < 320 ||
+      width > 8192 || height < 240 || height > 8192)
     throw std::runtime_error("Select a supported audio, video, or playback setting.");
 }
 
@@ -131,7 +131,7 @@ Settings load_settings(const std::filesystem::path &path) {
   settings.session.memory.expansion = document.flag("Memory", "Expansion", true);
   settings.audio.levels.volume = document.number("Audio", "Volume", 100);
   settings.audio.levels.balance = document.signed_number("Audio", "Balance", 0);
-  settings.audio.latency = document.number("Audio", "Latency", 40);
+  settings.audio.latency = document.number("Audio", "Latency", 20);
   settings.audio.device = wide(document.text("Audio", "Device"));
   settings.muted = document.flag("Audio", "Muted", false);
   settings.feedback = document.flag("Input", "Feedback", true);
@@ -144,7 +144,12 @@ Settings load_settings(const std::filesystem::path &path) {
   settings.aspect = static_cast<DisplayAspect>(document.number("Video", "Aspect", 0));
   settings.width = document.number("Video", "Width", 960);
   settings.height = document.number("Video", "Height", 720);
-  settings.sync = static_cast<PlaybackSync>(document.number("Playback", "Sync", 0));
+  const auto legacy_sync = document.number("Playback", "Sync", 0);
+  if (legacy_sync > 1)
+    throw std::runtime_error("Select a supported playback synchronization setting.");
+  settings.sync = {document.flag("Playback", "AudioSync", true),
+                   document.flag("Playback", "VideoSync", legacy_sync == 1)};
+  settings.audio.blocking = settings.sync.audio;
   settings.focus = static_cast<FocusBehavior>(document.number("Playback", "Focus", 0));
   settings.gdb_enabled = document.flag("Debugger", "Enabled", false);
   settings.gdb_port = document.number("Debugger", "Port", 2345);
@@ -205,7 +210,8 @@ void save_settings(const std::filesystem::path &path, const Settings &settings) 
   document.number("Video", "Aspect", static_cast<int>(settings.aspect));
   document.number("Video", "Width", static_cast<int>(settings.width));
   document.number("Video", "Height", static_cast<int>(settings.height));
-  document.number("Playback", "Sync", static_cast<int>(settings.sync));
+  document.flag("Playback", "AudioSync", settings.sync.audio);
+  document.flag("Playback", "VideoSync", settings.sync.video);
   document.number("Playback", "Focus", static_cast<int>(settings.focus));
   document.flag("Debugger", "Enabled", settings.gdb_enabled);
   document.number("Debugger", "Port", static_cast<int>(settings.gdb_port));

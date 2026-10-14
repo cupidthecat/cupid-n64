@@ -33,11 +33,13 @@ std::wstring Audio::error() const {
 
 void Audio::configure(Settings settings) {
   if (settings.levels.volume > 200 || settings.levels.balance < -100 ||
-      settings.levels.balance > 100 || settings.latency < 20 || settings.latency > 320 ||
-      settings.latency % 10)
+      settings.levels.balance > 100 || (settings.latency && settings.latency < 20) ||
+      settings.latency > 320 || settings.latency % 10)
     throw std::invalid_argument("Invalid audio volume, balance, or latency.");
   if (settings.device != settings_.device || settings.latency != settings_.latency)
     clear();
+  else if (settings.blocking != settings_.blocking)
+    resampler_.clear();
   settings_ = std::move(settings);
   output_->configure(settings_);
 }
@@ -85,7 +87,8 @@ void Audio::sample(n64::StereoSample value) {
     play_saved_output();
   resampler_.write(value, [this](n64::StereoSample sample) {
     if (output_->floating_samples()) {
-      if (!available() || !wait())
+      const bool wait_after = output_->wait_after_submit();
+      if (!available() || (!wait_after && !wait()))
         return;
       const double volume = muted ? 0.0 : settings_.levels.volume / 100.0;
       const double balance = settings_.levels.balance / 100.0;
@@ -95,6 +98,8 @@ void Audio::sample(n64::StereoSample value) {
           static_cast<float>(std::clamp(sample.right * volume, -1.0, 1.0) *
                              (1.0 + std::min(balance, 0.0)))};
       output_->submit_float(frame);
+      if (wait_after)
+        wait();
       return;
     }
     if (!available() || (!offset_ && !wait()))
@@ -123,7 +128,7 @@ void Audio::queue(unsigned samples) {
                settings_.levels);
   output_->submit(buffer_, std::span(buffer.rendered).first(samples));
   offset_ = 0;
-  buffer_ = (buffer_ + 1) % (settings_.latency / 10);
+  buffer_ = (buffer_ + 1) % std::max(1u, settings_.latency / 10);
 }
 
 bool Audio::wait() {

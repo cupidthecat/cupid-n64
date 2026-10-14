@@ -9,7 +9,6 @@
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
 #include "desktop/timing/execution_worker.hpp"
-#include "desktop/timing/playback_clock.hpp"
 #include "desktop/timing/playback_settings.hpp"
 #include "desktop/video/frame_delivery.hpp"
 #include "desktop/video/viewport.hpp"
@@ -188,8 +187,8 @@ private:
   FeedbackLatch feedback_;
   bool reload_pending_ = false;
   std::vector<AudioDevice> audio_devices_;
-  static constexpr std::array<unsigned, 8> audio_latencies{20, 40, 60, 80, 120, 160, 240, 320};
-  PlaybackSync playback_sync_ = PlaybackSync::Audio;
+  static constexpr std::array<unsigned, 9> audio_latencies{0, 20, 40, 60, 80, 120, 160, 240, 320};
+  PlaybackSync playback_sync_;
   FocusBehavior focus_behavior_ = FocusBehavior::Pause;
   bool video_sync_available_ = true;
   std::chrono::steady_clock::time_point next_audio_check_{};
@@ -256,7 +255,6 @@ private:
   bool presenting_field_ = false, field_presented_ = false;
   bool video_available_ = false, finishing_advance_ = false;
   int exit_code_ = 0;
-  PlaybackClock playback_clock_;
   unsigned last_frame_ = 0, measured_frames_ = 0;
   unsigned pixel_width_ = 0, pixel_height_ = 0;
   unsigned cached_viewport_width_ = 0, cached_viewport_height_ = 0;

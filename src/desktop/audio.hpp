@@ -28,6 +28,7 @@ public:
     AudioLevels levels;
     unsigned latency = 40;
     std::wstring device;
+    bool blocking = true;
   };
   struct Device {
     std::wstring identity, name;

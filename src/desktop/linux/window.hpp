@@ -88,7 +88,6 @@ private:
   std::unique_ptr<StateSlots> states_;
   std::unique_ptr<GdbServer> gdb_ = std::make_unique<GdbServer>();
   std::string gdb_error_;
-  PlaybackClock clock_;
   GtkWidget *window_ = nullptr, *drawing_ = nullptr, *status_ = nullptr;
   GtkWidget *pause_item_ = nullptr;
   unsigned timer_ = 0;

@@ -33,6 +33,15 @@ int main() {
   output->clear();
   interrupted = false;
   test::equal(output->wait(0), true);
+  settings.blocking = false;
+  output->configure(settings);
+  output->submit_float(samples);
+  const auto unblocked = std::chrono::steady_clock::now();
+  test::equal(output->wait(0), true);
+  test::equal(std::chrono::steady_clock::now() - unblocked < std::chrono::milliseconds(100), true);
+  settings.blocking = true;
+  output->configure(settings);
+  output->clear();
   std::array<short, 120> pending{};
   pending[0] = 1;
   pending[1] = -1;

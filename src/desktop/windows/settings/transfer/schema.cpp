@@ -71,9 +71,13 @@ Schema schema(const Document &document) {
   auto &audio = result[L"Audio"];
   number(audio, L"Volume", 100, 0, 200);
   number(audio, L"Balance", 0, -100, 100);
-  choice(audio, L"Latency", 80, {20, 40, 60, 80, 120, 160, 240, 320});
+  choice(audio, L"Latency", 0, {0, 20, 40, 60, 80, 120, 160, 240, 320});
   audio[L"Device"] = {};
   number(result[L"Playback"], L"Sync", 0, 0, 1);
+  number(result[L"Playback"], L"AudioSync", 1, 0, 1);
+  number(result[L"Playback"], L"VideoSync", 0, 0, 1);
+  result[L"Playback"][L"AudioSync"].optional = true;
+  result[L"Playback"][L"VideoSync"].optional = true;
   number(result[L"Playback"], L"Focus", 0, 0, 2);
   auto &rewind = result[L"Rewind"];
   number(rewind, L"Enabled", 0, 0, 1);
