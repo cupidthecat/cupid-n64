@@ -6,6 +6,8 @@ Cupid-N64 emulates Nintendo 64, 64DD and Aleck64 hardware. The desktop app runs 
 
 Open a successful run in [GitHub Actions](https://github.com/cupidthecat/cupid-n64/actions/workflows/ci.yml) for the branch or commit you want to test. Download and extract `cupid-n64-windows` or `cupid-n64-windows-clang`, then run `cupid-n64.exe`. GitHub requires you to sign in to download an artifact. Linux runs also provide `cupid-n64-linux`; see the [Linux prerequisites](docs/building.md#linux) before running it.
 
+Windows builds require Microsoft's [current x64 Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) and a working Vulkan driver. Install the runtime if Windows reports a missing `MSVCP140.dll` or `VCRUNTIME140.dll` when opening the app.
+
 On Windows:
 
 1. Choose **File > Local firmware settings...** and select your Nintendo 64 PIF image. Ordinary Nintendo 64 and 64DD launches require a 1,984-byte PIF file.

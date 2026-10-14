@@ -34,6 +34,8 @@ cmake --build build --config Release --target cupid_desktop --parallel 2 -- /p:C
 
 The executable is `build\Release\cupid-n64.exe`. With Visual Studio's multi-configuration generator, select Release with `--config Release` when building and `-C Release` when testing.
 
+To run a Windows build on a machine without Visual Studio, install Microsoft's [current x64 Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist). The executable uses the MSVC runtime DLLs, including `MSVCP140.dll` and `VCRUNTIME140.dll`. Hardware rendering also requires a working Vulkan driver.
+
 ### Clang on Windows
 
 Install Visual Studio's **C++ Clang tools for Windows** component, including its MSBuild integration. A standalone `clang-cl` on PATH does not install the `ClangCL` Visual Studio toolset.
