@@ -1,6 +1,5 @@
 #include "core/rsp/recompiler/compiler.hpp"
 #include "core/rsp/recompiler/invalidation.hpp"
-#include <algorithm>
 #include <stdexcept>
 
 namespace cupid::n64 {
@@ -26,7 +25,7 @@ void RspCompiler::recompile() {
       next->words = block->words;
       next->lines = block->lines;
       next->generation = block->generation;
-      Emitter emitter(impl_->rsp, *next);
+      Emitter emitter(impl_->rsp, *next, next->key.tracing());
       if (!emitter.compile() || next->words != block->words)
         throw std::runtime_error("Signal processor recompilation failed");
       replacement->bytes += next->bytes;
@@ -34,18 +33,16 @@ void RspCompiler::recompile() {
       rebuilt.push_back(std::move(next));
     }
   }
-  for (unsigned n = 0; n < impl_->context.size(); ++n) {
-    if (impl_->context[n])
-      replacement->context[n] = pointers.at(impl_->context[n]);
-    if (impl_->alternate[n])
-      replacement->alternate[n] = pointers.at(impl_->alternate[n]);
-  }
+  for (unsigned mode = 0; mode < impl_->context.size(); ++mode)
+    for (unsigned slot = 0; slot < impl_->context[mode].size(); ++slot)
+      if (impl_->context[mode][slot])
+        replacement->context[mode][slot] = pointers.at(impl_->context[mode][slot]);
   impl_.swap(replacement);
 }
 
 void RspCompiler::Impl::reset() {
-  context.fill(nullptr);
-  alternate.fill(nullptr);
+  for (auto &mode : context)
+    mode.fill(nullptr);
   dirty.reset();
   blocks.clear();
   bytes = 0;
@@ -56,7 +53,6 @@ void RspCompiler::Impl::clear_instrumented() {
   for (auto &[key, versions] : blocks) {
     static_cast<void>(key);
     for (auto &block : versions) {
-      block->traced.reset();
       block->diagnosed.reset();
     }
   }
@@ -73,8 +69,8 @@ void RspCompiler::expose_memory() {
 }
 
 void RspCompiler::Impl::clear_dirty() {
-  for (auto *contexts : {&context, &alternate})
-    for (auto &entry : *contexts)
+  for (auto &mode : context)
+    for (auto &entry : mode)
       if (entry && (entry->lines & dirty).any())
         entry = nullptr;
   dirty.reset();
@@ -95,13 +91,9 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
   return nullptr;
 #else
   const auto pc = rsp.pc_;
-  const Key key{rsp.pipeline_, pc};
-  auto &current = context[(pc >> 2) & 1023];
-  auto &other = alternate[(pc >> 2) & 1023];
-  if (other && other->key == key && (!external_memory || matches(*other))) {
-    std::swap(current, other);
-    return current;
-  }
+  const auto tracing = rsp.instruction_tracing();
+  const Key key{rsp.pipeline_, pc, tracing};
+  auto &current = context[tracing][(pc >> 2) & 1023];
   const auto found = blocks.find(key);
   Block *selected = nullptr;
   if (found != blocks.end()) {
@@ -117,7 +109,7 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
       reset();
     auto block = std::make_unique<Block>();
     block->key = key;
-    Emitter emitter(rsp, *block);
+    Emitter emitter(rsp, *block, tracing);
     if (!emitter.compile())
       return nullptr;
     block->generation = generation;
@@ -127,7 +119,6 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
     selected = block.get();
     blocks[key].push_back(std::move(block));
   }
-  other = current;
   current = selected;
   return selected;
 #endif
@@ -145,32 +136,32 @@ bool RspCompiler::run() {
     if (cache.dirty.any())
       cache.clear_dirty();
     // Retain the selected schedule until its instruction range changes.
-    auto *block = cache.context[(rsp.pc_ >> 2) & 1023];
+    auto *block = cache.context[rsp.instruction_tracing()][(rsp.pc_ >> 2) & 1023];
     if (!block || (cache.external_memory && !cache.matches(*block)))
       block = cache.select();
     if (!block)
       return executed;
     auto *execution = block;
-    if (rsp.instruction_tracing() || rsp.diagnostic_execution()) {
-      auto &variant = rsp.diagnostic_execution() ? block->diagnosed : block->traced;
+    if (rsp.diagnostic_execution()) {
+      auto &variant = block->diagnosed;
       if (variant && variant->homebrew != (rsp.diagnostics_ && rsp.diagnostics_->homebrew())) {
         cache.instrumented_bytes -= variant->bytes;
         variant.reset();
       }
       if (!variant) {
-        auto traced = std::make_unique<Impl::Block>();
-        traced->key = block->key;
-        traced->words = block->words;
-        Emitter emitter(rsp, *traced, true, rsp.diagnostic_execution());
+        auto instrumented = std::make_unique<Impl::Block>();
+        instrumented->key = block->key;
+        instrumented->words = block->words;
+        Emitter emitter(rsp, *instrumented, true, true);
         if (!emitter.compile())
           return executed;
         constexpr std::size_t limit = 64 * 1024 * 1024;
-        if (traced->bytes > limit)
+        if (instrumented->bytes > limit)
           return executed;
-        if (cache.instrumented_bytes > limit - traced->bytes)
+        if (cache.instrumented_bytes > limit - instrumented->bytes)
           cache.clear_instrumented();
-        cache.instrumented_bytes += traced->bytes;
-        variant = std::move(traced);
+        cache.instrumented_bytes += instrumented->bytes;
+        variant = std::move(instrumented);
       }
       execution = variant.get();
     }

@@ -10,6 +10,7 @@ int main() {
   test::rsp_block_tests();
   test::rsp_context_tests();
   test::rsp_invalidation_tests();
+  test::rsp_trace_context_tests();
   test::rsp_halt_context_tests();
   test::rsp_memory_tests();
   test::rsp_pipeline_tests();

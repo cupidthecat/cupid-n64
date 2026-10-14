@@ -88,7 +88,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
     block->key.pc = a.literal(block->key.pc);
     block->key.flags = a.literal(block->key.flags);
     state::Archive::require(block->key.pc <= 0xfff && !(block->key.pc & 3));
-    state::Archive::require(block->key.flags <= 15);
+    state::Archive::require(block->key.flags <= 31);
     for (auto &registers : block->key.registers)
       registers = a.literal(registers);
     block->generation = a.literal(block->generation);
@@ -99,7 +99,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
     if (a.loading()) {
       block->words = std::move(words);
       const auto original_words = block->words;
-      RspCompiler::Emitter emitter(cache.rsp, *block);
+      RspCompiler::Emitter emitter(cache.rsp, *block, block->key.tracing());
       state::Archive::require(emitter.compile());
       state::Archive::require(block->words == original_words);
       state::Archive::require(same_pipeline(block->pipeline, expected));
@@ -111,11 +111,11 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       restored->blocks[block->key].push_back(std::move(decoded));
     }
   }
-  for (auto *contexts : {&cache.context, &cache.alternate})
-    for (unsigned slot = 0; slot < contexts->size(); ++slot) {
+  for (unsigned mode = 0; mode < cache.context.size(); ++mode)
+    for (unsigned slot = 0; slot < cache.context[mode].size(); ++slot) {
       std::uint32_t index = 0;
-      if (!a.loading() && (*contexts)[slot]) {
-        const auto found = std::find(ordered.begin(), ordered.end(), (*contexts)[slot]);
+      if (!a.loading() && cache.context[mode][slot]) {
+        const auto found = std::find(ordered.begin(), ordered.end(), cache.context[mode][slot]);
         state::Archive::require(found != ordered.end());
         index = static_cast<std::uint32_t>(found - ordered.begin()) + 1;
       }
@@ -124,8 +124,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       auto *block = index ? ordered[index - 1] : nullptr;
       state::Archive::require(!block || ((block->key.pc >> 2) & 1023) == slot);
       if (a.loading()) {
-        auto &target = contexts == &cache.context ? restored->context : restored->alternate;
-        target[slot] = block;
+        restored->context[mode][slot] = block;
       }
     }
   if (a.loading()) {
@@ -135,7 +134,6 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
     a.defer([&cache, restored] {
       cache.blocks.swap(restored->blocks);
       cache.context = restored->context;
-      cache.alternate = restored->alternate;
       cache.bytes = restored->bytes;
       cache.instrumented_bytes = 0;
       cache.generation = restored->generation;

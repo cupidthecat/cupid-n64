@@ -19,19 +19,23 @@ struct RspCompiler::Impl {
     std::uint32_t pc = 0;
     std::uint8_t flags = 0;
     Key() = default;
-    Key(const Rsp::Pipeline &pipeline, std::uint32_t address) : pc(address) {
-      flags = static_cast<std::uint8_t>(unsigned(pipeline.single_issue) << 3);
+    Key(const Rsp::Pipeline &pipeline, std::uint32_t address, bool tracing = false) : pc(address) {
+      flags = static_cast<std::uint8_t>((unsigned(pipeline.single_issue) << 3) |
+                                        (unsigned(tracing) << 4));
       for (unsigned n = 0; n < registers.size(); ++n) {
         const auto &stage = pipeline.previous[n];
         registers[n] = stage.gpr | (std::uint64_t(stage.vector) << 32);
         flags |= static_cast<std::uint8_t>(unsigned(stage.load) << n);
       }
     }
+    bool tracing() const {
+      return flags & 16;
+    }
     bool operator==(const Key &) const = default;
   };
   struct Hash {
     std::size_t operator()(const Key &key) const {
-      std::uint64_t value = (std::uint64_t(key.pc) << 4) | key.flags;
+      std::uint64_t value = (std::uint64_t(key.pc) << 5) | key.flags;
       for (const auto registers : key.registers)
         value = std::rotl(value, 17) ^ registers;
       return std::hash<std::uint64_t>()(value);
@@ -46,7 +50,6 @@ struct RspCompiler::Impl {
     void *code = nullptr;
     std::size_t bytes = 0;
     std::uint64_t generation = 0;
-    std::unique_ptr<Block> traced;
     std::unique_ptr<Block> diagnosed;
     bool homebrew = false;
     ~Block() {
@@ -60,8 +63,7 @@ struct RspCompiler::Impl {
   };
   Rsp &rsp;
   std::unordered_map<Key, std::vector<std::unique_ptr<Block>>, Hash> blocks;
-  std::array<Block *, 1024> context{};
-  std::array<Block *, 1024> alternate{};
+  std::array<std::array<Block *, 1024>, 2> context{};
   std::bitset<64> dirty;
   bool external_memory = false;
   std::size_t bytes = 0;
