@@ -1,4 +1,5 @@
 #include "desktop/windows/window.hpp"
+#include <objbase.h>
 #include <shellapi.h>
 #include <stdexcept>
 
@@ -7,6 +8,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
   cupid::desktop::Options options;
   try {
+    // File pickers and the first audio client share the window thread's apartment.
+    const auto initialized =
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(initialized))
+      throw std::runtime_error("Could not initialize the desktop COM apartment.");
+    struct Apartment {
+      ~Apartment() {
+        CoUninitialize();
+      }
+    } apartment;
     for (int index = 1; index < count; ++index) {
       const std::wstring argument = arguments[index];
       if (argument == L"--test-input") {
