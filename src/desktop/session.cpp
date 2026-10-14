@@ -14,6 +14,8 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
     : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
       pipeline_cache_file_(std::move(pipeline_cache)), hardware_rendering_(hardware_rendering) {
   validate_ports(settings_.ports);
+  if (!settings_.arcade_dips.empty() && arcade == n64::ArcadeProfile::Disabled)
+    throw std::runtime_error("DIP settings require an arcade game.");
   if (!settings_.graphics.valid())
     throw std::runtime_error("Select a supported rendering configuration.");
   for (const auto banks : settings_.memory.pak_banks)
@@ -72,6 +74,10 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
         arcade == n64::ArcadeProfile::Disabled
             ? "Select a game or 64DD IPL and a 1984-byte PIF firmware file."
             : "Select an Aleck64 game and its 1984- or 2048-byte PIF firmware file.");
+  for (const auto &selection : settings_.arcade_dips)
+    if (!console_->arcade()->dip_setting(selection.name, selection.value))
+      throw std::runtime_error("Unknown DIP setting or value: " + selection.name + "=" +
+                               selection.value);
   if (!rom.empty()) {
     const auto attach_save = [&](const wchar_t *extension, std::span<std::uint8_t> memory) {
       if (!memory.empty())

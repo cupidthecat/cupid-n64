@@ -32,6 +32,17 @@ public:
   void advance_frame(const PlayerInputs &input);
   void input(const PlayerInputs &input);
   void clear_mouse_input();
+  std::span<const n64::DipSetting> arcade_dip_settings() const {
+    return console_->arcade() ? console_->arcade()->dip_settings()
+                              : std::span<const n64::DipSetting>{};
+  }
+  std::optional<std::string_view> arcade_dip_setting(std::string_view name) const {
+    return console_->arcade() ? console_->arcade()->dip_setting(name)
+                              : std::optional<std::string_view>{};
+  }
+  bool arcade_dip_setting(std::string_view name, std::string_view value) {
+    return console_->arcade() && console_->arcade()->dip_setting(name, value);
+  }
   void graphics_settings(n64::RenderSettings settings);
   n64::RenderSettings graphics_settings() const {
     return settings_.graphics;

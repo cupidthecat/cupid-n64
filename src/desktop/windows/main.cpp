@@ -34,6 +34,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                                    "doncdoon, kurufev, mayjin3, vivdolls, twrshaft, hipai, "
                                    "hipai2, srmvs, srmvsa, or mtetrisc.");
         options.arcade_profile = *profile;
+      } else if (argument == L"--dip") {
+        std::string selection;
+        for (auto letter : value)
+          selection.push_back(static_cast<char>(letter));
+        options.arcade_dips.push_back(cupid::desktop::parse_dip_selection(selection));
       } else if (argument == L"--capture")
         options.capture = value;
       else if (argument == L"--input-replay")
@@ -49,9 +54,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
           throw std::runtime_error("Frame count must be a positive integer.");
         options.frames = frames;
       } else
-        throw std::runtime_error("Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
-                                 "FILE, --arcade GAME, --frames N, --capture FILE, --test-input, "
-                                 "--input-replay FILE, --field-trace FILE, --capture-fields FILE.");
+        throw std::runtime_error(
+            "Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
+            "FILE, --arcade GAME, --dip NAME=VALUE, --frames N, --capture FILE, --test-input, "
+            "--input-replay FILE, --field-trace FILE, --capture-fields FILE.");
     }
     if (!options.frames &&
         (options.test_input || !options.capture.empty() || !options.input_replay.empty() ||

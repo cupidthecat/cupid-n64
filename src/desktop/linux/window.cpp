@@ -319,9 +319,11 @@ void Window::load(LaunchFiles files) {
   validate_launch(files);
   if (session_)
     session_->save();
+  auto session_settings = settings_.session;
+  session_settings.arcade_dips = files.arcade_dips;
   auto next = std::make_unique<Session>(
       files.rom, files.firmware, audio_, files.ipl, files.disk, files.arcade_profile, std::nullopt,
-      settings_.hardware, settings_.session,
+      settings_.hardware, session_settings,
       settings_path_.empty()
           ? std::filesystem::path{}
           : std::filesystem::path(g_get_user_cache_dir()) / "cupid-n64" / "pipelines.bin");

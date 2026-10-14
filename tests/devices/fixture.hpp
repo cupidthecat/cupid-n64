@@ -64,6 +64,7 @@ void cartridge_bus_tests();
 void isviewer_tests();
 void arcade_memory_tests();
 void arcade_control_tests();
+void arcade_dip_tests();
 void arcade_native_tests();
 void cartridge_profile_tests();
 void eeprom_reset_tests();

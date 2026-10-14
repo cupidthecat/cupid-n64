@@ -32,6 +32,8 @@ void validate_firmware(const std::filesystem::path &path, FirmwareType type) {
 }
 
 void validate_launch(const LaunchFiles &files) {
+  if (!files.arcade_dips.empty() && files.arcade_profile == n64::ArcadeProfile::Disabled)
+    throw std::runtime_error("DIP settings require an arcade game.");
   const bool arcade = files.arcade_profile != n64::ArcadeProfile::Disabled;
   if (arcade && (files.rom.empty() || !files.ipl.empty() || !files.disk.empty()))
     throw std::runtime_error("Aleck64 requires a cartridge and PIF firmware, without 64DD files.");

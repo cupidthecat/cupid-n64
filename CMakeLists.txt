@@ -22,6 +22,8 @@ add_library(cupid_core
   src/core/debug/memory.cpp
   src/core/debug/properties.cpp
   src/core/arcade/aleck64.cpp
+  src/core/arcade/dip_switches/catalog.cpp
+  src/core/arcade/dip_switches/settings.cpp
   src/core/arcade/memory.cpp
   src/core/arcade/controls.cpp
   src/core/cpu/cpu.cpp
@@ -555,6 +557,8 @@ if(BUILD_TESTING)
       target_compile_options(${session_launch_tests_compile_target} PRIVATE /W4 /WX /permissive-)
     endif()
     add_test(NAME desktop_launch_settings COMMAND ${session_launch_tests_command})
+    set_tests_properties(desktop_launch_settings PROPERTIES
+      ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 60)
     add_test(NAME desktop_state_file_write COMMAND ${session_state_tests_command} --write-state
       "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
     add_test(NAME desktop_state_file_read COMMAND ${session_state_tests_command} --read-state
@@ -697,6 +701,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/isviewer.cpp
     tests/devices/arcade/memory.cpp
     tests/devices/arcade/controls.cpp
+    tests/devices/arcade/dips.cpp
     tests/devices/arcade/native.cpp
     tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/eeprom_reset.cpp

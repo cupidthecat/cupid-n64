@@ -8,16 +8,42 @@ std::optional<ArcadeProfile> arcade_profile(std::string_view name) {
     return ArcadeProfile::ElevenBeat;
   if (name == "starsldr")
     return ArcadeProfile::StarSoldier;
-  if (name == "hipai" || name == "hipai2")
+  if (name == "hipai")
     return ArcadeProfile::HiPai;
+  if (name == "hipai2")
+    return ArcadeProfile::HiPai2;
   if (name == "srmvs" || name == "srmvsa")
     return ArcadeProfile::SuperRealMahjong;
   if (name == "mtetrisc")
     return ArcadeProfile::MagicalTetris;
-  for (auto standard : {"generic", "doncdoon", "kurufev", "mayjin3", "vivdolls", "twrshaft"})
-    if (name == standard)
-      return ArcadeProfile::Standard;
+  if (name == "generic")
+    return ArcadeProfile::Standard;
+  if (name == "doncdoon")
+    return ArcadeProfile::DoncDoon;
+  if (name == "kurufev")
+    return ArcadeProfile::KuruFever;
+  if (name == "mayjin3")
+    return ArcadeProfile::Mayjin3;
+  if (name == "vivdolls")
+    return ArcadeProfile::VividDolls;
+  if (name == "twrshaft")
+    return ArcadeProfile::TowerShaft;
   return {};
+}
+
+ArcadeProfile arcade_hardware_profile(ArcadeProfile profile) {
+  switch (profile) {
+  case ArcadeProfile::HiPai2:
+    return ArcadeProfile::HiPai;
+  case ArcadeProfile::DoncDoon:
+  case ArcadeProfile::KuruFever:
+  case ArcadeProfile::Mayjin3:
+  case ArcadeProfile::VividDolls:
+  case ArcadeProfile::TowerShaft:
+    return ArcadeProfile::Standard;
+  default:
+    return profile;
+  }
 }
 
 Aleck64::Aleck64(ArcadeProfile profile) : profile_(profile), sdram_(0x100000) {
@@ -30,11 +56,7 @@ void Aleck64::power(bool reset) {
   std::fill(sdram_.begin(), sdram_.end(), 0);
   video_ram_.fill(0);
   palette_ram_.fill(0);
-  dip_switches_ = {255, 255};
-  if (profile_ == ArcadeProfile::StarSoldier)
-    dip_switches_ = {127, 207};
-  if (profile_ == ArcadeProfile::HiPai)
-    dip_switches_[1] = 199;
+  reset_dip_switches();
   mahjong_row_ = 0;
 }
 

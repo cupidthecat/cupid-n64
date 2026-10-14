@@ -6,10 +6,13 @@
 namespace cupid::desktop {
 namespace {
 
-constexpr std::array<n64::ArcadeProfile, 6> profiles{
+constexpr std::array<n64::ArcadeProfile, 12> profiles{
     n64::ArcadeProfile::Standard,         n64::ArcadeProfile::ElevenBeat,
     n64::ArcadeProfile::StarSoldier,      n64::ArcadeProfile::HiPai,
-    n64::ArcadeProfile::SuperRealMahjong, n64::ArcadeProfile::MagicalTetris};
+    n64::ArcadeProfile::SuperRealMahjong, n64::ArcadeProfile::MagicalTetris,
+    n64::ArcadeProfile::HiPai2,           n64::ArcadeProfile::DoncDoon,
+    n64::ArcadeProfile::KuruFever,        n64::ArcadeProfile::Mayjin3,
+    n64::ArcadeProfile::VividDolls,       n64::ArcadeProfile::TowerShaft};
 
 LaunchFiles files(const PathForm &form) {
   LaunchFiles selected;
@@ -40,7 +43,10 @@ void Window::launch_dialog() {
   form.choices = {L"Nintendo 64 cartridge",        L"Nintendo 64 + 64DD",
                   L"Aleck64 - standard",           L"Aleck64 - Eleven Beat",
                   L"Aleck64 - Star Soldier",       L"Aleck64 - Hi Pai",
-                  L"Aleck64 - Super Real Mahjong", L"Aleck64 - Magical Tetris"};
+                  L"Aleck64 - Super Real Mahjong", L"Aleck64 - Magical Tetris",
+                  L"Aleck64 - Hi Pai Paradise 2",  L"Aleck64 - Hanabi de Doon! - Don-chan Puzzle",
+                  L"Aleck64 - Kurukuru Fever",     L"Aleck64 - Mayjinsen 3",
+                  L"Aleck64 - Vivid Dolls",        L"Aleck64 - Tower & Shaft"};
   if (options_.arcade_profile != n64::ArcadeProfile::Disabled) {
     const auto found = std::find(profiles.begin(), profiles.end(), options_.arcade_profile);
     form.selected = static_cast<unsigned>(found - profiles.begin()) + 2;

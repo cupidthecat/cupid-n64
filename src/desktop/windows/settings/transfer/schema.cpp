@@ -103,7 +103,7 @@ Schema schema(const Document &document) {
   path(result[L"Launch"], L"ROM", PathKind::Cartridge);
   path(result[L"Launch"], L"IPL", PathKind::Ipl);
   path(result[L"Launch"], L"Disk", PathKind::Disk);
-  number(result[L"Launch"], L"Arcade", 0, 0, static_cast<int>(n64::ArcadeProfile::MagicalTetris));
+  number(result[L"Launch"], L"Arcade", 0, 0, static_cast<int>(n64::ArcadeProfile::TowerShaft));
   path(result[L"Files"], L"ROM", PathKind::Cartridge);
   path(result[L"Files"], L"Firmware", PathKind::Pif);
   for (unsigned index = 1; index <= 10; ++index)

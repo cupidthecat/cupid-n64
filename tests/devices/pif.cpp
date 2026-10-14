@@ -1,3 +1,4 @@
+#include "core/arcade/aleck64.hpp"
 #include "core/cartridge/eeprom.hpp"
 #include "core/controller/gamecube/gamecube.hpp"
 #include "core/controller/gamepad.hpp"
@@ -127,6 +128,27 @@ void pif_tests() {
     cached_status(mouse, {2, 0, 2}, {2, 0, 2});
     GameCubePad gamecube;
     cached_status(gamecube, {9, 0, 0}, {9, 0, 0});
+    Aleck64 board(ArcadeProfile::Standard);
+    cached_status(board.controller(0), {5, 0, 2}, {5, 0, 2});
+    cached_status(board.controller(1), {5, 0, 2}, {5, 0, 2});
+    SerialFixture second;
+    second.boot();
+    second.pif.attach(1, &board.controller(1));
+    auto ram = second.pif.ram();
+    ram[0] = 0;
+    ram[1] = 1;
+    ram[2] = 3;
+    ram[3] = 0;
+    std::fill_n(ram.begin() + 4, 3, 0xa5);
+    ram[7] = 0xfe;
+    second.pif.write_word(0x1fc007fc, 1);
+    second.pif.write_word(0x1fc007c0, 0x000003a5);
+    second.pif.dma_read(0x1fc007c0, 0x1000);
+    equal(ram[2], 3);
+    equal(ram[3], 5);
+    equal(ram[4], 0);
+    equal(ram[5], 2);
+    equal(ram[6], 0xa5);
   }
   {
     SerialFixture f;

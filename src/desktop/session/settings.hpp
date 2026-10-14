@@ -1,9 +1,11 @@
 #pragma once
 
 #include "desktop/controls/ports.hpp"
+#include "desktop/launch/dips.hpp"
 #include "desktop/storage/paths.hpp"
 #include "renderer/video/settings.hpp"
 #include <array>
+#include <vector>
 
 namespace cupid::desktop {
 
@@ -18,6 +20,7 @@ struct SessionSettings {
   StoragePaths storage;
   ControllerPorts ports;
   n64::RenderSettings graphics;
+  std::vector<DipSelection> arcade_dips{};
 };
 
 } // namespace cupid::desktop

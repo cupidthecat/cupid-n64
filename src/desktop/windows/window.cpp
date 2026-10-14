@@ -597,6 +597,7 @@ void Window::load(LaunchPreference preference) {
   audio_.measure(bool(field_trace_));
   const auto controller_key = selected_controller_key();
   auto selected_settings = session_settings_;
+  selected_settings.arcade_dips = options_.arcade_dips;
   selected_settings.ports =
       options_.frames ? ControllerPorts{} : read_ports(settings_, controller_key);
   auto next = std::make_unique<Session>(

@@ -29,6 +29,8 @@ int main(int argc, char **argv) {
         options.ipl = value;
       else if (argument == "--disk")
         options.disk = value;
+      else if (argument == "--dip")
+        options.arcade_dips.push_back(cupid::desktop::parse_dip_selection(value));
       else if (argument == "--capture")
         options.capture = value;
       else if (argument == "--settings")
@@ -47,7 +49,7 @@ int main(int argc, char **argv) {
       } else
         throw std::runtime_error(
             "Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk FILE, "
-            "--arcade GAME, --frames N, --capture FILE, --test-input, "
+            "--arcade GAME, --dip NAME=VALUE, --frames N, --capture FILE, --test-input, "
             "--settings FILE, or --software.");
     }
     if (!options.frames && (options.test_input || !options.capture.empty()))

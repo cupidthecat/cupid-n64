@@ -63,7 +63,7 @@ void CoreState::visit(state::Archive &a, Console &c) {
     a.identity(*c.config_.flash_model);
   a.identity(c.config_.rtc_present);
   a.identity(c.config_.disk_drive);
-  a.identity(c.config_.arcade_profile);
+  a.identity(arcade_hardware_profile(c.config_.arcade_profile));
   a.bytes_identity(c.rom_.data_);
   a.bytes_identity(c.pif_.rom_);
   a.bytes_identity(c.disk_.ipl_);

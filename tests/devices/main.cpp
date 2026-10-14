@@ -19,6 +19,7 @@ int main() {
   test::isviewer_tests();
   test::arcade_memory_tests();
   test::arcade_control_tests();
+  test::arcade_dip_tests();
   test::arcade_native_tests();
   test::cartridge_profile_tests();
   test::eeprom_reset_tests();

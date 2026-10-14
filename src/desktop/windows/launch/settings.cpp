@@ -51,7 +51,7 @@ void Window::load_launch_settings() {
     options_.ipl = path_setting(settings_, L"Launch", L"IPL");
     options_.disk = path_setting(settings_, L"Launch", L"Disk");
     const auto arcade = GetPrivateProfileIntW(L"Launch", L"Arcade", 0, settings_.c_str());
-    if (arcade <= static_cast<unsigned>(n64::ArcadeProfile::MagicalTetris))
+    if (arcade <= static_cast<unsigned>(n64::ArcadeProfile::TowerShaft))
       options_.arcade_profile = static_cast<n64::ArcadeProfile>(arcade);
     if (options_.rom.empty() && options_.ipl.empty())
       options_.rom = path_setting(settings_, L"Files", L"ROM");
