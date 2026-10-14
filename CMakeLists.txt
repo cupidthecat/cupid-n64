@@ -149,6 +149,8 @@ add_library(cupid_core
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
+include(cmake/Architecture.cmake)
+cupid_target_architecture(cupid_core)
 include(cmake/Compiler.cmake)
 if(MSVC)
   target_compile_options(cupid_core PRIVATE /W4 /WX /permissive-)

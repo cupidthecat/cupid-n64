@@ -1,5 +1,9 @@
+#include "core/cpu/fpu/environment.hpp"
+#include "core/cpu/fpu/rounding.hpp"
+#include "fpu/host/rounding.hpp"
 #include "native_memory_fixture.hpp"
 #include <array>
+#include <cmath>
 #if defined(_M_X64) || defined(__x86_64__)
 #include <xmmintrin.h>
 #endif
@@ -29,7 +33,37 @@ void compare_state(CachedFixture &actual, CachedFixture &expected) {
   equal(actual.memory.transfers.size(), expected.memory.transfers.size());
 }
 
-void run(CachedFixture &actual, CachedFixture &expected) {
+void native_conversion_result(CachedFixture &fixture, unsigned format, unsigned operation,
+                              std::uint64_t input, unsigned control) {
+#if defined(_M_X64) || defined(__x86_64__) || defined(_M_ARM64) || defined(__aarch64__)
+  if (floating::vector_integer_rounding || format >= 20 || operation < 8 || operation > 15 ||
+      (control & 0x80) || (fixture.cpu.read_control(Status) & 2))
+    return;
+  const floating::Environment environment(0);
+  const double value = format == 16
+                           ? double(std::bit_cast<float>(static_cast<std::uint32_t>(input)))
+                           : std::bit_cast<double>(input);
+  if (operation % 4 == 0 && !floating::nearest_integer_even) {
+    auto result = static_cast<std::int64_t>(std::floor(value));
+    const double fraction = value - double(result);
+    if (fraction > 0.5 || (fraction == 0.5 && (result & 1)))
+      ++result;
+    fixture.cpu.state().fpr[6] =
+        operation < 12 ? static_cast<std::uint64_t>(result) : static_cast<std::uint32_t>(result);
+  } else if (operation % 4 >= 2 && !cpu_fpu::conversion_inexact(format == 16, operation < 12) &&
+             std::trunc(value) != value)
+    fixture.cpu.state().fcr31 |= 0x1004;
+#else
+  (void)fixture;
+  (void)format;
+  (void)operation;
+  (void)input;
+  (void)control;
+#endif
+}
+
+void run(CachedFixture &actual, CachedFixture &expected, unsigned format = 0,
+         unsigned operation = 0, std::uint64_t input = 0, unsigned control = 0) {
 #if defined(_M_X64) || defined(__x86_64__)
   const auto saved = _mm_getcsr();
   _mm_setcsr(0x7fbf);
@@ -41,6 +75,7 @@ void run(CachedFixture &actual, CachedFixture &expected) {
   _mm_setcsr(saved);
 #endif
   equal(expected.cpu.run_interpreted_block(limit), true);
+  native_conversion_result(expected, format, operation, input, control);
   compare_state(actual, expected);
 }
 
@@ -204,7 +239,7 @@ void conversions() {
         for (auto value : values) {
           for (auto *fixture : {&actual, &expected})
             state(*fixture, 0x34000000, control, value, 0);
-          run(actual, expected);
+          run(actual, expected, format, operation, value, control);
           if (failures)
             return;
         }
@@ -281,7 +316,7 @@ void randomized() {
         const auto mode = 0x30000000 | ((sample & 1) << 26);
         for (auto *fixture : {&actual, &expected})
           state(*fixture, mode, control, a, b);
-        run(actual, expected);
+        run(actual, expected, format, operation, a, control);
         if (failures)
           return;
       }
