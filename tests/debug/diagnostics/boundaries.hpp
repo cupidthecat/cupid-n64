@@ -29,7 +29,7 @@ inline void counter_boundary_probes() {
   cpu.state().gpr[2] = 0;
   cpu.execute(test::i(9, 0, 7, 44));
   cpu.execute(emux(0x29));
-  equal(cpu.state().gpr[2], 2);
+  equal(cpu.state().gpr[2], 0);
 
   for (unsigned mode = 0; mode < 3; ++mode) {
     auto machine = debug_test::machine(130);
@@ -47,7 +47,7 @@ inline void counter_boundary_probes() {
       equal(processor.run_interpreted_block(1000), true);
     else
       equal(processor.run_block(1000), true);
-    equal(processor.state().gpr[2], 2);
+    equal(processor.state().gpr[2], 0);
 
     for (bool global_read : {false, true}) {
       auto sample = debug_test::machine(130);
@@ -67,7 +67,7 @@ inline void counter_boundary_probes() {
       else
         equal(core.run_block(1000), true);
       if (global_read)
-        equal(core.state().gpr[2], 2);
+        equal(core.state().gpr[2], 0);
       equal(sample->diagnostics().profile().cpu[0], global_read ? 3 : 2);
       equal(sample->diagnostics().profile().cpu[1], 0);
     }

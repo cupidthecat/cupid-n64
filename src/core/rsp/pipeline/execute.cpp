@@ -10,7 +10,9 @@ void Rsp::Pipeline::issue(const OpInfo &op) {
     current.write_gpr |= op.write_gpr & ~1u;
   current.read_vector |= op.read_vector;
   current.write_vector |= op.write_vector;
-  current.flags |= op.flags & (Load | Store | Branch);
+  current.load |= bool(op.flags & Load);
+  current.store |= bool(op.flags & Store);
+  current.branch |= bool(op.flags & Branch);
 }
 
 void Rsp::Pipeline::stall() {
@@ -18,6 +20,7 @@ void Rsp::Pipeline::stall() {
   previous[1] = previous[0];
   previous[0] = {};
   clocks += 3;
+  ++stall_count;
 }
 
 void Rsp::Pipeline::end() {
@@ -35,14 +38,14 @@ void Rsp::Pipeline::end() {
     stall();
   } else if (current.read_vector & previous[2].vector)
     stall();
-  if (current.flags & Store) {
+  if (current.store) {
     while (previous[1].load)
       stall();
   }
-  single_issue = current.flags & Branch;
+  single_issue = current.branch;
   previous[2] = previous[1];
   previous[1] = previous[0];
-  previous[0] = {current.write_gpr, current.write_vector, bool(current.flags & Load)};
+  previous[0] = {current.load, current.write_gpr, current.write_vector};
   current = {};
   clocks += 3;
 }
@@ -72,21 +75,26 @@ void Rsp::end_instruction() {
 }
 
 std::uint32_t Rsp::execute(std::uint32_t instruction) {
-  pipeline_.clocks = 0;
+  pipeline_.begin();
+  pipeline_.address = pc_;
+  pipeline_.instruction = instruction;
   trace_instruction(pc_, instruction);
   begin_instruction();
   pipeline_.issue(decode_info(instruction, diagnostics_ && diagnostics_->homebrew()));
   decode(instruction);
   pipeline_.end();
   end_instruction();
+  pipeline_.clocks_total += pipeline_.clocks;
   if (diagnostics_)
     diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;
 }
 
 std::uint32_t Rsp::step() {
-  pipeline_.clocks = 0;
+  pipeline_.begin();
   auto instruction = static_cast<std::uint32_t>(read_local(0x1000 | pc_, 4));
+  pipeline_.address = pc_;
+  pipeline_.instruction = instruction;
   trace_instruction(pc_, instruction);
   begin_instruction();
   const bool homebrew = diagnostics_ && diagnostics_->homebrew();
@@ -97,7 +105,10 @@ std::uint32_t Rsp::step() {
     instruction = static_cast<std::uint32_t>(read_local(0x1000 | ((pc_ + 4) & 0xfff), 4));
     const auto second = decode_info(instruction, homebrew);
     if (dual_issue(first, second)) {
+      pipeline_.dual_issue_count = 1;
       end_instruction();
+      pipeline_.address = pc_;
+      pipeline_.instruction = instruction;
       trace_instruction(pc_, instruction);
       begin_instruction();
       pipeline_.issue(second);
@@ -106,6 +117,7 @@ std::uint32_t Rsp::step() {
   }
   pipeline_.end();
   end_instruction();
+  pipeline_.clocks_total += pipeline_.clocks;
   if (diagnostics_)
     diagnostics_->rsp_cycles(pipeline_.clocks, false);
   return pipeline_.clocks;

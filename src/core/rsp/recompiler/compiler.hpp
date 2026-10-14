@@ -41,26 +41,41 @@ struct RspCompiler::Impl {
       return std::hash<std::uint64_t>()(value);
     }
   };
+  struct ExecutionRecord {
+    void *code = nullptr;
+    std::uint32_t size = 0;
+    Rsp::Pipeline pipeline;
+  };
   struct Block {
     using Function = void (*)();
     Key key;
-    Rsp::Pipeline pipeline;
+    ExecutionRecord record;
     std::vector<std::uint32_t> words;
     std::bitset<64> lines;
-    void *code = nullptr;
     std::size_t bytes = 0;
     std::uint64_t generation = 0;
     std::unique_ptr<Block> diagnosed;
     bool homebrew = false;
     ~Block() {
-      if (code)
-        sljit_free_code(code, nullptr);
+      if (record.code)
+        sljit_free_code(record.code, nullptr);
     }
     void execute(Rsp &rsp) const {
-      rsp.pipeline_ = pipeline;
-      std::bit_cast<Function>(code)();
+      const auto before = rsp.clock_;
+      rsp.pipeline_ = record.pipeline;
+      std::bit_cast<Function>(record.code)();
+      rsp.pipeline_.clocks_total +=
+          static_cast<std::uint32_t>(rsp.clock_ - before) + rsp.pipeline_.clocks;
     }
   };
+  static constexpr std::size_t capacity = 1024 * 1024;
+  static constexpr std::size_t reserve = 128 * 1024;
+  static constexpr std::size_t aligned(std::size_t bytes) {
+    return (bytes + 15) & ~std::size_t(15);
+  }
+  static std::size_t footprint(const Block &block) {
+    return aligned(sizeof(ExecutionRecord)) + aligned(block.bytes);
+  }
   Rsp &rsp;
   std::unordered_map<Key, std::vector<std::unique_ptr<Block>>, Hash> blocks;
   std::array<std::array<Block *, 1024>, 2> context{};
@@ -141,6 +156,8 @@ struct RspCompiler::Emitter {
   static void end_delay(Rsp *rsp);
   static void profile_clocks(Rsp *rsp, std::uint32_t clocks);
   static void trace(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc, std::uint32_t clocks);
+  static void diagnostic_trace(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc,
+                               std::uint32_t clocks);
 
   static Operand reg(sljit_s32 index) {
     return {index};

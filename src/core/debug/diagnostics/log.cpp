@@ -82,6 +82,7 @@ void Diagnostics::clear_log() noexcept {
 
 void Diagnostics::clear_profiles() noexcept {
   profile_ = {};
+  committed_cpu_cycles_ = {};
   cpu_profile_clock_ = cpu_ ? cpu_->state().clocks : 0;
   slots_.clear();
 }

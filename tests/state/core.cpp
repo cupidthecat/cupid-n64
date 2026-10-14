@@ -345,7 +345,7 @@ void invalid_tests() {
     if (fault == 0)
       bytes[0] ^= 1;
     if (fault == 1) {
-      bytes[8] = 5;
+      bytes[8] = 6;
       rewrite_checksum(bytes);
     }
     if (fault == 2) {
@@ -523,22 +523,30 @@ void rsp_cache_history_tests() {
     test::equal(rsp.read_local(0x1000 | pc, 4), opcode);
   }
   std::vector<std::uint8_t> history, initial;
+  std::size_t count_offset = 0;
   try {
-    history = CoreState::checkpoint(machine.console).bytes;
+    const auto checkpoint = CoreState::checkpoint(machine.console);
+    const auto cache =
+        std::find_if(checkpoint.ranges.begin(), checkpoint.ranges.end(),
+                     [](const auto &range) { return range.name == "rsp.execution_history"; });
+    test::equal(cache != checkpoint.ranges.end(), true);
+    if (cache == checkpoint.ranges.end())
+      return;
+    count_offset = cache->offset + 25;
+    history = checkpoint.bytes;
     initial = CoreState::capture(machine.console);
   } catch (const state::InvalidState &) {
     test::equal(false, true);
     return;
   }
-  const std::array<std::uint8_t, 33> cache_start{1, 0, 1, 0};
-  const auto count =
-      std::search(history.begin(), history.end(), cache_start.begin(), cache_start.end());
-  test::equal(count != history.end(), true);
-  if (count != history.end()) {
+  const auto count = std::uint32_t(history[count_offset]) |
+                     (std::uint32_t(history[count_offset + 1]) << 8) |
+                     (std::uint32_t(history[count_offset + 2]) << 16) |
+                     (std::uint32_t(history[count_offset + 3]) << 24);
+  test::equal(count > 0 && count <= 65537, true);
+  if (count > 0) {
     auto broken = history;
-    const auto offset = static_cast<std::size_t>(count - history.begin());
-    broken[offset + 2] = 0x40;
-    broken[offset + 3] = 2;
+    std::fill_n(broken.begin() + static_cast<std::ptrdiff_t>(count_offset), 4, 0xff);
     rewrite_checksum(broken);
     test::equal(rejects(machine.console, broken), true);
     test::equal(CoreState::capture(machine.console) == initial, true);
@@ -842,13 +850,19 @@ void inactive_video_tests() {
     test::equal(fields, 0);
     test::equal(console.interrupts().read_word(8) & 8, 0);
     auto invalid = phase;
-    invalid[invalid.size() - 12] = 200;
+    invalid[invalid.size() - 20] = 200;
     rewrite_checksum(invalid);
     const auto unchanged = CoreState::capture(console);
     test::equal(rejects(console, invalid), true);
     test::equal(CoreState::capture(console) == unchanged, true);
     test::equal(video.refreshed(), true);
-    auto legacy = phase;
+    auto previous = phase;
+    previous[8] = 4;
+    previous.erase(previous.end() - 16, previous.end() - 8);
+    rewrite_checksum(previous);
+    CoreState::restore(console, previous);
+    test::equal(counter(), 199);
+    auto legacy = previous;
     legacy[8] = 3;
     legacy.erase(legacy.end() - 12, legacy.end() - 8);
     rewrite_checksum(legacy);

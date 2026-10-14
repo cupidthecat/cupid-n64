@@ -28,7 +28,7 @@ void RspCompiler::recompile() {
       Emitter emitter(impl_->rsp, *next, next->key.tracing());
       if (!emitter.compile() || next->words != block->words)
         throw std::runtime_error("Signal processor recompilation failed");
-      replacement->bytes += next->bytes;
+      replacement->bytes += Impl::footprint(*next);
       pointers.emplace(block.get(), next.get());
       rebuilt.push_back(std::move(next));
     }
@@ -105,7 +105,7 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
     }
   }
   if (!selected) {
-    if (bytes >= 32 * 1024 * 1024)
+    if (bytes > capacity - reserve)
       reset();
     auto block = std::make_unique<Block>();
     block->key = key;
@@ -113,9 +113,8 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
     if (!emitter.compile())
       return nullptr;
     block->generation = generation;
-    block->lines =
-        std::bitset<64>(rsp_cache::line_mask(pc, static_cast<unsigned>(block->words.size() * 4)));
-    bytes += block->bytes;
+    block->lines = std::bitset<64>(rsp_cache::line_mask(pc, block->record.size));
+    bytes += footprint(*block);
     selected = block.get();
     blocks[key].push_back(std::move(block));
   }

@@ -15,7 +15,7 @@ void Diagnostics::memory_log(DebugProcessor processor, std::uint64_t address, st
   const auto count = code ? length : 1024ull * 1024;
   std::string message;
   for (std::uint64_t n = 0; (!code && processor == DebugProcessor::Cpu) || n < count; ++n) {
-    const auto byte = Inspection::data_byte(*console_, processor, address + n).value_or(0);
+    const auto byte = Inspection::data_byte(*console_, processor, address + n, false).value_or(0);
     if (!code && !byte)
       break;
     message += static_cast<char>(byte);
@@ -40,7 +40,8 @@ void Diagnostics::memory_dump(DebugProcessor processor, std::uint64_t address,
           output << "   ";
         } else {
           const auto byte =
-              Inspection::data_byte(*console_, processor, Address(start + offset + n)).value_or(0);
+              Inspection::data_byte(*console_, processor, Address(start + offset + n), false)
+                  .value_or(0);
           output << std::setw(2) << unsigned(byte) << ' ';
           characters[n] = byte >= 32 && byte <= 126 ? static_cast<char>(byte) : '.';
         }

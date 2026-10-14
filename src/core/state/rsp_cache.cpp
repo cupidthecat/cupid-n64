@@ -19,14 +19,13 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       stage.load = a.literal(stage.load);
     }
     auto &op = p.current;
-    op.flags = a.literal(op.flags);
+    op.flags(a.literal(op.flags()));
     op.read_gpr = a.literal(op.read_gpr);
     op.write_gpr = a.literal(op.write_gpr);
     op.read_vector = a.literal(op.read_vector);
     op.write_vector = a.literal(op.write_vector);
-    op.read_control = a.literal(op.read_control);
-    op.write_control = a.literal(op.write_control);
-    op.fake_vector = a.literal(op.fake_vector);
+    for (unsigned unused = 0; unused < 3; ++unused)
+      state::Archive::require(a.literal<std::uint32_t>(0) == 0);
     p.clocks = a.literal(p.clocks);
     p.single_issue = a.literal(p.single_issue);
     state::Archive::require(p.clocks == 0);
@@ -41,10 +40,9 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
         return false;
     const auto &x = left.current;
     const auto &y = right.current;
-    return std::tie(x.flags, x.read_gpr, x.write_gpr, x.read_vector, x.write_vector, x.read_control,
-                    x.write_control, x.fake_vector) ==
-           std::tie(y.flags, y.read_gpr, y.write_gpr, y.read_vector, y.write_vector, y.read_control,
-                    y.write_control, y.fake_vector);
+    return x.flags() == y.flags() &&
+           std::tie(x.read_gpr, x.write_gpr, x.read_vector, x.write_vector) ==
+               std::tie(y.read_gpr, y.write_gpr, y.read_vector, y.write_vector);
   };
   const auto generation = a.literal(cache.generation);
   const auto external = a.literal(cache.external_memory);
@@ -76,6 +74,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
   const auto count = a.literal(static_cast<std::uint32_t>(ordered.size()));
   state::Archive::require(count <= maximum_cache_bytes);
   auto restored = std::make_shared<Cache>(cache.rsp);
+  std::size_t restored_code_bytes = 0;
   for (unsigned n = 0; n < count; ++n) {
     std::unique_ptr<Block> decoded;
     Block *block = nullptr;
@@ -92,7 +91,7 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
     for (auto &registers : block->key.registers)
       registers = a.literal(registers);
     block->generation = a.literal(block->generation);
-    auto expected = block->pipeline;
+    auto expected = block->record.pipeline;
     pipeline(expected);
     auto words = a.owned_vector(block->words, 1024);
     state::Archive::require(!words.empty());
@@ -102,11 +101,12 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       RspCompiler::Emitter emitter(cache.rsp, *block, block->key.tracing());
       state::Archive::require(emitter.compile());
       state::Archive::require(block->words == original_words);
-      state::Archive::require(same_pipeline(block->pipeline, expected));
+      state::Archive::require(same_pipeline(block->record.pipeline, expected));
       block->lines = std::bitset<64>(
           rsp_cache::line_mask(block->key.pc, static_cast<unsigned>(block->words.size() * 4)));
-      restored->bytes += block->bytes;
-      state::Archive::require(restored->bytes <= maximum_cache_bytes);
+      restored->bytes += Cache::footprint(*block);
+      restored_code_bytes += block->bytes;
+      state::Archive::require(restored_code_bytes <= maximum_cache_bytes);
       ordered.push_back(block);
       restored->blocks[block->key].push_back(std::move(decoded));
     }

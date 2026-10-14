@@ -30,6 +30,7 @@ void rsp_native_vector_tests();
 void rsp_block_tests();
 void rsp_context_tests();
 void rsp_invalidation_tests();
+void rsp_pressure_tests();
 void rsp_trace_context_tests();
 void rsp_halt_context_tests();
 void rsp_memory_tests();

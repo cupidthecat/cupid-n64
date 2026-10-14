@@ -122,16 +122,41 @@ private:
     std::uint32_t fake_vector = 0;
   };
   struct PipelineStage {
+    bool load = false;
     std::uint32_t gpr = 0;
     std::uint32_t vector = 0;
-    bool load = false;
     bool operator==(const PipelineStage &) const = default;
   };
+  struct PipelineCurrent {
+    bool load = false;
+    std::uint32_t write_gpr = 0;
+    std::uint32_t write_vector = 0;
+    bool store = false;
+    bool branch = false;
+    std::uint32_t read_gpr = 0;
+    std::uint32_t read_vector = 0;
+    std::uint32_t flags() const {
+      return (load ? Load : 0) | (store ? Store : 0) | (branch ? Branch : 0);
+    }
+    void flags(std::uint32_t value) {
+      load = value & Load;
+      store = value & Store;
+      branch = value & Branch;
+    }
+  };
   struct Pipeline {
-    std::array<PipelineStage, 3> previous{};
-    OpInfo current{};
+    std::uint32_t address = 0;
+    std::uint32_t instruction = 0;
     std::uint32_t clocks = 0;
+    std::uint32_t clocks_total = 0;
+    std::uint32_t stall_count = 0;
+    std::uint32_t dual_issue_count = 0;
     bool single_issue = false;
+    std::array<PipelineStage, 3> previous{};
+    PipelineCurrent current{};
+    void begin() {
+      clocks = stall_count = dual_issue_count = 0;
+    }
     void issue(const OpInfo &op);
     void stall();
     void end();

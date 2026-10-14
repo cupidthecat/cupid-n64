@@ -188,7 +188,7 @@ void invalid_tests() {
   for (unsigned fault = 0; fault < 6; ++fault) {
     auto broken_core = core, broken_video = video;
     if (fault == 0) {
-      broken_core[8] = 5;
+      broken_core[8] = 6;
       checksum(broken_core);
     } else if (fault == 1) {
       broken_video[8] = 2;

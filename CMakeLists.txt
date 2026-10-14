@@ -766,6 +766,7 @@ if(BUILD_TESTING)
     tests/rsp/blocks.cpp
     tests/rsp/recompiler/context.cpp
     tests/rsp/recompiler/invalidation.cpp
+    tests/rsp/recompiler/pressure.cpp
     tests/rsp/recompiler/tracing.cpp
     tests/rsp/recompiler/halt.cpp
     tests/rsp/memory.cpp

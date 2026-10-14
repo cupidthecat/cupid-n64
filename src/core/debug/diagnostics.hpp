@@ -131,6 +131,7 @@ public:
   ProfileSnapshot profile() const noexcept;
   void synchronize_cpu(bool discard_remainder = false) noexcept;
   void cpu_cycles(std::uint64_t ticks, bool exception) noexcept;
+  void commit_cpu_cycles(std::uint64_t ticks, bool exception) noexcept;
   void cache_access(bool instruction, bool hit) noexcept;
   void cache_writeback(bool instruction) noexcept;
   void rsp_cycles(std::uint64_t clocks, bool halted) noexcept;
@@ -194,6 +195,7 @@ private:
   void record(DiagnosticRecord record) noexcept;
   void text(DebugProcessor processor, std::string message);
   void profile_command(std::uint64_t slot, unsigned command);
+  ProfileSnapshot guest_profile() const noexcept;
   std::uint64_t profile_read(std::uint64_t slot, unsigned code) const;
   void request_control(unsigned code);
   DiagnosticConfig config_;
@@ -206,6 +208,7 @@ private:
   std::unique_ptr<std::array<CacheContext, 512>> cache_;
   std::unique_ptr<std::array<LocalContext, 4096>> local_;
   ProfileSnapshot profile_;
+  std::array<std::uint64_t, 2> committed_cpu_cycles_{};
   std::uint64_t cpu_profile_clock_ = 0;
   std::vector<ProfileSnapshot> slots_;
   std::uint64_t exception_mask_ = 0;

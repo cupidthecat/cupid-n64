@@ -78,7 +78,7 @@ public:
   static std::optional<std::uint32_t> instruction(const Console &console, DebugProcessor processor,
                                                   std::uint64_t address);
   static std::optional<std::uint8_t> data_byte(const Console &console, DebugProcessor processor,
-                                               std::uint64_t address);
+                                               std::uint64_t address, bool guest_endian = true);
 
 private:
   static std::optional<std::uint32_t> physical_word(const Console &console, std::uint32_t physical,

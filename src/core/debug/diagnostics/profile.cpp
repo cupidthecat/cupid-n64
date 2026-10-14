@@ -84,6 +84,19 @@ void Diagnostics::cpu_cycles(std::uint64_t ticks, bool exception) noexcept {
     profile_.cpu[1] += ticks;
 }
 
+void Diagnostics::commit_cpu_cycles(std::uint64_t ticks, bool exception) noexcept {
+  committed_cpu_cycles_[0] += ticks;
+  if (exception)
+    committed_cpu_cycles_[1] += ticks;
+}
+
+ProfileSnapshot Diagnostics::guest_profile() const noexcept {
+  auto result = profile_;
+  result.cpu[0] = committed_cpu_cycles_[0];
+  result.cpu[1] = committed_cpu_cycles_[1];
+  return result;
+}
+
 void Diagnostics::cache_access(bool instruction, bool hit) noexcept {
   if (profiling())
     ++profile_.cpu[(instruction ? 2 : 5) + (hit ? 0 : 1)];
@@ -120,16 +133,16 @@ void Diagnostics::profile_command(std::uint64_t slot, unsigned command) {
   if (slots_.size() <= slot)
     slots_.resize(static_cast<std::size_t>(slot + 1));
   if (command == 1)
-    slots_[slot] -= profile();
+    slots_[slot] -= guest_profile();
   if (command == 2)
-    slots_[slot] += profile();
+    slots_[slot] += guest_profile();
   if (command == 3)
     slots_[slot] = {};
 }
 
 std::uint64_t Diagnostics::profile_read(std::uint64_t slot, unsigned code) const {
   if (slot & (1ull << 63))
-    return profile().read(code);
+    return guest_profile().read(code);
   return slot < slots_.size() ? slots_[slot].read(code) : 0;
 }
 

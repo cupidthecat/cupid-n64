@@ -47,8 +47,8 @@ std::unique_ptr<state::Archive> CoreState::prepare(Console &console,
 void CoreState::visit(state::Archive &a, Console &c) {
   a.label("machine.identity");
   a.identity<std::uint64_t>(0x4554415453445043ull);
-  const auto version = a.literal<std::uint32_t>(4);
-  state::Archive::require(version == 3 || version == 4);
+  const auto version = a.literal<std::uint32_t>(5);
+  state::Archive::require(version >= 3 && version <= 5);
   a.identity(c.config_.region);
   a.identity(c.config_.expansion);
   // Keep the normal configuration compatible with existing state files.
@@ -191,6 +191,18 @@ void CoreState::visit(state::Archive &a, Console &c) {
     a.bounded(c.vi_.inactive_counter_, 0u, 199u);
   } else {
     a.defer([&c] { c.vi_.inactive_counter_ = 0; });
+  }
+  if (version >= 5) {
+    a.label("rsp.pipeline.address", 4);
+    a.field(c.rsp_.pipeline_.address);
+    a.label("rsp.pipeline.instruction", 4);
+    a.field(c.rsp_.pipeline_.instruction);
+  } else if (a.loading()) {
+    a.defer([&c] {
+      c.rsp_.pipeline_.address = c.rsp_.pc_;
+      c.rsp_.pipeline_.instruction =
+          static_cast<std::uint32_t>(c.rsp_.read_local(0x1000 | c.rsp_.pc_, 4));
+    });
   }
 }
 
@@ -356,7 +368,9 @@ void CoreState::visit(state::Archive &a, Rsp &r) {
   }
   auto &op = r.pipeline_.current;
   a.label("rsp.pipeline.current.flags", 4);
-  a.field(op.flags);
+  const auto flags = a.literal(op.flags());
+  if (a.loading())
+    a.defer([&op, flags] { op.flags(flags); });
   a.label("rsp.pipeline.current.read_gpr", 4);
   a.field(op.read_gpr);
   a.label("rsp.pipeline.current.write_gpr", 4);
@@ -366,11 +380,11 @@ void CoreState::visit(state::Archive &a, Rsp &r) {
   a.label("rsp.pipeline.current.write_vector", 4);
   a.field(op.write_vector);
   a.label("rsp.pipeline.current.read_control", 4);
-  a.field(op.read_control);
+  state::Archive::require(a.literal<std::uint32_t>(0) == 0);
   a.label("rsp.pipeline.current.write_control", 4);
-  a.field(op.write_control);
+  state::Archive::require(a.literal<std::uint32_t>(0) == 0);
   a.label("rsp.pipeline.current.fake_vector", 4);
-  a.field(op.fake_vector);
+  state::Archive::require(a.literal<std::uint32_t>(0) == 0);
   a.label("rsp.pipeline.clocks", 4);
   a.field(r.pipeline_.clocks);
   a.label("rsp.pipeline.single_issue");
