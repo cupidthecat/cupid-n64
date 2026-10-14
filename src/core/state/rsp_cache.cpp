@@ -1,4 +1,5 @@
 #include "core/rsp/recompiler/compiler.hpp"
+#include "core/rsp/recompiler/invalidation.hpp"
 #include "core/state/archive.hpp"
 #include "core/state/core_state.hpp"
 #include <algorithm>
@@ -48,15 +49,15 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
   const auto generation = a.literal(cache.generation);
   const auto external = a.literal(cache.external_memory);
   state::Archive::require(!a.loading() || external || !cache.external_memory);
-  std::bitset<128> dirty;
+  std::bitset<64> dirty;
   for (unsigned word = 0; word < 2; ++word) {
     std::uint64_t bits = 0;
     if (!a.loading())
-      for (unsigned bit = 0; bit < 64; ++bit)
-        bits |= std::uint64_t(cache.dirty[word * 64 + bit]) << bit;
+      for (unsigned line = 0; line < 32; ++line)
+        bits |= (std::uint64_t(cache.dirty[word * 32 + line]) * 3) << (line * 2);
     bits = a.literal(bits);
-    for (unsigned bit = 0; bit < 64; ++bit)
-      dirty[word * 64 + bit] = (bits >> bit) & 1;
+    for (unsigned line = 0; line < 32; ++line)
+      dirty[word * 32 + line] = ((bits >> (line * 2)) & 3) != 0;
   }
   std::vector<Block *> ordered;
   if (!a.loading()) {
@@ -102,8 +103,8 @@ void CoreState::visit(state::Archive &a, RspCompiler &compiler) {
       state::Archive::require(emitter.compile());
       state::Archive::require(block->words == original_words);
       state::Archive::require(same_pipeline(block->pipeline, expected));
-      for (unsigned word = 0; word < block->words.size(); ++word)
-        block->lines.set(((block->key.pc + word * 4) & 0xfff) >> 5);
+      block->lines = std::bitset<64>(
+          rsp_cache::line_mask(block->key.pc, static_cast<unsigned>(block->words.size() * 4)));
       restored->bytes += block->bytes;
       state::Archive::require(restored->bytes <= maximum_cache_bytes);
       ordered.push_back(block);

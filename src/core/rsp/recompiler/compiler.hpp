@@ -42,7 +42,7 @@ struct RspCompiler::Impl {
     Key key;
     Rsp::Pipeline pipeline;
     std::vector<std::uint32_t> words;
-    std::bitset<128> lines;
+    std::bitset<64> lines;
     void *code = nullptr;
     std::size_t bytes = 0;
     std::uint64_t generation = 0;
@@ -62,7 +62,7 @@ struct RspCompiler::Impl {
   std::unordered_map<Key, std::vector<std::unique_ptr<Block>>, Hash> blocks;
   std::array<Block *, 1024> context{};
   std::array<Block *, 1024> alternate{};
-  std::bitset<128> dirty;
+  std::bitset<64> dirty;
   bool external_memory = false;
   std::size_t bytes = 0;
   std::size_t instrumented_bytes = 0;

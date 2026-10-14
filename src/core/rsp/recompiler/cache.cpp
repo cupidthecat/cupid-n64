@@ -1,4 +1,5 @@
 #include "core/rsp/recompiler/compiler.hpp"
+#include "core/rsp/recompiler/invalidation.hpp"
 #include <algorithm>
 #include <stdexcept>
 
@@ -64,16 +65,7 @@ void RspCompiler::Impl::clear_instrumented() {
 
 void RspCompiler::invalidate(std::uint32_t address, unsigned bytes) {
   ++impl_->generation;
-  if (bytes >= 4096) {
-    impl_->dirty.set();
-    return;
-  }
-  while (bytes) {
-    impl_->dirty.set((address & 0xfff) >> 5);
-    const auto count = std::min(bytes, 32 - (address & 31));
-    address += count;
-    bytes -= count;
-  }
+  impl_->dirty |= std::bitset<64>(rsp_cache::line_mask(address, bytes));
 }
 
 void RspCompiler::expose_memory() {
@@ -129,8 +121,8 @@ RspCompiler::Impl::Block *RspCompiler::Impl::select() {
     if (!emitter.compile())
       return nullptr;
     block->generation = generation;
-    for (unsigned n = 0; n < block->words.size(); ++n)
-      block->lines.set(((pc + n * 4) & 0xfff) >> 5);
+    block->lines =
+        std::bitset<64>(rsp_cache::line_mask(pc, static_cast<unsigned>(block->words.size() * 4)));
     bytes += block->bytes;
     selected = block.get();
     blocks[key].push_back(std::move(block));
