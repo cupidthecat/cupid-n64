@@ -177,15 +177,19 @@ inline void homebrew_memory_probes() {
   diagnostics.set_homebrew(true);
   unsigned fenced = 0;
   diagnostics.connect_memory_fence([&] { ++fenced; });
-  const std::vector<std::uint8_t> message(Diagnostics::maximum_text + 16, 'a');
-  Inspection::write(*console, MemoryRegionId::Rdram, 0x2000,
-                    std::span(message).first(Diagnostics::maximum_text));
+  const std::vector<std::uint8_t> message(4112, 'a');
+  for (unsigned offset = 0; offset < message.size(); offset += Inspection::maximum_transfer)
+    Inspection::write(
+        *console, MemoryRegionId::Rdram, 0x2000 + offset,
+        std::span(message).subspan(
+            offset, std::min<unsigned>(message.size() - offset, Inspection::maximum_transfer)));
   cpu.state().gpr[1] = 0xffffffff80002000;
-  cpu.state().gpr[2] = ~0ull;
+  cpu.state().gpr[2] = message.size();
   cpu.execute(emux(0x25, 1, 2, 1));
-  equal(diagnostics.records().back().text.size(), Diagnostics::maximum_text);
+  equal(diagnostics.records().back().text == std::string(message.begin(), message.end()), true);
   cpu.execute(emux(0x27));
-  equal(diagnostics.records().back().text.size() <= Diagnostics::maximum_text, true);
+  const auto dump = diagnostics.records().back().text;
+  equal(std::count(dump.begin(), dump.end(), '\n'), message.size() / 16);
   equal(fenced, 2);
   cpu.state().gpr[4] = 0xffffffff80002000;
   cpu.state().gpr[5] = 'Z';

@@ -158,8 +158,8 @@ DiagnosticOrigin Diagnostics::dma_origin(MemoryRequestor requestor) const noexce
 }
 
 void Diagnostics::text(DebugProcessor processor, std::string message) {
-  if (message.size() > maximum_text)
-    message.resize(maximum_text);
+  if (message.empty())
+    return;
   auto context = origin();
   context.processor = processor;
   if (processor == DebugProcessor::Rsp && console_)

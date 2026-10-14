@@ -98,7 +98,6 @@ enum class HostControl { None, Exit, FastForward, NormalSpeed };
 class Diagnostics {
 public:
   static constexpr unsigned maximum_records = 65536;
-  static constexpr unsigned maximum_text = 4096;
   void connect(Console &console, Cpu &cpu, TraceLog &trace);
   void configure(DiagnosticConfig config);
   const DiagnosticConfig &config() const {

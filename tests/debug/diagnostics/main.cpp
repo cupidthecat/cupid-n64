@@ -4,6 +4,7 @@
 #include "coherence.hpp"
 #include "core/debug/diagnostics.hpp"
 #include "homebrew.hpp"
+#include "memory_output.hpp"
 #include "native.hpp"
 #include "protocol.hpp"
 #include <stdexcept>
@@ -182,6 +183,7 @@ int main() {
   cache_bus_exception_probes();
   signal_command_boundaries();
   homebrew_memory_probes();
+  homebrew_output_probes();
   format_probes();
   counter_boundary_probes();
   signal_boundary_probes();
