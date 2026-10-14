@@ -136,7 +136,8 @@ private:
     std::uint32_t read_gpr = 0;
     std::uint32_t read_vector = 0;
     std::uint32_t flags() const {
-      return (load ? Load : 0) | (store ? Store : 0) | (branch ? Branch : 0);
+      return (load ? std::uint32_t(Load) : 0u) | (store ? std::uint32_t(Store) : 0u) |
+             (branch ? std::uint32_t(Branch) : 0u);
     }
     void flags(std::uint32_t value) {
       load = value & Load;
