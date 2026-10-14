@@ -6,22 +6,22 @@ Start with the [build guide](building.md) for compiler installation, Linux packa
 
 ### Windows MSVC
 
-Use current Visual Studio 2022 with the C++ desktop workload and Windows SDK:
+Install Visual Studio 2026 with the C++ desktop workload, the Windows SDK and MSVC 19.51 or newer. Use CMake 4.2 or newer for its generator. CI currently builds this path with MSVC 19.51.36260.0; the large DIP fixture needs the [individual string-literal limit removed in MSVC 14.51](https://learn.microsoft.com/en-us/cpp/cpp/string-and-character-literals-cpp#size-of-string-literals).
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCUPID_DESKTOP=ON -DBUILD_TESTING=ON -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64 -DCUPID_DESKTOP=ON -DBUILD_TESTING=ON -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
 cmake --build build --config Release --parallel 2 -- /p:CL_MP=true /p:CL_MPCount=2
 ctest --test-dir build -C Release --output-on-failure --parallel 2
 ```
 
-The full build includes test executables; building only `cupid_desktop` does not build the suite. Older MSVC toolsets can fail on dependency warnings or the DIP fixture's large string. See [compiler troubleshooting](building.md#compiler-troubleshooting).
+The full build includes test executables; building only `cupid_desktop` does not build the suite. Visual Studio 2022 can build the desktop app, but its MSVC toolset cannot compile that fixture. See [compiler troubleshooting](building.md#compiler-troubleshooting).
 
 ### Windows ClangCL
 
-Install Visual Studio's C++ Clang tools and MSBuild toolset integration first:
+Install Visual Studio 2026's C++ Clang tools and MSBuild toolset integration, and use CMake 4.2 or newer. CI currently uses Clang 22.1.3 in this installation:
 
 ```powershell
-cmake -S . -B build-clang -G "Visual Studio 17 2022" -A x64 -T ClangCL -DCUPID_DESKTOP=ON -DBUILD_TESTING=ON -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
+cmake -S . -B build-clang -G "Visual Studio 18 2026" -A x64 -T ClangCL -DCUPID_DESKTOP=ON -DBUILD_TESTING=ON -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
 cmake --build build-clang --config Release --parallel 2
 ctest --test-dir build-clang -C Release --output-on-failure --parallel 2
 ```

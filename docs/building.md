@@ -24,7 +24,7 @@ Use a separate build directory for each compiler, generator or renderer configur
 
 ## Windows
 
-Install current Visual Studio 2022 with the **Desktop development with C++** workload, an x64 MSVC toolset and the Windows SDK. CMake can locate this installation from ordinary PowerShell. The commands below build only the desktop app:
+Install current Visual Studio 2022 with the **Desktop development with C++** workload, an x64 MSVC toolset and the Windows SDK. CMake can locate this installation from ordinary PowerShell. The commands below build only the desktop app. The [full MSVC test build](contributing.md#windows-msvc) uses Visual Studio 2026 with MSVC 19.51 or newer and CMake 4.2 or newer:
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCUPID_DESKTOP=ON
@@ -54,7 +54,7 @@ If an older MSVC toolset treats warning C4127 in the JIT dependency as an error,
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DCUPID_DESKTOP=ON "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /W3 /GR /EHsc /wd4127"
 ```
 
-Keep `/EHsc` and `/GR`; replacing all flags with `/wd4127` removes exception and RTTI settings. MSVC 19.43 can also fail with C2026 while compiling the large DIP test fixture. Building the `cupid_desktop` target avoids that fixture, but the full test build needs a newer toolset or the ClangCL path used by CI. An MSB8020 error for `ClangCL` means the Visual Studio Clang component is missing.
+Keep `/EHsc` and `/GR`; replacing all flags with `/wd4127` removes exception and RTTI settings. MSVC versions before 19.51 can fail with C2026 while compiling the large DIP test fixture because they limit the size of an individual string literal. Building the `cupid_desktop` target avoids that fixture. For the full MSVC suite, use Visual Studio 2026 with MSVC 19.51 or newer. The [Visual Studio 2026 generator](https://cmake.org/cmake/help/latest/generator/Visual%20Studio%2018%202026.html) requires CMake 4.2 or newer. The [contributor guide](contributing.md#windows-clangcl) also lists the ClangCL path used by CI. An MSB8020 error for `ClangCL` means the Visual Studio Clang component is missing.
 
 ## Linux
 
