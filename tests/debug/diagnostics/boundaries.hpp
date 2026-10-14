@@ -91,7 +91,7 @@ inline void signal_boundary_probes() {
     else
       rsp.run_interpreted();
     const auto profile = guest->diagnostics().profile();
-    equal(profile.rsp[0] - profile.rsp[1], 9);
+    equal(profile.rsp[0] - profile.rsp[1], 15);
 
     rsp.power();
     guest->diagnostics().set_homebrew(true);

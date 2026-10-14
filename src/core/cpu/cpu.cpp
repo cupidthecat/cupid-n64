@@ -157,10 +157,8 @@ void Cpu::execute(std::uint32_t instruction) {
 }
 
 void Cpu::raise(Exception code, unsigned coprocessor, bool tlb_miss) {
-  if (diagnostics_) {
+  if (diagnostics_)
     diagnostics_->synchronize_cpu();
-    diagnostics_->exception(static_cast<unsigned>(code), delay_slot_);
-  }
   if (code != Exception::Interrupt && trace_ && trace_->enabled(TraceKind::Exception))
     trace_->record({.kind = TraceKind::Exception,
                     .clock = state_.clocks,

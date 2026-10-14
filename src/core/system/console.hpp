@@ -153,6 +153,7 @@ private:
   std::uint32_t read_register(std::uint32_t address);
   std::uint32_t read_register_impl(std::uint32_t address);
   void write_register(std::uint32_t address, std::uint32_t value);
+  bool bus_error(unsigned kind);
   std::int64_t pending_clocks() const;
   void event(Event event);
   ConsoleConfig config_;

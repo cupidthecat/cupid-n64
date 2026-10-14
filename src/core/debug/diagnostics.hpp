@@ -157,7 +157,7 @@ public:
   void local_access(std::uint32_t address, unsigned bytes, bool write,
                     MemoryRequestor requestor = MemoryRequestor::SignalDma) noexcept;
   void check_refresh(std::uint32_t refresh) noexcept;
-  void exception(unsigned code, bool delay_slot) noexcept;
+  bool bus_exception(unsigned kind) noexcept;
   void rsp_instruction() noexcept;
   bool cpu_extension(std::uint32_t instruction);
   bool rsp_extension(std::uint32_t instruction);

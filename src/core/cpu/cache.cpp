@@ -18,9 +18,9 @@ bool Cpu::fill(CacheLine &line, std::uint32_t physical, std::uint32_t index, boo
       line.tag() | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
   line.set_valid(instruction || transfer.success);
-  if (!transfer.success && !bus_.frozen())
+  if (!transfer.success && !transfer.exception && !bus_.frozen())
     raise(instruction ? Exception::BusInstruction : Exception::BusData);
-  return transfer.success || (instruction && bus_.frozen());
+  return transfer.success || transfer.exception || (instruction && bus_.frozen());
 }
 
 bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
@@ -30,11 +30,11 @@ bool Cpu::writeback(CacheLine &line, std::uint32_t index, bool instruction) {
   const auto transfer = bus_.write_cache_burst(
       line.tag() | index, std::span(line.words).first(instruction ? 8 : 4), instruction);
   advance_clocks(transfer.clocks);
-  if (!transfer.success && !bus_.frozen())
+  if (!transfer.success && !transfer.exception && !bus_.frozen())
     raise(Exception::BusData);
   if (transfer.success && !instruction && diagnostics_)
     diagnostics_->cache_clean(static_cast<unsigned>(&line - dcache_.data()));
-  return transfer.success || bus_.frozen();
+  return transfer.success || transfer.exception || bus_.frozen();
 }
 
 std::optional<std::uint64_t> Cpu::cache_read(std::uint64_t virtual_address, std::uint32_t physical,

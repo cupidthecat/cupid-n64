@@ -1,9 +1,38 @@
+#include "core/system/console.hpp"
 #include "fixture.hpp"
 
 namespace test {
 using namespace cupid::n64;
 
 void rsp_pipeline_tests() {
+  for (bool homebrew : {false, true}) {
+    for (bool native : {false, true}) {
+      for (auto instruction : {0x42100025u, 0x42200025u, 0x42100022u}) {
+        Console console({.homebrew = homebrew, .random_seed = 0});
+        auto &signal = console.signal();
+        signal.write_local(0, 4, 41);
+        signal.write_local(0x1000, 4, i(35, 0, 1, 0));
+        signal.write_local(0x1004, 4, instruction);
+        signal.write_local(0x1008, 4, 13);
+        signal.write_io(16, 1);
+        unsigned clocks = 0;
+        if (native) {
+          signal.elapse(1);
+          signal.run();
+          clocks = static_cast<unsigned>(signal.clocks() + 1);
+        } else {
+          for (unsigned step = 0; step < 3; ++step)
+            clocks += signal.step();
+        }
+        equal(clocks, instruction == 0x42100025 ? 15 : 9);
+        equal(signal.pc(), 12);
+        equal(signal.state().gpr[1], 41);
+        equal(signal.state().gpr[2], 0);
+        equal(signal.status().halted, true);
+        equal(signal.status().broken, true);
+      }
+    }
+  }
   RspFixture f;
   auto &rsp = f.rsp;
   equal(rsp.execute(i(35, 0, 1, 0)), 3);

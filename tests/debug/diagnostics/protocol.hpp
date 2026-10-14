@@ -91,13 +91,7 @@ inline void exception_probes() {
     for (bool enabled : {false, true})
       homebrew_cpu(mode, enabled, emux(0x2a), 0, 1u << 8, [&](Console &console) {
         const auto records = console.diagnostics().records();
-        equal(records.size(), enabled ? 1 : 0);
-        if (!records.empty()) {
-          equal(static_cast<unsigned>(records[0].kind),
-                static_cast<unsigned>(DiagnosticKind::Exception));
-          equal(records[0].origin.pc, 0xffffffff80001004);
-          equal(records[0].code, 8);
-        }
+        equal(records.size(), 0);
         equal((console.cpu().read_control(Cause) >> 2) & 31, 8);
         equal(console.cpu().read_control(Epc), 0xffffffff80001004);
       });
@@ -110,12 +104,7 @@ inline void exception_probes() {
   rsp.write_io(16, 0x100);
   rsp.execute(13);
   const auto records = console->diagnostics().records();
-  equal(records.size(), 1);
-  if (!records.empty()) {
-    equal(records[0].code, 9);
-    equal(static_cast<unsigned>(records[0].origin.processor),
-          static_cast<unsigned>(DebugProcessor::Rsp));
-  }
+  equal(records.size(), 0);
   equal(rsp.status().halted && rsp.status().broken, true);
   equal(console->interrupts().read_word(8) & 1, 1);
 }
@@ -143,12 +132,11 @@ inline void signal_command_boundaries() {
         rsp.run_interpreted();
       equal(rsp.status().semaphore, false);
       const auto records = diagnostics.records();
-      equal(records.size(), enabled ? 4 : 0);
+      equal(records.size(), enabled ? 3 : 0);
       if (!records.empty()) {
         equal(records[0].text.find("COP0 7 = 00000000") != std::string::npos, true);
         equal(records[1].text.find("V4 =") != std::string::npos, true);
         equal(records[2].text.find("R1 = -1") != std::string::npos, true);
-        equal(records[3].code, 9);
       }
       states[enabled] = CoreState::capture(*console);
     }

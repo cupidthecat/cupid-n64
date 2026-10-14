@@ -17,6 +17,8 @@ struct BusRead {
 struct BusWrite {
   std::uint32_t clocks = 0;
   bool success = true;
+  // The bus has already raised the processor exception for this transfer.
+  bool exception = false;
 };
 
 class Bus {
@@ -61,6 +63,7 @@ public:
       const auto transfer = write(address, 4, word);
       result.clocks += transfer.clocks;
       result.success &= transfer.success;
+      result.exception |= transfer.exception;
       address += 4;
     }
     return result;

@@ -63,7 +63,7 @@ Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction, bool homebrew) {
   } else if (operation >= 8 && operation <= 15) {
     info = {Bypass, operation == 15 ? 0 : r(source), r(target)};
   } else if (operation == 16) {
-    if (source >= 16 && homebrew) {
+    if (source >= 16) {
       const auto command = HomebrewCommand::decode(instruction);
       switch (command.function) {
       case 0x20:
@@ -71,8 +71,11 @@ Rsp::OpInfo Rsp::decode_info(std::uint32_t instruction, bool homebrew) {
         break;
       case 0x23:
       case 0x24:
-      case 0x2c:
         info.flags = EndBlock;
+        break;
+      case 0x2c:
+        if (homebrew)
+          info.flags = EndBlock;
         break;
       case 0x25:
       case 0x27:

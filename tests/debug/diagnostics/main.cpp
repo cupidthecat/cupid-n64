@@ -1,5 +1,6 @@
 #include "../fixture.hpp"
 #include "boundaries.hpp"
+#include "bus.hpp"
 #include "coherence.hpp"
 #include "core/debug/diagnostics.hpp"
 #include "homebrew.hpp"
@@ -177,6 +178,8 @@ int main() {
   display_traffic_probes();
   profile_command_probes();
   exception_probes();
+  bus_exception_probes();
+  cache_bus_exception_probes();
   signal_command_boundaries();
   homebrew_memory_probes();
   format_probes();
