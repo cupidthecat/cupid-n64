@@ -148,8 +148,12 @@ struct RspCompiler::Emitter {
   static Operand imm(std::uint64_t value) {
     return {SLJIT_IMM, static_cast<sljit_sw>(value)};
   }
-  static Operand field(const void *address) {
-    return {SLJIT_MEM0(), reinterpret_cast<sljit_sw>(address)};
+  Operand field(const void *address) const {
+    const auto location = reinterpret_cast<std::uintptr_t>(address);
+    const auto base = reinterpret_cast<std::uintptr_t>(&rsp);
+    if (location >= base && location - base < sizeof(Rsp))
+      return {SLJIT_MEM1(SLJIT_S1), static_cast<sljit_sw>(location - base)};
+    return {SLJIT_MEM0(), static_cast<sljit_sw>(location)};
   }
   static Operand gpr(unsigned index) {
     return {SLJIT_MEM1(SLJIT_S0), static_cast<sljit_sw>(offsetof(RspState, gpr) + index * 4)};
