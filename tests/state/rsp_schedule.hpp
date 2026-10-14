@@ -3,6 +3,7 @@
 #include "../support/test.hpp"
 #include "core/state/archive.hpp"
 #include "core/state/core_state.hpp"
+#include <memory>
 
 namespace test {
 
@@ -11,8 +12,8 @@ inline void rsp_snapshot_schedule_tests() {
   using namespace cupid::n64;
   for (bool exposed : {false, true})
     for (unsigned action = 0; action < 4; ++action) {
-      Console machine({.random_seed = 0});
-      auto &rsp = machine.signal();
+      auto machine = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
+      auto &rsp = machine->signal();
       if (exposed)
         static_cast<void>(rsp.imem());
       rsp.write_local(0x1000, 4, 0x243f0001);
@@ -26,16 +27,16 @@ inline void rsp_snapshot_schedule_tests() {
       equal(rsp.state().gpr[31], 1);
       std::vector<std::uint8_t> saved;
       if (action == 1) {
-        saved = CoreState::capture(machine);
-        equal(CoreState::capture(machine) == saved, true);
+        saved = CoreState::capture(*machine);
+        equal(CoreState::capture(*machine) == saved, true);
       } else if (action >= 2) {
-        saved = CoreState::checkpoint(machine).bytes;
+        saved = CoreState::checkpoint(*machine).bytes;
         if (action == 3) {
           auto invalid = saved;
           invalid.back() ^= 1;
           bool rejected = false;
           try {
-            CoreState::restore(machine, invalid);
+            CoreState::restore(*machine, invalid);
           } catch (const state::InvalidState &) {
             rejected = true;
           }
@@ -50,17 +51,17 @@ inline void rsp_snapshot_schedule_tests() {
       equal(rsp.pc(), 0);
       equal(rsp.state().gpr[31], 42);
       if (action == 1 || action == 2) {
-        CoreState::restore(machine, saved);
+        CoreState::restore(*machine, saved);
         rsp.advance(12);
         equal(rsp.clocks(), 14);
         equal(rsp.pc(), 0);
         equal(rsp.state().gpr[31], 42);
-        Console fresh({.random_seed = 0});
-        CoreState::restore(fresh, saved);
-        fresh.signal().advance(12);
-        equal(fresh.signal().clocks(), 14);
-        equal(fresh.signal().pc(), 0);
-        equal(fresh.signal().state().gpr[31], 42);
+        auto fresh = std::make_unique<Console>(ConsoleConfig{.random_seed = 0});
+        CoreState::restore(*fresh, saved);
+        fresh->signal().advance(12);
+        equal(fresh->signal().clocks(), 14);
+        equal(fresh->signal().pc(), 0);
+        equal(fresh->signal().state().gpr[31], 42);
       }
     }
 #endif

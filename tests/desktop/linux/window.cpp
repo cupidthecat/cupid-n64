@@ -364,6 +364,7 @@ void linux_window_tests(bool hardware) {
     bool hardware;
     std::filesystem::path directory;
     bool ran = false;
+    bool settings_complete = false;
     bool state_restored = false;
     Window *owner = nullptr;
     std::chrono::steady_clock::time_point deadline =
@@ -427,6 +428,8 @@ void linux_window_tests(bool hardware) {
             resolution(settings_item, false);
           }
         }
+        observation.settings_complete = true;
+        observation.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         return G_SOURCE_REMOVE;
       },
       &observation);
@@ -434,6 +437,8 @@ void linux_window_tests(bool hardware) {
       50,
       +[](gpointer data) -> gboolean {
         auto &observation = *static_cast<Observation *>(data);
+        if (!observation.settings_complete)
+          return G_SOURCE_CONTINUE;
         if (!WindowTestAccess::running(*observation.owner) &&
             std::chrono::steady_clock::now() < observation.deadline)
           return G_SOURCE_CONTINUE;
