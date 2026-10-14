@@ -56,7 +56,7 @@ std::optional<std::uint32_t> Inspection::physical_word(const Console &console,
 }
 
 std::optional<std::uint8_t> Inspection::data_byte(const Console &console, DebugProcessor processor,
-                                                  std::uint64_t address) {
+                                                  std::uint64_t address, bool guest_endian) {
   if (processor == DebugProcessor::Rsp)
     return static_cast<std::uint8_t>(
         console.rsp_.read_local(static_cast<std::uint32_t>(address) & 0x1fff, 1));
@@ -66,8 +66,8 @@ std::optional<std::uint8_t> Inspection::data_byte(const Console &console, DebugP
   const auto access = cpu.inspect_address(address & ~3ull);
   if (!access)
     return {};
-  const auto physical =
-      (access->physical | static_cast<std::uint32_t>(address & 3)) ^ (cpu.little_endian() ? 7 : 0);
+  const auto physical = (access->physical | static_cast<std::uint32_t>(address & 3)) ^
+                        (guest_endian && cpu.little_endian() ? 7 : 0);
   if (access->cached) {
     const auto &line = cpu.dcache_[(address >> 4) & 511];
     if (line.hit(physical))

@@ -1,7 +1,28 @@
 #include "core/devices/rdram/rdram.hpp"
 #include <algorithm>
+#if defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#endif
 
 namespace cupid::n64 {
+namespace {
+void hidden_words4(std::uint8_t *hidden, const std::uint32_t *words) {
+#if defined(__SSE2__) || defined(_M_X64)
+  auto bits = _mm_loadu_si128(reinterpret_cast<const __m128i *>(words));
+  bits = _mm_and_si128(bits, _mm_set1_epi16(1));
+  bits = _mm_or_si128(bits, _mm_slli_epi16(bits, 1));
+  bits = _mm_shufflelo_epi16(bits, _MM_SHUFFLE(2, 3, 0, 1));
+  bits = _mm_shufflehi_epi16(bits, _MM_SHUFFLE(2, 3, 0, 1));
+  bits = _mm_packus_epi16(bits, _mm_setzero_si128());
+  _mm_storel_epi64(reinterpret_cast<__m128i *>(hidden), bits);
+#else
+  for (unsigned word = 0; word < 4; ++word) {
+    hidden[word * 2] = static_cast<std::uint8_t>(((words[word] >> 16) & 1) * 3);
+    hidden[word * 2 + 1] = static_cast<std::uint8_t>((words[word] & 1) * 3);
+  }
+#endif
+}
+} // namespace
 
 Rdram::Rdram(RamInterface &interface, RandomGenerator &random, bool expansion)
     : interface_(interface), random_(random),
@@ -348,9 +369,17 @@ void Rdram::write_burst(std::uint32_t address, std::span<const std::uint32_t> wo
       diagnostics_->traffic(requestor, bytes, true);
       diagnostics_->memory_access(requestor, address, bytes, true);
     }
-    for (unsigned n = 0; n < words.size(); ++n) {
-      write_raw(*mapped + n * 4, 4, words[n]);
-      update_hidden(*mapped + n * 4, 4, words[n], false);
+    if ((*mapped & 3) == 0 && words.size() % 4 == 0 &&
+        std::uint64_t(*mapped) + words.size_bytes() <= size()) {
+      for (unsigned n = 0; n < words.size(); ++n)
+        write_raw(*mapped + n * 4, 4, words[n]);
+      for (unsigned n = 0; n < words.size(); n += 4)
+        hidden_words4(hidden_view_.data() + ((*mapped + n * 4) >> 1), words.data() + n);
+    } else {
+      for (unsigned n = 0; n < words.size(); ++n) {
+        write_raw(*mapped + n * 4, 4, words[n]);
+        update_hidden(*mapped + n * 4, 4, words[n], false);
+      }
     }
   }
 }

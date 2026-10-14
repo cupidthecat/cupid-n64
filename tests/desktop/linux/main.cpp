@@ -11,8 +11,12 @@ int main(int argc, char **argv) {
       linux_input_tests();
     else if (mode == "--audio")
       linux_audio_tests();
+    else if (mode == "--audio-recovery")
+      linux_audio_recovery_tests();
     else if (mode == "--window" || mode == "--hardware")
       linux_window_tests(mode == "--hardware");
+    else if (mode == "--playback")
+      linux_playback_tests();
     else
       throw std::runtime_error("Select a Linux frontend test mode.");
   } catch (const std::exception &error) {

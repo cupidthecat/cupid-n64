@@ -35,10 +35,11 @@ void Window::create_shader_menu(HMENU view) {
   update_shader();
 }
 
-void Window::update_shader() {
-  shader_message_ = shader_.error().empty() ? L""
-                                            : L"Display shader unavailable; unfiltered image "
-                                              L"shown. View > Display shader > Error details";
+void Window::update_shader(std::optional<bool> failed) {
+  const bool unavailable = failed ? *failed : !shader_.error().empty();
+  shader_message_ = !unavailable ? L""
+                                 : L"Display shader unavailable; unfiltered image "
+                                   L"shown. View > Display shader > Error details";
   if (!shader_menu_)
     return;
   const auto &selected = shader_.selection();
@@ -51,7 +52,7 @@ void Window::update_shader() {
   EnableMenuItem(shader_menu_, ShaderReload,
                  MF_BYCOMMAND | (selected.preset != DisplayShader::None ? MF_ENABLED : MF_GRAYED));
   EnableMenuItem(shader_menu_, ShaderDetails,
-                 MF_BYCOMMAND | (!shader_.error().empty() ? MF_ENABLED : MF_GRAYED));
+                 MF_BYCOMMAND | (unavailable ? MF_ENABLED : MF_GRAYED));
   if (window_)
     DrawMenuBar(window_);
 }

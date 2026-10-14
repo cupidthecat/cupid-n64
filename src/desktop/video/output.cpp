@@ -1,5 +1,6 @@
 #include "desktop/video/output.hpp"
 #include "core/state/core_state.hpp"
+#include "renderer/video/readback.hpp"
 #if defined(CUPID_HARDWARE_RENDERER)
 #include "renderer/state/machine_state.hpp"
 #include "renderer/vulkan/renderer.hpp"
@@ -10,44 +11,70 @@
 namespace cupid::desktop {
 
 struct VideoOutput::Implementation {
+  bool measuring = false;
+  std::chrono::nanoseconds host_time{};
+  struct Timer {
+    Implementation &output;
+    std::chrono::steady_clock::time_point started{};
+    explicit Timer(Implementation &output) : output(output) {
+      if (output.measuring)
+        started = std::chrono::steady_clock::now();
+    }
+    ~Timer() {
+      if (output.measuring)
+        output.host_time += std::chrono::steady_clock::now() - started;
+    }
+  };
   n64::Console &console;
   n64::VideoFrame software_frame;
+  std::unique_ptr<n64::FrameReadback> software_readback;
   bool requires_hardware = false;
-  std::function<void(bool)> begin;
+  std::function<void(bool, unsigned)> begin;
   std::function<n64::VideoFrame()> read;
   std::function<bool()> crashed;
 #if defined(CUPID_HARDWARE_RENDERER)
   std::unique_ptr<n64::HardwareRenderer> hardware;
 #endif
 
-  Implementation(n64::Console &console, bool hardware_rendering, n64::RenderSettings settings)
+  Implementation(n64::Console &console, bool hardware_rendering, n64::RenderSettings settings,
+                 std::filesystem::path pipeline_cache)
       : console(console) {
     if (!settings.valid())
       throw std::runtime_error("Select a supported rendering configuration.");
 #if defined(CUPID_HARDWARE_RENDERER)
     if (hardware_rendering) {
       try {
-        hardware = std::make_unique<n64::HardwareRenderer>(console.ram(), settings);
+        hardware = std::make_unique<n64::HardwareRenderer>(console.ram(), settings,
+                                                           std::move(pipeline_cache));
       } catch (const std::runtime_error &) {
       }
     }
     if (hardware) {
       console.display().connect(
-          [this](std::span<const std::uint32_t> words) { hardware->submit(words); },
-          [this] { hardware->synchronize(); },
+          [this](std::span<const std::uint32_t> words) {
+            const Timer timer(*this);
+            hardware->submit(words);
+          },
+          [this] {
+            const Timer timer(*this);
+            hardware->synchronize();
+          },
           [this] {
             if (hardware->crashed())
               this->console.display().crash();
           });
-      console.video().connect_registers(
-          [this](unsigned index, std::uint32_t value) { hardware->write_video(index, value); });
-      begin = [this](bool field) { hardware->begin_frame(field); };
+      console.video().connect_registers([this](unsigned index, std::uint32_t value) {
+        const Timer timer(*this);
+        hardware->write_video(index, value);
+      });
+      begin = [this](bool field, unsigned number) { hardware->begin_frame(field, number); };
       read = [this] { return hardware->read_frame(); };
       crashed = [this] { return hardware->crashed(); };
       return;
     }
 #else
     (void)hardware_rendering;
+    (void)pipeline_cache;
 #endif
     if (settings != n64::RenderSettings{})
       throw std::runtime_error("These graphics settings require an available hardware renderer.");
@@ -68,21 +95,60 @@ struct VideoOutput::Implementation {
 };
 
 VideoOutput::VideoOutput(n64::Console &console, bool hardware_rendering,
-                         n64::RenderSettings settings)
-    : implementation_(std::make_unique<Implementation>(console, hardware_rendering, settings)) {}
+                         n64::RenderSettings settings, std::filesystem::path pipeline_cache)
+    : implementation_(std::make_unique<Implementation>(console, hardware_rendering, settings,
+                                                       std::move(pipeline_cache))) {}
 
 VideoOutput::~VideoOutput() = default;
 
-void VideoOutput::begin_frame(bool field) {
+void VideoOutput::begin_frame(bool field, unsigned number) {
   auto &state = *implementation_;
+  const Implementation::Timer timer(state);
   if (state.begin)
-    state.begin(field);
-  else
+    state.begin(field, number);
+  else {
+    if (state.software_readback)
+      state.software_readback->wait();
     state.software_frame = state.console.video().scanout(state.console.ram());
+    if (state.software_readback)
+      state.software_readback->start(number);
+  }
+}
+
+void VideoOutput::connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present) {
+  auto &state = *implementation_;
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (state.hardware) {
+    state.hardware->connect_present(std::move(present));
+    return;
+  }
+#endif
+  if (!present) {
+    state.software_readback.reset();
+    return;
+  }
+  if (!state.software_readback)
+    state.software_readback =
+        std::make_unique<n64::FrameReadback>([&state] { return state.software_frame; });
+  state.software_readback->connect_present(std::move(present));
+}
+
+void VideoOutput::wait_presented() {
+#if defined(CUPID_HARDWARE_RENDERER)
+  if (implementation_->hardware) {
+    implementation_->hardware->wait_presented();
+    return;
+  }
+#endif
+  if (implementation_->software_readback)
+    implementation_->software_readback->wait_presented();
 }
 
 n64::VideoFrame VideoOutput::read_frame() {
   auto &state = *implementation_;
+  const Implementation::Timer timer(state);
+  if (state.software_readback)
+    state.software_readback->wait();
   return state.read ? state.read() : std::exchange(state.software_frame, {});
 }
 
@@ -108,6 +174,7 @@ bool VideoOutput::supports_hardware() {
 }
 
 void VideoOutput::scanout_settings(n64::RenderSettings settings) {
+  wait_presented();
 #if defined(CUPID_HARDWARE_RENDERER)
   if (implementation_->hardware) {
     implementation_->hardware->scanout_settings(settings);
@@ -119,13 +186,24 @@ void VideoOutput::scanout_settings(n64::RenderSettings settings) {
 }
 
 void VideoOutput::synchronize() {
+  const Implementation::Timer timer(*implementation_);
 #if defined(CUPID_HARDWARE_RENDERER)
   if (implementation_->hardware)
     implementation_->hardware->synchronize();
 #endif
 }
 
+void VideoOutput::measure(bool enabled) {
+  implementation_->measuring = enabled;
+  implementation_->host_time = {};
+}
+
+std::chrono::nanoseconds VideoOutput::host_time() const {
+  return implementation_->host_time;
+}
+
 std::vector<std::uint8_t> VideoOutput::capture_state() {
+  wait_presented();
   auto &state = *implementation_;
   n64::state::Archive archive;
   archive.identity<std::uint64_t>(0x45544154534f5043ull);
@@ -147,6 +225,7 @@ std::vector<std::uint8_t> VideoOutput::capture_state() {
 }
 
 void VideoOutput::restore_state(std::span<const std::uint8_t> bytes) {
+  wait_presented();
   auto &state = *implementation_;
   n64::state::Archive archive(bytes);
   archive.identity<std::uint64_t>(0x45544154534f5043ull);

@@ -5,6 +5,7 @@ namespace cupid::n64 {
 RspCompiler::Emitter::Emitter(Rsp &rsp, Impl::Block &block, bool tracing, bool diagnostics)
     : rsp(rsp), block(block), compiler(sljit_create_compiler(nullptr)), start(block.key.pc),
       tracing(tracing), diagnostics(diagnostics) {
+  pipeline = rsp.pipeline_;
   block.homebrew = diagnostics && rsp.diagnostics_ && rsp.diagnostics_->homebrew();
   pipeline.single_issue = block.key.flags & 8;
   for (unsigned n = 0; n < pipeline.previous.size(); ++n) {
@@ -65,7 +66,8 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
     op1(SLJIT_MOV32, reg(SLJIT_R2), imm(pc));
     op1(SLJIT_MOV32, reg(SLJIT_R3), imm(cycles));
     sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS4V(P, 32, 32, 32), SLJIT_IMM,
-                     SLJIT_FUNC_ADDR(trace));
+                     block.key.tracing() ? SLJIT_FUNC_ADDR(trace)
+                                         : SLJIT_FUNC_ADDR(diagnostic_trace));
   }
   if (branched && !delay) {
     op1(SLJIT_MOV32, field(&rsp.next_pc_), imm((pc + 8) & 0xfff));
@@ -88,6 +90,13 @@ void RspCompiler::Emitter::instruction(std::uint32_t opcode, std::uint32_t pc, b
 
 void RspCompiler::Emitter::trace(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc,
                                  std::uint32_t clocks) {
+  rsp->pipeline_.address = pc;
+  rsp->pipeline_.instruction = instruction;
+  rsp->trace_instruction(pc, instruction, clocks);
+}
+
+void RspCompiler::Emitter::diagnostic_trace(Rsp *rsp, std::uint32_t instruction, std::uint32_t pc,
+                                            std::uint32_t clocks) {
   rsp->trace_instruction(pc, instruction, clocks);
 }
 
@@ -112,7 +121,7 @@ bool RspCompiler::Emitter::compile() {
       second = Rsp::decode_info(second_opcode, block.homebrew);
       dual = Rsp::dual_issue(first, second);
     }
-    pipeline.clocks = 0;
+    pipeline.begin();
     pipeline.issue(first);
     if (dual)
       pipeline.issue(second);
@@ -122,8 +131,11 @@ bool RspCompiler::Emitter::compile() {
     if (delay)
       begin_delay();
     instruction(first_opcode, (start + n * 4) & 0xfff, first_branch, delay);
-    if (dual)
+    constants.track(first_opcode, (start + n * 4) & 0xfff, first.write_gpr);
+    if (dual) {
       instruction(second_opcode, (start + (n + 1) * 4) & 0xfff, second_branch, delay);
+      constants.track(second_opcode, (start + (n + 1) * 4) & 0xfff, second.write_gpr);
+    }
     n += dual ? 2 : 1;
     cycles += pipeline.clocks;
     if (delay) {
@@ -152,8 +164,9 @@ bool RspCompiler::Emitter::compile() {
     }
     delay = branched;
   }
-  block.pipeline = pipeline;
-  block.pipeline.clocks = 0;
+  block.record.pipeline = pipeline;
+  block.record.pipeline.clocks = 0;
+  block.record.size = static_cast<std::uint32_t>(block.words.size() * 4) & 0xfff;
   for (const auto &exit : exits) {
     sljit_set_label(exit.jump, sljit_emit_label(compiler));
     cycles = exit.clocks;
@@ -170,9 +183,9 @@ bool RspCompiler::Emitter::compile() {
                      SLJIT_FUNC_ADDR(helper));
     sljit_set_label(sljit_emit_jump(compiler, SLJIT_JUMP), path.resume);
   }
-  block.code = sljit_generate_code(compiler, 0, nullptr);
+  block.record.code = sljit_generate_code(compiler, 0, nullptr);
   block.bytes = static_cast<std::size_t>(sljit_get_generated_code_size(compiler));
-  return block.code != nullptr;
+  return block.record.code != nullptr;
 }
 
 } // namespace cupid::n64

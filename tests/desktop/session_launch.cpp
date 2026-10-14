@@ -23,7 +23,7 @@ void firmware(const std::filesystem::path &directory) {
   validate_firmware(pif, FirmwareType::Nintendo64);
   validate_firmware(pif, FirmwareType::Aleck64);
   validate_firmware(ipl, FirmwareType::DiskIpl);
-  LaunchFiles launch{ipl, pif};
+  LaunchFiles launch{ipl, pif, {}, {}};
   validate_launch(launch);
   launch.rom.clear();
   test::equal(rejects([&] { validate_launch(launch); }), true);
@@ -33,7 +33,8 @@ void firmware(const std::filesystem::path &directory) {
   test::equal(rejects([&] { validate_launch(launch); }), true);
   launch.ipl.clear();
   launch.rom = ipl;
-  for (unsigned mode = 1; mode <= 6; ++mode) {
+  for (unsigned mode = 1; mode <= static_cast<unsigned>(cupid::n64::ArcadeProfile::TowerShaft);
+       ++mode) {
     launch.arcade_profile = static_cast<cupid::n64::ArcadeProfile>(mode);
     validate_launch(launch);
   }
@@ -152,6 +153,47 @@ void disks(const std::filesystem::path &directory) {
   test::equal(session.capture_state() == initial, true);
 }
 
+void arcade_dips(const std::filesystem::path &directory) {
+  for (const auto text : {"", "Test Mode", "=true", "Test Mode="})
+    test::equal(rejects([&] { parse_dip_selection(text); }), true);
+  const auto selection = parse_dip_selection("Coinage=1 Coin 2 Credits");
+  test::equal(selection.name == "Coinage", true);
+  test::equal(selection.value == "1 Coin 2 Credits", true);
+  Audio audio;
+  SessionSettings settings;
+  settings.arcade_dips = {parse_dip_selection("Test Mode=true"),
+                          parse_dip_selection("Backup Settings=true"),
+                          parse_dip_selection("Coinage=1 Coin 2 Credits")};
+  const auto rom = directory / "game.z64", pif = directory / "pif.bin";
+  test::equal(rejects([&] {
+                Session invalid(rom, pif, audio, {}, {}, cupid::n64::ArcadeProfile::Disabled, 0,
+                                false, settings);
+              }),
+              true);
+  Session selected(rom, pif, audio, {}, {}, cupid::n64::ArcadeProfile::HiPai2, 0, false, settings);
+  test::equal(selected.arcade_dip_settings().size(), 8);
+  test::equal(selected.arcade_dip_setting("Test Mode").value_or("") == "true", true);
+  test::equal(selected.arcade_dip_setting("Backup Settings").value_or("") == "true", true);
+  test::equal(selected.arcade_dip_setting("Coinage").value_or("") == "1 Coin 2 Credits", true);
+  test::equal(selected.arcade_dip_setting("Coinage", "Invalid"), false);
+  selected.reset();
+  test::equal(selected.arcade_dip_setting("Test Mode").value_or("") == "true", true);
+  test::equal(selected.arcade_dip_setting("Coinage", "3 Coins 1 Credit"), true);
+  test::equal(selected.arcade_dip_setting("Coinage").value_or("") == "3 Coins 1 Credit", true);
+  settings.arcade_dips = {parse_dip_selection("Not A Setting=true")};
+  test::equal(rejects([&] {
+                Session invalid(rom, pif, audio, {}, {}, cupid::n64::ArcadeProfile::HiPai2, 0,
+                                false, settings);
+              }),
+              true);
+  settings.arcade_dips = {parse_dip_selection("Coinage=Not A Value")};
+  test::equal(rejects([&] {
+                Session invalid(rom, pif, audio, {}, {}, cupid::n64::ArcadeProfile::HiPai2, 0,
+                                false, settings);
+              }),
+              true);
+}
+
 } // namespace
 
 int main() {
@@ -161,6 +203,7 @@ int main() {
     firmware(directory.path);
     memory(directory.path);
     disks(directory.path);
+    arcade_dips(directory.path);
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';
     return 1;

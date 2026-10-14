@@ -1,7 +1,7 @@
-option(CUPID_GROUP_CORE_TESTS "Link compatible test fixtures together with MSVC optimization" ON)
+option(CUPID_GROUP_CORE_TESTS "Link compatible test fixtures together with interprocedural optimization" ON)
 
 set(cupid_group_core_tests FALSE)
-if(MSVC AND CUPID_INTERPROCEDURAL_OPTIMIZATION AND cupid_ipo_supported AND CUPID_GROUP_CORE_TESTS)
+if(CUPID_INTERPROCEDURAL_OPTIMIZATION AND cupid_ipo_supported AND CUPID_GROUP_CORE_TESTS)
   set(cupid_group_core_tests TRUE)
   add_executable(core_checkpoint_tests tests/support/checkpoint_main.cpp)
   target_link_libraries(core_checkpoint_tests PRIVATE cupid_core)

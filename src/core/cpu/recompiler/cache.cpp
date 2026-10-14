@@ -57,8 +57,18 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto floating_mode = static_cast<unsigned>(cpu.control_[Status] & 0x24000000);
   const auto floating_control =
       ((cpu.state_.fcr31 & 0x00000f83) << 2) | (cpu.state_.fcr31 & 0x01000000);
-  const Impl::Key key{cpu.state_.pc,
-                      reverse | (unsigned(wide) << 1) | floating_mode | floating_control};
+  const auto ram_bytes = cpu.bus_.instruction_data(0).size_bytes();
+  const auto gp = cpu.state_.gpr[28];
+  const auto sp = cpu.state_.gpr[29];
+  const auto gp_physical = gp - 0xffffffff80000000ull;
+  const unsigned memory_mode =
+      (ram_bytes >= 0x10000 && gp_physical >= 0x8000 && gp_physical < ram_bytes - 0x7fff
+           ? Impl::GpOffsetRange
+           : 0u) |
+      (!(gp & 3) ? Impl::GpAligned4 : 0u) | (!(gp & 7) ? Impl::GpAligned8 : 0u) |
+      (!(sp & 3) ? Impl::SpAligned4 : 0u) | (!(sp & 7) ? Impl::SpAligned8 : 0u);
+  const Impl::Key key{cpu.state_.pc, reverse | (unsigned(wide) << 1) | floating_mode |
+                                         floating_control | memory_mode};
   if (impl_->bytes >= 63 * 1024 * 1024)
     reset();
   auto &section = impl_->section(page);
@@ -195,6 +205,10 @@ bool CpuCompiler::run(const std::uint64_t &clock_target) {
   const auto previous = impl_->active;
   impl_->active = {tracker, page, generation};
   cpu.native_fetch_miss_ = false;
+  const auto fill =
+      fully_tracked ? cpu.bus_.cache_fill_data(page) : std::span<const std::uint32_t>();
+  cpu.native_fill_page_ = fill.data();
+  cpu.native_fill_words_ = fill.size();
   Cpu::ProfileClockScope profile_clock(cpu, 2);
   execution->execute(clock_target);
   impl_->active = previous;

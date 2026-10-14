@@ -2,12 +2,15 @@
 
 #include "desktop/debug/gdb/server.hpp"
 #include "desktop/launch/options.hpp"
+#include "desktop/replay/field_trace.hpp"
+#include "desktop/replay/input.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/rewind.hpp"
 #include "desktop/state/slots.hpp"
 #include "desktop/storage/recent.hpp"
-#include "desktop/timing/playback_clock.hpp"
+#include "desktop/timing/execution_worker.hpp"
 #include "desktop/timing/playback_settings.hpp"
+#include "desktop/video/frame_delivery.hpp"
 #include "desktop/video/viewport.hpp"
 #include "desktop/windows/audio/devices.hpp"
 #include "desktop/windows/controls/gamepads.hpp"
@@ -16,8 +19,10 @@
 #include "desktop/windows/display/size_dialog.hpp"
 #include "desktop/windows/timing/timer_resolution.hpp"
 #include "desktop/windows/video/paint_buffer.hpp"
+#include "desktop/windows/video/presenter.hpp"
 #include "desktop/windows/video/shaders/processor.hpp"
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <optional>
 #include <string_view>
@@ -27,6 +32,7 @@ namespace cupid::desktop {
 class Window {
 public:
   explicit Window(Options options);
+  ~Window();
   int run(HINSTANCE instance, int show);
 
 private:
@@ -49,7 +55,7 @@ private:
   bool shader_command(unsigned id);
   void select_shader(ShaderSelection selection);
   void create_shader_menu(HMENU view);
-  void update_shader();
+  void update_shader(std::optional<bool> failed = {});
   void shortcuts_dialog();
   void shortcut(ShortcutEvent event);
   bool shortcut_key(unsigned key, bool pressed, bool repeat);
@@ -90,7 +96,6 @@ private:
   void create_playback_settings_menu(HMENU emulation);
   void update_playback_settings();
   void refresh_audio_devices();
-  bool wait_for_video();
   bool display_command(unsigned id);
   bool file_command(unsigned id);
   void load_recent();
@@ -120,15 +125,30 @@ private:
   void update_states();
   void state_loaded();
   void refresh_frame();
+  void refresh_frame(const n64::VideoFrame &frame);
   enum class LaunchPreference { Remember, Preserve };
   void load(LaunchPreference preference = LaunchPreference::Remember);
   void paint();
+  bool image_valid() const;
+  bool present_video();
+  PresentationWorker::Submission video_submission(unsigned field);
+  VideoSurface video_surface();
+  void refresh_presented_image();
+  void observe_presentation(FieldTrace::Observation &observation,
+                            const PresentationWorker::Completion &completion);
+  void present_field(FieldTrace::Observation &observation);
   void advance();
+  void finish_advance();
+  bool drain_advance();
+  void publish_inputs();
+  PlayerInputs take_inputs();
+  void start_advance();
   struct Input {
     std::uint16_t buttons;
     std::int8_t x, y;
   };
   Input input() const;
+  static Input test_input(unsigned frame);
   void present();
   void rebase();
   void fullscreen();
@@ -167,8 +187,8 @@ private:
   FeedbackLatch feedback_;
   bool reload_pending_ = false;
   std::vector<AudioDevice> audio_devices_;
-  static constexpr std::array<unsigned, 8> audio_latencies{20, 40, 60, 80, 120, 160, 240, 320};
-  PlaybackSync playback_sync_ = PlaybackSync::Audio;
+  static constexpr std::array<unsigned, 9> audio_latencies{0, 20, 40, 60, 80, 120, 160, 240, 320};
+  PlaybackSync playback_sync_;
   FocusBehavior focus_behavior_ = FocusBehavior::Pause;
   bool video_sync_available_ = true;
   std::chrono::steady_clock::time_point next_audio_check_{};
@@ -192,8 +212,27 @@ private:
   std::filesystem::path game_image_;
   TimerResolution timer_resolution_;
   PaintBuffer paint_buffer_;
+  VideoPresenter video_presenter_;
   Audio audio_;
   std::unique_ptr<Session> session_;
+  std::atomic<bool> advancing_{false};
+  std::unique_ptr<InputReplay> input_replay_;
+  std::unique_ptr<FieldTrace> field_trace_;
+  std::optional<std::chrono::nanoseconds> worker_cpu_origin_;
+  std::chrono::nanoseconds observed_worker_cpu_{};
+  struct CompletedField {
+    FieldTrace::Observation observation{};
+    std::array<FeedbackState, 4> feedback{};
+    std::chrono::steady_clock::time_point completed;
+    std::chrono::nanoseconds duration{}, cpu{};
+    unsigned processor = ~0u;
+    bool audio_recovery = false;
+    std::exception_ptr history_error;
+  };
+  bool audio_recovery_pending_ = false;
+  std::mutex input_mutex_;
+  PlayerInputs worker_inputs_;
+  std::array<MouseMotion, 4> worker_mouse_;
   GdbServer gdb_;
   unsigned gdb_port_ = 2345;
   bool gdb_enabled_ = false, gdb_connected_ = false, gdb_was_paused_ = false;
@@ -213,11 +252,18 @@ private:
   std::vector<std::uint8_t> pixels_;
   bool paused_ = false, active_ = true, modal_ = false, fullscreen_ = false, quit_ = false;
   bool frame_ready_ = false;
+  bool presenting_field_ = false, field_presented_ = false;
+  bool video_available_ = false, finishing_advance_ = false;
   int exit_code_ = 0;
-  PlaybackClock playback_clock_;
   unsigned last_frame_ = 0, measured_frames_ = 0;
   unsigned pixel_width_ = 0, pixel_height_ = 0;
+  unsigned cached_viewport_width_ = 0, cached_viewport_height_ = 0;
   std::chrono::steady_clock::time_point measured_time_;
+  FrameDelivery<CompletedField> completed_fields_;
+  std::optional<n64::VideoFrame> target_capture_;
+  PresentationWorker presentation_;
+  // Drain execution before destroying any object captured by the worker.
+  ExecutionWorker execution_;
 };
 
 } // namespace cupid::desktop

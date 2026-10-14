@@ -1,4 +1,5 @@
 #include "../support/test.hpp"
+#include "fpu/rounding.hpp"
 #include <array>
 #include <cfenv>
 
@@ -24,6 +25,7 @@ struct FpuFixture : Fixture {
 } // namespace
 
 void fpu_tests() {
+  integer_rounding_tests();
   {
     Fixture f;
     f.cpu.state().fpr[4] = 0x1234567880000000;
@@ -142,13 +144,14 @@ void fpu_tests() {
     equal(f.cpu.state().fcr31, 0x10040);
     equal(f.cpu.state().clocks, wide ? 116 : 58);
   }
-  const std::array<std::uint32_t, 4> integers{2, 2, 3, 2};
+  const std::array<std::uint32_t, 4> integers{floating::nearest_integer_even ? 2u : 3u, 2, 3, 2};
   for (unsigned function = 0xc; function <= 0xf; ++function) {
     FpuFixture f;
     f.cpu.state().fpr[1] = 0x40200000;
     f.cpu.execute(fp(function, 1, 0, 3));
     equal(f.cpu.state().fpr[3], integers[function & 3]);
-    equal(f.cpu.state().fcr31, 0x1004);
+    equal(f.cpu.state().fcr31,
+          (function & 3) < 2 || cpu_fpu::conversion_inexact(true, false) ? 0x1004 : 0);
     equal(f.cpu.state().clocks, 10);
   }
   {
@@ -192,7 +195,7 @@ void fpu_tests() {
     equal(f.cpu.state().fcr31, 0);
     f.cpu.state().fpr[1] = 0xc0200000;
     f.cpu.execute(fp(0xc, 1, 0, 3));
-    equal(f.cpu.state().fpr[3], 0xfffffffe);
+    equal(f.cpu.state().fpr[3], floating::nearest_integer_even ? 0xfffffffe : 0xfffffffd);
     equal(f.cpu.state().fcr31, 0x1004);
   }
   for (bool trap : {false, true}) {

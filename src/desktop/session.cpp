@@ -9,10 +9,13 @@ namespace cupid::desktop {
 Session::Session(const std::filesystem::path &rom, const std::filesystem::path &firmware,
                  Audio &audio, const std::filesystem::path &ipl, const std::filesystem::path &disk,
                  n64::ArcadeProfile arcade, std::optional<std::uint64_t> random_seed,
-                 bool hardware_rendering, SessionSettings settings)
+                 bool hardware_rendering, SessionSettings settings,
+                 std::filesystem::path pipeline_cache)
     : audio_(audio), settings_(std::move(settings)), cartridge_image_(rom), ipl_image_(ipl),
-      hardware_rendering_(hardware_rendering) {
+      pipeline_cache_file_(std::move(pipeline_cache)), hardware_rendering_(hardware_rendering) {
   validate_ports(settings_.ports);
+  if (!settings_.arcade_dips.empty() && arcade == n64::ArcadeProfile::Disabled)
+    throw std::runtime_error("DIP settings require an arcade game.");
   if (!settings_.graphics.valid())
     throw std::runtime_error("Select a supported rendering configuration.");
   for (const auto banks : settings_.memory.pak_banks)
@@ -71,6 +74,10 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
         arcade == n64::ArcadeProfile::Disabled
             ? "Select a game or 64DD IPL and a 1984-byte PIF firmware file."
             : "Select an Aleck64 game and its 1984- or 2048-byte PIF firmware file.");
+  for (const auto &selection : settings_.arcade_dips)
+    if (!console_->arcade()->dip_setting(selection.name, selection.value))
+      throw std::runtime_error("Unknown DIP setting or value: " + selection.name + "=" +
+                               selection.value);
   if (!rom.empty()) {
     const auto attach_save = [&](const wchar_t *extension, std::span<std::uint8_t> memory) {
       if (!memory.empty())
@@ -88,16 +95,19 @@ Session::Session(const std::filesystem::path &rom, const std::filesystem::path &
       saved_cartridge_clock_.assign(clock.begin(), clock.end());
     }
   }
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics,
+                                          pipeline_cache_file_);
   debugger_ = std::make_unique<n64::Debugger>(*console_);
   console_->diagnostics().connect_memory_fence([this] { output_->synchronize(); });
   console_->audio().connect([this](n64::StereoSample sample) { audio_.sample(sample); },
                             [this](unsigned rate) { audio_.frequency(rate); });
   console_->video().connect_frame([this](bool field) {
     finish_frame();
-    output_->begin_frame(field);
+    output_->begin_frame(field, frames + 1);
     frame_pending_ = true;
     ++frames;
+    if (frame_observer_)
+      frame_observer_(frames);
   });
 }
 
@@ -109,7 +119,9 @@ void Session::reset() {
   debugger_->interrupt();
   audio_.clear();
   audio_.frequency(console_->audio().frequency());
-  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics);
+  output_ = std::make_unique<VideoOutput>(*console_, hardware_rendering_, settings_.graphics,
+                                          pipeline_cache_file_);
+  output_->connect_present(frame_presenter_);
   frame = {};
   frames = 0;
 }
@@ -119,6 +131,28 @@ void Session::finish_frame() {
     frame = output_->read_frame();
     frame_pending_ = false;
   }
+}
+
+void Session::observe_frames(std::function<void(unsigned)> observer) {
+  frame_observer_ = std::move(observer);
+}
+
+void Session::connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present) {
+  finish_frame();
+  output_->connect_present(present);
+  frame_presenter_ = std::move(present);
+}
+
+void Session::wait_presented() {
+  output_->wait_presented();
+}
+
+void Session::clear_refresh() {
+  console_->video().clear_refresh();
+}
+
+bool Session::refreshed() const {
+  return console_->video().refreshed();
 }
 
 void Session::advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y) {
@@ -142,9 +176,9 @@ void Session::advance_to_frame() {
   } quiet{audio_, audio_.muted};
   audio_.clear();
   audio_.muted = true;
-  const auto before = frames;
+  clear_refresh();
   const auto started = clocks();
-  while (frames == before) {
+  while (!refreshed()) {
     run_interval(true);
     if (debugger_->halted())
       break;

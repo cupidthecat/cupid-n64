@@ -160,9 +160,32 @@ bool RspCompiler::Emitter::vector_quad_simd(std::uint32_t instruction) {
   const auto reverse = ((instruction >> 11) & 31) == 5;
   const auto target = (instruction >> 16) & 31;
   const auto element = (instruction >> 7) & 15;
-  op2(SLJIT_AND32, reg(SLJIT_R0), reg(SLJIT_R1), imm(15));
   const Operand vector{SLJIT_MEM1(SLJIT_S0), static_cast<sljit_sw>(offsetof(RspState, vectors) +
                                                                    target * sizeof(RspVector))};
+  if (vector_base) {
+    const auto offset = *vector_base & 15;
+    if (reverse && offset <= (store ? 0 : element))
+      return true;
+    const bool full = !reverse && !element && !offset;
+    const Operand memory{SLJIT_MEM1(SLJIT_S2),
+                         static_cast<sljit_sw>(full ? *vector_base : *vector_base & 0xff0)};
+    const auto source = store ? vector : memory;
+    const auto dest = store ? memory : vector;
+    sljit_emit_simd_mov(compiler, simd, SLJIT_VR0, source.type, source.value);
+    const auto mask = field(&tables.shuffle[store][reverse][element][offset]);
+    sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_SHUFFLE, SLJIT_VR0, SLJIT_VR0, mask.type,
+                        mask.value);
+    if (!full) {
+      sljit_emit_simd_mov(compiler, simd, SLJIT_VR1, dest.type, dest.value);
+      const auto preserve = field(&tables.preserve[store][reverse][element][offset]);
+      sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_AND, SLJIT_VR1, SLJIT_VR1, preserve.type,
+                          preserve.value);
+      sljit_emit_simd_op2(compiler, simd | SLJIT_SIMD_OP2_OR, SLJIT_VR0, SLJIT_VR0, SLJIT_VR1, 0);
+    }
+    sljit_emit_simd_mov(compiler, simd | SLJIT_SIMD_STORE, SLJIT_VR0, dest.type, dest.value);
+    return true;
+  }
+  op2(SLJIT_AND32, reg(SLJIT_R0), reg(SLJIT_R1), imm(15));
   const Operand memory{SLJIT_MEM2(SLJIT_S2, SLJIT_R1)};
   const auto source = store ? vector : memory;
   const auto dest = store ? memory : vector;

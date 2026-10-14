@@ -12,18 +12,13 @@ void Diagnostics::memory_log(DebugProcessor processor, std::uint64_t address, st
     return;
   if (memory_fence_)
     memory_fence_();
-  const auto count = code ? std::min(length, std::uint64_t(maximum_text)) : maximum_text;
+  const auto count = code ? length : 1024ull * 1024;
   std::string message;
-  message.reserve(static_cast<std::size_t>(count));
-  for (std::uint64_t n = 0; n < count; ++n) {
-    const auto byte = Inspection::data_byte(*console_, processor, address + n);
-    if (!byte) {
-      message += "<unmapped>";
+  for (std::uint64_t n = 0; (!code && processor == DebugProcessor::Cpu) || n < count; ++n) {
+    const auto byte = Inspection::data_byte(*console_, processor, address + n, false).value_or(0);
+    if (!code && !byte)
       break;
-    }
-    if (!code && !*byte)
-      break;
-    message += static_cast<char>(*byte);
+    message += static_cast<char>(byte);
   }
   text(processor, std::move(message));
 }
@@ -32,35 +27,35 @@ void Diagnostics::memory_dump(DebugProcessor processor, std::uint64_t address,
                               std::uint64_t length) {
   if (memory_fence_)
     memory_fence_();
-  std::ostringstream output;
-  output.imbue(std::locale::classic());
-  const auto count = std::min(length, std::uint64_t(maximum_text));
-  for (std::uint64_t offset = 0; offset < count; offset += 16) {
-    const auto bytes = static_cast<unsigned>(std::min(count - offset, std::uint64_t(16)));
-    output << std::hex << std::setfill('0') << std::setw(processor == DebugProcessor::Cpu ? 16 : 8)
-           << address + offset << "  ";
-    std::string characters;
-    for (unsigned n = 0; n < 16; ++n) {
-      if (n == 8)
-        output << ' ';
-      if (n >= bytes) {
-        output << "   ";
-        continue;
+  const auto dump = [&]<typename Address>(Address start, Address count) {
+    std::ostringstream output;
+    output.imbue(std::locale::classic());
+    for (Address offset = 0; offset < count; offset += 16) {
+      const auto bytes = static_cast<unsigned>(std::min(count - offset, Address(16)));
+      output << std::hex << std::setfill('0') << std::setw(sizeof(Address) * 2)
+             << Address(start + offset) << ' ' << std::setw(4) << offset << ": ";
+      std::string characters(16, ' ');
+      for (unsigned n = 0; n < 16; ++n) {
+        if (n >= bytes) {
+          output << "   ";
+        } else {
+          const auto byte =
+              Inspection::data_byte(*console_, processor, Address(start + offset + n), false)
+                  .value_or(0);
+          output << std::setw(2) << unsigned(byte) << ' ';
+          characters[n] = byte >= 32 && byte <= 126 ? static_cast<char>(byte) : '.';
+        }
+        if (n == 7)
+          output << ' ';
       }
-      const auto byte = Inspection::data_byte(*console_, processor, address + offset + n);
-      if (byte) {
-        output << std::setw(2) << unsigned(*byte) << ' ';
-        characters += *byte >= 32 && *byte <= 126 ? static_cast<char>(*byte) : '.';
-      } else {
-        output << "?? ";
-        characters += '?';
-      }
+      output << " |" << characters << "|\n";
     }
-    output << " |" << characters << "|\n";
-    if (output.tellp() >= maximum_text)
-      break;
-  }
-  text(processor, output.str());
+    text(processor, output.str());
+  };
+  if (processor == DebugProcessor::Rsp)
+    dump(static_cast<std::uint32_t>(address), static_cast<std::uint32_t>(length));
+  else
+    dump(address, length);
 }
 
 } // namespace cupid::n64

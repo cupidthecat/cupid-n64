@@ -59,8 +59,6 @@ void Rsp::scalar_special(std::uint32_t instruction) {
     result = (pc_ + 8) & 0xfff;
     break;
   case 13:
-    if (diagnostics_)
-      diagnostics_->exception(9, delay_slot_);
     status_.halted = status_.broken = true;
     if (status_.interrupt_on_break)
       interrupts_.raise(Interrupt::Signal);

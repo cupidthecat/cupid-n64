@@ -1,5 +1,6 @@
 #include "core/cpu/cpu.hpp"
 #include "core/cpu/fpu/environment.hpp"
+#include "core/cpu/fpu/rounding.hpp"
 #include <cmath>
 #include <limits>
 #include <type_traits>
@@ -132,16 +133,20 @@ void Cpu::fpu_to_integer(unsigned dest, unsigned source, bool wide, unsigned rou
     fpu_unimplemented();
     return;
   }
-  floating::Environment environment(rounding < 4 ? rounding : state_.fcr31 & 3);
-  volatile Float input = value;
-  volatile Float rounded = std::nearbyint(input);
-  if (!wide && (rounded >= Float(0x1p31) || rounded < -Float(0x1p31))) {
-    fpu_unimplemented();
-    return;
+  const auto mode = rounding < 4 ? rounding : state_.fcr31 & 3;
+  if constexpr (sizeof(Float) == 8) {
+    if (!wide && value > 2147483647.0 && (mode == 2 || (mode == 0 && value >= 2147483647.5))) {
+      fpu_unimplemented();
+      return;
+    }
   }
-  const auto result = static_cast<std::int64_t>(rounded);
+  floating::Environment environment(mode);
+  volatile Float input = value;
+  volatile std::int64_t result =
+      wide ? floating::round_integer<std::int64_t>(Float(input), rounding)
+           : floating::round_integer<std::int32_t>(Float(input), rounding);
   auto exceptions = environment.exceptions();
-  if (rounded != value)
+  if (floating::integer_rounding_inexact(rounding) && Float(result) != value)
     exceptions |= floating::Inexact;
   if (fpu_host_exceptions(exceptions, !wide))
     return;

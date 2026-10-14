@@ -78,6 +78,7 @@ bool selected(GtkWidget *widget) {
 } // namespace
 
 void Window::settings_dialog() {
+  finish_playback();
   modal_ = true;
   audio_.clear();
   input_.clear();
@@ -154,15 +155,17 @@ void Window::settings_dialog() {
   row(sound, 3, "Output device", device);
   row(sound, 4, "", muted);
   const auto playback = page("Playback");
-  const auto sync = combo({"Audio", "Video"}, static_cast<unsigned>(settings_.sync));
+  const auto audio_sync = check("Synchronize audio", settings_.sync.audio);
+  const auto video_sync = check("Synchronize video", settings_.sync.video);
   const auto focus =
       combo({"Pause", "Block input", "Allow input"}, static_cast<unsigned>(settings_.focus));
   const auto gdb = check("Enable GDB connection on localhost", settings_.gdb_enabled);
   const auto port = spin(1, 65535, 1, static_cast<int>(settings_.gdb_port));
-  row(playback, 0, "Synchronization", sync);
-  row(playback, 1, "When the window loses focus", focus);
-  row(playback, 2, "Debugger", gdb);
-  row(playback, 3, "GDB port", port);
+  row(playback, 0, "", audio_sync);
+  row(playback, 1, "", video_sync);
+  row(playback, 2, "When the window loses focus", focus);
+  row(playback, 3, "Debugger", gdb);
+  row(playback, 4, "GDB port", port);
   const auto storage = page("Files");
   const auto pif = file(settings_.firmware.n64), arcade_pif = file(settings_.firmware.arcade),
              ipl = file(settings_.firmware.ipl);
@@ -252,7 +255,8 @@ void Window::settings_dialog() {
       const auto device_name = gtk_combo_box_get_active_id(GTK_COMBO_BOX(device));
       next.audio.device = device_name ? wide(device_name) : std::wstring{};
       next.muted = selected(muted);
-      next.sync = static_cast<PlaybackSync>(selection(sync));
+      next.sync = {selected(audio_sync), selected(video_sync)};
+      next.audio.blocking = next.sync.audio;
       next.focus = static_cast<FocusBehavior>(selection(focus));
       next.gdb_enabled = selected(gdb);
       next.gdb_port = number(port);

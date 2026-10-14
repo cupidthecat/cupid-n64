@@ -56,6 +56,8 @@ settings::Document configured(const Directory &directory) {
   document[L"Graphics"][L"Supersampling"] = L"1";
   document[L"Graphics"][L"BypassVI"] = L"1";
   document[L"Playback"][L"Sync"] = L"1";
+  document[L"Playback"][L"AudioSync"] = L"0";
+  document[L"Playback"][L"VideoSync"] = L"1";
   document[L"Playback"][L"Focus"] = L"2";
   document[L"Rewind"][L"Enabled"] = L"1";
   document[L"Rewind"][L"Mute"] = L"0";
@@ -72,6 +74,7 @@ settings::Document configured(const Directory &directory) {
     document[L"Folders"][key] = (directory.path / (L"設定 " + std::wstring(key))).wstring();
   document[L"Firmware"][L"Nintendo64"] = (directory.path / L"firmware.bin").wstring();
   document[L"Launch"][L"ROM"] = (directory.path / L"game.z64").wstring();
+  document[L"Launch"][L"Arcade"] = L"12";
   document[L"Recent ROMs"][L"1"] = document.at(L"Launch").at(L"ROM");
   document[L"Input mapping 1"][L"Button 0 Code"] = L"88";
   document[L"Input mapping 1"][L"Axis 0 Inverted"] = L"1";
@@ -122,6 +125,7 @@ void round_trip(const Directory &directory) {
   test::equal(GetPrivateProfileIntW(L"Shortcuts", L"Action 0 Binding 0 Key", 0, target.c_str()),
               80);
   test::equal(GetPrivateProfileIntW(L"Input mapping 2", L"Source", 0, target.c_str()), 3);
+  test::equal(GetPrivateProfileIntW(L"Launch", L"Arcade", 0, target.c_str()), 12);
   const auto before = read_file(source, settings::maximum_size);
   capture.export_to(exported);
   test::equal(read_file(source, settings::maximum_size) == before, true);

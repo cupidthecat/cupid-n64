@@ -141,10 +141,12 @@ void Diagnostics::check_refresh(std::uint32_t refresh) noexcept {
           .bytes = 4});
 }
 
-void Diagnostics::exception(unsigned code, bool delay_slot) noexcept {
-  if (homebrew_ && code < 64 && (exception_mask_ & (1ull << code)))
-    record(
-        {.kind = DiagnosticKind::Exception, .origin = origin(), .value = delay_slot, .code = code});
+bool Diagnostics::bus_exception(unsigned kind) noexcept {
+  if (!homebrew_ || !cpu_ || kind < 1 || kind > 3 || !(exception_mask_ & (1ull << kind)))
+    return false;
+  cpu_->control_[CacheError] = kind;
+  cpu_->raise(Exception::Homebrew);
+  return true;
 }
 
 } // namespace cupid::n64

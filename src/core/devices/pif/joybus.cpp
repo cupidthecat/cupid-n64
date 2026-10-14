@@ -75,7 +75,7 @@ void Pif::joy_run() {
       input[n] = ram_[(offset++) & 63];
     JoybusStatus status;
     if (devices_[channel]) {
-      const auto command_size = channel == 4 && !send ? 1u : send;
+      const auto command_size = send ? send : 1u;
       status = devices_[channel]->communicate(std::span(input).first(command_size),
                                               std::span(output).first(receive));
     }

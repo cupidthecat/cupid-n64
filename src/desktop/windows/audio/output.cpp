@@ -1,156 +1,128 @@
-#include "desktop/audio/output.hpp"
+#include "desktop/audio/sdl/output.hpp"
 #include "desktop/windows/audio/devices.hpp"
-#include "desktop/windows/audio_device.hpp"
-#include <algorithm>
+#include "desktop/windows/audio/endpoints.hpp"
+#include "desktop/windows/audio/identity.hpp"
+#include <array>
+#include <atomic>
+#include <mmsystem.h>
+#include <string_view>
+#include <utility>
+#include <windows.h>
 
 namespace cupid::desktop {
+std::unique_ptr<AudioOutput> make_wasapi_audio_output();
 namespace {
+using Microsoft::WRL::ComPtr;
 
-class WindowsAudioOutput final : public AudioOutput {
+std::wstring wide(const char *text) {
+  if (!text)
+    return {};
+  const auto count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, nullptr, 0);
+  if (!count)
+    return {};
+  std::wstring result(static_cast<std::size_t>(count), L'\0');
+  MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, result.data(), count);
+  result.pop_back();
+  return result;
+}
+
+class EndpointNotifications final : public IMMNotificationClient {
 public:
-  explicit WindowsAudioOutput(std::span<short *const> buffers) {
-    std::copy(buffers.begin(), buffers.end(), rendered_.begin());
-    completed_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    if (!completed_) {
-      error_ = MMSYSERR_NOMEM;
-      return;
+  explicit EndpointNotifications(std::shared_ptr<std::atomic<bool>> changed)
+      : changed_(std::move(changed)) {}
+  HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void **result) override {
+    if (!result)
+      return E_POINTER;
+    *result = nullptr;
+    if (id != __uuidof(IUnknown) && id != __uuidof(IMMNotificationClient))
+      return E_NOINTERFACE;
+    *result = static_cast<IMMNotificationClient *>(this);
+    AddRef();
+    return S_OK;
+  }
+  ULONG STDMETHODCALLTYPE AddRef() override {
+    return ++references_;
+  }
+  ULONG STDMETHODCALLTYPE Release() override {
+    const auto remaining = --references_;
+    if (!remaining)
+      delete this;
+    return remaining;
+  }
+  HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR, DWORD) override {
+    return changed();
+  }
+  HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override {
+    return changed();
+  }
+  HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR) override {
+    return changed();
+  }
+  HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override {
+    return changed();
+  }
+  HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR) override {
+    return flow == eRender && role == eMultimedia ? changed() : S_OK;
+  }
+
+private:
+  HRESULT changed() {
+    changed_->store(true);
+    return S_OK;
+  }
+  std::atomic<ULONG> references_{1};
+  std::shared_ptr<std::atomic<bool>> changed_;
+};
+
+class WindowsAudioOutput final : public SdlAudioOutput {
+public:
+  WindowsAudioOutput() : SdlAudioOutput(wide) {
+    timeBeginPeriod(1);
+    if (apartment_.available()) {
+      enumerator_ = audio_endpoints();
+      notifications_.Attach(new EndpointNotifications(changed_));
+      if (enumerator_)
+        enumerator_->RegisterEndpointNotificationCallback(notifications_.Get());
     }
     open();
   }
   ~WindowsAudioOutput() override {
     close();
-    if (completed_)
-      CloseHandle(completed_);
+    if (enumerator_ && notifications_)
+      enumerator_->UnregisterEndpointNotificationCallback(notifications_.Get());
+    notifications_.Reset();
+    enumerator_.Reset();
+    timeEndPeriod(1);
   }
-  void configure(const Audio::Settings &settings) override {
-    const bool reopen = settings.device != settings_.device;
-    settings_ = settings;
-    if (reopen || !available()) {
-      close();
-      open();
-    }
-  }
-  bool recover() override {
-    const auto devices = audio_devices();
-    const bool present = std::any_of(devices.begin(), devices.end(), [&](const auto &device) {
-      return device.identity == device_identity_;
-    });
-    const bool preferred = std::any_of(devices.begin(), devices.end(), [&](const auto &device) {
-      return device.identity == settings_.device;
-    });
-    const bool returned = preferred && !preferred_present_;
-    preferred_present_ = preferred;
-    if (available() && present && !(using_fallback() && returned))
-      return false;
-    clear();
-    close();
-    open();
-    return true;
-  }
-  void clear() override {
-    if (device_)
-      waveOutReset(device_);
-  }
-  bool wait(unsigned buffer) override {
-    while (headers_[buffer].dwFlags & WHDR_INQUEUE) {
-      if (WaitForSingleObject(completed_, 1000) != WAIT_OBJECT_0) {
-        error_ = MMSYSERR_ERROR;
-        return false;
-      }
-    }
-    return true;
-  }
-  void submit(unsigned buffer, std::span<const short> samples) override {
-    auto &header = headers_[buffer];
-    header.dwBufferLength = static_cast<DWORD>(samples.size_bytes());
-    error_ = waveOutWrite(device_, &header, sizeof(WAVEHDR));
-  }
-  bool available() const override {
-    return device_ != nullptr && error_ == MMSYSERR_NOERROR;
-  }
-  const std::wstring &device_name() const override {
-    return device_name_;
-  }
-  bool using_fallback() const override {
-    return available() && !settings_.device.empty() && settings_.device != device_identity_;
-  }
-  std::wstring error() const override {
-    std::array<wchar_t, MAXERRORLENGTH> text{};
-    waveOutGetErrorTextW(error_, text.data(), static_cast<UINT>(text.size()));
-    return text.data();
+  std::vector<Audio::Device> devices() const override {
+    std::vector<Audio::Device> result;
+    for (auto &device : audio_devices())
+      result.push_back({std::move(device.identity), std::move(device.name)});
+    return result;
   }
 
 private:
-  void open() {
-    if (!completed_)
-      return;
-    const auto devices = audio_devices();
-    const auto preferred = std::find_if(devices.begin(), devices.end(), [&](const auto &device) {
-      return device.identity == settings_.device;
-    });
-    preferred_present_ = preferred != devices.end();
-    WAVEFORMATEX format{};
-    format.wFormatTag = WAVE_FORMAT_PCM;
-    format.nChannels = 2;
-    format.nSamplesPerSec = AudioResampler::output_frequency;
-    format.wBitsPerSample = 16;
-    format.nBlockAlign = 4;
-    format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
-    const auto open_device = [&](unsigned id) {
-      return waveOutOpen(&device_, id, &format, reinterpret_cast<DWORD_PTR>(completed_), 0,
-                         CALLBACK_EVENT);
-    };
-    error_ = preferred == devices.end() ? MMSYSERR_BADDEVICEID : open_device(preferred->id);
-    if (error_ != MMSYSERR_NOERROR)
-      error_ = open_audio_device(waveOutGetNumDevs(), open_device);
-    if (error_ != MMSYSERR_NOERROR) {
-      device_ = nullptr;
-      return;
-    }
-    for (unsigned n = 0; n < headers_.size(); ++n) {
-      auto &header = headers_[n];
-      header = {};
-      header.lpData = reinterpret_cast<char *>(rendered_[n]);
-      header.dwBufferLength = 960 * sizeof(short);
-      error_ = waveOutPrepareHeader(device_, &header, sizeof(WAVEHDR));
-      if (error_ != MMSYSERR_NOERROR) {
-        close();
-        return;
+  Endpoint endpoint() const override {
+    auto preferred = settings().device;
+    for (const auto &device : audio_devices())
+      if (same_audio_endpoint(preferred, device.identity)) {
+        preferred = device.name;
+        break;
       }
-    }
-    unsigned id = WAVE_MAPPER;
-    waveOutGetID(device_, &id);
-    const auto active = std::find_if(devices.begin(), devices.end(),
-                                     [&](const auto &device) { return device.id == id; });
-    device_name_ = active == devices.end() ? L"System default" : active->name;
-    device_identity_ = active == devices.end() ? L"" : active->identity;
+    return named_endpoint(preferred);
   }
-  void close() {
-    if (device_) {
-      waveOutReset(device_);
-      for (auto &header : headers_)
-        if (header.dwFlags & WHDR_PREPARED)
-          waveOutUnprepareHeader(device_, &header, sizeof(WAVEHDR));
-      waveOutClose(device_);
-      device_ = nullptr;
-    }
-    device_name_.clear();
-    device_identity_.clear();
-  }
-  std::array<short *, 32> rendered_{};
-  std::array<WAVEHDR, 32> headers_{};
-  HWAVEOUT device_ = nullptr;
-  HANDLE completed_ = nullptr;
-  MMRESULT error_ = MMSYSERR_NOERROR;
-  Audio::Settings settings_;
-  std::wstring device_name_, device_identity_;
-  bool preferred_present_ = false;
+  AudioApartment apartment_;
+  ComPtr<IMMDeviceEnumerator> enumerator_;
+  ComPtr<EndpointNotifications> notifications_;
 };
-
 } // namespace
 
-std::unique_ptr<AudioOutput> make_audio_output(std::span<short *const> buffers) {
-  return std::make_unique<WindowsAudioOutput>(buffers);
+std::unique_ptr<AudioOutput> make_audio_output(std::span<short *const>) {
+  std::array<wchar_t, 16> driver{};
+  if (GetEnvironmentVariableW(L"SDL_AUDIODRIVER", driver.data(),
+                              static_cast<DWORD>(driver.size())) == 5 &&
+      std::wstring_view(driver.data()) == L"dummy")
+    return std::make_unique<WindowsAudioOutput>();
+  return make_wasapi_audio_output();
 }
-
 } // namespace cupid::desktop

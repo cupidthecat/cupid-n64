@@ -107,9 +107,86 @@ void run(RspFixture &actual, SequentialRsp &expected, unsigned clocks) {
   compare(actual, expected);
 }
 
+void known_scalar(std::span<const std::uint32_t> instructions, unsigned start = 0) {
+  RspFixture actual;
+  SequentialRsp expected;
+  for (auto *fixture : {&actual, static_cast<RspFixture *>(&expected)}) {
+    for (unsigned address = 0; address < 4096; ++address)
+      fixture->rsp.dmem()[address] = static_cast<std::uint8_t>(address * 73 + 0x81);
+    for (unsigned reg = 1; reg < 32; ++reg) {
+      fixture->rsp.state().gpr[reg] = 0x82ab1234 + reg;
+      for (unsigned lane = 0; lane < 8; ++lane)
+        fixture->rsp.state().vectors[reg].lanes[lane] =
+            static_cast<std::uint16_t>(reg * 2347 + lane * 3571 + 0x8143);
+    }
+    fixture->rsp.state().carry_low = 0x83;
+    fixture->rsp.state().carry_high = 0x56;
+    for (unsigned n = 0; n < instructions.size(); ++n)
+      fixture->rsp.write_local(0x1000 | ((start + n * 4) & 0xfff), 4, instructions[n]);
+    fixture->rsp.write_local(0x1000 | ((start + instructions.size() * 4) & 0xfff), 4, 13);
+    fixture->rsp.write_status(0, start);
+    fixture->rsp.write_io(16, 1);
+  }
+  run(actual, expected, 1);
+  run(actual, expected, 128);
+}
+
+void known_scalar_tests() {
+  for (unsigned operation : {32u, 33u, 35u, 36u, 37u, 39u, 40u, 41u, 43u}) {
+    for (unsigned offset : {0u, 1u, 2u, 3u, 4u, 0xffcu, 0xffdu, 0xffeu, 0xfffu}) {
+      const std::array code{i(15, 0, 1, 0x8123), i(13, 1, 1, static_cast<std::uint16_t>(offset)),
+                            i(9, 0, 2, 0x8037),  i(operation, 1, 2, 0),
+                            i(36, 2, 3, 0),      i(9, 0, 0, 0x123),
+                            i(43, 0, 0, 4)};
+      known_scalar(code);
+    }
+  }
+  for (auto a : {0u, 31u, 0x80000000u, 0xffffffffu}) {
+    for (auto b : {0u, 33u, 0x80000001u, 0xffffffffu}) {
+      for (unsigned function :
+           {0u, 2u, 3u, 4u, 6u, 7u, 32u, 33u, 34u, 35u, 36u, 37u, 38u, 39u, 42u, 43u, 63u}) {
+        for (unsigned dest : {1u, 2u, 3u}) {
+          const std::array code{i(15, 0, 1, static_cast<std::uint16_t>(a >> 16)),
+                                i(13, 1, 1, static_cast<std::uint16_t>(a)),
+                                i(15, 0, 2, static_cast<std::uint16_t>(b >> 16)),
+                                i(13, 2, 2, static_cast<std::uint16_t>(b)),
+                                r(function, 1, 2, dest, 31),
+                                i(36, dest, 4, 0)};
+          known_scalar(code);
+        }
+      }
+      for (unsigned operation = 8; operation <= 15; ++operation) {
+        for (std::uint16_t immediate :
+             {std::uint16_t(0), std::uint16_t(0x8000), std::uint16_t(0xffff)}) {
+          const std::array code{i(15, 0, 1, static_cast<std::uint16_t>(a >> 16)),
+                                i(13, 1, 1, static_cast<std::uint16_t>(a)),
+                                i(operation, 1, 1, immediate), i(36, 1, 4, 0)};
+          known_scalar(code);
+        }
+      }
+    }
+  }
+  for (auto overwrite : {i(35, 0, 1, 0), c(0, 1, 7), (18u << 26) | (1u << 16) | (2u << 11),
+                         (18u << 26) | (2u << 21) | (1u << 16)}) {
+    const std::array code{i(9, 0, 1, 37), overwrite, vector_memory(false, 4, 3, 1, 0, 0),
+                          i(36, 1, 4, 0)};
+    known_scalar(code);
+  }
+  for (auto link : {0x0c000005u, r(9, 1, 0, 1), i(1, 0, 16, 3), i(1, 0, 17, 3)}) {
+    const auto dest = (link & 63) == 9 && (link >> 26) == 0 ? 1u : 31u;
+    const std::array code{i(9, 0, 1, 20), link, vector_memory(false, 4, 3, dest, 0, 0),
+                          i(9, 0, 4, 37), 13u};
+    known_scalar(code);
+  }
+  const std::array wrapped{i(15, 0, 1, 0xffff), i(13, 1, 1, 0xfffe), i(9, 1, 1, 3),
+                           vector_memory(false, 3, 3, 1, 0, 127), i(35, 1, 4, 0xffff)};
+  known_scalar(wrapped, 0xff8);
+}
+
 } // namespace
 
 void rsp_native_tests() {
+  known_scalar_tests();
   for (unsigned operation : {32u, 33u, 35u, 36u, 37u, 39u, 40u, 41u, 43u}) {
     for (unsigned offset : {0u, 1u, 2u, 3u, 4u, 0xffcu, 0xffdu, 0xffeu, 0xfffu}) {
       for (unsigned target : {0u, 1u, 2u}) {

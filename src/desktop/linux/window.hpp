@@ -4,10 +4,14 @@
 #include "desktop/launch/options.hpp"
 #include "desktop/linux/controls/input.hpp"
 #include "desktop/linux/settings/settings.hpp"
+#include "desktop/linux/video/presenter.hpp"
 #include "desktop/session.hpp"
 #include "desktop/state/slots.hpp"
 #include "desktop/timing/playback_clock.hpp"
+#include "desktop/video/frame_delivery.hpp"
+#include <atomic>
 #include <gtk/gtk.h>
+#include <mutex>
 
 namespace cupid::desktop::linux_host {
 
@@ -21,6 +25,7 @@ public:
   int run();
 
 private:
+  friend struct WindowTestAccess;
   enum class Command {
     Open,
     Firmware,
@@ -52,12 +57,23 @@ private:
   void persist();
   void rebase();
   void clear_input();
-  void refresh();
+  void refresh(bool current_frame = true);
   void screenshot(const std::filesystem::path &path);
   void poll_gdb();
   bool tick();
+  bool synchronous_tick();
+  void start_playback();
+  void finish_playback();
+  bool drain_playback();
+  void publish_inputs();
+  PlayerInputs take_inputs();
+  void cache_session();
+  void refresh_frame(const n64::VideoFrame &frame);
+  void initialize_video();
+  VideoSurface video_surface() const;
+  void refresh_presented_image();
   bool stopped() const;
-  PlayerInputs inputs();
+  PlayerInputs inputs(bool scripted = true);
   void draw(cairo_t *context);
   void error(const std::exception &error);
   static gboolean timer(gpointer data);
@@ -72,7 +88,6 @@ private:
   std::unique_ptr<StateSlots> states_;
   std::unique_ptr<GdbServer> gdb_ = std::make_unique<GdbServer>();
   std::string gdb_error_;
-  PlaybackClock clock_;
   GtkWidget *window_ = nullptr, *drawing_ = nullptr, *status_ = nullptr;
   GtkWidget *pause_item_ = nullptr;
   unsigned timer_ = 0;
@@ -87,7 +102,29 @@ private:
   std::chrono::steady_clock::time_point last_frame_{};
   std::chrono::steady_clock::time_point next_audio_probe_{};
   bool failed_ = false, last_stopped_ = false;
+  bool terminal_frames_ = false;
   int result_ = 0;
+  struct CompletedField {
+    unsigned frame = 0;
+    std::uint64_t clocks = 0;
+    std::array<FeedbackState, 4> feedback{};
+  };
+  unsigned observed_frames_ = 0;
+  bool hardware_rendering_ = false, debugger_attached_ = false, debugger_halted_ = false;
+  std::array<ControllerType, 4> controllers_{};
+  std::array<FeedbackState, 4> feedback_state_{};
+  std::mutex input_mutex_;
+  PlayerInputs worker_inputs_{};
+  std::array<MouseMotion, 4> worker_mouse_{};
+  std::atomic<bool> advancing_{false};
+  std::atomic<std::uint64_t> refresh_count_{0};
+  std::uint64_t observed_refreshes_ = 0;
+  std::atomic<n64::HostControl> worker_control_{n64::HostControl::None};
+  FrameDelivery<CompletedField> completed_fields_;
+  VideoPresenter video_;
+  bool video_available_ = false;
+  // Join execution before destroying the session and other captured members.
+  ExecutionWorker execution_;
 };
 
 } // namespace cupid::desktop::linux_host

@@ -1,7 +1,11 @@
 #include "../support/test.hpp"
 #include "core/system/console.hpp"
+#include "logging.hpp"
 #include "renderer/vulkan/renderer.hpp"
 #include <algorithm>
+#include <cstring>
+#include <exception>
+#include <thread>
 
 using namespace cupid::n64;
 
@@ -9,11 +13,22 @@ namespace test {
 void gpu_cache_visibility_tests(Console &console, HardwareRenderer &renderer);
 void gpu_depth_cache_tests(Console &console, HardwareRenderer &renderer);
 void gpu_cache_overlap_tests(Console &console, HardwareRenderer &renderer);
+void gpu_burst_coverage_tests(Console &console, HardwareRenderer &renderer);
+void gpu_pipeline_cache_tests();
 void gpu_command_replay_tests();
 void gpu_video_replay_tests();
 } // namespace test
 
 namespace {
+class ThreadLog final : public Util::LoggingInterface {
+public:
+  unsigned missing_registration = 0;
+  bool log(const char *, const char *message, va_list) override {
+    if (std::strstr(message, "Thread does not exist in thread manager"))
+      ++missing_registration;
+    return false;
+  }
+};
 
 VideoFrame coverage_scanout(HardwareRenderer &renderer) {
   const std::uint32_t registers[][2] = {{0, 0x002},
@@ -94,6 +109,26 @@ int main() {
       test::equal(blank.rgba[n], n == 3 ? 255 : 0);
   const auto warm_coverage = coverage_scanout(*renderer);
   test::equal(cold_coverage.rgba == warm_coverage.rgba, true);
+  // A serialized renderer can transfer between UI and execution threads.
+  ThreadLog worker_log;
+  VideoFrame migrated;
+  std::exception_ptr worker_error;
+  std::thread worker([&] {
+    Util::set_thread_logging_interface(&worker_log);
+    try {
+      migrated = coverage_scanout(*renderer);
+      renderer->synchronize();
+    } catch (...) {
+      worker_error = std::current_exception();
+    }
+    Util::set_thread_logging_interface(nullptr);
+  });
+  worker.join();
+  test::equal(worker_error == nullptr, true);
+  test::equal(worker_log.missing_registration, 0);
+  test::equal(migrated.rgba == warm_coverage.rgba, true);
+  const auto returned = coverage_scanout(*renderer);
+  test::equal(returned.rgba == warm_coverage.rgba, true);
   console.display().connect([&](std::span<const std::uint32_t> words) { renderer->submit(words); },
                             [&] { renderer->synchronize(); });
   constexpr std::uint64_t commands[] = {0x3f10003f00100000, 0x2d00000000100100, 0x2f30000000000000,
@@ -129,6 +164,8 @@ int main() {
   test::gpu_cache_visibility_tests(console, *renderer);
   test::gpu_depth_cache_tests(console, *renderer);
   test::gpu_cache_overlap_tests(console, *renderer);
+  test::gpu_burst_coverage_tests(console, *renderer);
+  test::gpu_pipeline_cache_tests();
   auto &cpu = console.cpu();
   cpu.power();
   cpu.write_control(Status, 0x30000000);

@@ -91,13 +91,7 @@ inline void exception_probes() {
     for (bool enabled : {false, true})
       homebrew_cpu(mode, enabled, emux(0x2a), 0, 1u << 8, [&](Console &console) {
         const auto records = console.diagnostics().records();
-        equal(records.size(), enabled ? 1 : 0);
-        if (!records.empty()) {
-          equal(static_cast<unsigned>(records[0].kind),
-                static_cast<unsigned>(DiagnosticKind::Exception));
-          equal(records[0].origin.pc, 0xffffffff80001004);
-          equal(records[0].code, 8);
-        }
+        equal(records.size(), 0);
         equal((console.cpu().read_control(Cause) >> 2) & 31, 8);
         equal(console.cpu().read_control(Epc), 0xffffffff80001004);
       });
@@ -110,12 +104,7 @@ inline void exception_probes() {
   rsp.write_io(16, 0x100);
   rsp.execute(13);
   const auto records = console->diagnostics().records();
-  equal(records.size(), 1);
-  if (!records.empty()) {
-    equal(records[0].code, 9);
-    equal(static_cast<unsigned>(records[0].origin.processor),
-          static_cast<unsigned>(DebugProcessor::Rsp));
-  }
+  equal(records.size(), 0);
   equal(rsp.status().halted && rsp.status().broken, true);
   equal(console->interrupts().read_word(8) & 1, 1);
 }
@@ -143,12 +132,11 @@ inline void signal_command_boundaries() {
         rsp.run_interpreted();
       equal(rsp.status().semaphore, false);
       const auto records = diagnostics.records();
-      equal(records.size(), enabled ? 4 : 0);
+      equal(records.size(), enabled ? 3 : 0);
       if (!records.empty()) {
         equal(records[0].text.find("COP0 7 = 00000000") != std::string::npos, true);
         equal(records[1].text.find("V4 =") != std::string::npos, true);
         equal(records[2].text.find("R1 = -1") != std::string::npos, true);
-        equal(records[3].code, 9);
       }
       states[enabled] = CoreState::capture(*console);
     }
@@ -189,15 +177,19 @@ inline void homebrew_memory_probes() {
   diagnostics.set_homebrew(true);
   unsigned fenced = 0;
   diagnostics.connect_memory_fence([&] { ++fenced; });
-  const std::vector<std::uint8_t> message(Diagnostics::maximum_text + 16, 'a');
-  Inspection::write(*console, MemoryRegionId::Rdram, 0x2000,
-                    std::span(message).first(Diagnostics::maximum_text));
+  const std::vector<std::uint8_t> message(4112, 'a');
+  for (unsigned offset = 0; offset < message.size(); offset += Inspection::maximum_transfer)
+    Inspection::write(
+        *console, MemoryRegionId::Rdram, 0x2000 + offset,
+        std::span(message).subspan(
+            offset, std::min<unsigned>(message.size() - offset, Inspection::maximum_transfer)));
   cpu.state().gpr[1] = 0xffffffff80002000;
-  cpu.state().gpr[2] = ~0ull;
+  cpu.state().gpr[2] = message.size();
   cpu.execute(emux(0x25, 1, 2, 1));
-  equal(diagnostics.records().back().text.size(), Diagnostics::maximum_text);
+  equal(diagnostics.records().back().text == std::string(message.begin(), message.end()), true);
   cpu.execute(emux(0x27));
-  equal(diagnostics.records().back().text.size() <= Diagnostics::maximum_text, true);
+  const auto dump = diagnostics.records().back().text;
+  equal(std::count(dump.begin(), dump.end(), '\n'), message.size() / 16);
   equal(fenced, 2);
   cpu.state().gpr[4] = 0xffffffff80002000;
   cpu.state().gpr[5] = 'Z';

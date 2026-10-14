@@ -17,6 +17,8 @@ void Cpu::commit_count(std::uint64_t ticks) {
   if (remaining && ticks >= remaining)
     set_interrupt(7, true);
   count_ticks_ = (count_ticks_ + ticks) & mask;
+  if (diagnostics_)
+    diagnostics_->commit_cpu_cycles(ticks, control_[Status] & 2);
 }
 
 void Cpu::flush_count() {

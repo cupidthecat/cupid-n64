@@ -1,4 +1,8 @@
+#include "core/arcade/aleck64.hpp"
 #include "core/cartridge/eeprom.hpp"
+#include "core/controller/gamecube/gamecube.hpp"
+#include "core/controller/gamepad.hpp"
+#include "core/controller/mouse/mouse.hpp"
 #include "core/devices/si/serial_interface.hpp"
 #include "fixture.hpp"
 
@@ -74,9 +78,78 @@ struct Controller : JoybusDevice {
   }
 };
 
+void cached_status(JoybusDevice &device, std::array<std::uint8_t, 3> first,
+                   std::array<std::uint8_t, 3> next) {
+  SerialFixture f;
+  f.boot();
+  f.pif.attach(0, &device);
+  auto ram = f.pif.ram();
+  ram[0] = 1;
+  ram[1] = 3;
+  ram[2] = 0;
+  std::fill_n(ram.begin() + 3, 3, 0xa5);
+  ram[6] = 0xfe;
+  f.pif.write_word(0x1fc007fc, 1);
+  f.pif.write_word(0x1fc007c0, 0x000300a5);
+  f.pif.dma_read(0x1fc007c0, 0x1000);
+  equal(ram[1], 3);
+  for (unsigned n = 0; n < first.size(); ++n)
+    equal(ram[n + 2], first[n]);
+  equal(ram[5], 0xa5);
+  f.pif.write_word(0x1fc007c0, 0x01030000);
+  f.pif.dma_read(0x1fc007c0, 0x1000);
+  equal(ram[1], 3);
+  for (unsigned n = 0; n < next.size(); ++n)
+    equal(ram[n + 3], next[n]);
+
+  f.pif.write_word(0x1fc007c0, 0x800300a5);
+  f.pif.dma_read(0x1fc007c0, 0x1000);
+  equal(ram[1], 3);
+  equal(ram[2], 0);
+  equal(ram[3], 0xa5);
+  f.pif.write_word(0x1fc007c0, 0x00fea5a5);
+  f.pif.write_word(0x1fc007fc, 1);
+  f.pif.dma_read(0x1fc007c0, 0x1000);
+  equal(ram[1], 0xfe);
+  equal(ram[2], 0xa5);
+  equal(ram[3], 0xa5);
+}
+
 } // namespace
 
 void pif_tests() {
+  {
+    RandomGenerator random;
+    Gamepad pad(random);
+    cached_status(pad, {5, 0, 2}, {5, 0, 2});
+    pad.memory_pak();
+    cached_status(pad, {5, 0, 3}, {5, 0, 1});
+    Mouse mouse;
+    cached_status(mouse, {2, 0, 2}, {2, 0, 2});
+    GameCubePad gamecube;
+    cached_status(gamecube, {9, 0, 0}, {9, 0, 0});
+    Aleck64 board(ArcadeProfile::Standard);
+    cached_status(board.controller(0), {5, 0, 2}, {5, 0, 2});
+    cached_status(board.controller(1), {5, 0, 2}, {5, 0, 2});
+    SerialFixture second;
+    second.boot();
+    second.pif.attach(1, &board.controller(1));
+    auto ram = second.pif.ram();
+    ram[0] = 0;
+    ram[1] = 1;
+    ram[2] = 3;
+    ram[3] = 0;
+    std::fill_n(ram.begin() + 4, 3, 0xa5);
+    ram[7] = 0xfe;
+    second.pif.write_word(0x1fc007fc, 1);
+    second.pif.write_word(0x1fc007c0, 0x000003a5);
+    second.pif.dma_read(0x1fc007c0, 0x1000);
+    equal(ram[2], 3);
+    equal(ram[3], 5);
+    equal(ram[4], 0);
+    equal(ram[5], 2);
+    equal(ram[6], 0xa5);
+  }
   {
     SerialFixture f;
     std::array<std::uint8_t, 0x7c0> rom{};

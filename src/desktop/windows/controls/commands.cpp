@@ -113,6 +113,11 @@ HostInputs Window::host_inputs() const {
 }
 
 PlayerInputs Window::inputs() {
+  if (input_replay_ && session_ && !advancing_) {
+    PlayerInputs players;
+    players[0] = input_replay_->at(session_->frames);
+    return players;
+  }
   std::array<bool, 4> wanted{};
   for (const auto &mapping : player_mappings_)
     if (mapping.source >= HostSource::Gamepad1 && mapping.source <= HostSource::Gamepad4)
@@ -131,7 +136,7 @@ PlayerInputs Window::inputs() {
         players[port] = map_input(player_mappings_[port], last_host_inputs_);
       }
     }
-  if (options_.test_input && session_) {
+  if (options_.test_input && session_ && !advancing_) {
     const auto scripted = input();
     players[0].buttons = scripted.buttons;
     players[0].x = scripted.x;

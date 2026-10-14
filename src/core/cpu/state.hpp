@@ -30,6 +30,7 @@ enum class Exception : unsigned {
   Overflow = 12,
   Trap = 13,
   FloatingPoint = 15,
+  Homebrew = 24,
 };
 
 enum ControlRegister : unsigned {

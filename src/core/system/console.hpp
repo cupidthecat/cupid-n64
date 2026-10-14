@@ -153,6 +153,7 @@ private:
   std::uint32_t read_register(std::uint32_t address);
   std::uint32_t read_register_impl(std::uint32_t address);
   void write_register(std::uint32_t address, std::uint32_t value);
+  bool bus_error(unsigned kind);
   std::int64_t pending_clocks() const;
   void event(Event event);
   ConsoleConfig config_;
@@ -185,7 +186,7 @@ private:
   std::uint64_t clock_target_ = 0;
   TraceLog trace_;
   Diagnostics diagnostics_;
-  std::optional<std::uint64_t> frame_limit_;
+  bool refresh_limit_ = false;
   bool frozen_ = false;
   std::unique_ptr<Aleck64> arcade_;
 };

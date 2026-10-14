@@ -3,6 +3,8 @@
 #include "desktop/audio/levels.hpp"
 #include "desktop/audio/resampler.hpp"
 #include <array>
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -21,13 +23,33 @@ public:
   void frequency(unsigned value);
   void clear();
   void play_saved_output();
+  void wait_interrupt(std::function<bool()> predicate);
   struct Settings {
     AudioLevels levels;
-    unsigned latency = 80;
+    unsigned latency = 40;
     std::wstring device;
+    bool blocking = true;
   };
+  struct Device {
+    std::wstring identity, name;
+  };
+  std::vector<Device> devices() const;
   void configure(Settings settings);
   bool recover();
+  // Probe on the main thread; recovery still requires a joined producer.
+  void probe();
+  bool recovery_pending() const;
+  void measure(bool enabled) {
+    measure_ = enabled;
+    generated_samples_ = 0;
+    wait_time_ = {};
+  }
+  std::uint64_t generated_samples() const {
+    return generated_samples_;
+  }
+  std::chrono::nanoseconds wait_time() const {
+    return wait_time_;
+  }
   const Settings &settings() const {
     return settings_;
   }
@@ -45,11 +67,15 @@ private:
     std::array<short, 960> rendered{};
   };
   void queue(unsigned samples);
+  bool wait();
   std::vector<Buffer> buffers_{32};
   unsigned buffer_ = 0, offset_ = 0;
   AudioResampler resampler_;
   Settings settings_;
   std::unique_ptr<AudioOutput> output_;
+  bool measure_ = false;
+  std::uint64_t generated_samples_ = 0;
+  std::chrono::nanoseconds wait_time_{};
 };
 
 } // namespace cupid::desktop

@@ -142,7 +142,8 @@ void Window::apply_window_size() {
                            FALSE, static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_EXSTYLE)), dpi);
   RECT current{};
   GetWindowRect(window_, &current);
-  MONITORINFO monitor{sizeof(MONITORINFO)};
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
   GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor);
   const int width =
       std::min(bounds.right - bounds.left, monitor.rcWork.right - monitor.rcWork.left);
@@ -156,7 +157,8 @@ void Window::apply_window_size() {
   };
   const bool menu = GetMenu(window_) != nullptr;
   position(bounds.bottom - bounds.top + (menu ? GetSystemMetricsForDpi(SM_CYMENU, dpi) : 0));
-  MENUBARINFO info{sizeof(MENUBARINFO)};
+  MENUBARINFO info{};
+  info.cbSize = sizeof(info);
   if (menu && GetMenuBarInfo(window_, OBJID_MENU, 0, &info))
     position(bounds.bottom - bounds.top + info.rcBar.bottom - info.rcBar.top);
   RECT client{}, resized{};
@@ -183,7 +185,8 @@ void Window::remember_window_size() {
 }
 
 void Window::position_fullscreen() {
-  MONITORINFO monitor{sizeof(MONITORINFO)};
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
   GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor);
   auto bounds = monitor.rcMonitor;
   for (const auto &candidate : monitors_)
@@ -198,12 +201,12 @@ void Window::fullscreen() {
     remember_window_size();
     GetWindowPlacement(window_, &placement_);
     fullscreen_ = true;
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowLongPtrW(window_, GWL_STYLE, WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN);
     SetMenu(window_, nullptr);
     position_fullscreen();
   } else {
     fullscreen_ = false;
-    SetWindowLongPtrW(window_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+    SetWindowLongPtrW(window_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN);
     SetMenu(window_, menu_);
     SetWindowPlacement(window_, &placement_);
     SetWindowPos(window_, nullptr, 0, 0, 0, 0,

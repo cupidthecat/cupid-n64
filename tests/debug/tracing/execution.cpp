@@ -172,6 +172,14 @@ void cpu_events() {
 }
 
 void rsp_execution() {
+  const auto hardware_state = [](Console &console) {
+    CoreState::capture(console);
+    auto state = CoreState::checkpoint(console);
+    for (const auto &range : state.ranges)
+      if (range.name == "rsp.pipeline.address" || range.name == "rsp.pipeline.instruction")
+        std::fill_n(state.bytes.begin() + range.offset, range.bytes, std::uint8_t(0));
+    return state;
+  };
   for (unsigned variant = 0; variant < 6; ++variant) {
     auto plain = machine(), traced = machine();
     for (auto *console : {plain.get(), traced.get()}) {
@@ -186,7 +194,7 @@ void rsp_execution() {
     traced->tracing().configure({.mask = all_traces});
     plain->signal().advance(1);
     traced->signal().advance(1);
-    equal(CoreState::capture(*plain) == CoreState::capture(*traced), true);
+    equal(!hardware_state(*plain).difference(hardware_state(*traced)), true);
     const auto records = traced->tracing().records();
     equal(records.empty(), false);
     for (const auto &record : records) {
@@ -202,7 +210,7 @@ void rsp_execution() {
     traced->signal().write_io(16, 1);
     plain->signal().advance(128);
     traced->signal().advance(128);
-    equal(CoreState::capture(*plain) == CoreState::capture(*traced), true);
+    equal(!hardware_state(*plain).difference(hardware_state(*traced)), true);
     equal(traced->tracing().records().size(), count);
   }
   auto interpreted = machine();

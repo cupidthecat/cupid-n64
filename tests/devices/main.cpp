@@ -4,6 +4,7 @@ int main() {
   test::mi_tests();
   test::ri_tests();
   test::rdram_tests();
+  test::rdram_burst_coverage_tests();
   test::memory_word_pair_tests();
   test::memory_bus_tests();
   test::instruction_tracking_tests();
@@ -18,6 +19,7 @@ int main() {
   test::isviewer_tests();
   test::arcade_memory_tests();
   test::arcade_control_tests();
+  test::arcade_dip_tests();
   test::arcade_native_tests();
   test::cartridge_profile_tests();
   test::eeprom_reset_tests();

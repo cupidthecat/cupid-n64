@@ -2,6 +2,9 @@
 
 #include "core/system/console.hpp"
 #include "renderer/video/settings.hpp"
+#include <chrono>
+#include <filesystem>
+#include <functional>
 #include <memory>
 
 namespace cupid::desktop {
@@ -9,11 +12,14 @@ namespace cupid::desktop {
 class VideoOutput {
 public:
   explicit VideoOutput(n64::Console &console, bool hardware_rendering = true,
-                       n64::RenderSettings settings = {});
+                       n64::RenderSettings settings = {},
+                       std::filesystem::path pipeline_cache = {});
   ~VideoOutput();
   VideoOutput(const VideoOutput &) = delete;
   VideoOutput &operator=(const VideoOutput &) = delete;
-  void begin_frame(bool field);
+  void begin_frame(bool field, unsigned number = 0);
+  void connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present);
+  void wait_presented();
   n64::VideoFrame read_frame();
   bool requires_hardware() const;
   bool crashed() const;
@@ -21,6 +27,8 @@ public:
   static bool supports_hardware();
   void scanout_settings(n64::RenderSettings settings);
   void synchronize();
+  void measure(bool enabled);
+  std::chrono::nanoseconds host_time() const;
   std::vector<std::uint8_t> capture_state();
   void restore_state(std::span<const std::uint8_t> bytes);
 

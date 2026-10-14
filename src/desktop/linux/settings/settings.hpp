@@ -12,13 +12,13 @@ namespace cupid::desktop::linux_host {
 struct Settings {
   SessionSettings session;
   FirmwareFiles firmware;
-  Audio::Settings audio;
+  Audio::Settings audio{{}, 20, {}};
   std::array<ControllerMapping, 4> mappings{
       default_mapping(HostSource::Keyboard), default_mapping(HostSource::None),
       default_mapping(HostSource::None), default_mapping(HostSource::None)};
   DisplayScale scale = DisplayScale::Fit;
   DisplayAspect aspect = DisplayAspect::Standard;
-  PlaybackSync sync = PlaybackSync::Audio;
+  PlaybackSync sync;
   FocusBehavior focus = FocusBehavior::Pause;
   bool muted = false, feedback = true, hardware = true;
   bool gdb_enabled = false;

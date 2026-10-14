@@ -2,6 +2,7 @@
 
 #include "rdp_device.hpp"
 #include "renderer/video/readback.hpp"
+#include "renderer/vulkan/cache_file.hpp"
 #include "renderer/vulkan/renderer.hpp"
 #include <atomic>
 
@@ -10,6 +11,7 @@ namespace cupid::n64 {
 struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   Rdram &ram;
   RenderSettings settings;
+  PipelineCacheFile pipeline_cache;
   Vulkan::Context context;
   Vulkan::Device device;
   std::unique_ptr<RDP::CommandProcessor> processor;
@@ -17,7 +19,7 @@ struct HardwareRenderer::Implementation : RDP::ValidationInterface {
   std::atomic<bool> crashed = false;
   std::unique_ptr<FrameReadback> readback;
 
-  Implementation(Rdram &memory, RenderSettings settings);
+  Implementation(Rdram &memory, RenderSettings settings, std::filesystem::path pipeline_cache);
   ~Implementation();
   VideoFrame read_pixels();
   void report_rdp_crash(RDP::ValidationError, const char *) override;

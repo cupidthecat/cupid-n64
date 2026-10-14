@@ -53,7 +53,6 @@ inline void homebrew_probes() {
             equal(records[0].text.find(function == 0x25 ? "Hi!" : "48 69 21 00") !=
                       std::string::npos,
                   true);
-            equal(records[0].text.size() <= Diagnostics::maximum_text, true);
             equal(records[0].origin.pc, 0xffffffff80001000);
           }
         });

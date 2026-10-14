@@ -1,4 +1,5 @@
 #include "core/rsp/recompiler/compiler.hpp"
+#include <algorithm>
 
 namespace cupid::n64 {
 
@@ -9,6 +10,24 @@ void RspCompiler::Emitter::vector_quad(std::uint32_t instruction) {
   const auto operation = (instruction >> 11) & 31;
   const auto target = (instruction >> 16) & 31;
   const auto element = (instruction >> 7) & 15;
+  if (vector_base) {
+    const auto offset = *vector_base & 15;
+    const auto length = operation == 4     ? std::min(store ? 16u : 16 - element, 16 - offset)
+                        : store            ? offset
+                        : offset > element ? offset - element
+                                           : 0;
+    for (unsigned n = 0; n < length; ++n) {
+      const auto address = operation == 4 ? *vector_base + n : (*vector_base & 0xff0) + n;
+      const Operand memory{SLJIT_MEM1(SLJIT_S2), static_cast<sljit_sw>(address)};
+      const auto byte = operation == 4 ? (element + n) & 15
+                        : store        ? (element + 16 - length + n) & 15
+                                       : 16 - length + n;
+      const auto value = vector_byte(target, byte);
+      op1(SLJIT_MOV_U8, reg(SLJIT_R3), store ? value : memory);
+      op1(SLJIT_MOV_U8, store ? memory : value, reg(SLJIT_R3));
+    }
+    return;
+  }
   op2(SLJIT_AND32, reg(SLJIT_R2), reg(SLJIT_R1), imm(15));
   std::vector<sljit_jump *> done;
   if (operation == 4) {

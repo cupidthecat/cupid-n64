@@ -13,6 +13,13 @@ std::optional<DiagnosticDevice> register_device(std::uint32_t address) {
 
 } // namespace
 
+bool Console::bus_error(unsigned kind) {
+  if (diagnostics_.bus_exception(kind))
+    return true;
+  frozen_ = true;
+  return false;
+}
+
 std::span<const std::uint32_t> Console::instruction_data(std::uint32_t address) const {
   if (arcade_ && address >= 0xc0000000)
     return arcade_->instruction_data(address);
@@ -36,19 +43,19 @@ BusRead Console::read(std::uint32_t address, unsigned bytes) {
   if (address <= 0x03ffffff)
     return mi_.read_rdram(address, bytes);
   if (bytes == 8) {
-    frozen_ = true;
+    bus_error(2);
     return {};
   }
   if (address > 0x7fffffff) {
     if (arcade_)
       return arcade_->read(address, bytes);
-    frozen_ = true;
+    bus_error(3);
     return {};
   }
   if (address <= 0x040bffff)
     return rsp_.read(address, bytes);
   if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff)) {
-    frozen_ = true;
+    bus_error(3);
     return {};
   }
   if (address >= 0x05000000) {
@@ -68,13 +75,13 @@ BusWrite Console::write(std::uint32_t address, unsigned bytes, std::uint64_t val
   if (address > 0x7fffffff) {
     if (arcade_)
       return arcade_->write(address, bytes, value);
-    frozen_ = true;
+    bus_error(3);
     return {};
   }
   if (address <= 0x040bffff)
     return rsp_.write(address, bytes, value, rsp_.clocks() - pending_clocks());
   if (address <= 0x040fffff || (address >= 0x04900000 && address <= 0x04ffffff)) {
-    frozen_ = true;
+    bus_error(3);
     return {};
   }
   if (address >= 0x05000000) {
@@ -164,8 +171,7 @@ BusWrite Console::read_burst(std::uint32_t address, std::span<std::uint32_t> wor
     if (transfer.success)
       return transfer;
   }
-  frozen_ = true;
-  return {0, false};
+  return {0, false, bus_error(1)};
 }
 
 BusWrite Console::read_cache_burst(std::uint32_t address, std::span<std::uint32_t> words,
@@ -194,8 +200,7 @@ BusWrite Console::write_burst(std::uint32_t address, std::span<const std::uint32
     if (transfer.success)
       return transfer;
   }
-  frozen_ = true;
-  return {0, false};
+  return {0, false, bus_error(1)};
 }
 
 } // namespace cupid::n64

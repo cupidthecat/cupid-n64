@@ -22,8 +22,9 @@ struct GpuFixture {
   Console console{ConsoleConfig{.random_seed = 0}};
   std::unique_ptr<HardwareRenderer> renderer;
   CrashDelivery crash_delivery = CrashDelivery::Asynchronous;
+  std::filesystem::path pipeline_cache;
 
-  GpuFixture() {
+  explicit GpuFixture(std::filesystem::path cache = {}) : pipeline_cache(std::move(cache)) {
     map_memory();
     connect();
   }
@@ -42,7 +43,7 @@ struct GpuFixture {
   }
 
   void connect() {
-    renderer = std::make_unique<HardwareRenderer>(console.ram());
+    renderer = std::make_unique<HardwareRenderer>(console.ram(), RenderSettings{}, pipeline_cache);
     console.video().connect_registers(
         [this](unsigned index, std::uint32_t value) { renderer->write_video(index, value); });
     console.display().connect(

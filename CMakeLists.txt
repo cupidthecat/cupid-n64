@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(cupid_n64 VERSION 0.1.0 LANGUAGES C CXX)
 include(cmake/Optimization.cmake)
+find_package(Threads REQUIRED)
 
 add_library(cupid_core
   src/core/debug/debugger/execution.cpp
@@ -21,12 +22,15 @@ add_library(cupid_core
   src/core/debug/memory.cpp
   src/core/debug/properties.cpp
   src/core/arcade/aleck64.cpp
+  src/core/arcade/dip_switches/catalog.cpp
+  src/core/arcade/dip_switches/settings.cpp
   src/core/arcade/memory.cpp
   src/core/arcade/controls.cpp
   src/core/cpu/cpu.cpp
   src/core/cpu/execution.cpp
   src/core/cpu/execution/memory.cpp
   src/core/cpu/recompiler/cache.cpp
+  src/core/cpu/recompiler/cache/refill.cpp
   src/core/cpu/recompiler/diagnostics.cpp
   src/core/cpu/recompiler/clocks.cpp
   src/core/cpu/recompiler/pipeline.cpp
@@ -147,12 +151,19 @@ add_library(cupid_core
 )
 target_include_directories(cupid_core PUBLIC src)
 target_compile_features(cupid_core PUBLIC cxx_std_20)
+include(cmake/Architecture.cmake)
+cupid_target_architecture(cupid_core)
 include(cmake/Compiler.cmake)
 if(MSVC)
   target_compile_options(cupid_core PRIVATE /W4 /WX /permissive-)
   target_precompile_headers(cupid_core PRIVATE "<core/cpu/cpu.hpp>")
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
     COMPILE_OPTIONS /fp:strict SKIP_PRECOMPILE_HEADERS TRUE)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND
+     CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86)$")
+    set_source_files_properties(src/core/rsp/vector/simd/sse.cpp PROPERTIES
+      COMPILE_OPTIONS /clang:-msse4.1 SKIP_PRECOMPILE_HEADERS TRUE)
+  endif()
 else()
   target_compile_options(cupid_core PRIVATE -Wall -Wextra -Wpedantic -Werror)
   set_source_files_properties(src/core/cpu/fpu/execute.cpp PROPERTIES
@@ -160,6 +171,17 @@ else()
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86)$")
     set_source_files_properties(src/core/rsp/vector/simd/sse.cpp PROPERTIES COMPILE_OPTIONS -msse4.1)
   endif()
+endif()
+
+find_package(Threads REQUIRED)
+add_library(cupid_frame_readback src/renderer/video/readback.cpp)
+target_include_directories(cupid_frame_readback PUBLIC src)
+target_compile_features(cupid_frame_readback PUBLIC cxx_std_20)
+target_link_libraries(cupid_frame_readback PRIVATE Threads::Threads)
+if(MSVC)
+  target_compile_options(cupid_frame_readback PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(cupid_frame_readback PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
 option(CUPID_HARDWARE_RENDERER "Build Vulkan rendering" ON)
@@ -236,7 +258,7 @@ else()
   target_compile_options(cupid_gdb PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_library(cupid_video_output src/desktop/video/output.cpp)
-target_link_libraries(cupid_video_output PUBLIC cupid_core)
+target_link_libraries(cupid_video_output PUBLIC cupid_core PRIVATE cupid_frame_readback)
 if(CUPID_HARDWARE_RENDERER)
   target_compile_definitions(cupid_video_output PRIVATE CUPID_HARDWARE_RENDERER)
   target_link_libraries(cupid_video_output PRIVATE cupid_renderer)
@@ -260,6 +282,7 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/window.cpp
     src/desktop/windows/state.cpp
     src/desktop/windows/playback.cpp
+    src/desktop/windows/playback/execution.cpp
     src/desktop/windows/playback/settings.cpp
     src/desktop/windows/display.cpp
     src/desktop/windows/graphics/settings.cpp
@@ -285,11 +308,14 @@ if(WIN32 AND CUPID_DESKTOP)
     src/desktop/windows/controls/mapping_dialog.cpp
     src/desktop/windows/controls/commands.cpp
     src/desktop/windows/video/paint_buffer.cpp
+    src/desktop/windows/video/presenter.cpp
+    src/desktop/windows/video/presentation.cpp
     src/desktop/windows/video/shaders/settings.cpp
   )
   set_target_properties(cupid_desktop PROPERTIES OUTPUT_NAME cupid-n64)
   target_compile_definitions(cupid_desktop PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(cupid_desktop PRIVATE cupid_session cupid_debug_format cupid_gdb cupid_display_shaders cupid_settings_transfer comdlg32 shell32 gdi32 dwmapi ole32 uuid)
+  target_link_libraries(cupid_desktop PRIVATE opengl32)
   if(MSVC)
     target_compile_options(cupid_desktop PRIVATE /W4 /WX /permissive-)
     target_precompile_headers(cupid_desktop PRIVATE "<desktop/windows/window.hpp>")
@@ -299,7 +325,62 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   include(cmake/Tests.cmake)
+  add_executable(desktop_execution_worker_tests tests/desktop/execution_worker.cpp
+    src/desktop/timing/execution_worker.cpp)
+  target_include_directories(desktop_execution_worker_tests PRIVATE src)
+  target_compile_features(desktop_execution_worker_tests PRIVATE cxx_std_20)
+  target_link_libraries(desktop_execution_worker_tests PRIVATE Threads::Threads)
+  add_test(NAME desktop_execution_worker COMMAND desktop_execution_worker_tests)
+  add_executable(desktop_presentation_worker_tests tests/desktop/video/presentation_worker.cpp
+    src/desktop/video/presentation_worker.cpp src/desktop/timing/execution_worker.cpp)
+  target_include_directories(desktop_presentation_worker_tests PRIVATE src)
+  target_compile_features(desktop_presentation_worker_tests PRIVATE cxx_std_20)
+  target_link_libraries(desktop_presentation_worker_tests PRIVATE Threads::Threads)
+  add_test(NAME desktop_presentation_worker COMMAND desktop_presentation_worker_tests)
+  set_tests_properties(desktop_presentation_worker PROPERTIES TIMEOUT 20)
+  add_executable(desktop_frame_delivery_tests tests/desktop/video/frame_delivery.cpp)
+  target_include_directories(desktop_frame_delivery_tests PRIVATE src)
+  target_compile_features(desktop_frame_delivery_tests PRIVATE cxx_std_20)
+  target_link_libraries(desktop_frame_delivery_tests PRIVATE Threads::Threads)
+  add_test(NAME desktop_frame_delivery COMMAND desktop_frame_delivery_tests)
+  set_tests_properties(desktop_frame_delivery PROPERTIES TIMEOUT 15)
+  add_executable(desktop_input_replay_tests tests/desktop/input_replay.cpp
+    src/desktop/replay/input.cpp src/desktop/replay/field_trace.cpp)
+  target_include_directories(desktop_input_replay_tests PRIVATE src)
+  target_compile_features(desktop_input_replay_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_input_replay COMMAND desktop_input_replay_tests)
+  if(WIN32)
+    add_executable(desktop_video_presenter_tests tests/desktop/video_presenter.cpp
+      src/desktop/windows/video/presenter.cpp src/desktop/video/viewport.cpp)
+    target_include_directories(desktop_video_presenter_tests PRIVATE src)
+    target_compile_features(desktop_video_presenter_tests PRIVATE cxx_std_20)
+    target_compile_definitions(desktop_video_presenter_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(desktop_video_presenter_tests PRIVATE opengl32 gdi32)
+    add_test(NAME desktop_gpu_presentation COMMAND desktop_video_presenter_tests)
+    add_test(NAME desktop_opengl_presentation COMMAND desktop_video_presenter_tests --hardware)
+    add_executable(desktop_presentation_owner_tests tests/desktop/windows/presentation_owner.cpp
+      src/desktop/windows/video/presenter.cpp src/desktop/video/viewport.cpp
+      src/desktop/video/presentation_worker.cpp src/desktop/timing/execution_worker.cpp)
+    target_include_directories(desktop_presentation_owner_tests PRIVATE src)
+    target_compile_features(desktop_presentation_owner_tests PRIVATE cxx_std_20)
+    target_compile_definitions(desktop_presentation_owner_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(desktop_presentation_owner_tests PRIVATE opengl32 gdi32 Threads::Threads)
+    add_test(NAME desktop_surface_owner COMMAND desktop_presentation_owner_tests)
+    add_test(NAME desktop_opengl_owner COMMAND desktop_presentation_owner_tests --hardware)
+    set_tests_properties(desktop_surface_owner desktop_opengl_owner PROPERTIES TIMEOUT 30)
+    if(NOT CUPID_REQUIRE_HARDWARE_RENDERER_TESTS)
+      set_tests_properties(desktop_opengl_presentation desktop_opengl_owner PROPERTIES
+        SKIP_RETURN_CODE 77)
+    endif()
+  endif()
   if(TARGET cupid_linux_frontend)
+    add_executable(linux_video_presenter_tests tests/desktop/linux/video_presenter.cpp)
+    target_link_libraries(linux_video_presenter_tests PRIVATE cupid_linux_video cupid_frame_readback
+      PkgConfig::cupid_epoxy PkgConfig::cupid_x11 Threads::Threads)
+    target_compile_options(linux_video_presenter_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+    add_test(NAME linux_opengl_presentation COMMAND linux_video_presenter_tests)
+    set_tests_properties(linux_opengl_presentation PROPERTIES TIMEOUT 30
+      ENVIRONMENT "LIBGL_ALWAYS_SOFTWARE=1")
     add_executable(linux_frontend_tests tests/desktop/linux/main.cpp
       tests/desktop/linux/settings.cpp tests/desktop/linux/input.cpp tests/desktop/linux/audio.cpp
       tests/desktop/linux/window.cpp)
@@ -308,26 +389,27 @@ if(BUILD_TESTING)
     add_test(NAME linux_frontend_settings COMMAND linux_frontend_tests --settings)
     add_test(NAME linux_frontend_input COMMAND linux_frontend_tests --input)
     add_test(NAME linux_frontend_audio COMMAND linux_frontend_tests --audio)
+    set_tests_properties(linux_frontend_audio PROPERTIES TIMEOUT 15)
     add_test(NAME linux_frontend_window COMMAND linux_frontend_tests --window)
-    set_tests_properties(linux_frontend_window PROPERTIES TIMEOUT 45)
+    set_tests_properties(linux_frontend_window PROPERTIES TIMEOUT 45
+      ENVIRONMENT "GDK_BACKEND=x11;LIBGL_ALWAYS_SOFTWARE=1;G_DEBUG=fatal-warnings;NO_AT_BRIDGE=1")
+    add_test(NAME linux_frontend_playback COMMAND linux_frontend_tests --playback)
+    set_tests_properties(linux_frontend_playback PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 15)
     if(CUPID_HARDWARE_RENDERER)
       add_test(NAME linux_frontend_hardware_window COMMAND linux_frontend_tests --hardware)
       set_tests_properties(linux_frontend_hardware_window PROPERTIES TIMEOUT 60 RESOURCE_LOCK vulkan)
+      set_tests_properties(linux_frontend_hardware_window PROPERTIES
+        ENVIRONMENT "GDK_BACKEND=x11;LIBGL_ALWAYS_SOFTWARE=1;G_DEBUG=fatal-warnings;NO_AT_BRIDGE=1")
     endif()
   endif()
   cupid_add_core_test(gdb_tests gdb_test_entry tests/debug/gdb/main.cpp)
   add_test(NAME gdb_debugging COMMAND ${gdb_tests_command})
   cupid_add_core_test(gdb_protocol_tests gdb_protocol_test_entry tests/debug/gdb/protocol.cpp)
-  if(cupid_group_core_tests)
-    target_link_libraries(core_checkpoint_tests PRIVATE cupid_gdb)
-    target_compile_options(gdb_protocol_tests_objects PRIVATE /W4 /WX /permissive-)
+  target_link_libraries(${gdb_protocol_tests_link_target} PRIVATE cupid_gdb)
+  if(MSVC)
+    target_compile_options(${gdb_protocol_tests_compile_target} PRIVATE /W4 /WX /permissive-)
   else()
-    target_link_libraries(gdb_protocol_tests PRIVATE cupid_gdb)
-    if(MSVC)
-      target_compile_options(gdb_protocol_tests PRIVATE /W4 /WX /permissive-)
-    else()
-      target_compile_options(gdb_protocol_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    endif()
+    target_compile_options(${gdb_protocol_tests_compile_target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
   endif()
   add_test(NAME gdb_remote_protocol COMMAND ${gdb_protocol_tests_command})
   cupid_add_core_test(diagnostics_tests diagnostics_test_entry tests/debug/diagnostics/main.cpp)
@@ -374,6 +456,24 @@ if(BUILD_TESTING)
   target_include_directories(desktop_audio_levels_tests PRIVATE src)
   target_compile_features(desktop_audio_levels_tests PRIVATE cxx_std_20)
   add_test(NAME desktop_audio_levels COMMAND desktop_audio_levels_tests)
+  add_executable(desktop_audio_float_tests tests/desktop/audio_float.cpp
+    src/desktop/audio/audio.cpp src/desktop/audio/resampler.cpp src/desktop/audio/levels.cpp)
+  target_include_directories(desktop_audio_float_tests PRIVATE src)
+  target_compile_features(desktop_audio_float_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_audio_float COMMAND desktop_audio_float_tests)
+  add_executable(desktop_audio_queue_tests tests/desktop/audio_queue.cpp)
+  target_include_directories(desktop_audio_queue_tests PRIVATE src)
+  target_compile_features(desktop_audio_queue_tests PRIVATE cxx_std_20)
+  add_test(NAME desktop_audio_queue COMMAND desktop_audio_queue_tests)
+  if(TARGET cupid_session)
+    add_executable(desktop_audio_stream_tests tests/desktop/audio_stream.cpp)
+    target_link_libraries(desktop_audio_stream_tests PRIVATE cupid_session)
+    if(WIN32)
+      target_compile_definitions(desktop_audio_stream_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
+    add_test(NAME desktop_audio_stream COMMAND desktop_audio_stream_tests)
+    set_tests_properties(desktop_audio_stream PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 15)
+  endif()
   add_executable(desktop_controls_tests tests/desktop/controls/mapping.cpp
     src/desktop/controls/mapping.cpp src/desktop/controls/ports.cpp)
   target_link_libraries(desktop_controls_tests PRIVATE cupid_core)
@@ -453,6 +553,7 @@ if(BUILD_TESTING)
       GROUP desktop_fixture_tests LIBRARY cupid_session)
     target_compile_definitions(${session_state_tests_compile_target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
     add_test(NAME desktop_session_state COMMAND ${session_state_tests_command})
+    set_tests_properties(desktop_session_state PROPERTIES ENVIRONMENT "SDL_AUDIODRIVER=dummy")
     cupid_add_fixture_test(session_launch_tests session_launch_test_entry tests/desktop/session_launch.cpp
       GROUP desktop_fixture_tests LIBRARY cupid_session)
     target_compile_definitions(${session_launch_tests_compile_target} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -460,6 +561,8 @@ if(BUILD_TESTING)
       target_compile_options(${session_launch_tests_compile_target} PRIVATE /W4 /WX /permissive-)
     endif()
     add_test(NAME desktop_launch_settings COMMAND ${session_launch_tests_command})
+    set_tests_properties(desktop_launch_settings PROPERTIES
+      ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 60)
     add_test(NAME desktop_state_file_write COMMAND ${session_state_tests_command} --write-state
       "${CMAKE_CURRENT_BINARY_DIR}/desktop-state-fixtures")
     add_test(NAME desktop_state_file_read COMMAND ${session_state_tests_command} --read-state
@@ -487,6 +590,7 @@ if(BUILD_TESTING)
     endif()
     if(WIN32)
       add_executable(desktop_audio_tests tests/desktop/audio_device.cpp)
+      target_link_libraries(desktop_audio_tests PRIVATE cupid_session)
       target_include_directories(desktop_audio_tests PRIVATE src)
       target_compile_features(desktop_audio_tests PRIVATE cxx_std_20)
       target_compile_definitions(desktop_audio_tests PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -586,6 +690,7 @@ if(BUILD_TESTING)
     tests/devices/mi.cpp
     tests/devices/ri.cpp
     tests/devices/rdram.cpp
+    tests/devices/rdram/burst.cpp
     tests/devices/memory/word_pairs.cpp
     tests/devices/memory/bus_boundaries.cpp
     tests/devices/instruction_tracking.cpp
@@ -600,6 +705,7 @@ if(BUILD_TESTING)
     tests/devices/cartridge/isviewer.cpp
     tests/devices/arcade/memory.cpp
     tests/devices/arcade/controls.cpp
+    tests/devices/arcade/dips.cpp
     tests/devices/arcade/native.cpp
     tests/devices/cartridge/profile.cpp
     tests/devices/cartridge/eeprom_reset.cpp
@@ -663,6 +769,9 @@ if(BUILD_TESTING)
     tests/rsp/native_vector.cpp
     tests/rsp/blocks.cpp
     tests/rsp/recompiler/context.cpp
+    tests/rsp/recompiler/invalidation.cpp
+    tests/rsp/recompiler/pressure.cpp
+    tests/rsp/recompiler/tracing.cpp
     tests/rsp/recompiler/halt.cpp
     tests/rsp/memory.cpp
     tests/rsp/pipeline.cpp
@@ -699,14 +808,19 @@ if(BUILD_TESTING)
     add_test(NAME renderer_state_fallback COMMAND ${renderer_state_tests_command})
     set_tests_properties(renderer_state_fallback PROPERTIES
       ENVIRONMENT "PARALLEL_RDP_ALLOW_EXTERNAL_HOST=0")
+    if(MSVC)
+      target_link_options(${renderer_state_tests_link_target} PRIVATE /STACK:8388608)
+    endif()
     add_executable(renderer_readback_tests tests/renderer/readback.cpp)
     target_link_libraries(renderer_readback_tests PRIVATE cupid_renderer)
     add_test(NAME frame_readback COMMAND renderer_readback_tests)
     set_tests_properties(frame_readback PROPERTIES TIMEOUT 15)
     cupid_add_fixture_test(renderer_tests renderer_test_entry tests/renderer/main.cpp tests/renderer/cache_visibility.cpp
-      tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp
+      tests/renderer/cache/depth.cpp tests/renderer/cache/overlap.cpp tests/renderer/cache/burst.cpp
+      tests/renderer/cache/pipeline.cpp
       tests/renderer/replay/render.cpp
       tests/renderer/replay/scanout.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)
+    target_link_libraries(${renderer_tests_compile_target} PRIVATE cupid_renderer_dependency)
     add_test(NAME hardware_renderer COMMAND ${renderer_tests_command})
     cupid_add_fixture_test(renderer_reset_tests renderer_reset_test_entry tests/renderer/reset/main.cpp
       tests/renderer/replay/reset.cpp GROUP renderer_fixture_tests LIBRARY cupid_renderer)

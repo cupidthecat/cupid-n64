@@ -9,9 +9,15 @@ void RspCompiler::Emitter::vector_linear(std::uint32_t instruction, std::uint32_
   const auto target = (instruction >> 16) & 31;
   const auto element = (instruction >> 7) & 15;
   const auto length = store ? 1u << operation : std::min(1u << operation, 16 - element);
-  const bool pairs = !(element & 1) && length >= 2;
+  bool pairs = !(element & 1) && length >= 2;
+  if (vector_base) {
+    pairs &= *vector_base <= 4096 - length;
+#if !SLJIT_UNALIGNED
+    pairs &= !(*vector_base & 1);
+#endif
+  }
   std::vector<sljit_jump *> slow;
-  if (pairs) {
+  if (pairs && !vector_base) {
     slow.push_back(
         sljit_emit_cmp(compiler, SLJIT_GREATER | SLJIT_32, SLJIT_R1, 0, SLJIT_IMM, 4096 - length));
 #if !SLJIT_UNALIGNED
@@ -21,8 +27,7 @@ void RspCompiler::Emitter::vector_linear(std::uint32_t instruction, std::uint32_
   }
   for (unsigned n = 0; n < length;) {
     const bool pair = pairs && n + 1 < length;
-    vector_address(n);
-    const Operand memory{SLJIT_MEM2(SLJIT_S2, SLJIT_R0)};
+    const auto memory = vector_location(n);
     const auto value = pair ? vector_half(target, ((element + n) & 15) >> 1)
                             : vector_byte(target, (element + n) & 15);
     const auto move = pair ? SLJIT_MOV_U16 : SLJIT_MOV_U8;

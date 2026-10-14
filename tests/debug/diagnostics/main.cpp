@@ -1,9 +1,13 @@
 #include "../fixture.hpp"
 #include "boundaries.hpp"
+#include "bus.hpp"
 #include "coherence.hpp"
 #include "core/debug/diagnostics.hpp"
 #include "homebrew.hpp"
+#include "memory_order.hpp"
+#include "memory_output.hpp"
 #include "native.hpp"
+#include "profile_commits.hpp"
 #include "protocol.hpp"
 #include <stdexcept>
 
@@ -176,9 +180,14 @@ int main() {
   queued_dma_probes();
   display_traffic_probes();
   profile_command_probes();
+  profile_commit_probes();
   exception_probes();
+  bus_exception_probes();
+  cache_bus_exception_probes();
   signal_command_boundaries();
   homebrew_memory_probes();
+  homebrew_output_probes();
+  homebrew_memory_order_probes();
   format_probes();
   counter_boundary_probes();
   signal_boundary_probes();

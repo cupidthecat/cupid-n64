@@ -1,4 +1,5 @@
 #include "desktop/windows/window.hpp"
+#include <objbase.h>
 #include <shellapi.h>
 #include <stdexcept>
 
@@ -7,6 +8,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
   auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
   cupid::desktop::Options options;
   try {
+    // File pickers and the first audio client share the window thread's apartment.
+    const auto initialized =
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(initialized))
+      throw std::runtime_error("Could not initialize the desktop COM apartment.");
+    struct Apartment {
+      ~Apartment() {
+        CoUninitialize();
+      }
+    } apartment;
     for (int index = 1; index < count; ++index) {
       const std::wstring argument = arguments[index];
       if (argument == L"--test-input") {
@@ -34,8 +45,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
                                    "doncdoon, kurufev, mayjin3, vivdolls, twrshaft, hipai, "
                                    "hipai2, srmvs, srmvsa, or mtetrisc.");
         options.arcade_profile = *profile;
+      } else if (argument == L"--dip") {
+        std::string selection;
+        for (auto letter : value)
+          selection.push_back(static_cast<char>(letter));
+        options.arcade_dips.push_back(cupid::desktop::parse_dip_selection(selection));
       } else if (argument == L"--capture")
         options.capture = value;
+      else if (argument == L"--input-replay")
+        options.input_replay = value;
+      else if (argument == L"--field-trace")
+        options.field_trace = value;
+      else if (argument == L"--capture-fields")
+        options.capture_fields = value;
       else if (argument == L"--frames") {
         std::size_t parsed = 0;
         const auto frames = std::stoul(value, &parsed);
@@ -43,11 +65,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
           throw std::runtime_error("Frame count must be a positive integer.");
         options.frames = frames;
       } else
-        throw std::runtime_error("Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
-                                 "FILE, --arcade GAME, --frames N, --capture FILE, --test-input.");
+        throw std::runtime_error(
+            "Use --rom FILE or --ipl FILE, --pif FILE, and optional --disk "
+            "FILE, --arcade GAME, --dip NAME=VALUE, --frames N, --capture FILE, --test-input, "
+            "--input-replay FILE, --field-trace FILE, --capture-fields FILE.");
     }
-    if (!options.frames && (options.test_input || !options.capture.empty()))
-      throw std::runtime_error("--capture and --test-input require --frames N.");
+    if (!options.frames &&
+        (options.test_input || !options.capture.empty() || !options.input_replay.empty() ||
+         !options.field_trace.empty() || !options.capture_fields.empty()))
+      throw std::runtime_error("Replay, trace, and capture options require --frames N.");
+    if (!options.capture_fields.empty() && options.capture.empty())
+      throw std::runtime_error("--capture-fields requires --capture FILE.");
     if (!options.disk.empty() && options.ipl.empty())
       throw std::runtime_error("--disk requires --ipl FILE.");
     if (options.arcade_profile != cupid::n64::ArcadeProfile::Disabled &&

@@ -31,7 +31,8 @@ void CoreState::visit(state::Archive &a, CpuCompiler &compiler, InstructionTrack
   using Block = Cache::Block;
   auto &cache = *compiler.impl_;
   state::Archive::require(!cache.active.tracker);
-  constexpr unsigned allowed_mode = 3 | 0x24000000 | (0x00000f83 << 2) | 0x01000000;
+  constexpr unsigned allowed_mode =
+      3 | 0x24000000 | (0x00000f83 << 2) | 0x01000000 | Cache::MemoryModes;
   const auto valid_key = [](const Cache::Key &key) {
     state::Archive::require(!(key.pc & 3) && !(key.mode & ~allowed_mode));
   };

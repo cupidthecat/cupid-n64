@@ -114,8 +114,8 @@ float4 main(float4 p : SV_Position) : SV_Target {
 void persistence(const Directory &directory) {
   const auto settings = directory.path / L"settings.ini";
   const ShaderSelection file{DisplayShader::File, directory.path / L"missing-\u96ea.hlsl"};
-  for (const auto selected : {ShaderSelection{}, ShaderSelection{DisplayShader::Soft, {}},
-                              ShaderSelection{DisplayShader::Scanlines, {}}, file}) {
+  for (const auto &selected : {ShaderSelection{}, ShaderSelection{DisplayShader::Soft, {}},
+                               ShaderSelection{DisplayShader::Scanlines, {}}, file}) {
     save_shader_selection(settings, selected);
     test::equal(read_shader_selection(settings) == selected, true);
   }

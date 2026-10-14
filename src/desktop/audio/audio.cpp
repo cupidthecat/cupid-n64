@@ -33,11 +33,13 @@ std::wstring Audio::error() const {
 
 void Audio::configure(Settings settings) {
   if (settings.levels.volume > 200 || settings.levels.balance < -100 ||
-      settings.levels.balance > 100 || settings.latency < 20 || settings.latency > 320 ||
-      settings.latency % 10)
+      settings.levels.balance > 100 || (settings.latency && settings.latency < 20) ||
+      settings.latency > 320 || settings.latency % 10)
     throw std::invalid_argument("Invalid audio volume, balance, or latency.");
   if (settings.device != settings_.device || settings.latency != settings_.latency)
     clear();
+  else if (settings.blocking != settings_.blocking)
+    resampler_.clear();
   settings_ = std::move(settings);
   output_->configure(settings_);
 }
@@ -50,6 +52,18 @@ bool Audio::recover() {
   return true;
 }
 
+bool Audio::recovery_pending() const {
+  return output_->recovery_pending();
+}
+
+void Audio::probe() {
+  output_->probe();
+}
+
+std::vector<Audio::Device> Audio::devices() const {
+  return output_->devices();
+}
+
 void Audio::frequency(unsigned value) {
   resampler_.frequency(value);
 }
@@ -60,11 +74,35 @@ void Audio::clear() {
   resampler_.clear();
 }
 
+void Audio::wait_interrupt(std::function<bool()> predicate) {
+  output_->wait_interrupt(std::move(predicate));
+}
+
 void Audio::sample(n64::StereoSample value) {
+  if (measure_)
+    ++generated_samples_;
   if (!available() || suspended)
     return;
+  if (output_->floating_samples() && offset_)
+    play_saved_output();
   resampler_.write(value, [this](n64::StereoSample sample) {
-    if (!available() || (!offset_ && !output_->wait(buffer_)))
+    if (output_->floating_samples()) {
+      const bool wait_after = output_->wait_after_submit();
+      if (!available() || (!wait_after && !wait()))
+        return;
+      const double volume = muted ? 0.0 : settings_.levels.volume / 100.0;
+      const double balance = settings_.levels.balance / 100.0;
+      const std::array<float, 2> frame{
+          static_cast<float>(std::clamp(sample.left * volume, -1.0, 1.0) *
+                             (1.0 - std::max(balance, 0.0))),
+          static_cast<float>(std::clamp(sample.right * volume, -1.0, 1.0) *
+                             (1.0 + std::min(balance, 0.0)))};
+      output_->submit_float(frame);
+      if (wait_after)
+        wait();
+      return;
+    }
+    if (!available() || (!offset_ && !wait()))
       return;
     auto &buffer = buffers_[buffer_];
     const auto convert = [this](double value) {
@@ -79,7 +117,7 @@ void Audio::sample(n64::StereoSample value) {
 }
 
 void Audio::play_saved_output() {
-  if (!available() || muted || suspended || !offset_ || !output_->wait(buffer_))
+  if (!available() || muted || suspended || !offset_ || !wait())
     return;
   queue(offset_);
 }
@@ -90,7 +128,16 @@ void Audio::queue(unsigned samples) {
                settings_.levels);
   output_->submit(buffer_, std::span(buffer.rendered).first(samples));
   offset_ = 0;
-  buffer_ = (buffer_ + 1) % (settings_.latency / 10);
+  buffer_ = (buffer_ + 1) % std::max(1u, settings_.latency / 10);
+}
+
+bool Audio::wait() {
+  if (!measure_)
+    return output_->wait(buffer_);
+  const auto started = std::chrono::steady_clock::now();
+  const auto ready = output_->wait(buffer_);
+  wait_time_ += std::chrono::steady_clock::now() - started;
+  return ready;
 }
 
 } // namespace cupid::desktop

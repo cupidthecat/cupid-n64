@@ -15,6 +15,7 @@ concurrency:
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         ipo: ['ON', 'OFF']
@@ -26,7 +27,9 @@ jobs:
         run: bash .github/scripts/setup-vulkan.sh
       - name: Set up Linux desktop
         if: runner.os == 'Linux' && matrix.ipo == 'ON'
-        run: sudo apt-get install --yes libgtk-3-dev libsdl2-dev xvfb pulseaudio pulseaudio-utils
+        run: >-
+          sudo apt-get install --yes libgtk-3-dev libpulse-dev libasound2-dev
+          libudev-dev libdbus-1-dev xvfb pulseaudio pulseaudio-utils
       - name: Configure
         run: >-
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -63,6 +66,26 @@ jobs:
         with:
           name: cupid-n64-linux
           path: build/cupid-n64
+          if-no-files-found: error
+
+  windows-clang:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure Windows with Clang
+        run: >-
+          cmake -S . -B build -A x64 -T ClangCL
+          -DCUPID_INTERPROCEDURAL_OPTIMIZATION=ON
+          -DCUPID_DESKTOP=ON
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure --parallel 2
+      - name: Upload Windows Clang frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: cupid-n64-windows-clang
+          path: build/Release/cupid-n64.exe
           if-no-files-found: error
 
   software-video:

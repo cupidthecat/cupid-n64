@@ -82,6 +82,7 @@ void Diagnostics::clear_log() noexcept {
 
 void Diagnostics::clear_profiles() noexcept {
   profile_ = {};
+  committed_cpu_cycles_ = {};
   cpu_profile_clock_ = cpu_ ? cpu_->state().clocks : 0;
   slots_.clear();
 }
@@ -158,8 +159,8 @@ DiagnosticOrigin Diagnostics::dma_origin(MemoryRequestor requestor) const noexce
 }
 
 void Diagnostics::text(DebugProcessor processor, std::string message) {
-  if (message.size() > maximum_text)
-    message.resize(maximum_text);
+  if (message.empty())
+    return;
   auto context = origin();
   context.processor = processor;
   if (processor == DebugProcessor::Rsp && console_)

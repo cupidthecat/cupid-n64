@@ -16,19 +16,23 @@ void RspCompiler::Emitter::vector_packed(std::uint32_t instruction) {
           high ? vector_byte(target, (index & 7) * 2) : vector_half(target, index & 7));
       if (!high)
         op2(SLJIT_LSHR32, reg(SLJIT_R3), reg(SLJIT_R3), imm(7));
-      vector_address(n);
-      op1(SLJIT_MOV_U8, {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)}, reg(SLJIT_R3));
+      op1(SLJIT_MOV_U8, vector_location(n), reg(SLJIT_R3));
     }
     return;
   }
-  op2(SLJIT_AND32, reg(SLJIT_R2), reg(SLJIT_R1), imm(7));
-  op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xff8));
-  if (!store)
-    op2(SLJIT_SUB32, reg(SLJIT_R2), reg(SLJIT_R2), imm(element));
+  if (vector_base) {
+    vector_window_base = *vector_base & 0xff8;
+    vector_window_offset = (*vector_base & 7) - (store ? 0 : element);
+  } else {
+    op2(SLJIT_AND32, reg(SLJIT_R2), reg(SLJIT_R1), imm(7));
+    op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xff8));
+    if (!store)
+      op2(SLJIT_SUB32, reg(SLJIT_R2), reg(SLJIT_R2), imm(element));
+  }
   if (operation == 6 || operation == 7 || (!store && operation == 8)) {
     for (unsigned lane = 0; lane < 8; ++lane) {
-      vector_address(lane * (operation == 8 ? 2 : 1), true);
-      op1(SLJIT_MOV_U8, reg(SLJIT_R3), {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)});
+      const auto memory = vector_location(lane * (operation == 8 ? 2 : 1), true);
+      op1(SLJIT_MOV_U8, reg(SLJIT_R3), memory);
       op2(SLJIT_SHL32, reg(SLJIT_R3), reg(SLJIT_R3), imm(operation == 6 ? 8 : 7));
       op1(SLJIT_MOV_U16, vector_half(target, lane), reg(SLJIT_R3));
     }
@@ -39,14 +43,13 @@ void RspCompiler::Emitter::vector_packed(std::uint32_t instruction) {
       op1(SLJIT_MOV_U8, reg(SLJIT_R0), vector_byte(target, (element + lane * 2 + 1) & 15));
       op2(SLJIT_LSHR32, reg(SLJIT_R0), reg(SLJIT_R0), imm(7));
       op2(SLJIT_OR32, reg(SLJIT_R3), reg(SLJIT_R3), reg(SLJIT_R0));
-      vector_address(lane * 2, true);
-      op1(SLJIT_MOV_U8, {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)}, reg(SLJIT_R3));
+      op1(SLJIT_MOV_U8, vector_location(lane * 2, true), reg(SLJIT_R3));
     }
   } else if (operation == 9 && !store) {
     for (unsigned byte = element; byte < std::min(element + 8, 16u); ++byte) {
       const auto lane = byte >> 1;
-      vector_address((lane & 3) * 4 + (lane >= 4 ? 8 : 0), true);
-      op1(SLJIT_MOV_U8, reg(SLJIT_R3), {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)});
+      const auto memory = vector_location((lane & 3) * 4 + (lane >= 4 ? 8 : 0), true);
+      op1(SLJIT_MOV_U8, reg(SLJIT_R3), memory);
       op2(byte & 1 ? SLJIT_SHL32 : SLJIT_LSHR32, reg(SLJIT_R3), reg(SLJIT_R3),
           imm(byte & 1 ? 7 : 1));
       op1(SLJIT_MOV_U8, vector_byte(target, byte), reg(SLJIT_R3));
@@ -61,14 +64,12 @@ void RspCompiler::Emitter::vector_packed(std::uint32_t instruction) {
         op1(SLJIT_MOV_U16, reg(SLJIT_R3), vector_half(target, lane));
         op2(SLJIT_LSHR32, reg(SLJIT_R3), reg(SLJIT_R3), imm(7));
       }
-      vector_address(n * 4, true);
-      op1(SLJIT_MOV_U8, {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)}, reg(SLJIT_R3));
+      op1(SLJIT_MOV_U8, vector_location(n * 4, true), reg(SLJIT_R3));
     }
   } else if (operation == 10) {
     for (unsigned n = 0; n < 16; ++n) {
       op1(SLJIT_MOV_U8, reg(SLJIT_R3), vector_byte(target, (element + n) & 15));
-      vector_address(n, true);
-      op1(SLJIT_MOV_U8, {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)}, reg(SLJIT_R3));
+      op1(SLJIT_MOV_U8, vector_location(n, true), reg(SLJIT_R3));
     }
   }
 }

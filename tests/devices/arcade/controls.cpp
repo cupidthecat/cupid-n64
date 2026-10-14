@@ -8,10 +8,13 @@ using namespace cupid::n64;
 void arcade_control_tests() {
   for (auto profile :
        {ArcadeProfile::Standard, ArcadeProfile::MagicalTetris, ArcadeProfile::ElevenBeat,
-        ArcadeProfile::StarSoldier, ArcadeProfile::HiPai, ArcadeProfile::SuperRealMahjong}) {
+        ArcadeProfile::StarSoldier, ArcadeProfile::HiPai, ArcadeProfile::SuperRealMahjong,
+        ArcadeProfile::HiPai2, ArcadeProfile::DoncDoon, ArcadeProfile::KuruFever,
+        ArcadeProfile::Mayjin3, ArcadeProfile::VividDolls, ArcadeProfile::TowerShaft}) {
+    const auto hardware = arcade_hardware_profile(profile);
     Aleck64 board(profile);
     const auto dips = profile == ArcadeProfile::StarSoldier ? 0x7fcf0000u
-                      : profile == ArcadeProfile::HiPai     ? 0xffc70000u
+                      : hardware == ArcadeProfile::HiPai    ? 0xffc70000u
                                                             : 0xffff0000u;
     equal(board.read(0xc0800000, 4).value, dips | 0xffff);
     equal(board.read(0xc0800004, 4).value, 0xffffffff);
@@ -57,15 +60,16 @@ void arcade_control_tests() {
     input.mahjong = 1u << 1;
     board.write(0xc0800008, 4, 0x0100);
     const auto expected =
-        profile == ArcadeProfile::HiPai || profile == ArcadeProfile::SuperRealMahjong ? 0xfffdffffu
-                                                                                      : 0xffffffffu;
+        hardware == ArcadeProfile::HiPai || profile == ArcadeProfile::SuperRealMahjong
+            ? 0xfffdffffu
+            : 0xffffffffu;
     equal(board.read(0xc0800008, 4).value, expected);
     board.power(true);
     equal(board.read(0xc0800008, 4).value, expected);
     board.power();
     equal(board.read(0xc0800008, 4).value, 0xffffffff);
   }
-  equal(arcade_profile("hipai2").value() == ArcadeProfile::HiPai, true);
+  equal(arcade_profile("hipai2").value() == ArcadeProfile::HiPai2, true);
   equal(arcade_profile("srmvsa").value() == ArcadeProfile::SuperRealMahjong, true);
   equal(arcade_profile("mtetrisc").value() == ArcadeProfile::MagicalTetris, true);
   equal(arcade_profile("other").has_value(), false);

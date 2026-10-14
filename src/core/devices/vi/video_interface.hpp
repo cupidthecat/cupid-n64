@@ -17,6 +17,13 @@ public:
   }
   void run();
   void run_until_frame(std::uint64_t target);
+  void run_until_refresh();
+  bool refreshed() const {
+    return refreshed_;
+  }
+  void clear_refresh() {
+    refreshed_ = false;
+  }
   std::uint32_t read_word(std::uint32_t address) const;
   std::uint32_t peek_word(std::uint32_t address) const;
   void write_word(std::uint32_t address, std::uint32_t value);
@@ -49,6 +56,8 @@ private:
   std::array<std::uint32_t, 14> registers_{};
   std::uint32_t counter_ = 0;
   unsigned leap_counter_ = 0;
+  unsigned inactive_counter_ = 0;
+  bool refreshed_ = false;
   bool field_ = false;
   std::uint32_t fraction_ = 0;
   std::int64_t clock_ = 0;

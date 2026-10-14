@@ -49,6 +49,7 @@ struct MemoryFixture : cupid::n64::Bus {
 void mi_tests();
 void ri_tests();
 void rdram_tests();
+void rdram_burst_coverage_tests();
 void memory_word_pair_tests();
 void memory_bus_tests();
 void instruction_tracking_tests();
@@ -63,6 +64,7 @@ void cartridge_bus_tests();
 void isviewer_tests();
 void arcade_memory_tests();
 void arcade_control_tests();
+void arcade_dip_tests();
 void arcade_native_tests();
 void cartridge_profile_tests();
 void eeprom_reset_tests();

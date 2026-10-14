@@ -63,12 +63,12 @@ endif()
 
 add_library(cupid_renderer
   src/renderer/vulkan/renderer.cpp
+  src/renderer/vulkan/cache_file.cpp
   src/renderer/state/renderer_state.cpp
   src/renderer/state/registers.cpp
   src/renderer/state/machine_state.cpp
-  src/renderer/video/readback.cpp
 )
-target_link_libraries(cupid_renderer PUBLIC cupid_core PRIVATE cupid_renderer_dependency)
+target_link_libraries(cupid_renderer PUBLIC cupid_core PRIVATE cupid_renderer_dependency cupid_frame_readback)
 target_include_directories(cupid_renderer PUBLIC src)
 target_compile_features(cupid_renderer PUBLIC cxx_std_20)
 if(MSVC)

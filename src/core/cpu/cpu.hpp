@@ -91,11 +91,22 @@ private:
 
   struct CacheLine {
     std::array<std::uint32_t, 8> words{};
-    std::uint32_t tag = 0;
-    bool valid = false;
+    std::uint32_t tag_key = 0;
     bool dirty = false;
+    std::uint32_t tag() const {
+      return tag_key & ~1u;
+    }
+    bool valid() const {
+      return tag_key & 1;
+    }
+    void set_tag(std::uint32_t tag) {
+      tag_key = tag | (tag_key & 1);
+    }
+    void set_valid(bool valid) {
+      tag_key = tag() | unsigned(valid);
+    }
     bool hit(std::uint32_t address) const {
-      return valid && tag == (address & ~0xfffu);
+      return tag_key == ((address & ~0xfffu) | 1);
     }
   };
 
@@ -199,6 +210,8 @@ private:
   unsigned profile_deferred_clocks_ = 0;
   Debugger *debugger_ = nullptr;
   bool native_fetch_miss_ = false;
+  const std::uint32_t *native_fill_page_ = nullptr;
+  std::size_t native_fill_words_ = 0;
   std::uint64_t pipeline_pc_ = 0;
   std::uint64_t next_pc_ = 0;
   RandomGenerator entropy_;

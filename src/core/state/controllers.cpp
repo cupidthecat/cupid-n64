@@ -195,7 +195,7 @@ void CoreState::visit(state::Archive &a, HandheldCartridge &cartridge, unsigned 
 
 void CoreState::visit(state::Archive &a, Aleck64 &c) {
   a.label("arcade.profile", sizeof(c.profile_));
-  a.identity(c.profile_);
+  a.identity(arcade_hardware_profile(c.profile_));
   a.fixed_vector(c.sdram_, "arcade.sdram");
   a.label("arcade.video_ram", sizeof(c.video_ram_[0]));
   a.array(c.video_ram_);

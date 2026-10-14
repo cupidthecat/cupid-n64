@@ -6,7 +6,11 @@
 #if defined(CUPID_SESSION_HARDWARE_TESTS)
 #include "renderer/vulkan/renderer.hpp"
 #endif
+#include <future>
+#include <mutex>
 #include <string_view>
+#include <thread>
+#include <utility>
 
 namespace {
 
@@ -208,6 +212,46 @@ void short_period_stepping(unsigned line_clocks) {
   test::equal(resumed.capture_state() == session.capture_state(), true);
 }
 
+void pending_audio(const std::filesystem::path &directory) {
+  using namespace cupid::desktop;
+  Audio audio;
+  Session session(directory / "game.z64", directory / "pif.bin", audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, false);
+  const auto initial = session.capture_state();
+  test::equal(initial[8], 1);
+  // Version 1 places pending PCM after the empty frame and resampler state.
+  constexpr unsigned offset = 313;
+  test::equal(initial[offset] == 0 && initial[offset + 1] == 0 && initial[offset + 2] == 0 &&
+                  initial[offset + 3] == 0,
+              true);
+  auto legacy = initial;
+  legacy[offset] = 4;
+  const std::array<std::uint8_t, 8> pcm{1, 0, 255, 255, 255, 127, 0, 128};
+  legacy.insert(legacy.begin() + offset + 4, pcm.begin(), pcm.end());
+  seal(legacy);
+  session.restore_state(legacy);
+  test::equal(session.capture_state() == legacy, true);
+  audio.muted = true;
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.muted = false;
+  audio.suspended = true;
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.suspended = false;
+  audio.wait_interrupt([] { return true; });
+  audio.play_saved_output();
+  test::equal(session.capture_state() == legacy, true);
+  audio.wait_interrupt({});
+  test::equal(audio.available(), true);
+  audio.play_saved_output();
+  test::equal(session.capture_state() == initial, true);
+  legacy[offset] = 3;
+  seal(legacy);
+  test::equal(rejects([&] { session.restore_state(legacy); }), true);
+  test::equal(session.capture_state() == initial, true);
+}
+
 void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
   using namespace cupid::desktop;
   Audio audio;
@@ -235,6 +279,74 @@ void rewind_gameplay(const std::filesystem::path &directory, bool hardware) {
   test::equal(history.record(session.frames), true);
   test::equal(history.size(), 2);
   test::equal(history.memory() <= std::size_t(1024) * 1024 * 1024, true);
+}
+
+void presentation_handoff(const std::filesystem::path &directory, bool hardware) {
+  using namespace cupid::desktop;
+  namespace n64 = cupid::n64;
+  Audio audio;
+  audio.muted = true;
+  Session session(directory / "game.z64", directory / "pif.bin", audio, {}, {},
+                  cupid::n64::ArcadeProfile::Disabled, 0, hardware);
+  std::promise<void> entered, release;
+  auto released = release.get_future().share();
+  const auto caller = std::this_thread::get_id();
+  std::mutex mutex;
+  std::vector<unsigned> fields;
+  std::vector<n64::VideoFrame> images;
+  std::vector<std::thread::id> threads;
+  bool hold = true;
+  session.connect_present([&](unsigned field, const n64::VideoFrame &frame) {
+    {
+      std::lock_guard lock(mutex);
+      fields.push_back(field);
+      images.push_back(frame);
+      threads.push_back(std::this_thread::get_id());
+    }
+    if (std::exchange(hold, false)) {
+      entered.set_value();
+      if (released.wait_for(std::chrono::seconds(5)) != std::future_status::ready)
+        throw std::runtime_error("The held session presentation was not released.");
+    }
+  });
+  auto first = std::async(std::launch::async, [&] { session_test::advance(session, 1); });
+  test::equal(first.wait_for(std::chrono::seconds(5)) == std::future_status::ready, true);
+  test::equal(entered.get_future().wait_for(std::chrono::seconds(5)) == std::future_status::ready,
+              true);
+  first.get();
+  session.finish_frame();
+  test::equal(session.frames, 1);
+  test::equal(session.frame.rgba.empty(), false);
+  {
+    std::lock_guard lock(mutex);
+    test::equal(images[0].rgba == session.frame.rgba, true);
+    test::equal(threads[0] != caller, true);
+  }
+  auto second = std::async(std::launch::async, [&] { session_test::advance(session, 2); });
+  test::equal(second.wait_for(std::chrono::milliseconds(25)) == std::future_status::timeout, true);
+  release.set_value();
+  second.get();
+  session.wait_presented();
+  session.finish_frame();
+  test::equal(fields == std::vector<unsigned>{1, 2}, true);
+  test::equal(images.back().rgba == session.frame.rgba, true);
+  test::equal(threads[0] == threads[1], true);
+  const auto state = session.capture_state();
+  session_test::advance(session, 3);
+  session.wait_presented();
+  session.restore_state(state);
+  session_test::advance(session, 3);
+  session.wait_presented();
+  test::equal(fields == std::vector<unsigned>{1, 2, 3, 3}, true);
+  session.reset();
+  session_test::advance(session, 1);
+  session.wait_presented();
+  test::equal(fields == std::vector<unsigned>{1, 2, 3, 3, 1}, true);
+  const auto received = fields.size();
+  session.connect_present({});
+  session_test::advance(session, 2);
+  session.wait_presented();
+  test::equal(fields.size(), received);
 }
 
 } // namespace
@@ -273,7 +385,9 @@ int main(int argc, char **argv) {
       invalid_and_undo(directory.path, hardware);
       stepping(directory.path, hardware);
       rewind_gameplay(directory.path, hardware);
+      presentation_handoff(directory.path, hardware);
       if (!hardware) {
+        pending_audio(directory.path);
         short_period_stepping(32);
         short_period_stepping(2);
       }

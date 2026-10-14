@@ -8,6 +8,8 @@ struct BlockInstruction {
   bool branch = false;
   bool stop_after_delay = false;
   bool terminal = false;
+  bool writes_gp = false;
+  bool writes_sp = false;
 };
 
 constexpr bool cop2_memory_instruction(std::uint32_t instruction) {
@@ -28,8 +30,12 @@ constexpr BlockInstruction block_instruction(std::uint32_t instruction) {
   const auto rt = (instruction >> 16) & 31;
   const auto rd = (instruction >> 11) & 31;
   const auto function = instruction & 63;
-  const auto special_register = [](unsigned reg) { return reg == 28 || reg == 29; };
   BlockInstruction result;
+  const auto special_register = [&](unsigned reg) {
+    result.writes_gp |= reg == 28;
+    result.writes_sp |= reg == 29;
+    return reg == 28 || reg == 29;
+  };
   switch (opcode) {
   case 0:
     if (function == 8 || function == 9) {
@@ -92,6 +98,7 @@ constexpr BlockInstruction block_instruction(std::uint32_t instruction) {
     break;
   case 9:
   case 25:
+    special_register(rt);
     result.terminal = rt == 28 || (rt == 29 && rs != 29);
     break;
   case 8:
@@ -120,6 +127,10 @@ constexpr BlockInstruction block_instruction(std::uint32_t instruction) {
     result.terminal = special_register(rt);
     break;
   case 16:
+    if (rs >= 16 && function == 0x20)
+      special_register((instruction >> 20) & 31);
+    if (rs >= 16 && function == 0x29)
+      special_register((instruction >> 15) & 31);
     result.terminal =
         rs == 4 || rs == 5 || (rs >= 16 && function == 24) || (rs <= 1 && special_register(rt));
     break;
@@ -128,7 +139,7 @@ constexpr BlockInstruction block_instruction(std::uint32_t instruction) {
     result.terminal = rs == 6 || (rs <= 2 && special_register(rt));
     break;
   case 18:
-    result.terminal = rs <= 2 && special_register((instruction >> 15) & 31);
+    result.terminal = rs <= 2 && special_register(rt);
     break;
   }
   return result;

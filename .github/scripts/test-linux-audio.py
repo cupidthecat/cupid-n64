@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+import selectors
+import struct
 import subprocess
 import sys
 import tempfile
@@ -17,6 +19,53 @@ def stop(process):
         process.wait(timeout=3)
 
 
+def recovery(binary, env):
+    module = subprocess.check_output(
+        ["pactl", "load-module", "module-null-sink", "sink_name=cupid_preferred",
+         "format=float32le", "rate=48000", "channels=2",
+         "sink_properties=device.description=CupidTestPreferred"], env=env, text=True, timeout=3,
+    ).strip()
+    subprocess.run(["pactl", "set-default-sink", "cupid_test"], env=env, check=True, timeout=3)
+    process = subprocess.Popen(
+        [binary, "--audio-recovery"], env=env, text=True, stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, bufsize=1,
+    )
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    try:
+        for phase in ("remove", "restore", "default"):
+            if not selector.select(timeout=10):
+                raise RuntimeError(f"Audio recovery did not reach {phase}.")
+            line = process.stdout.readline().strip()
+            if line != phase:
+                raise RuntimeError(f"Audio recovery expected {phase}, received {line!r}.")
+            if phase == "remove":
+                subprocess.run(["pactl", "unload-module", module], env=env, check=True, timeout=3)
+                sinks = subprocess.check_output(["pactl", "list", "short", "sinks"], env=env,
+                                                text=True, timeout=3)
+                if "cupid_preferred" in sinks:
+                    raise RuntimeError("The host did not remove the preferred playback sink.")
+            elif phase == "restore":
+                module = subprocess.check_output(
+                    ["pactl", "load-module", "module-null-sink", "sink_name=cupid_preferred",
+                     "format=float32le", "rate=48000", "channels=2",
+                     "sink_properties=device.description=CupidTestPreferred"],
+                    env=env, text=True, timeout=3,
+                ).strip()
+            else:
+                subprocess.run(["pactl", "set-default-sink", "cupid_preferred"], env=env,
+                               check=True, timeout=3)
+            process.stdin.write(phase + "\n")
+            process.stdin.flush()
+        process.wait(timeout=10)
+        print(process.stdout.read(), end="")
+        if process.returncode:
+            raise RuntimeError("Audio endpoint recovery failed.")
+    finally:
+        selector.close()
+        stop(process)
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="cupid-audio-") as temporary:
         root = Path(temporary)
@@ -26,7 +75,8 @@ def main():
         config = root / "server.pa"
         config.write_text(
             f"load-module module-native-protocol-unix socket={socket} auth-anonymous=1\n"
-            "load-module module-null-sink sink_name=cupid_test rate=48000 channels=2\n"
+            "load-module module-null-sink sink_name=cupid_test format=float32le "
+            "rate=48000 channels=2 sink_properties=device.description=CupidTestDefault\n"
             "set-default-sink cupid_test\n"
             "set-default-source cupid_test.monitor\n"
         )
@@ -61,7 +111,7 @@ def main():
                     raise RuntimeError("The playback test server did not start.")
                 with (root / "output.pcm").open("wb") as capture:
                     recorder = subprocess.Popen(
-                        ["parec", "--raw", "--format=s16le", "--rate=48000", "--channels=2",
+                        ["parec", "--raw", "--format=float32le", "--rate=48000", "--channels=2",
                          "--device=cupid_test.monitor"],
                         env=env, stdout=capture, stderr=log,
                     )
@@ -72,7 +122,14 @@ def main():
                 nonzero = sum(byte != 0 for byte in data)
                 if len(data) < 48000 or nonzero < 1000:
                     raise RuntimeError("Audio did not reach the playback sink.")
-                print(f"Playback sink received {len(data)} PCM bytes ({nonzero} nonzero).")
+                frames = struct.iter_unpack("<ff", data[:len(data) - len(data) % 8])
+                precise = sum(5e-9 < left < 1.5e-8 and -1.5e-8 < right < -5e-9
+                              for left, right in frames)
+                if precise < 1000:
+                    raise RuntimeError("The playback stream lost samples below PCM16 precision.")
+                print(f"Playback sink received {len(data)} float PCM bytes "
+                      f"({precise} frames below PCM16 precision).")
+                recovery(sys.argv[1], env)
             finally:
                 if recorder is not None:
                     stop(recorder)

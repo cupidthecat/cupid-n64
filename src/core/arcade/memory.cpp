@@ -70,7 +70,8 @@ BusWrite Aleck64::write(std::uint32_t address, unsigned bytes, std::uint64_t val
     return {};
   }
   if ((address & ~3u) == 0xc0800008) {
-    if (profile_ == ArcadeProfile::HiPai || profile_ == ArcadeProfile::SuperRealMahjong)
+    if (arcade_hardware_profile(profile_) == ArcadeProfile::HiPai ||
+        profile_ == ArcadeProfile::SuperRealMahjong)
       mahjong_row_ = static_cast<std::uint8_t>(data >> 8);
     return {};
   }

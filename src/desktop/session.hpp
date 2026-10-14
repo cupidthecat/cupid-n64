@@ -13,6 +13,7 @@
 #include "desktop/storage/save.hpp"
 #include "desktop/video/output.hpp"
 #include <filesystem>
+#include <functional>
 #include <memory>
 
 namespace cupid::desktop {
@@ -23,7 +24,7 @@ public:
           const std::filesystem::path &ipl = {}, const std::filesystem::path &disk = {},
           n64::ArcadeProfile arcade = n64::ArcadeProfile::Disabled,
           std::optional<std::uint64_t> random_seed = {}, bool hardware_rendering = true,
-          SessionSettings settings = {});
+          SessionSettings settings = {}, std::filesystem::path pipeline_cache = {});
   void run(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void advance_frame(std::uint16_t buttons, std::int8_t x, std::int8_t y);
   void run(const PlayerInputs &input);
@@ -31,6 +32,17 @@ public:
   void advance_frame(const PlayerInputs &input);
   void input(const PlayerInputs &input);
   void clear_mouse_input();
+  std::span<const n64::DipSetting> arcade_dip_settings() const {
+    return console_->arcade() ? console_->arcade()->dip_settings()
+                              : std::span<const n64::DipSetting>{};
+  }
+  std::optional<std::string_view> arcade_dip_setting(std::string_view name) const {
+    return console_->arcade() ? console_->arcade()->dip_setting(name)
+                              : std::optional<std::string_view>{};
+  }
+  bool arcade_dip_setting(std::string_view name, std::string_view value) {
+    return console_->arcade() && console_->arcade()->dip_setting(name, value);
+  }
   void graphics_settings(n64::RenderSettings settings);
   n64::RenderSettings graphics_settings() const {
     return settings_.graphics;
@@ -47,6 +59,19 @@ public:
   FeedbackState feedback_state(unsigned port) const;
   void heart_rate(unsigned port, unsigned value);
   void finish_frame();
+  // Replace the presenter only while session execution is stopped.
+  void connect_present(std::function<void(unsigned, const n64::VideoFrame &)> present);
+  void wait_presented();
+  // Replace the observer only while session execution is stopped.
+  void observe_frames(std::function<void(unsigned)> observer);
+  void clear_refresh();
+  bool refreshed() const;
+  void measure_output(bool enabled) {
+    output_->measure(enabled);
+  }
+  std::chrono::nanoseconds renderer_time() const {
+    return output_->host_time();
+  }
   void reset();
   void save();
   void change_disk(const std::filesystem::path &path);
@@ -93,6 +118,9 @@ public:
     return console_->cpu().state().clocks;
   }
   unsigned frames = 0;
+  std::uint64_t program_counter() const {
+    return console_->cpu().state().pc;
+  }
   n64::VideoFrame frame;
 
 private:
@@ -117,6 +145,7 @@ private:
   std::array<TransferMedia, 4> transfer_media_;
   std::filesystem::path disk_image_, storage_image_;
   std::filesystem::path cartridge_image_, ipl_image_;
+  std::filesystem::path pipeline_cache_file_;
   std::uint64_t ipl_identity_ = 0;
   std::vector<MemorySave> saves_;
   std::filesystem::path cartridge_clock_path_;
@@ -128,6 +157,8 @@ private:
   std::unique_ptr<n64::Debugger> debugger_;
   bool hardware_rendering_ = true;
   bool frame_pending_ = false;
+  std::function<void(unsigned)> frame_observer_;
+  std::function<void(unsigned, const n64::VideoFrame &)> frame_presenter_;
   std::uint64_t disk_identity_ = 0;
 };
 

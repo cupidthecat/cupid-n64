@@ -46,7 +46,36 @@ constexpr auto help = L"Default keyboard layout:\n"
                       L"is opened or the app closes.";
 } // namespace
 
-Window::Window(Options options) : options_(std::move(options)) {
+Window::Window(Options options)
+    : options_(std::move(options)),
+      presentation_([this](const PresentationWorker::Submission &submission) {
+        if (submission.operation == PresentationWorker::Submission::Operation::Release) {
+          video_presenter_.release_graphics();
+          return PresentationWorker::Result{};
+        }
+        if (submission.operation == PresentationWorker::Submission::Operation::Capture) {
+          auto captured = video_presenter_.capture();
+          return PresentationWorker::Result{false, video_presenter_.available(),
+                                            video_presenter_.error(), std::move(captured)};
+        }
+        const auto presented = submission.width && submission.height &&
+                               video_presenter_.render(submission.pixels, submission.width,
+                                                       submission.height, submission.surface);
+        return PresentationWorker::Result{presented,
+                                          video_presenter_.available(),
+                                          video_presenter_.error(),
+                                          {},
+                                          submission.width,
+                                          submission.height};
+      }) {
+  execution_.notify([this] { PostMessageW(window_, WM_APP + 1, 0, 0); });
+  presentation_.notify([this] { PostMessageW(window_, WM_APP + 2, 0, 0); });
+  audio_.wait_interrupt([this] { return advancing_ && execution_.interrupted(); });
+  if (!options_.input_replay.empty())
+    input_replay_ = std::make_unique<InputReplay>(options_.input_replay);
+  if (!options_.field_trace.empty() || !options_.capture_fields.empty())
+    field_trace_ = std::make_unique<FieldTrace>(options_.field_trace, options_.capture,
+                                                options_.capture_fields, options_.frames);
   std::array<wchar_t, 32768> directory{};
   const auto size = GetEnvironmentVariableW(L"LOCALAPPDATA", directory.data(),
                                             static_cast<DWORD>(directory.size()));
@@ -66,6 +95,34 @@ Window::Window(Options options) : options_(std::move(options)) {
   player_mappings_ = read_mappings(settings_);
   shortcut_bindings_ = read_shortcuts(settings_);
   shortcuts_.bindings(shortcut_bindings_);
+}
+
+Window::~Window() {
+  execution_.interrupt();
+  try {
+    if (session_ && (advancing_ || presentation_.pending()))
+      finish_advance();
+    else
+      presentation_.quiesce();
+  } catch (...) {
+  }
+  execution_.shutdown();
+  try {
+    if (video_available_) {
+      PresentationWorker::Submission release;
+      release.operation = PresentationWorker::Submission::Operation::Release;
+      presentation_.submit(std::move(release), [this](const auto &) { video_available_ = false; });
+    }
+    presentation_.shutdown();
+  } catch (...) {
+    try {
+      presentation_.shutdown();
+    } catch (...) {
+    }
+  }
+  video_presenter_.close();
+  if (IsWindow(window_))
+    DestroyWindow(window_);
 }
 
 void Window::load_history_settings() {
@@ -164,11 +221,13 @@ int Window::run(HINSTANCE instance, int show) {
   RECT bounds{0, 0, static_cast<LONG>(viewport_size_.width),
               static_cast<LONG>(viewport_size_.height + 24)};
   AdjustWindowRect(&bounds, WS_OVERLAPPEDWINDOW, TRUE);
-  window_ = CreateWindowW(type.lpszClassName, L"Cupid-N64", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
-                          CW_USEDEFAULT, bounds.right - bounds.left, bounds.bottom - bounds.top,
-                          nullptr, menu_, instance, this);
+  window_ = CreateWindowW(type.lpszClassName, L"Cupid-N64", WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+                          CW_USEDEFAULT, CW_USEDEFAULT, bounds.right - bounds.left,
+                          bounds.bottom - bounds.top, nullptr, menu_, instance, this);
   if (!window_)
     throw std::runtime_error("Could not create the desktop window.");
+  video_presenter_.initialize(window_);
+  video_available_ = video_presenter_.available();
   apply_window_size();
   DragAcceptFiles(window_, TRUE);
   update_recent();
@@ -208,12 +267,30 @@ int Window::run(HINSTANCE instance, int show) {
     if (quit_)
       break;
     if (gdb_.port() || gdb_connected_)
+      finish_advance();
+    if (gdb_.port() || gdb_connected_)
       poll_gdb();
     if (!session_ || stopped()) {
       MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
       continue;
     }
     try {
+      if (advancing_) {
+        if (execution_.ready())
+          finish_advance();
+        else {
+          drain_advance();
+          publish_inputs();
+          if (audio_recovery_pending_ && std::chrono::steady_clock::now() >= next_audio_check_) {
+            finish_advance();
+            refresh_audio_devices();
+            audio_recovery_pending_ = false;
+            next_audio_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+          } else
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        continue;
+      }
       if (rewinding_) {
         if (std::chrono::steady_clock::now() >= next_rewind_)
           rewind_step();
@@ -221,18 +298,9 @@ int Window::run(HINSTANCE instance, int show) {
         continue;
       }
       if (frame_ready_) {
-        if (std::chrono::steady_clock::now() >= next_audio_check_) {
+        if (audio_.recovery_pending() && std::chrono::steady_clock::now() >= next_audio_check_) {
           refresh_audio_devices();
           next_audio_check_ = std::chrono::steady_clock::now() + std::chrono::seconds(2);
-        }
-        const auto delay =
-            playback_clock_.delay(session_->clocks(), std::chrono::steady_clock::now());
-        if (!fast_forward_ && delay.count()) {
-          if (wait_for_video())
-            continue;
-          MsgWaitForMultipleObjects(0, nullptr, FALSE, static_cast<DWORD>(delay.count()),
-                                    QS_ALLINPUT);
-          continue;
         }
         present();
       } else {
@@ -242,8 +310,29 @@ int Window::run(HINSTANCE instance, int show) {
       error(exception);
     }
   }
+  try {
+    execution_.interrupt();
+    finish_advance();
+  } catch (const std::exception &exception) {
+    error(exception);
+  }
   end_rewind();
   stop_fast_forward();
+  execution_.shutdown();
+  PresentationWorker::Submission release;
+  release.operation = PresentationWorker::Submission::Operation::Release;
+  presentation_.submit(std::move(release), [this](const auto &) { video_available_ = false; });
+  presentation_.shutdown();
+  video_presenter_.close();
+  if (options_.frames && last_frame_ < options_.frames && exit_code_ == 0)
+    exit_code_ = 2;
+  if (field_trace_) {
+    try {
+      field_trace_->finish(exit_code_ == 0 && last_frame_ == options_.frames);
+    } catch (const std::exception &exception) {
+      error(exception);
+    }
+  }
   if (session_) {
     try {
       session_->save();
@@ -278,7 +367,36 @@ LRESULT CALLBACK Window::procedure(HWND window, UINT message, WPARAM wparam, LPA
 }
 
 LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
+  // Paint consumes the owned image. Session commands wait at an execution boundary.
   switch (event) {
+  case WM_CLOSE:
+  case WM_COMMAND:
+  case WM_DROPFILES:
+  case WM_INITMENUPOPUP:
+  case WM_DEVICECHANGE:
+  case WM_ACTIVATE:
+  case WM_ENTERMENULOOP:
+  case WM_ENTERSIZEMOVE:
+  case WM_EXITMENULOOP:
+  case WM_EXITSIZEMOVE:
+  case WM_LBUTTONDOWN:
+  case WM_CAPTURECHANGED:
+  case WM_CANCELMODE:
+  case WM_SIZE:
+  case WM_MOVE:
+  case WM_DPICHANGED:
+  case WM_DISPLAYCHANGE:
+    finish_advance();
+    break;
+  default:
+    break;
+  }
+  switch (event) {
+  case WM_APP + 1:
+    return 0;
+  case WM_APP + 2:
+    presentation_.poll();
+    return 0;
   case WM_CLOSE:
     clear_host_input();
     gamepads_.stop();
@@ -412,6 +530,12 @@ LRESULT Window::message(UINT event, WPARAM wparam, LPARAM lparam) {
 }
 
 void Window::error(const std::exception &exception) {
+  if (advancing_ || presentation_.pending()) {
+    try {
+      finish_advance();
+    } catch (...) {
+    }
+  }
   if (session_ && session_->debugger().attached()) {
     session_->debugger().interrupt();
     gdb_was_paused_ = true;
@@ -443,9 +567,11 @@ void Window::error(const std::exception &exception) {
 }
 
 void Window::rebase() {
+  presentation_.new_generation();
+  completed_fields_.new_generation();
+  target_capture_.reset();
   video_sync_available_ = true;
   measured_time_ = std::chrono::steady_clock::now();
-  playback_clock_.reset(session_ ? session_->clocks() : 0, measured_time_);
   measured_frames_ = session_ ? session_->frames : 0;
   InvalidateRect(window_, nullptr, FALSE);
 }
@@ -460,13 +586,17 @@ void Window::load(LaunchPreference preference) {
     session_->save();
   audio_.clear();
   gamepads_.stop();
+  audio_.measure(bool(field_trace_));
   const auto controller_key = selected_controller_key();
   auto selected_settings = session_settings_;
+  selected_settings.arcade_dips = options_.arcade_dips;
   selected_settings.ports =
       options_.frames ? ControllerPorts{} : read_ports(settings_, controller_key);
   auto next = std::make_unique<Session>(
       options_.rom, options_.firmware, audio_, options_.ipl, options_.disk, options_.arcade_profile,
-      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, selected_settings);
+      options_.frames ? std::optional<std::uint64_t>(0) : std::nullopt, true, selected_settings,
+      settings_.empty() ? std::filesystem::path{}
+                        : settings_.parent_path() / L"cache" / L"pipelines.bin");
   auto states = std::make_unique<StateSlots>(
       next->storage_image(), [this] { return session_->capture_state(); },
       [this](std::span<const std::uint8_t> bytes) { session_->restore_state(bytes); });
@@ -480,6 +610,9 @@ void Window::load(LaunchPreference preference) {
   gdb_.target(nullptr);
   gdb_connected_ = false;
   session_ = std::move(next);
+  session_->measure_output(bool(field_trace_));
+  worker_cpu_origin_.reset();
+  observed_worker_cpu_ = {};
   gdb_.target(&session_->debugger(), [this] { session_->debug_memory_fence(); });
   if (preference == LaunchPreference::Remember)
     launch_on_restart_.reset();
@@ -498,6 +631,8 @@ void Window::load(LaunchPreference preference) {
   clear_host_input();
   rebase();
   update_states();
+  if (field_trace_)
+    field_trace_->begin();
   update_playback();
   update_display();
   update_launch();
@@ -552,6 +687,7 @@ std::filesystem::path Window::choose(bool firmware) {
 }
 
 void Window::command(unsigned id) {
+  finish_advance();
   if (settings_command(id))
     return;
   if (inspection_command(id))
@@ -612,6 +748,9 @@ void Window::command(unsigned id) {
     if (session_) {
       session_->save();
       session_->reset();
+      presentation_.new_generation();
+      completed_fields_.new_generation();
+      target_capture_.reset();
       pixels_.clear();
       pixel_width_ = pixel_height_ = 0;
       update_display();
@@ -661,6 +800,8 @@ void Window::command(unsigned id) {
 }
 
 void Window::paint() {
+  const auto painting_started =
+      field_trace_ ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
   PAINTSTRUCT painting{};
   const auto target = BeginPaint(window_, &painting);
   RECT client{};
@@ -670,10 +811,18 @@ void Window::paint() {
     return;
   }
   try {
-    const auto dc = paint_buffer_.begin(target, client.right, client.bottom);
-    FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
     const int width = client.right, height = std::max(0L, client.bottom - status_height());
-    if (session_ && !pixels_.empty()) {
+    if (!session_ || pixels_.empty() || !height)
+      video_presenter_.hide();
+    const bool gpu =
+        session_ && image_valid() && height &&
+        (advancing_ || finishing_advance_ || presentation_.pending() || presenting_field_
+             ? field_presented_
+             : present_video());
+    const auto dc = gpu ? target : paint_buffer_.begin(target, client.right, client.bottom);
+    if (!gpu)
+      FillRect(dc, &client, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+    if (!gpu && session_ && !pixels_.empty()) {
       BITMAPINFO info{};
       info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
       info.bmiHeader.biWidth = static_cast<LONG>(pixel_width_);
@@ -689,7 +838,7 @@ void Window::paint() {
                     static_cast<int>(viewport.width), static_cast<int>(viewport.height), 0, 0,
                     static_cast<int>(pixel_width_), static_cast<int>(pixel_height_), pixels_.data(),
                     &info, DIB_RGB_COLORS, SRCCOPY);
-    } else {
+    } else if (!gpu) {
       SetTextColor(dc, RGB(220, 220, 220));
       SetBkMode(dc, TRANSPARENT);
       RECT content{20, 20, width - 20, height - 20};
@@ -723,12 +872,15 @@ void Window::paint() {
     if (!shader_message_.empty())
       status = shader_message_ + L"  |  " + status;
     DrawTextW(dc, status.c_str(), -1, &bar, DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS);
-    paint_buffer_.present(target);
+    if (!gpu)
+      paint_buffer_.present(target);
   } catch (...) {
     EndPaint(window_, &painting);
     throw;
   }
   EndPaint(window_, &painting);
+  if (field_trace_)
+    field_trace_->paint(std::chrono::steady_clock::now() - painting_started);
 }
 
 Window::Input Window::input() const {
@@ -740,19 +892,16 @@ Window::Input Window::input() const {
   auto x = stick.x;
   auto y = static_cast<std::int8_t>(-stick.y);
   if (options_.test_input) {
-    const unsigned frame = session_->frames;
-    const bool start = (frame >= 900 && frame < 960) || (frame >= 1200 && frame < 1260);
-    const bool jump = (frame >= 1600 && frame < 1660) || (frame >= 2200 && frame < 2260) ||
-                      (frame >= 2600 && frame < 2660) || (frame >= 3000 && frame < 3060) ||
-                      (frame >= 3200 && frame % 300 < 60);
-    buttons = static_cast<std::uint16_t>((start ? 0x1000 : 0) | (jump ? 0x8000 : 0));
-    x = 0;
-    y = frame >= 4800 ? -58 : 0;
+    return test_input(session_->frames);
   }
   return {buttons, x, y};
 }
 
 void Window::advance() {
+  if (!gdb_.port() && !gdb_connected_ && !session_->debugger().attached()) {
+    start_advance();
+    return;
+  }
   session_->input(inputs());
   const auto interval_start = session_->clocks();
   do {
@@ -778,10 +927,24 @@ void Window::present() {
   // The VI callback takes the prior readback; let the new one overlap emulation.
   frame_ready_ = false;
   last_frame_ = session_->frames;
+  FieldTrace::Observation observation{
+      last_frame_,
+      session_->clocks(),
+      session_->program_counter(),
+      audio_.generated_samples(),
+      audio_.available() && !audio_.muted && !audio_.suspended,
+      video_available_,
+      static_cast<std::uint64_t>(audio_.wait_time().count()),
+      static_cast<std::uint64_t>(session_->renderer_time().count())};
+  if (field_trace_) {
+    if (field_trace_->captures(last_frame_)) {
+      session_->finish_frame();
+      field_trace_->capture(last_frame_, session_->frame);
+    }
+  }
   refresh_frame();
+  present_field(observation);
   record_history();
-  if (!fast_forward_ && playback_sync_ == PlaybackSync::Video)
-    UpdateWindow(window_);
   if (last_frame_ % 300 == 0)
     session_->save();
   if (options_.frames && last_frame_ >= options_.frames) {
@@ -801,15 +964,20 @@ void Window::present() {
     measured_time_ = now;
     measured_frames_ = last_frame_;
   }
+  if (!stopped() && !quit_)
+    advance();
 }
 
 void Window::capture() {
+  presentation_.quiesce();
+  session_->wait_presented();
   session_->finish_frame();
-  if (session_->frame.rgba.empty())
+  const auto &frame =
+      target_capture_ && last_frame_ == options_.frames ? *target_capture_ : session_->frame;
+  if (frame.rgba.empty())
     throw std::runtime_error("No video frame was produced.");
   if (options_.capture.empty())
     return;
-  const auto &frame = session_->frame;
   std::ofstream stream(options_.capture, std::ios::binary);
   stream << "P6\n" << frame.width << ' ' << frame.height << "\n255\n";
   for (std::size_t n = 0; n < frame.rgba.size(); n += 4)

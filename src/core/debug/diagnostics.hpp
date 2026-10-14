@@ -98,7 +98,6 @@ enum class HostControl { None, Exit, FastForward, NormalSpeed };
 class Diagnostics {
 public:
   static constexpr unsigned maximum_records = 65536;
-  static constexpr unsigned maximum_text = 4096;
   void connect(Console &console, Cpu &cpu, TraceLog &trace);
   void configure(DiagnosticConfig config);
   const DiagnosticConfig &config() const {
@@ -132,6 +131,7 @@ public:
   ProfileSnapshot profile() const noexcept;
   void synchronize_cpu(bool discard_remainder = false) noexcept;
   void cpu_cycles(std::uint64_t ticks, bool exception) noexcept;
+  void commit_cpu_cycles(std::uint64_t ticks, bool exception) noexcept;
   void cache_access(bool instruction, bool hit) noexcept;
   void cache_writeback(bool instruction) noexcept;
   void rsp_cycles(std::uint64_t clocks, bool halted) noexcept;
@@ -157,7 +157,7 @@ public:
   void local_access(std::uint32_t address, unsigned bytes, bool write,
                     MemoryRequestor requestor = MemoryRequestor::SignalDma) noexcept;
   void check_refresh(std::uint32_t refresh) noexcept;
-  void exception(unsigned code, bool delay_slot) noexcept;
+  bool bus_exception(unsigned kind) noexcept;
   void rsp_instruction() noexcept;
   bool cpu_extension(std::uint32_t instruction);
   bool rsp_extension(std::uint32_t instruction);
@@ -195,6 +195,7 @@ private:
   void record(DiagnosticRecord record) noexcept;
   void text(DebugProcessor processor, std::string message);
   void profile_command(std::uint64_t slot, unsigned command);
+  ProfileSnapshot guest_profile() const noexcept;
   std::uint64_t profile_read(std::uint64_t slot, unsigned code) const;
   void request_control(unsigned code);
   DiagnosticConfig config_;
@@ -207,6 +208,7 @@ private:
   std::unique_ptr<std::array<CacheContext, 512>> cache_;
   std::unique_ptr<std::array<LocalContext, 4096>> local_;
   ProfileSnapshot profile_;
+  std::array<std::uint64_t, 2> committed_cpu_cycles_{};
   std::uint64_t cpu_profile_clock_ = 0;
   std::vector<ProfileSnapshot> slots_;
   std::uint64_t exception_mask_ = 0;

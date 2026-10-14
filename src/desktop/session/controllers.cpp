@@ -30,7 +30,7 @@ void arcade_input(n64::Aleck64::Player &player, const PortInput &input) {
     player.x = static_cast<std::int8_t>(std::clamp(int(input.x), -128, 127));
     player.y = static_cast<std::int8_t>(std::clamp(int(input.y), -128, 127));
   } else {
-    const auto stick = n64::stick_response(input.x, input.y);
+    const auto stick = n64::stick_response(input.x, input.y, n64::StickGate::Aleck64);
     player.x = stick.x;
     player.y = -stick.y;
   }

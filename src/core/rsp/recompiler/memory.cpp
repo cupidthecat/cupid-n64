@@ -33,10 +33,22 @@ bool RspCompiler::Emitter::memory(std::uint32_t instruction, std::uint32_t pc) {
     return true;
   const auto offset = static_cast<std::uint32_t>(
       std::int32_t(std::bit_cast<std::int16_t>(static_cast<std::uint16_t>(instruction))));
-  op2(SLJIT_ADD32, reg(SLJIT_R1), gpr(source), imm(offset));
-  op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xfff));
+  const bool fixed = constants.has(source);
+  const auto location = (constants.get(source) + offset) & 0xfff;
+  if (fixed && bytes > 1) {
+#if SLJIT_UNALIGNED
+    if (location > 4096 - bytes)
+#else
+    if (location & (bytes - 1))
+#endif
+      return false;
+  }
+  if (!fixed) {
+    op2(SLJIT_ADD32, reg(SLJIT_R1), gpr(source), imm(offset));
+    op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xfff));
+  }
   sljit_jump *slow = nullptr;
-  if (bytes > 1) {
+  if (!fixed && bytes > 1) {
 #if SLJIT_UNALIGNED
     slow = sljit_emit_cmp(compiler, SLJIT_GREATER | SLJIT_32, SLJIT_R1, 0, SLJIT_IMM, 4096 - bytes);
 #else
@@ -44,10 +56,11 @@ bool RspCompiler::Emitter::memory(std::uint32_t instruction, std::uint32_t pc) {
     slow = sljit_emit_cmp(compiler, SLJIT_NOT_EQUAL | SLJIT_32, SLJIT_R0, 0, SLJIT_IMM, 0);
 #endif
   }
-  op1(SLJIT_MOV, reg(SLJIT_R2), imm(reinterpret_cast<std::uintptr_t>(rsp.memory_.data())));
-  const Operand address{SLJIT_MEM2(SLJIT_R2, SLJIT_R1)};
+  const Operand address{fixed ? SLJIT_MEM1(SLJIT_S2) : SLJIT_MEM2(SLJIT_S2, SLJIT_R1),
+                        fixed ? static_cast<sljit_sw>(location) : 0};
   if (write) {
-    op1(SLJIT_MOV32, reg(SLJIT_R0), gpr(target));
+    op1(SLJIT_MOV32, reg(SLJIT_R0),
+        constants.has(target) ? imm(constants.get(target)) : gpr(target));
 #if SLJIT_LITTLE_ENDIAN
     if (bytes > 1)
       op1(bytes == 2 ? SLJIT_REV32_U16 : SLJIT_REV32, reg(SLJIT_R0), reg(SLJIT_R0));

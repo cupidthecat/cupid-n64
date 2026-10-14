@@ -59,8 +59,8 @@ std::uint32_t Aleck64::read_port(unsigned port) const {
       bit(21, input_.test);
     }
   }
-  if (port == 2 &&
-      (profile_ == ArcadeProfile::HiPai || profile_ == ArcadeProfile::SuperRealMahjong))
+  if (port == 2 && (arcade_hardware_profile(profile_) == ArcadeProfile::HiPai ||
+                    profile_ == ArcadeProfile::SuperRealMahjong))
     return (value & 0xff00ffff) | (unsigned(mahjong_state()) << 16);
   return value;
 }
@@ -80,14 +80,13 @@ std::uint32_t Aleck64::controller_state(unsigned port) const {
 
 JoybusStatus Aleck64::Controller::communicate(std::span<const std::uint8_t> input,
                                               std::span<std::uint8_t> output) {
-  if (input.empty())
-    return {};
-  if (input[0] == 0 || input[0] == 255) {
+  const auto command = input.empty() ? 0 : input[0];
+  if (command == 0 || command == 255) {
     constexpr std::array<std::uint8_t, 3> status{5, 0, 2};
     std::copy_n(status.begin(), std::min(output.size(), status.size()), output.begin());
     return {true, false};
   }
-  if (input[0] == 1) {
+  if (command == 1) {
     const auto state = board_.controller_state(player_);
     for (unsigned n = 0; n < std::min(output.size(), std::size_t(4)); ++n)
       output[n] = static_cast<std::uint8_t>(state >> ((3 - n) * 8));

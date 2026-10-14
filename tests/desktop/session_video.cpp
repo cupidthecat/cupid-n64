@@ -14,7 +14,7 @@ void save(const std::filesystem::path &path, const std::vector<std::uint8_t> &by
     throw std::runtime_error("Could not write session fixture.");
 }
 
-std::vector<std::uint8_t> firmware(bool draw) {
+std::vector<std::uint8_t> firmware(bool draw, bool active = true) {
   std::vector<std::uint32_t> code;
   const auto store = [&](std::uint32_t address, std::uint32_t value) {
     code.push_back(0x3c010000 | (address >> 16));
@@ -41,7 +41,7 @@ std::vector<std::uint8_t> firmware(bool draw) {
   store(0xa4400020, 0x0c150c15);
   store(0xa4400024, (108u << 16) | 128);
   store(0xa4400028, (34u << 16) | 36);
-  store(0xa4400000, 2);
+  store(0xa4400000, active ? 2 : 0);
   store(0xa0002000, draw ? 0x36000000 : 0x29000000);
   store(0xa0002004, 0);
   store(0xa4100000, 0x2000);
@@ -116,7 +116,51 @@ int main(int argc, char **argv) {
       test::equal(session.frames, 2);
       test::equal(session.frame.width, 640);
       test::equal(session.frame.rgba.at(8 * 4), 255);
+      const auto held = session.frame.rgba;
+      const auto fields = session.frames;
+      session.debugger().attach();
+      const std::array<std::uint8_t, 4> blank{};
+      test::equal(session.debugger().write_memory(0xffffffffa4400000ull, blank), true);
+      session.debugger().detach();
+      session.advance_frame(0, 0, 0);
+      test::equal(session.refreshed(), true);
+      test::equal(session.frames, fields);
+      test::equal(session.frame.rgba == held, true);
+      session.debugger().attach();
+      const auto halted_clock = session.clocks();
+      session.advance_frame(0, 0, 0);
+      test::equal(session.clocks(), halted_clock);
+      test::equal(session.refreshed(), false);
+      test::equal(session.frames, fields);
+      test::equal(session.frame.rgba == held, true);
+      session.debugger().detach();
     }
+  }
+  save(pif, firmware(false, false));
+  {
+    cupid::desktop::Session inactive(rom, pif, audio, {}, {}, cupid::n64::ArcadeProfile::Disabled,
+                                     0, false);
+    while (inactive.clocks() < 400000)
+      inactive.run();
+    const auto phase = inactive.capture_state();
+    const auto before = inactive.clocks();
+    inactive.advance_frame(0, 0, 0);
+    const auto boundary = inactive.clocks();
+    test::equal(boundary > before, true);
+    test::equal(boundary - before < cupid::n64::clock_frequency, true);
+    test::equal(inactive.refreshed(), true);
+    test::equal(inactive.frames, 0);
+    test::equal(inactive.frame.rgba.empty(), true);
+    inactive.restore_state(phase);
+    test::equal(inactive.refreshed(), false);
+    inactive.advance_frame(0, 0, 0);
+    test::equal(inactive.clocks(), boundary);
+    test::equal(inactive.frames, 0);
+    test::equal(inactive.frame.rgba.empty(), true);
+    inactive.advance_frame(0, 0, 0);
+    test::equal(inactive.clocks() > boundary, true);
+    test::equal(inactive.frames, 0);
+    test::equal(inactive.frame.rgba.empty(), true);
   }
   std::filesystem::remove(rom);
   std::filesystem::remove(pif);

@@ -1,0 +1,31 @@
+include(FetchContent)
+
+set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC ON CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SDL_VIDEO OFF CACHE BOOL "" FORCE)
+set(SDL_RENDER OFF CACHE BOOL "" FORCE)
+set(SDL_GPU OFF CACHE BOOL "" FORCE)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(SDL_UNIX_CONSOLE_BUILD ON CACHE BOOL "" FORCE)
+  pkg_check_modules(cupid_audio_platform REQUIRED alsa libpulse libudev dbus-1)
+  set(SDL_ALSA ON CACHE BOOL "" FORCE)
+  set(SDL_PULSEAUDIO ON CACHE BOOL "" FORCE)
+  set(SDL_LIBUDEV ON CACHE BOOL "" FORCE)
+  set(SDL_JOYSTICK ON CACHE BOOL "" FORCE)
+  set(SDL_VIRTUAL_JOYSTICK ON CACHE BOOL "" FORCE)
+else()
+  set(SDL_JOYSTICK OFF CACHE BOOL "" FORCE)
+endif()
+set(SDL_HAPTIC OFF CACHE BOOL "" FORCE)
+set(SDL_SENSOR OFF CACHE BOOL "" FORCE)
+set(SDL_CAMERA OFF CACHE BOOL "" FORCE)
+set(SDL_DIALOG OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(cupid_audio_backend
+  URL https://codeload.github.com/libsdl-org/SDL/tar.gz/refs/tags/release-3.4.8
+  URL_HASH SHA256=429a9f38483f834da5727a63dd7b5127a7c9d06a16439d7c6de4b7ebbfdb6374
+)
+FetchContent_MakeAvailable(cupid_audio_backend)

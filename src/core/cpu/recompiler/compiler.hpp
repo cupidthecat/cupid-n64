@@ -15,6 +15,14 @@
 namespace cupid::n64 {
 
 struct CpuCompiler::Impl {
+  enum MemoryMode : unsigned {
+    GpOffsetRange = 1u << 14,
+    GpAligned4 = 1u << 15,
+    GpAligned8 = 1u << 16,
+    SpAligned4 = 1u << 17,
+    SpAligned8 = 1u << 18,
+    MemoryModes = GpOffsetRange | GpAligned4 | GpAligned8 | SpAligned4 | SpAligned8,
+  };
   struct ActiveSection {
     InstructionTracker *tracker = nullptr;
     std::uint32_t page = 0;
@@ -130,6 +138,7 @@ struct CpuCompiler::Emitter {
     std::uint32_t instruction;
     unsigned clocks;
     unsigned completion_clocks = 2;
+    std::optional<std::uint64_t> materialize_pc = {};
   };
   Cpu &cpu;
   Impl::Block &block;
@@ -140,6 +149,7 @@ struct CpuCompiler::Emitter {
   bool wide;
   bool tracing;
   bool diagnostics;
+  unsigned memory_mode;
   unsigned cycles = 0;
   bool pipeline_dirty = false;
   std::vector<SlowPath> slow_paths;
@@ -157,6 +167,7 @@ struct CpuCompiler::Emitter {
   bool control_noop(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
   bool branch(std::uint32_t instruction);
   bool memory(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
+  void merge(std::uint32_t instruction);
   void finish_slow_path(SlowPath path, bool delay);
   void emit_slow_paths();
   bool floating(std::uint32_t instruction, bool full, bool defer_exit, bool delay);
@@ -178,11 +189,13 @@ struct CpuCompiler::Emitter {
   void op2(sljit_s32 op, Operand dest, Operand left, Operand right);
   void compare(Operand dest, Operand left, Operand right, bool is_signed);
   void store(unsigned dest, Operand source, bool word = false);
+  void materialize_pipeline(std::uint64_t address);
   void commit_pipeline();
   void advance(unsigned clocks);
   void return_now(unsigned clocks);
   void return_if(sljit_s32 condition, Operand left, Operand right, unsigned clocks);
   void cache_guard(std::uint32_t address);
+  sljit_jump *refill(std::uint32_t address);
   std::optional<unsigned> internal_target(unsigned branch) const;
   std::optional<std::uint64_t> branch_target(unsigned branch) const;
   std::optional<unsigned> entry_index(std::uint64_t target) const;

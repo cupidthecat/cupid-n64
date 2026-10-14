@@ -6,7 +6,26 @@ namespace cupid::n64 {
 CpuCompiler::Emitter::Emitter(Cpu &cpu, Impl::Block &block, std::uint64_t pc,
                               std::uint32_t physical, bool wide, bool tracing, bool diagnostics)
     : cpu(cpu), block(block), compiler(sljit_create_compiler(nullptr)), start_pc(pc), pc(pc),
-      physical(physical), wide(wide), tracing(tracing), diagnostics(diagnostics) {}
+      physical(physical), wide(wide), tracing(tracing), diagnostics(diagnostics),
+      memory_mode(block.key.mode & Impl::MemoryModes) {
+  // Secondary entries and loop backedges must retain the same stack alignment guarantees.
+  for (const auto instruction : block.words) {
+    const auto opcode = instruction >> 26;
+    const auto info = block_instruction(instruction);
+    if (info.writes_gp)
+      memory_mode &= ~(Impl::GpOffsetRange | Impl::GpAligned4 | Impl::GpAligned8);
+    if (info.writes_sp) {
+      if ((opcode != 9 && opcode != 25) || ((instruction >> 21) & 31) != 29) {
+        memory_mode &= ~(Impl::SpAligned4 | Impl::SpAligned8);
+        continue;
+      }
+      if (instruction & 3)
+        memory_mode &= ~Impl::SpAligned4;
+      if (instruction & 7)
+        memory_mode &= ~Impl::SpAligned8;
+    }
+  }
+}
 
 CpuCompiler::Emitter::~Emitter() {
   sljit_free_compiler(compiler);
@@ -65,9 +84,9 @@ sljit_sw CpuCompiler::Emitter::guard(Cpu *cpu, std::uint32_t physical,
     }
     ++cpu->instruction_cache_generation_;
     cpu->advance_clocks(96);
-    line.tag = physical & ~0xfffu;
+    line.set_tag(physical & ~0xfffu);
     line.dirty = false;
-    line.valid = true;
+    line.set_valid(true);
     std::copy_n(data.begin(), line.words.size(), line.words.begin());
   } else if (!cpu->fill(line, physical, index, true)) {
     return 0;
@@ -120,15 +139,18 @@ sljit_sw CpuCompiler::Emitter::cop2_memory_helper(Cpu *cpu, std::uint32_t instru
 }
 
 void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
-  commit_pipeline();
+  if (tracing || diagnostics)
+    commit_pipeline();
   advance(cycles);
   cycles = 0;
   const auto &line = cpu.icache_[(pc >> 5) & 511];
-  op1(SLJIT_MOV_U8, reg(SLJIT_R0), field(&line.valid));
-  const auto invalid = sljit_emit_cmp(compiler, SLJIT_EQUAL, SLJIT_R0, 0, SLJIT_IMM, 0);
-  const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, field(&line.tag).type,
-                                  field(&line.tag).value, SLJIT_IMM, address & ~0xfffu);
-  sljit_set_label(invalid, sljit_emit_label(compiler));
+  const auto key = field(&line.tag_key);
+  const auto hit = sljit_emit_cmp(compiler, SLJIT_EQUAL | SLJIT_32, key.type, key.value, SLJIT_IMM,
+                                  (address & ~0xfffu) | 1);
+  // Hits retain the pending pipeline; miss helpers need the current fetch PC.
+  if (pipeline_dirty)
+    materialize_pipeline(pc);
+  auto *refilled = refill(address);
   const auto index = static_cast<unsigned>((pc - start_pc) >> 2);
   auto &view = block.views.emplace_back();
   view.count = static_cast<unsigned>(
@@ -140,7 +162,10 @@ void CpuCompiler::Emitter::cache_guard(std::uint32_t address) {
   sljit_emit_icall(compiler, SLJIT_CALL, SLJIT_ARGS3(W, P, 32, P), SLJIT_IMM,
                    SLJIT_FUNC_ADDR(guard));
   return_if(SLJIT_EQUAL, reg(SLJIT_R0), imm(0), 2);
-  sljit_set_label(hit, sljit_emit_label(compiler));
+  const auto ready = sljit_emit_label(compiler);
+  sljit_set_label(hit, ready);
+  if (refilled)
+    sljit_set_label(refilled, ready);
 }
 
 void CpuCompiler::Emitter::execute(std::uint32_t instruction, bool defer_exit) {
@@ -165,7 +190,9 @@ bool CpuCompiler::Emitter::compile() {
     return false;
   // Generated code keeps pointers to the fetch views.
   block.views.reserve(block.words.size());
-  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 4 | SLJIT_ENTER_FLOAT(2), 4, 2 * sizeof(sljit_sw));
+  const auto vectors = sljit_has_cpu_feature(SLJIT_HAS_SIMD) ? SLJIT_ENTER_VECTOR(1) : 0;
+  sljit_emit_enter(compiler, 0, SLJIT_ARGS1V(P), 5 | SLJIT_ENTER_FLOAT(2) | vectors, 4,
+                   2 * sizeof(sljit_sw));
   host_address(SLJIT_S1, &cpu.state_);
   host_address(SLJIT_S2, &cpu);
   plan_entries();

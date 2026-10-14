@@ -12,6 +12,7 @@ void VideoInterface::power() {
   registers_.fill(0);
   registers_[3] = 256;
   counter_ = leap_counter_ = fraction_ = 0;
+  refreshed_ = false;
   field_ = false;
   clock_ = 0;
   frames_ = 0;
@@ -51,9 +52,18 @@ void VideoInterface::run_until_frame(std::uint64_t target) {
     line();
 }
 
+void VideoInterface::run_until_refresh() {
+  while (clock_ < 0 && !refreshed_)
+    line();
+}
+
 void VideoInterface::line() {
   if (!active()) {
     counter_ = 0;
+    if (++inactive_counter_ >= 200) {
+      inactive_counter_ = 0;
+      refreshed_ = true;
+    }
     step(0x800);
     return;
   }
@@ -66,6 +76,7 @@ void VideoInterface::line() {
       leap_counter_ = 0;
   }
   if (counter_ == (registers_[10] >> 17)) {
+    refreshed_ = true;
     ++frames_;
     if (frame_)
       frame_(field_);

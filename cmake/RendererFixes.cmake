@@ -22,8 +22,3 @@ endforeach()
 cupid_renderer_replace("${renderer_state_sources}/rdp_renderer.cpp"
   "0x01010101 * constants.prim_lod_frac"
   "0x01010101u * constants.prim_lod_frac")
-
-# Keep interlaced scanout at native field height after full downsampling.
-cupid_renderer_replace("${renderer_state_sources}/video_interface.cpp"
-  "is_final_pass = !serrate || !options.upscale_deinterlacing;"
-  "is_final_pass = !serrate || !options.upscale_deinterlacing || (scaling_factor >> downscale_steps) <= 1;")

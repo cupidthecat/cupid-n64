@@ -97,12 +97,123 @@ void shutdown() {
   test::equal(completed, true);
 }
 
+void presentation_order() {
+  std::promise<void> entered, release, next_entered;
+  auto presenting = entered.get_future();
+  auto gate = release.get_future().share();
+  auto submitting = next_entered.get_future();
+  std::atomic<unsigned> reads = 0;
+  std::atomic<bool> immutable = false;
+  std::thread::id reader, presenter;
+  std::vector<unsigned> fields;
+  FrameReadback readback([&] {
+    reader = std::this_thread::get_id();
+    return VideoFrame{1, 1, {static_cast<std::uint8_t>(++reads), 0, 0, 255}};
+  });
+  readback.connect_present([&](unsigned field, const VideoFrame &frame) {
+    presenter = std::this_thread::get_id();
+    fields.push_back(field);
+    if (field == 17) {
+      entered.set_value();
+      if (gate.wait_for(2s) != std::future_status::ready)
+        throw std::runtime_error("The held presentation was not released.");
+      immutable = frame.rgba == std::vector<std::uint8_t>{1, 0, 0, 255};
+    }
+  });
+  readback.start(17);
+  test::equal(presenting.wait_for(2s) == std::future_status::ready, true);
+  readback.wait();
+  auto copied = readback.take();
+  test::equal(copied.rgba == std::vector<std::uint8_t>{1, 0, 0, 255}, true);
+  copied.rgba[0] = 99;
+  // The caller can prepare the next scanout after copying, before presentation returns.
+  auto next = std::async(std::launch::async, [&] {
+    next_entered.set_value();
+    readback.start(18);
+  });
+  test::equal(submitting.wait_for(2s) == std::future_status::ready, true);
+  test::equal(next.wait_for(20ms) == std::future_status::timeout, true);
+  test::equal(reads.load(), 1);
+  auto finished = std::async(std::launch::async, [&] { readback.wait_presented(); });
+  test::equal(finished.wait_for(20ms) == std::future_status::timeout, true);
+  release.set_value();
+  test::equal(next.wait_for(2s) == std::future_status::ready, true);
+  next.get();
+  readback.wait_presented();
+  finished.get();
+  test::equal(immutable.load(), true);
+  test::equal(fields == std::vector<unsigned>{17, 18}, true);
+  test::equal(reader == presenter && reader != std::this_thread::get_id(), true);
+  test::equal(readback.capture().rgba == std::vector<std::uint8_t>{2, 0, 0, 255}, true);
+  readback.connect_present({});
+  readback.start(19);
+  readback.wait_presented();
+  test::equal(reads.load(), 3);
+  test::equal(fields.size(), 2);
+}
+
+void presentation_failure() {
+  FrameReadback readback([] { return VideoFrame{1, 1, {1, 0, 0, 255}}; });
+  readback.connect_present(
+      [](unsigned, const VideoFrame &) { throw std::runtime_error("Presentation failed."); });
+  readback.start(5);
+  unsigned failures = 0;
+  for (const auto wait : {true, false}) {
+    try {
+      if (wait)
+        readback.wait_presented();
+      else
+        readback.start(6);
+    } catch (const std::runtime_error &) {
+      ++failures;
+    }
+  }
+  test::equal(failures, 2);
+  readback.connect_present({});
+  readback.restore({1, 1, {9, 0, 0, 255}});
+  test::equal(readback.take().rgba[0], 9);
+  readback.start(7);
+  readback.wait_presented();
+  test::equal(readback.take().rgba[0], 1);
+}
+
+void presentation_shutdown() {
+  std::promise<void> entered, release, destroying;
+  auto presenting = entered.get_future();
+  auto gate = release.get_future().share();
+  auto closing = destroying.get_future();
+  std::atomic<bool> completed = false;
+  auto readback = std::make_unique<FrameReadback>([] { return VideoFrame{1, 1, {1, 0, 0, 255}}; });
+  readback->connect_present([&](unsigned, const VideoFrame &frame) {
+    entered.set_value();
+    if (gate.wait_for(2s) != std::future_status::ready)
+      throw std::runtime_error("The closing presentation was not released.");
+    completed = frame.rgba == std::vector<std::uint8_t>{1, 0, 0, 255};
+  });
+  readback->start(31);
+  test::equal(presenting.wait_for(2s) == std::future_status::ready, true);
+  auto destroyed = std::async(std::launch::async, [&] {
+    destroying.set_value();
+    readback.reset();
+  });
+  test::equal(closing.wait_for(2s) == std::future_status::ready, true);
+  test::equal(destroyed.wait_for(20ms) == std::future_status::timeout, true);
+  test::equal(completed.load(), false);
+  release.set_value();
+  test::equal(destroyed.wait_for(2s) == std::future_status::ready, true);
+  destroyed.get();
+  test::equal(completed.load(), true);
+}
+
 } // namespace
 
 int main() {
   delivery();
   failure();
   shutdown();
+  presentation_order();
+  presentation_failure();
+  presentation_shutdown();
   std::cout << test::checks << " checks, " << test::failures << " failures\n";
   return test::failures ? 1 : 0;
 }

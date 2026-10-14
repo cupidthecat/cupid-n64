@@ -126,11 +126,11 @@ bool Cpu::write(std::uint64_t address, unsigned bytes, std::uint64_t value, bool
   }
   const auto transfer = bus_.write(physical, bytes, value);
   advance_clocks(transfer.clocks);
-  if (!transfer.success && !bus_.frozen())
+  if (!transfer.success && !transfer.exception && !bus_.frozen())
     raise(Exception::BusData);
   if (transfer.success && debugger_)
     debugger_->memory_access(address, bytes, true);
-  return transfer.success;
+  return transfer.success || transfer.exception;
 }
 
 void Cpu::load_merge(unsigned reg, std::uint64_t address, unsigned bytes, bool left) {

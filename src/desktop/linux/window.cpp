@@ -1,6 +1,8 @@
 #include "desktop/linux/window.hpp"
 #include "desktop/linux/text.hpp"
 #include "desktop/video/bitmap.hpp"
+#include <gdk/gdkx.h>
+#undef None
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
@@ -10,11 +12,13 @@ namespace cupid::desktop::linux_host {
 Window::Window(Options options, std::filesystem::path settings, std::optional<bool> hardware)
     : options_(std::move(options)), settings_path_(std::move(settings)),
       settings_(settings_path_.empty() ? Settings{} : load_settings(settings_path_)) {
+  audio_.wait_interrupt([this] { return advancing_.load() && execution_.interrupted(); });
   if (hardware) {
     settings_.hardware = *hardware;
     if (!*hardware)
       settings_.session.graphics = {};
   }
+  settings_.audio.blocking = settings_.sync.audio;
   audio_.configure(settings_.audio);
   audio_.muted = settings_.muted;
 }
@@ -22,6 +26,11 @@ Window::Window(Options options, std::filesystem::path settings, std::optional<bo
 Window::~Window() {
   if (timer_)
     g_source_remove(timer_);
+  try {
+    finish_playback();
+  } catch (const std::exception &failure) {
+    std::cerr << failure.what() << '\n';
+  }
   gdb_->target(nullptr);
   input_.stop();
   if (session_)
@@ -30,6 +39,8 @@ Window::~Window() {
     } catch (const std::exception &failure) {
       std::cerr << failure.what() << '\n';
     }
+  if (window_)
+    video_.close();
   if (window_)
     gtk_widget_destroy(window_);
 }
@@ -57,6 +68,32 @@ int Window::run() {
                      return TRUE;
                    }),
                    this);
+  g_signal_connect(drawing_, "size-allocate",
+                   G_CALLBACK(+[](GtkWidget *, GtkAllocation *, gpointer data) {
+                     auto &self = *static_cast<Window *>(data);
+                     try {
+                       self.finish_playback();
+                       if (self.video_available_)
+                         self.video_.prepare(self.video_surface());
+                       self.refresh(false);
+                     } catch (const std::exception &failure) {
+                       self.error(failure);
+                     }
+                   }),
+                   this);
+  g_signal_connect(drawing_, "unrealize", G_CALLBACK(+[](GtkWidget *, gpointer data) {
+                     auto &self = *static_cast<Window *>(data);
+                     try {
+                       self.finish_playback();
+                       self.video_.close();
+                       self.video_available_ = false;
+                     } catch (const std::exception &failure) {
+                       std::cerr << failure.what() << '\n';
+                       self.failed_ = true;
+                       self.result_ = 1;
+                     }
+                   }),
+                   this);
   g_signal_connect(window_, "delete-event",
                    G_CALLBACK(+[](GtkWidget *, GdkEvent *, gpointer data) -> gboolean {
                      auto &self = *static_cast<Window *>(data);
@@ -69,7 +106,8 @@ int Window::run() {
                    }),
                    this);
   g_signal_connect(window_, "destroy", G_CALLBACK(+[](GtkWidget *, gpointer data) {
-                     static_cast<Window *>(data)->window_ = nullptr;
+                     auto &self = *static_cast<Window *>(data);
+                     self.window_ = self.drawing_ = self.status_ = self.pause_item_ = nullptr;
                      if (gtk_main_level())
                        gtk_main_quit();
                    }),
@@ -101,6 +139,12 @@ int Window::run() {
   g_signal_connect(window_, "key-release-event", G_CALLBACK(key), this);
   const auto focus = +[](GtkWidget *, GdkEventFocus *event, gpointer data) -> gboolean {
     auto &self = *static_cast<Window *>(data);
+    try {
+      self.finish_playback();
+    } catch (const std::exception &failure) {
+      self.error(failure);
+      return FALSE;
+    }
     self.active_ = event->in;
     self.shortcuts_pressed_.fill(false);
     self.clear_input();
@@ -142,6 +186,7 @@ int Window::run() {
   g_signal_connect(drawing_, "button-press-event", G_CALLBACK(mouse), this);
   g_signal_connect(drawing_, "button-release-event", G_CALLBACK(mouse), this);
   gtk_widget_show_all(window_);
+  initialize_video();
   try {
     if (settings_.gdb_enabled && !options_.frames)
       gdb_->listen(settings_.gdb_port);
@@ -154,6 +199,9 @@ int Window::run() {
   }
   timer_ = g_timeout_add(1, timer, this);
   gtk_main();
+  finish_playback();
+  if (options_.frames && !terminal_frames_ && result_ == 0)
+    result_ = 2;
   return result_;
 }
 
@@ -208,10 +256,15 @@ void Window::create_menu(GtkWidget *box) {
     g_object_set_data(G_OBJECT(slot), "slot", GUINT_TO_POINTER(n));
     g_signal_connect(slot, "activate", G_CALLBACK(+[](GtkWidget *widget, gpointer data) {
                        auto &self = *static_cast<Window *>(data);
-                       if (self.states_)
-                         self.states_->select(
-                             GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(widget), "slot")));
-                       self.refresh();
+                       try {
+                         self.finish_playback();
+                         if (self.states_)
+                           self.states_->select(
+                               GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(widget), "slot")));
+                         self.refresh();
+                       } catch (const std::exception &failure) {
+                         self.error(failure);
+                       }
                      }),
                      this);
     gtk_menu_shell_append(GTK_MENU_SHELL(state), slot);
@@ -222,6 +275,7 @@ void Window::create_menu(GtkWidget *box) {
 }
 
 std::filesystem::path Window::choose_file(const char *title, bool folder, bool saving) {
+  finish_playback();
   const bool prior_modal = modal_;
   modal_ = true;
   audio_.clear();
@@ -258,6 +312,7 @@ std::filesystem::path Window::choose_file(const char *title, bool folder, bool s
 }
 
 void Window::load(LaunchFiles files) {
+  finish_playback();
   if (files.firmware.empty())
     files.firmware = files.arcade_profile == n64::ArcadeProfile::Disabled
                          ? settings_.firmware.n64
@@ -265,9 +320,14 @@ void Window::load(LaunchFiles files) {
   validate_launch(files);
   if (session_)
     session_->save();
-  auto next = std::make_unique<Session>(files.rom, files.firmware, audio_, files.ipl, files.disk,
-                                        files.arcade_profile, std::nullopt, settings_.hardware,
-                                        settings_.session);
+  auto session_settings = settings_.session;
+  session_settings.arcade_dips = files.arcade_dips;
+  auto next = std::make_unique<Session>(
+      files.rom, files.firmware, audio_, files.ipl, files.disk, files.arcade_profile, std::nullopt,
+      settings_.hardware, session_settings,
+      settings_path_.empty()
+          ? std::filesystem::path{}
+          : std::filesystem::path(g_get_user_cache_dir()) / "cupid-n64" / "pipelines.bin");
   gdb_->target(nullptr);
   poll_gdb();
   states_.reset();
@@ -292,14 +352,20 @@ void Window::load(LaunchFiles files) {
 }
 
 void Window::close_game() {
+  finish_playback();
   if (session_)
     session_->save();
   gdb_->target(nullptr);
   states_.reset();
   session_.reset();
+  observed_frames_ = 0;
+  hardware_rendering_ = debugger_attached_ = debugger_halted_ = false;
+  controllers_ = {};
+  feedback_state_ = {};
   input_.clear();
   audio_.clear();
   pixels_.clear();
+  video_.show(false);
   refresh();
 }
 
@@ -321,16 +387,23 @@ void Window::persist() {
 }
 
 void Window::rebase() {
+  finish_playback();
+  completed_fields_.new_generation();
   last_frame_ = std::chrono::steady_clock::now();
-  if (session_)
-    clock_.reset(session_->clocks(), PlaybackClock::Clock::now());
 }
 
 void Window::clear_input() {
+  finish_playback();
   input_.clear();
   pointer_known_ = false;
   mouse_left_ = mouse_right_ = false;
   mouse_x_ = mouse_y_ = 0;
+  {
+    std::lock_guard lock(input_mutex_);
+    worker_inputs_ = {};
+    for (auto &mouse : worker_mouse_)
+      mouse.clear();
+  }
   if (session_) {
     session_->clear_mouse_input();
     std::array<FeedbackState, 4> state{};
@@ -341,6 +414,7 @@ void Window::clear_input() {
 }
 
 void Window::command(Command action) {
+  finish_playback();
   if (action == Command::Quit) {
     close();
     return;
@@ -459,19 +533,21 @@ void Window::command(Command action) {
 }
 
 bool Window::stopped() const {
-  if (session_ && session_->debugger().attached())
+  if (session_ && !advancing_ && session_->debugger().attached())
     return session_->debugger().halted();
+  if (session_ && debugger_attached_)
+    return debugger_halted_;
   return paused_ || (!options_.frames && !active_ && settings_.focus == FocusBehavior::Pause);
 }
 
-PlayerInputs Window::inputs() {
+PlayerInputs Window::inputs(bool scripted) {
   PlayerInputs result{};
   if (!options_.frames && !active_ && settings_.focus != FocusBehavior::AllowInput)
     return result;
   host_ = input_.poll();
   for (unsigned port = 0; port < result.size(); ++port) {
     result[port] = map_input(settings_.mappings[port], host_);
-    if (session_->port_status(port).controller == ControllerType::Mouse) {
+    if (controllers_[port] == ControllerType::Mouse) {
       result[port].mouse_x = mouse_x_;
       result[port].mouse_y = mouse_y_;
       result[port].mouse_left = mouse_left_;
@@ -479,12 +555,13 @@ PlayerInputs Window::inputs() {
     }
   }
   mouse_x_ = mouse_y_ = 0;
-  if (options_.test_input && session_->frames >= 120 && session_->frames % 120 < 60)
+  if (scripted && options_.test_input && observed_frames_ >= 120 && observed_frames_ % 120 < 60)
     result[0].buttons |= 0x1000;
   return result;
 }
 
 void Window::poll_gdb() {
+  finish_playback();
   bool error = false;
   try {
     gdb_->poll();
@@ -516,6 +593,10 @@ gboolean Window::timer(gpointer data) {
     if (self.tick())
       return G_SOURCE_CONTINUE;
   } catch (const std::exception &failure) {
+    try {
+      self.finish_playback();
+    } catch (...) {
+    }
     self.paused_ = true;
     self.failed_ = true;
     if (self.session_)
@@ -535,7 +616,7 @@ gboolean Window::timer(gpointer data) {
   return G_SOURCE_REMOVE;
 }
 
-bool Window::tick() {
+bool Window::synchronous_tick() {
   if (!window_)
     return false;
   if (modal_)
@@ -561,9 +642,6 @@ bool Window::tick() {
     last_frame_ = std::chrono::steady_clock::now();
     return true;
   }
-  if ((settings_.sync == PlaybackSync::Video || !audio_.available()) &&
-      clock_.delay(session_->clocks(), now).count())
-    return true;
   const auto deadline = now + std::chrono::milliseconds(4);
   const auto before = session_->frames;
   session_->input(inputs());
@@ -586,6 +664,7 @@ bool Window::tick() {
     if (options_.frames && session_->frames >= options_.frames) {
       if (!options_.capture.empty())
         screenshot(options_.capture);
+      terminal_frames_ = true;
       close();
       return false;
     }
@@ -599,20 +678,16 @@ bool Window::tick() {
   return true;
 }
 
-void Window::refresh() {
-  if (!drawing_ || !status_)
+void Window::refresh(bool current_frame) {
+  if (!window_ || !drawing_ || !status_)
     return;
   std::string status = "Open a game and select its PIF firmware to begin.";
   if (session_) {
-    const auto &frame = session_->frame;
-    if (frame.width && frame.height && !frame.rgba.empty()) {
-      pixels_ = frame.rgba;
-      for (std::size_t n = 0; n < pixels_.size(); n += 4)
-        std::swap(pixels_[n], pixels_[n + 2]);
-      frame_width_ = frame.width;
-      frame_height_ = frame.height;
+    if (current_frame && !advancing_) {
+      cache_session();
+      refresh_frame(session_->frame);
     }
-    status = session_->hardware_rendering() ? "Hardware rendering" : "Software rendering";
+    status = hardware_rendering_ ? "Hardware rendering" : "Software rendering";
     status += stopped() ? " | Paused" : " | Running";
     status += " | Slot " + std::to_string(states_->selected());
     status += audio_.available() ? " | Audio: " + utf8(audio_.device_name())
@@ -637,6 +712,16 @@ void Window::draw(cairo_t *context) {
   cairo_paint(context);
   if (pixels_.empty())
     return;
+  if (video_available_) {
+    if (!advancing_) {
+      const auto surface = video_surface();
+      video_.prepare(surface);
+      video_available_ = video_.render(pixels_, frame_width_, frame_height_, surface);
+      video_.show(video_available_);
+    }
+    if (video_available_)
+      return;
+  }
   const auto area_width = static_cast<unsigned>(gtk_widget_get_allocated_width(drawing_));
   const auto area_height = static_cast<unsigned>(gtk_widget_get_allocated_height(drawing_));
   const auto viewport = image_viewport(frame_width_, frame_height_, area_width, area_height,
@@ -664,6 +749,7 @@ void Window::screenshot(const std::filesystem::path &path) {
 }
 
 void Window::error(const std::exception &failure) {
+  finish_playback();
   const bool prior_modal = modal_;
   modal_ = true;
   const auto dialog =

@@ -23,7 +23,8 @@ void linux_settings_tests() {
   session_test::Directory directory;
   const auto path = directory.path / "settings.ini";
   auto settings = load_settings(path);
-  test::equal(settings.audio.latency, 80);
+  test::equal(settings.audio.latency, 20);
+  test::equal(settings.sync == PlaybackSync{true, false}, true);
   test::equal(settings.mappings[0].source == HostSource::Keyboard, true);
   const std::filesystem::path unicode(u8"café-日本.z64");
   const auto game = directory.path / unicode;
@@ -35,7 +36,7 @@ void linux_settings_tests() {
   settings.muted = true;
   settings.scale = DisplayScale::Integer;
   settings.aspect = DisplayAspect::Pixels;
-  settings.sync = PlaybackSync::Video;
+  settings.sync = {false, true};
   settings.focus = FocusBehavior::AllowInput;
   settings.gdb_enabled = true;
   settings.gdb_port = 32123;
@@ -69,6 +70,7 @@ void linux_settings_tests() {
     test::equal(restored.session.storage.selected(location) == directory.path, true);
   test::equal(restored.scale == settings.scale && restored.aspect == settings.aspect, true);
   test::equal(restored.sync == settings.sync && restored.focus == settings.focus, true);
+  test::equal(restored.audio.blocking, false);
   test::equal(restored.gdb_enabled && restored.gdb_port == 32123, true);
   test::equal(restored.width == 1280 && restored.height == 800, true);
   test::equal(restored.muted && restored.hardware, true);
@@ -89,10 +91,22 @@ void linux_settings_tests() {
   test::equal(read_file(pak, 3) == std::vector<std::uint8_t>({1, 7, 9}), true);
   test::equal(utf8(wide("é 日本")) == "é 日本", true);
   test::equal(utf8({}).empty() && wide({}).empty(), true);
+  for (const auto sync : {PlaybackSync{false, false}, PlaybackSync{true, false},
+                          PlaybackSync{false, true}, PlaybackSync{true, true}}) {
+    settings.sync = sync;
+    save_settings(path, settings);
+    const auto loaded = load_settings(path);
+    test::equal(loaded.sync == sync, true);
+    test::equal(loaded.audio.blocking, sync.audio);
+  }
+  const std::string_view legacy = "[Playback]\nSync=1\n";
+  write_save(path, {reinterpret_cast<const std::uint8_t *>(legacy.data()), legacy.size()});
+  test::equal(load_settings(path).sync == PlaybackSync{true, true}, true);
   for (const std::string_view corrupt :
        {"[Video]\nRenderScale=3\n", "[Audio]\nLatency=31\n", "[Video]\nScale=-1\n",
         "[Port1]\nSource=999\n", "[Port1]\nHeartRate=0\n", "[Debugger]\nPort=65536\n",
-        "[Audio]\nMuted=perhaps\n", "[broken"}) {
+        "[Audio]\nMuted=perhaps\n", "[Playback]\nSync=2\n", "[Playback]\nAudioSync=perhaps\n",
+        "[broken"}) {
     write_save(path, {reinterpret_cast<const std::uint8_t *>(corrupt.data()), corrupt.size()});
     test::equal(rejects([&] { load_settings(path); }), true);
   }

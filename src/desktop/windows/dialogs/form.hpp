@@ -47,7 +47,8 @@ inline void center_dialog(HWND dialog) {
   RECT bounds{}, parent{};
   GetWindowRect(dialog, &bounds);
   GetWindowRect(GetParent(dialog), &parent);
-  MONITORINFO monitor{sizeof(MONITORINFO)};
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
   GetMonitorInfoW(MonitorFromWindow(dialog, MONITOR_DEFAULTTONEAREST), &monitor);
   const int width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
   const int x = std::clamp(int(parent.left + (parent.right - parent.left - width) / 2),

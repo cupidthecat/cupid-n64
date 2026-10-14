@@ -24,6 +24,16 @@ void RspCompiler::Emitter::vector_address(unsigned offset, bool window) {
   op2(SLJIT_AND32, reg(SLJIT_R0), reg(SLJIT_R0), imm(0xfff));
 }
 
+RspCompiler::Emitter::Operand RspCompiler::Emitter::vector_location(unsigned offset, bool window) {
+  if (vector_base) {
+    const auto address = window ? vector_window_base + ((vector_window_offset + offset) & 15)
+                                : *vector_base + offset;
+    return {SLJIT_MEM1(SLJIT_S2), static_cast<sljit_sw>(address & 0xfff)};
+  }
+  vector_address(offset, window);
+  return {SLJIT_MEM2(SLJIT_S2, SLJIT_R0)};
+}
+
 bool RspCompiler::Emitter::vector_memory(std::uint32_t instruction, std::uint32_t pc) {
   if (diagnostics)
     return false;
@@ -37,8 +47,13 @@ bool RspCompiler::Emitter::vector_memory(std::uint32_t instruction, std::uint32_
   const auto immediate = static_cast<std::int32_t>(instruction << 25) >> 25;
   constexpr unsigned scales[] = {1, 2, 4, 8, 16, 16, 8, 8, 16, 16, 16, 16};
   const auto offset = static_cast<std::uint32_t>(immediate) * scales[operation];
-  op2(SLJIT_ADD32, reg(SLJIT_R1), gpr(source), imm(offset));
-  op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xfff));
+  vector_base.reset();
+  if (constants.has(source)) {
+    vector_base = (constants.get(source) + offset) & 0xfff;
+  } else {
+    op2(SLJIT_ADD32, reg(SLJIT_R1), gpr(source), imm(offset));
+    op2(SLJIT_AND32, reg(SLJIT_R1), reg(SLJIT_R1), imm(0xfff));
+  }
   if (operation <= 3)
     vector_linear(instruction, pc);
   else if (operation <= 5)
